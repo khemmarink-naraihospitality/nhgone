@@ -427,15 +427,24 @@ export default function DashboardView({
   useEffect(() => {
     if (selectedProperty) {
       if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments")) {
-        // Custom fetch logic for initial load: Use full range (Jan 1st to Now)
+        // Custom fetch logic for initial load
         const triggerInitialFetch = async () => {
           setLoading(true);
           setError(null);
           try {
+            const now = new Date();
+            const last7DaysStart = new Date(now);
+            last7DaysStart.setDate(now.getDate() - 7);
+            last7DaysStart.setHours(0, 0, 0, 0);
+            const iso7Days = new Date(last7DaysStart.getTime() - (last7DaysStart.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
+
             const apiUrl = "/api";
             const queryParams = new URLSearchParams();
             queryParams.append("property", selectedProperty);
-            queryParams.append("start_date", startDate); // Use Jan 1st default
+            
+            // For reservations, default to 7 days for speed. For others, use the Jan 1st default.
+            const fetchStart = activeSection === "reservations" ? iso7Days : startDate;
+            queryParams.append("start_date", fetchStart);
             queryParams.append("end_date", endDate);
             
             let endpoint = "";
