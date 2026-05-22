@@ -55,12 +55,15 @@ export default function DashboardView({
 
   const getDefaultRange = () => {
     const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - 1); // Yesterday
-    start.setHours(0, 1, 0, 0); // 12:01 AM
+    
+    // Start Date: Jan 1st of current year at 12:01 AM
+    const start = new Date(now.getFullYear(), 0, 1, 0, 1, 0, 0);
+    
+    // End Date: Yesterday at 11:59 PM
     const end = new Date(now);
-    end.setDate(now.getDate() - 1); // Yesterday
-    end.setHours(23, 59, 59, 999); // 11:59 PM
+    end.setDate(now.getDate() - 1);
+    end.setHours(23, 59, 59, 999);
+    
     return {
       start: new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16),
       end: new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16)
