@@ -510,7 +510,7 @@ export default function DashboardView({
               Fetch Data
             </button>
 
-            {isSuperAdmin && (activeSection === "reservations" || activeSection === "members") && (
+            {isSuperAdmin && (activeSection === "reservations" || activeSection === "members") && dataSource === "saved" && (
                 <button 
                   onClick={handleSync7Days} 
                   disabled={syncing || loading} 
