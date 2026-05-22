@@ -96,7 +96,7 @@ export default function DashboardView({
     setError(null);
     setSelectedIds([]); // Reset selection on fetch
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
       let endpoint = "";
       let queryParams = new URLSearchParams();
       
@@ -139,7 +139,7 @@ export default function DashboardView({
     if (data.length === 0 || (activeSection !== "reservations" && activeSection !== "members")) return;
     setSyncing(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
       const endpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
