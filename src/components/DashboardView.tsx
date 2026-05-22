@@ -96,7 +96,7 @@ export default function DashboardView({
     setError(null);
     setSelectedIds([]); // Reset selection on fetch
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const apiUrl = "/api";
       let endpoint = "";
       let queryParams = new URLSearchParams();
       
@@ -139,8 +139,9 @@ export default function DashboardView({
         setError(result.message || `Failed to fetch ${dataSource} ${activeSection} data`);
       }
     } catch (err: any) {
-      setError(`Backend server unreachable: ${err.message}`);
-      console.warn("Fetch error:", err.message);
+      const fullUrl = `/api${activeSection === "reservations" ? "/reservations/live" : ""}`;
+      setError(`Backend server unreachable: ${err.message} (Tried to hit: ${fullUrl})`);
+      console.warn("Fetch error details:", err);
     } finally {
       setLoading(false);
     }
@@ -150,7 +151,7 @@ export default function DashboardView({
     if (data.length === 0 || (activeSection !== "reservations" && activeSection !== "members")) return;
     setSyncing(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const apiUrl = "/api";
       const endpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
@@ -181,7 +182,7 @@ export default function DashboardView({
     const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -362,7 +363,7 @@ export default function DashboardView({
           setLoading(true);
           setError(null);
           try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+            const apiUrl = "/api";
             const queryParams = new URLSearchParams();
             queryParams.append("property", selectedProperty);
             queryParams.append("start_date", isoStart);
