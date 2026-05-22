@@ -426,7 +426,7 @@ export default function DashboardView({
   // Automatic data fetch when selection changes
   useEffect(() => {
     if (selectedProperty) {
-      if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members")) {
+      if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments")) {
         // Custom fetch logic for initial load: Use full range (Jan 1st to Now)
         const triggerInitialFetch = async () => {
           setLoading(true);
@@ -438,7 +438,11 @@ export default function DashboardView({
             queryParams.append("start_date", startDate); // Use Jan 1st default
             queryParams.append("end_date", endDate);
             
-            const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
+            let endpoint = "";
+            if (activeSection === "reservations") endpoint = "/reservations/saved";
+            else if (activeSection === "members") endpoint = "/members/managed";
+            else if (activeSection === "payments") endpoint = "/payments/managed";
+
             const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`);
             const result = await response.json();
             if (result.status === "success") setData(result.data);
