@@ -427,14 +427,7 @@ export default function DashboardView({
   useEffect(() => {
     if (selectedProperty) {
       if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members")) {
-        // "Magic" pre-load: fetch 1 extra day but keep filter UI same
-        const now = new Date();
-        const magicStart = new Date(now);
-        magicStart.setDate(now.getDate() - 8); // Fetch 8 days to ensure 7 full days of stats
-        magicStart.setHours(0, 0, 0, 0);
-        const isoStart = new Date(magicStart.getTime() - (magicStart.getTimezoneOffset() * 60000)).toISOString().slice(0, 16);
-        
-        // Custom fetch logic for initial load
+        // Custom fetch logic for initial load: Use full range (Jan 1st to Now)
         const triggerInitialFetch = async () => {
           setLoading(true);
           setError(null);
@@ -442,7 +435,7 @@ export default function DashboardView({
             const apiUrl = "/api";
             const queryParams = new URLSearchParams();
             queryParams.append("property", selectedProperty);
-            queryParams.append("start_date", isoStart);
+            queryParams.append("start_date", startDate); // Use Jan 1st default
             queryParams.append("end_date", endDate);
             
             const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
@@ -450,7 +443,7 @@ export default function DashboardView({
             const result = await response.json();
             if (result.status === "success") setData(result.data);
           } catch (err) {
-            console.warn("Initial magic fetch failed", err);
+            console.warn("Initial pre-load fetch failed", err);
           } finally {
             setLoading(false);
             setIsFirstLoad(false);
