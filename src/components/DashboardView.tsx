@@ -366,7 +366,7 @@ export default function DashboardView({
   }, []);
 
   const generateChartData = () => {
-    if (dataSource !== "saved" || activeSection !== "reservations" || data.length === 0) return [];
+    if (dataSource !== "saved" || data.length === 0) return [];
     
     const countMap = new Map<string, number>();
     data.forEach(item => {
@@ -405,7 +405,7 @@ export default function DashboardView({
   // Automatic data fetch when selection changes
   useEffect(() => {
     if (selectedProperty) {
-      if (isFirstLoad && dataSource === "saved" && activeSection === "reservations") {
+      if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members")) {
         // "Magic" pre-load: fetch 1 extra day but keep filter UI same
         const now = new Date();
         const magicStart = new Date(now);
@@ -424,7 +424,8 @@ export default function DashboardView({
             queryParams.append("start_date", isoStart);
             queryParams.append("end_date", endDate);
             
-            const response = await fetch(`${apiUrl}/reservations/saved?${queryParams.toString()}`);
+            const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
+            const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`);
             const result = await response.json();
             if (result.status === "success") setData(result.data);
           } catch (err) {
@@ -664,8 +665,13 @@ export default function DashboardView({
           </div>
         )}
 
-        {dataSource === "saved" && activeSection === "reservations" && (
-          <ImportChart data={chartData} />
+        {dataSource === "saved" && (activeSection === "reservations" || activeSection === "members") && (
+          <ImportChart 
+            data={chartData} 
+            title={`Import ${activeSection === "reservations" ? "reservation" : "member"} Last 7 days`}
+            description={`Number of ${activeSection} imported per day`}
+            unitLabel={activeSection === "reservations" ? "Reservations" : "Members"}
+          />
         )}
 
         {showSyncModal && syncStatus && (

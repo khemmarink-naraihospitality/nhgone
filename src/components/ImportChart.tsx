@@ -7,9 +7,12 @@ interface ChartData {
 
 interface ImportChartProps {
   data: ChartData[];
+  title?: string;
+  description?: string;
+  unitLabel?: string;
 }
 
-export default function ImportChart({ data }: ImportChartProps) {
+export default function ImportChart({ data, title = "Import Stats", description = "Items imported per day", unitLabel = "Items" }: ImportChartProps) {
   const chartHeight = 200;
   const padding = 20;
 
@@ -18,8 +21,8 @@ export default function ImportChart({ data }: ImportChartProps) {
       <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl mt-6">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h3 className="text-xl font-bold text-white tracking-tight">Import reservation Last 7 days</h3>
-            <p className="text-xs text-slate-400 mt-1">Number of reservations imported per day</p>
+            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+            <p className="text-xs text-slate-400 mt-1">{description}</p>
           </div>
         </div>
         <div className="h-[240px] flex items-center justify-center border-t border-white/5">
@@ -36,8 +39,8 @@ export default function ImportChart({ data }: ImportChartProps) {
     <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl mt-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h3 className="text-xl font-bold text-white tracking-tight">Import reservation Last 7 days</h3>
-          <p className="text-xs text-slate-400 mt-1">Number of reservations imported per day</p>
+          <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
+          <p className="text-xs text-slate-400 mt-1">{description}</p>
         </div>
         <div className="flex items-center gap-2 px-3 py-1.5 bg-[#AAA024]/10 rounded-lg border border-[#AAA024]/20">
           <div className="w-2 h-2 rounded-full bg-[#AAA024] animate-pulse"></div>
@@ -56,7 +59,7 @@ export default function ImportChart({ data }: ImportChartProps) {
                 {/* Tooltip (Hover State) */}
                 <div className="absolute -top-12 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 flex flex-col items-center pointer-events-none">
                   <div className="bg-[#AAA024] text-white text-xs font-bold px-3 py-1.5 rounded-lg shadow-lg whitespace-nowrap">
-                    {item.count} Reservations
+                    {item.count} {unitLabel}
                   </div>
                   <div className="w-2 h-2 bg-[#AAA024] rotate-45 -mt-1"></div>
                 </div>
