@@ -120,6 +120,17 @@ export default function DashboardView({
       }
       
       const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`);
+      
+      // Check if response is JSON
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        const text = await response.text();
+        console.error("Non-JSON response:", text.substring(0, 100));
+        setError(`Server error (${response.status}): The backend returned an invalid response. This often happens due to Vercel's 10s execution limit on slow Mews API calls.`);
+        setLoading(false);
+        return;
+      }
+
       const result = await response.json();
       
       if (result.status === "success") {
@@ -128,7 +139,7 @@ export default function DashboardView({
         setError(result.message || `Failed to fetch ${dataSource} ${activeSection} data`);
       }
     } catch (err: any) {
-      setError("Backend server unreachable");
+      setError(`Backend server unreachable: ${err.message}`);
       console.warn("Fetch error:", err.message);
     } finally {
       setLoading(false);
