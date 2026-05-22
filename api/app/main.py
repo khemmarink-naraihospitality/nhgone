@@ -137,14 +137,15 @@ async def health_check():
 @app.get("/stats")
 async def get_stats():
     """
-    Get summary stats from Supabase.
+    Get summary stats from Supabase sync tables.
     """
     try:
         if not sync_service.supabase:
             return {"status": "error", "message": "Supabase not connected"}
         
-        res_count = sync_service.supabase.table("reservations").select("id", count="exact").execute().count
-        mem_count = sync_service.supabase.table("members").select("id", count="exact").execute().count
+        # Use sync tables which are actually populated
+        res_count = sync_service.supabase.table("reservations_sync").select("mews_id", count="exact").execute().count
+        mem_count = sync_service.supabase.table("members_sync").select("mews_id", count="exact").execute().count
         pay_count = sync_service.supabase.table("payments").select("id", count="exact").execute().count
         
         return {
