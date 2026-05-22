@@ -18,7 +18,7 @@ export default function ManagedMembersPage() {
   const fetchManaged = async () => {
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
       const response = await fetch(`${apiUrl}/members/managed`);
       const result = await response.json();
       if (result.status === "success") {

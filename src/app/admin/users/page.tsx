@@ -55,7 +55,7 @@ export default function AdminUsersPage() {
     }
     setCreating(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
       const response = await fetch(`${apiUrl}/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

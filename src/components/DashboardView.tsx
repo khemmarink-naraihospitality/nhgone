@@ -170,7 +170,7 @@ export default function DashboardView({
     const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
@@ -351,7 +351,7 @@ export default function DashboardView({
           setLoading(true);
           setError(null);
           try {
-            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+            const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
             const queryParams = new URLSearchParams();
             queryParams.append("property", selectedProperty);
             queryParams.append("start_date", isoStart);
