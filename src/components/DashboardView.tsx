@@ -442,8 +442,8 @@ export default function DashboardView({
             const queryParams = new URLSearchParams();
             queryParams.append("property", selectedProperty);
             
-            // For reservations, default to 7 days for speed. For others, use the Jan 1st default.
-            const fetchStart = activeSection === "reservations" ? iso7Days : startDate;
+            // For reservations and members, default to 7 days for speed. For others (payments), use the Jan 1st default.
+            const fetchStart = (activeSection === "reservations" || activeSection === "members") ? iso7Days : startDate;
             queryParams.append("start_date", fetchStart);
             queryParams.append("end_date", endDate);
             
