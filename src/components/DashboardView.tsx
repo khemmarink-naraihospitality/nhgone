@@ -122,29 +122,50 @@ export default function DashboardView({
         }
       }
       
-      const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`);
-      
-      // Check if response is JSON
-      const contentType = response.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await response.text();
-        console.error("Non-JSON response:", text.substring(0, 100));
-        setError(`Server error (${response.status}): The backend returned an invalid response. This often happens due to Vercel's 10s execution limit on slow Mews API calls.`);
-        setLoading(false);
-        return;
-      }
+      // Set a 20-second timeout for the request
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 20000);
 
-      const result = await response.json();
-      
-      if (result.status === "success") {
-        setData(result.data);
-      } else {
-        setError(result.message || `Failed to fetch ${dataSource} ${activeSection} data`);
+      try {
+        const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        // Handle Vercel / Gateway Timeouts specifically
+        if (response.status === 504 || response.status === 500) {
+            setError("Big Data, Please select new date range");
+            setLoading(false);
+            return;
+        }
+
+        // Check if response is JSON
+        const contentType = response.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          const text = await response.text();
+          console.error("Non-JSON response:", text.substring(0, 100));
+          setError("Big Data, Please select new date range");
+          setLoading(false);
+          return;
+        }
+
+        const result = await response.json();
+        
+        if (result.status === "success") {
+          setData(result.data);
+        } else {
+          setError(result.message || `Failed to fetch ${dataSource} ${activeSection} data`);
+        }
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        if (err.name === 'AbortError') {
+          setError("Big Data, Please select new date range");
+        } else {
+          const fullUrl = `${apiUrl}${endpoint}`;
+          setError(`Backend server unreachable: ${err.message} (Tried to hit: ${fullUrl})`);
+          console.warn("Fetch error details:", err);
+        }
       }
-    } catch (err: any) {
-      const fullUrl = `/api${activeSection === "reservations" ? "/reservations/live" : ""}`;
-      setError(`Backend server unreachable: ${err.message} (Tried to hit: ${fullUrl})`);
-      console.warn("Fetch error details:", err);
     } finally {
       setLoading(false);
     }
