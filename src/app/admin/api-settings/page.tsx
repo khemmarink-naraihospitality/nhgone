@@ -29,14 +29,16 @@ export default function ApiSettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties`);
-      const res = await response.json();
-      if (res.status === "success") {
-        setSettings(res.data);
-      }
-    } catch (err) {
+      const { data, error } = await supabase
+        .from("property_api_settings")
+        .select("*")
+        .order("property_name");
+      
+      if (error) throw error;
+      setSettings(data || []);
+    } catch (err: any) {
       console.error("Fetch error:", err);
+      alert("Error loading settings: " + err.message);
     }
     setLoading(false);
   };
