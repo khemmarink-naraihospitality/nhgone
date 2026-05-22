@@ -13,7 +13,8 @@ async def get_live_reservations(
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
     cursor: Optional[str] = Query(None),
-    property_name: Optional[str] = Query(None)
+    property_name: Optional[str] = Query(None),
+    chunk_limit: Optional[int] = Query(1) # Default to 1 to prevent timeouts on Vercel
 ):
     """
     Fetch live reservations and map them to the 58 columns Mews Reservation Report.
@@ -23,7 +24,8 @@ async def get_live_reservations(
             property_name=property_name,
             start_date=start_date,
             end_date=end_date,
-            cursor=cursor
+            cursor=cursor,
+            chunk_limit=chunk_limit
         )
         return {
             "status": "success",

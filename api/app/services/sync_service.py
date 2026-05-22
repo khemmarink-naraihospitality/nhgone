@@ -36,7 +36,7 @@ class SyncService:
             logger.error(f"Sync error: {e}")
             raise e
 
-    async def get_mapped_reservations(self, property_name: str, start_date: str = None, end_date: str = None, cursor: str = None):
+    async def get_mapped_reservations(self, property_name: str, start_date: str = None, end_date: str = None, cursor: str = None, chunk_limit: int = None):
         """
         Fetch live reservations and map them to the 58 columns Mews Reservation Report.
         Shared between API router and background sync job.
@@ -59,6 +59,7 @@ class SyncService:
             
             all_reservations = []
             current_cursor = cursor
+            chunks_fetched = 0
 
             while True:
                 payload = {
@@ -75,8 +76,9 @@ class SyncService:
                 current_cursor = response_data.get("Cursor")
                 
                 all_reservations.extend(reservations_chunk)
+                chunks_fetched += 1
                 
-                if not current_cursor or not reservations_chunk:
+                if not current_cursor or not reservations_chunk or (chunk_limit and chunks_fetched >= chunk_limit):
                     break
 
             reservations = all_reservations
