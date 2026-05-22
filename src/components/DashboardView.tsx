@@ -673,12 +673,12 @@ export default function DashboardView({
           </div>
         )}
 
-        {dataSource === "saved" && (activeSection === "reservations" || activeSection === "members") && (
+        {dataSource === "saved" && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments") && (
           <ImportChart 
             data={chartData} 
-            title={`Import ${activeSection === "reservations" ? "reservation" : "member"} Last 7 days`}
+            title={`Import ${activeSection === "reservations" ? "reservation" : activeSection === "members" ? "member" : "payment"} Last 7 days`}
             description={`Number of ${activeSection} imported per day`}
-            unitLabel={activeSection === "reservations" ? "Reservations" : "Members"}
+            unitLabel={activeSection === "reservations" ? "Reservations" : activeSection === "members" ? "Members" : "Payments"}
           />
         )}
 
