@@ -178,6 +178,58 @@ export default function DashboardView({
     }
   };
 
+  const handleSync7Days = async () => {
+    if (!selectedProperty || syncing) return;
+    setSyncing(true);
+    setError(null);
+    try {
+        const now = new Date();
+        const end = new Date(now);
+        end.setDate(now.getDate() - 1);
+        end.setHours(23, 59, 59, 999);
+        
+        const start = new Date(now);
+        start.setDate(now.getDate() - 7);
+        start.setHours(0, 0, 0, 0);
+
+        const isoStart = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16) + ":00Z";
+        const isoEnd = new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16) + ":00Z";
+
+        const apiUrl = "/api";
+        const fetchEndpoint = activeSection === "reservations" ? "/reservations/live" : "/members/live";
+        const syncEndpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
+
+        // 1. Fetch
+        const fetchRes = await fetch(`${apiUrl}${fetchEndpoint}?property_name=${encodeURIComponent(selectedProperty)}&start_date=${isoStart}&end_date=${isoEnd}`);
+        const fetchResult = await fetchRes.json();
+        
+        if (fetchResult.status !== "success") throw new Error(fetchResult.message || "Fetch failed");
+
+        // 2. Sync
+        const syncRes = await fetch(`${apiUrl}${syncEndpoint}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                property: selectedProperty,
+                data: fetchResult.data
+            })
+        });
+        const syncResult = await syncRes.json();
+        if (syncResult.status === "success") {
+            setSyncStatus({ inserted: syncResult.inserted, skipped: syncResult.skipped || 0 });
+            setShowSyncModal(true);
+            // If we are on saved view, refresh
+            if (dataSource === "saved") fetchData();
+        } else {
+            setError("Sync failed: " + syncResult.message);
+        }
+    } catch (err: any) {
+        setError("Error syncing last 7 days: " + err.message);
+    } finally {
+        setSyncing(false);
+    }
+  };
+
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
     if (!confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
@@ -456,6 +508,17 @@ export default function DashboardView({
             >
               Fetch Data
             </button>
+
+            {isSuperAdmin && (activeSection === "reservations" || activeSection === "members") && (
+                <button 
+                  onClick={handleSync7Days} 
+                  disabled={syncing || loading} 
+                  className="px-6 py-2.5 bg-blue-600 text-white rounded-xl text-sm font-bold shadow-lg shadow-blue-500/20 hover:bg-blue-700 transition-all h-[42px] disabled:opacity-50 flex items-center gap-2"
+                >
+                  {syncing ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-white/20 border-t-white"></div> : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                  Import Last 7 Days
+                </button>
+            )}
           </div>
         <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-3xl border border-white/10 shadow-lg">
           {showSectionTabs && (
@@ -611,7 +674,7 @@ export default function DashboardView({
             <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl max-w-sm w-full relative animate-in zoom-in-95 duration-200">
               <div className="flex flex-col items-center text-center gap-6">
                 <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
-                <div><h3 className="text-xl font-bold text-white mb-2">Import Complete</h3><p className="text-slate-400 text-sm">Reservation data has been synchronized with the database.</p></div>
+                <div><h3 className="text-xl font-bold text-white mb-2">Import Complete</h3><p className="text-slate-400 text-sm">The data has been successfully synchronized with the database.</p></div>
                 <div className="grid grid-cols-2 gap-4 w-full">
                   <div className="bg-white/5 border border-white/5 p-4 rounded-2xl"><p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">New Records</p><p className="text-2xl font-bold text-emerald-400">{syncStatus.inserted}</p></div>
                   <div className="bg-white/5 border border-white/5 p-4 rounded-2xl"><p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Duplicates</p><p className="text-2xl font-bold text-slate-300">{syncStatus.skipped}</p></div>
