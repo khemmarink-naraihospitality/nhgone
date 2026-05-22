@@ -125,10 +125,22 @@ async def start_scheduler():
         print("[CRITICAL] Cannot start scheduler: Supabase credentials missing or invalid.")
         return
 
-    # Run the check job every minute
+    # Run the check job every minute (Note: This only works in local development)
     scheduler.add_job(daily_auto_sync, 'cron', second=0)
     scheduler.start()
-    print("Scheduler initialized with Asia/Bangkok timezone and 1-minute interval check.")
+    print("Scheduler initialized (Local environment only).")
+
+@app.get("/sync/auto")
+async def trigger_auto_sync():
+    """
+    Endpoint to trigger the automated sync job.
+    Designed to be called by Vercel Cron or GitHub Actions.
+    """
+    try:
+        await daily_auto_sync()
+        return {"status": "success", "message": "Automated sync check completed"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.get("/health")
 async def health_check():
