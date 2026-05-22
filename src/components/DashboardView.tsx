@@ -56,9 +56,9 @@ export default function DashboardView({
   const getDefaultRange = () => {
     const now = new Date();
     
-    // Start Date: Today - 8 days at 12:01 AM
+    // Start Date: Today - 2 days at 12:01 AM
     const start = new Date(now);
-    start.setDate(now.getDate() - 8);
+    start.setDate(now.getDate() - 2);
     start.setHours(0, 1, 0, 0);
     
     // End Date: Yesterday at 11:59 PM
@@ -428,25 +428,37 @@ export default function DashboardView({
   // Automatic data fetch when selection changes
   useEffect(() => {
     if (selectedProperty) {
-      if (isFirstLoad && dataSource === "saved" && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments")) {
-        // Custom fetch logic for initial load: Use default UI range (Today-8 to Yesterday)
+      if (isFirstLoad && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments")) {
+        // Custom fetch logic for initial load (works for both saved and live)
         const triggerInitialFetch = async () => {
           setLoading(true);
           setError(null);
           try {
-            const apiUrl = "/api";
-            const queryParams = new URLSearchParams();
-            queryParams.append("property", selectedProperty);
-            queryParams.append("start_date", startDate); 
-            queryParams.append("end_date", endDate);
-            
-            let endpoint = "";
-            if (activeSection === "reservations") endpoint = "/reservations/saved";
-            else if (activeSection === "members") endpoint = "/members/managed";
-            else if (activeSection === "payments") endpoint = "/payments/managed";
+            const result = await (async () => {
+                const apiPrefix = "/api";
+                const qParams = new URLSearchParams();
+                qParams.append("property", selectedProperty);
+                qParams.append("start_date", startDate); 
+                qParams.append("end_date", endDate);
+                
+                let ep = "";
+                if (dataSource === "live") {
+                    if (activeSection === "reservations") ep = "/reservations/live";
+                    else if (activeSection === "members") ep = "/members/live";
+                    else if (activeSection === "payments") ep = "/payments/live";
+                } else {
+                    if (activeSection === "reservations") ep = "/reservations/saved";
+                    else if (activeSection === "members") ep = "/members/managed";
+                    else if (activeSection === "payments") ep = "/payments/managed";
+                }
 
-            const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`);
-            const result = await response.json();
+                // Append specific param for live property search if needed
+                if (dataSource === "live") qParams.set("property_name", selectedProperty);
+
+                const res = await fetch(`${apiPrefix}${ep}?${qParams.toString()}`);
+                return await res.json();
+            })();
+
             if (result.status === "success") setData(result.data);
           } catch (err) {
             console.warn("Initial pre-load fetch failed", err);
@@ -456,7 +468,7 @@ export default function DashboardView({
           }
         };
         triggerInitialFetch();
-      } else if (dataSource === "saved") {
+      } else {
         fetchData();
       }
     }
