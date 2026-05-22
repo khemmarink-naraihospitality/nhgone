@@ -50,12 +50,40 @@ async def sync_payment(data: dict):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/managed")
-async def get_managed_payments():
+async def get_managed_payments(
+    property: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
     try:
         if not sync_service.supabase:
             raise Exception("Supabase not initialized")
-        res = sync_service.supabase.table("payments").select("*").order("processed_at", desc=True).execute()
-        decrypted_data = [encryption_service.decrypt_data(row) for row in res.data]
+            
+        query = sync_service.supabase.table("payments").select("*").order("processed_at", desc=True)
+        
+        if property and property != "All" and property != "null":
+            query = query.eq("property", property)
+            
+        if start_date:
+            if "T" in start_date and not start_date.endswith("Z"):
+                start_date = f"{start_date}:00Z"
+            query = query.gte("processed_at", start_date)
+            
+        if end_date:
+            if "T" in end_date and not end_date.endswith("Z"):
+                end_date = f"{end_date}:00Z"
+            query = query.lte("processed_at", end_date)
+            
+        res = query.execute()
+        
+        decrypted_data = []
+        for row in res.data:
+            item = encryption_service.decrypt_data(row)
+            # Inject synced_at/created_at if needed for chart
+            if "created_at" in row:
+                item["synced_at"] = row["created_at"]
+            decrypted_data.append(item)
+            
         return {"status": "success", "data": decrypted_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
