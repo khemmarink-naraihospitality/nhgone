@@ -108,7 +108,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
       <aside className="w-64 border-r border-border-primary p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-bg-sidebar transition-colors duration-300">
-        <div className="flex items-center gap-3">
+        <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
           <img 
             src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
             alt="NHG Logo" 
@@ -117,7 +117,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           <div className="text-xl font-black text-[#AAA024] tracking-tighter">
             NHGOne
           </div>
-        </div>
+        </Link>
         <nav className="flex flex-col gap-2">
           {pathname.startsWith("/admin") ? (
             <>
