@@ -61,9 +61,8 @@ export default function DashboardView({
     start.setDate(now.getDate() - 2);
     start.setHours(0, 1, 0, 0);
     
-    // End Date: Yesterday at 11:59 PM
+    // End Date: Today at 23:59 PM
     const end = new Date(now);
-    end.setDate(now.getDate() - 1);
     end.setHours(23, 59, 59, 999);
     
     return {
@@ -439,8 +438,8 @@ export default function DashboardView({
                 const qParams = new URLSearchParams();
                 qParams.append("property", selectedProperty);
                 
-                // For Live Data, always use date range
-                // For Saved/Database pages, skip date filter on first load to show all recent data
+                // For Database pages, we generally want to see MOST RECENT data on load
+                // We'll skip specific date filtering to let the backend return the latest records
                 if (dataSource === "live") {
                     qParams.append("start_date", startDate); 
                     qParams.append("end_date", endDate);
