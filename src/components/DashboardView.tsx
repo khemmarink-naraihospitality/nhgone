@@ -438,8 +438,13 @@ export default function DashboardView({
                 const apiPrefix = "/api";
                 const qParams = new URLSearchParams();
                 qParams.append("property", selectedProperty);
-                qParams.append("start_date", startDate); 
-                qParams.append("end_date", endDate);
+                
+                // For Live Data, always use date range
+                // For Saved/Database pages, skip date filter on first load to show all recent data
+                if (dataSource === "live") {
+                    qParams.append("start_date", startDate); 
+                    qParams.append("end_date", endDate);
+                }
                 
                 let ep = "";
                 if (dataSource === "live") {
