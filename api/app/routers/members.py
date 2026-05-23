@@ -34,6 +34,9 @@ async def sync_manual_members(payload: dict):
         if not sync_service.supabase:
             raise Exception("Supabase not initialized")
             
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        
         batch = []
         for m in members_data:
             mews_id = m.get("Identifier")
@@ -42,7 +45,8 @@ async def sync_manual_members(payload: dict):
             batch.append({
                 "mews_id": mews_id,
                 "property": property_name,
-                "data": encryption_service.encrypt_data(m)
+                "data": encryption_service.encrypt_data(m),
+                "synced_at": now_iso
             })
             
         if batch:

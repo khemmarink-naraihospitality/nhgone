@@ -65,6 +65,9 @@ async def sync_manual_reservations(payload: dict):
         inserted = 0
         skipped = 0
         
+        from datetime import datetime, timezone
+        now_iso = datetime.now(timezone.utc).isoformat()
+        
         # Prepare batch upsert
         batch = []
         for r in reservations_data:
@@ -75,7 +78,8 @@ async def sync_manual_reservations(payload: dict):
             batch.append({
                 "mews_id": mews_id,
                 "property": property_name,
-                "data": encryption_service.encrypt_data(r)
+                "data": encryption_service.encrypt_data(r),
+                "synced_at": now_iso
             })
             
         if batch:

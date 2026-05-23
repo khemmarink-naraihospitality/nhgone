@@ -63,6 +63,8 @@ async def daily_auto_sync():
         for prop in properties:
             try:
                 print(f"Starting scheduled sync for property: {prop}")
+                from datetime import timezone
+                now_iso = now.astimezone(timezone.utc).isoformat()
                 
                 # --- A. Sync Reservations ---
                 # We use yesterday as default range for auto-sync in get_mapped_reservations
@@ -74,7 +76,8 @@ async def daily_auto_sync():
                         res_batch.append({
                             "mews_id": m_id,
                             "property": prop,
-                            "data": encryption_service.encrypt_data(r)
+                            "data": encryption_service.encrypt_data(r),
+                            "synced_at": now_iso
                         })
                 
                 if res_batch:
@@ -90,7 +93,8 @@ async def daily_auto_sync():
                         mem_batch.append({
                             "mews_id": m_id,
                             "property": prop,
-                            "data": encryption_service.encrypt_data(m)
+                            "data": encryption_service.encrypt_data(m),
+                            "synced_at": now_iso
                         })
                 
                 if mem_batch:
