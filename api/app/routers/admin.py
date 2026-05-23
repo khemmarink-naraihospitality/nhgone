@@ -95,3 +95,23 @@ async def delete_property_settings(property_id: str):
         return {"status": "success", "message": "Property deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/sync/logs")
+async def get_sync_logs(
+    property: str = None,
+    limit: int = 200
+):
+    """
+    Fetch sync logs from the sync_logs table.
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        query = admin_supabase.table("sync_logs").select("*").order("created_at", desc=True).limit(limit)
+        
+        if property and property != "All":
+            query = query.eq("property", property)
+            
+        res = query.execute()
+        return {"status": "success", "data": res.data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

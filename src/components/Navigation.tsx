@@ -135,6 +135,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               <Link href="/reservations" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/reservations" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Reservation</Link>
               <Link href="/members" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/members" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Member</Link>
               <Link href="/payments" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/payments" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Payment</Link>
+              <Link href="/log-import" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/log-import" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Log Import</Link>
             </>
           )}
         </nav>
