@@ -22,7 +22,8 @@ export default function AdminSyncPage() {
   const fetchProperties = async () => {
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+      const apiUrl = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/api`;
       const response = await fetch(`${apiUrl}/admin/sync/properties`);
       const result = await response.json();
       if (result.status === "success") {
@@ -44,7 +45,8 @@ export default function AdminSyncPage() {
   const handleToggleSync = async (prop: PropertySyncSettings) => {
     const updated = { ...prop, sync_enabled: !prop.sync_enabled };
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+      const apiUrl = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/api`;
       const response = await fetch(`${apiUrl}/admin/sync/properties/${prop.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -66,7 +68,8 @@ export default function AdminSyncPage() {
     if (!editingProperty) return;
     setSaving(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+      const apiUrl = baseUrl.endsWith("/api") ? baseUrl : `${baseUrl}/api`;
       const response = await fetch(`${apiUrl}/admin/sync/properties/${editingProperty.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
