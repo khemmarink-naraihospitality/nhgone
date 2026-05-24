@@ -83,7 +83,7 @@ export default function DashboardView({
     const now = new Date();
     const start = new Date(now);
     start.setDate(now.getDate() - 1);
-    start.setHours(0, 1, 0, 0);
+    start.setHours(0, 0, 0, 0);
     const end = new Date(now);
     end.setDate(now.getDate() - 1);
     end.setHours(23, 59, 59, 999);
@@ -242,10 +242,19 @@ export default function DashboardView({
     let result = [...data];
     if (dataSource === "saved") {
       result = result.filter(item => {
-        const itemDateStr = item["Import Date"] || item.synced_at || item.created_at || item.processed_at;
+        // Prioritize data date over system timestamps
+        const itemDateStr = item.report_date || item["Import Date"] || item.synced_at || item.created_at || item.processed_at;
         if (!itemDateStr) return true;
-        const itemDate = new Date(itemDateStr).toISOString().slice(0, 16);
-        return itemDate >= startDate && itemDate <= endDate;
+        
+        // Handle YYYY-MM-DD vs Full ISO
+        const rawDate = new Date(itemDateStr);
+        if (isNaN(rawDate.getTime())) return true;
+        
+        const itemDate = rawDate.toISOString().slice(0, 16);
+        const startCompare = startDate;
+        const endCompare = endDate;
+        
+        return itemDate >= startCompare && itemDate <= endCompare;
       });
     }
 
