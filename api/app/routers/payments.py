@@ -59,7 +59,7 @@ async def get_managed_payments(
         if not sync_service.supabase:
             raise Exception("Supabase not initialized")
             
-        query = sync_service.supabase.table("payments").select("*").order("processed_at", desc=True)
+        query = sync_service.supabase.table("payments").select("*").order("processed_at", desc=True).limit(2000)
         
         if property and property != "All" and property != "null":
             query = query.eq("property", property)

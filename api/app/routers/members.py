@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from app.services.mews_client import mews_client
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
