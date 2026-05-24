@@ -407,17 +407,6 @@ export default function DashboardView({
             </div>
           </div>
         </div>
-        
-        {dataSource === "saved" && data.length > 0 && (
-          <div className="mb-8">
-            <ImportChart 
-              data={chartData} 
-              title={`Last 7 days Import Activity`}
-              description={`Trends for ${activeSection}`}
-              unitLabel={activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}
-            />
-          </div>
-        )}
 
         {error ? (
           <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl mb-6">{error}</div>
