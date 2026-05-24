@@ -121,7 +121,7 @@ export default function DashboardView({
         
         // Add date filters for saved reservations as requested
         // Add date filters for saved data
-        if (activeSection === "reservations" || activeSection === "members") {
+        if (activeSection === "reservations" || activeSection === "members" || activeSection === "payments") {
             if (startDate) queryParams.append("start_date", startDate);
             if (endDate) queryParams.append("end_date", endDate);
         }
@@ -285,14 +285,14 @@ export default function DashboardView({
 
   const sectionKeys: Record<Section, string[]> = {
     reservations: [
-      "Number", "Arrival", "Departure", "First name", "Last name", "Email", "Group name", "Telephone", "Address", 
-      "Customer nationality", "Send marketing emails", "Booker", "Status", "Creator", 
-      "Created", "Release", "Confirmed", "Canceled", "Count (nights)", 
+      "Number", "Status", "First name", "Last name", "Arrival", "Departure", "Space number", "Total amount", "Created", 
+      "Email", "Group name", "Telephone", "Address", "Customer nationality", "Send marketing emails", "Booker", 
+      "Creator", "Release", "Confirmed", "Canceled", "Count (nights)", 
       "Person count", "Count (bed, nightly)", "Requested category", "Space category", 
-      "Space number", "Origin", "Channel manager ID", "Group channel manager ID", 
+      "Origin", "Channel manager ID", "Group channel manager ID", 
       "Group channel confirmation number", "Travel agency confirmation number", "Segment", 
       "Rate", "Voucher", "Products", "Company", "Travel agency", "Average rate (nightly)", 
-      "Total amount", "Canceled cost", "Commission", "Customer cost", "Balance of companions", 
+       "Canceled cost", "Commission", "Customer cost", "Balance of companions", 
       "Payment card type", "Payment card number", "Expiration", "Automatic payment", "Bills", 
       "Cancellation reason", "Notes", "Customer notes", "Customer classifications", 
       "Pricing classification", "Booking purpose", "Reservation source", "Identifier", 
@@ -300,11 +300,10 @@ export default function DashboardView({
       "Restoration reason"
     ],
     members: [
-      "Number", "Title", "Last Name", "First Name", "Second Last Name", "Nationality", 
-      "Preferred Language", "Language", "Birth Date", "Birth Place", "Occupation", 
-      "Email", "Phone", "Tax ID", "Loyalty Code", "Accounting Code", "Billing Code", 
-      "Car Registration", "Dietary", "Notes", "Created", "Updated", "Active", 
-      "Classifications", "Options", "Identifier"
+      "Number", "Last Name", "First Name", "Email", "Phone", "Nationality", "Active", "Created", "Updated",
+      "Title", "Second Last Name", "Preferred Language", "Language", "Birth Date", "Birth Place", "Occupation", 
+      "Tax ID", "Loyalty Code", "Accounting Code", "Billing Code", 
+      "Car Registration", "Dietary", "Notes", "Classifications", "Options", "Identifier"
     ],
     payments: ["mews_id", "amount", "currency", "status", "processed_at"]
   };
@@ -483,7 +482,7 @@ export default function DashboardView({
               </div>
             </div>
 
-            {(dataSource === "live" || (activeSection === "reservations")) && (
+            {(dataSource === "live" || dataSource === "saved") && (
               <>
                 <div className="flex flex-col gap-2 w-full md:w-60">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Start Date & Time</label>
@@ -718,7 +717,7 @@ export default function DashboardView({
     }
 
     // Format dates
-    const dateKeys = ["Created", "Updated", "Birth Date", "Arrival", "Departure", "Released", "Cancelled", "Confirmed", "synced_at", "processed_at"];
+    const dateKeys = ["Created", "Updated", "Birth Date", "Arrival", "Departure", "Released", "Cancelled", "Confirmed", "synced_at", "processed_at", "Import Date"];
     const isDateKey = key.toLowerCase().includes('utc') || dateKeys.some(k => key.includes(k));
     
     if (isDateKey && typeof value === 'string' && (value.includes('T') || (value.includes('-') && value.length >= 10))) {
