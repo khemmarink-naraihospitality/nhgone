@@ -8,7 +8,7 @@
   "crons": [
     {
       "path": "/api/sync/auto",
-      "schedule": "* * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
