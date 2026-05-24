@@ -77,16 +77,22 @@ export default function DashboardView({
   const [endDate, setEndDate] = useState(initialRange.end);
 
   const setPreviousDay = () => {
-    const start = new Date(startDate);
-    start.setDate(start.getDate() - 1);
-    start.setHours(0, 1, 0, 0); // Enforce 00:01
-
-    const end = new Date(endDate);
-    end.setDate(end.getDate() - 1);
-    end.setHours(23, 59, 59, 999); // Enforce 23:59
+    // แยกส่วนวันที่ออกจากสตริง (YYYY-MM-DD)
+    const [datePart] = startDate.split('T');
+    const [year, month, day] = datePart.split('-').map(Number);
     
-    setStartDate(new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16));
-    setEndDate(new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16));
+    // สร้าง Date object จากปี เดือน วัน (เดือนใน JS เริ่มที่ 0)
+    const d = new Date(year, month - 1, day);
+    d.setDate(d.getDate() - 1); // ย้อนหลัง 1 วัน
+    
+    // จัดรูปแบบกลับเป็น YYYY-MM-DD
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    
+    // ตั้งค่าใหม่โดยล็อกเวลา 00:01 และ 23:59 เสมอ
+    setStartDate(`${yyyy}-${mm}-${dd}T00:01`);
+    setEndDate(`${yyyy}-${mm}-${dd}T23:59`);
   };
 
   const fetchProperties = async () => {
@@ -185,10 +191,12 @@ export default function DashboardView({
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          property: selectedProperty,
-          data: data
-        })
+        body: JSON.stringify({ 
+          property: selectedProperty, 
+          data: data,
+          start_date: startDate,
+          end_date: endDate
+        }),
       });
       const result = await response.json();
       if (result.status === "success") {
@@ -492,7 +500,6 @@ export default function DashboardView({
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">End Date & Time</label>
                   <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-100/10 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-foreground shadow-sm" />
                 </div>
-                <button onClick={setPreviousDay} className="px-4 py-2.5 bg-slate-100 dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-white/10 transition-all h-[42px]">Previous Day</button>
               </>
             )}
 

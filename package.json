@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
+    "dev:backend": "cd api && py -m uvicorn app.main:app --port 8000 --reload",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:backend\"",
     "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
@@ -22,6 +24,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "eslint": "^9",
     "eslint-config-next": "16.2.2",
     "tailwindcss": "^4",

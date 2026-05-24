@@ -58,15 +58,25 @@ async def sync_manual_reservations(payload: dict):
     try:
         property_name = payload.get("property")
         reservations_data = payload.get("data", [])
+        start_date = payload.get("start_date") # New: From frontend
         
-        if not sync_service.supabase:
-            raise Exception("Supabase not initialized")
+        # 1. Fetch property_id for logging (Flexible fetch)
+        property_id = None
+        try:
+            # Use ilike for case-insensitive and flexible matching
+            prop_res = sync_service.supabase.table("property_api_settings").select("id").ilike("property_name", f"%{property_name}%").execute()
+            if prop_res.data:
+                property_id = prop_res.data[0].get("id")
+        except Exception as e:
+            print(f"Logging fetch error: {str(e)}")
             
         inserted = 0
-        skipped = 0
-        
         from datetime import datetime, timezone
         now_iso = datetime.now(timezone.utc).isoformat()
+        
+        report_date = None
+        if start_date:
+            report_date = start_date.split("T")[0]
         
         # Prepare batch upsert
         batch = []
@@ -79,17 +89,34 @@ async def sync_manual_reservations(payload: dict):
                 "mews_id": mews_id,
                 "property": property_name,
                 "data": encryption_service.encrypt_data(r),
-                "synced_at": now_iso
+                "synced_at": now_iso,
+                "report_date": report_date
             })
             
         if batch:
-            # Using upsert without ignore_duplicates usually updates existing records
             sync_service.supabase.table("reservations_sync").upsert(batch).execute()
             inserted = len(batch)
+            
+            # 2. Record in Log Import (sync_logs)
+            try:
+                log_payload = {
+                    "status": "success",
+                    "message": f"Manual Import for {report_date or 'Selection'}",
+                    "records_synced": inserted,
+                    "sync_type": "manual"
+                }
+                if property_id:
+                    log_payload["property_id"] = property_id
                 
-        return {"status": "success", "inserted": inserted, "skipped": skipped}
+                sync_service.supabase.table("sync_logs").insert(log_payload).execute()
+            except Exception as e:
+                print(f"Logging insert error: {str(e)}")
+                
+        return {"status": "success", "inserted": inserted}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Manual sync failed: {str(e)}")
 
 @router.get("/saved")
 async def get_saved_reservations(
@@ -110,15 +137,16 @@ async def get_saved_reservations(
             query = query.eq("property", property)
             
         if start_date:
-            # Handle datetime-local format from frontend (e.g. 2024-04-13T00:00)
-            if "T" in start_date and not start_date.endswith("Z"):
-                start_date = f"{start_date}:00Z"
-            query = query.gte("synced_at", start_date)
+            # First try filtering by report_date for exact day matches in Data Mart
+            # If the date from frontend is YYYY-MM-DD
+            report_date = start_date.split("T")[0]
+            query = query.gte("report_date", report_date)
             
         if end_date:
-            if "T" in end_date and not end_date.endswith("Z"):
-                end_date = f"{end_date}:00Z"
-            query = query.lte("synced_at", end_date)
+            report_date_end = end_date.split("T")[0]
+            query = query.lte("report_date", report_date_end)
+            
+        # Fallback order: If no report_date exists for older records, it still shows by synced_at
             
         res = query.execute()
         

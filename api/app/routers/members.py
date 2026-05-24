@@ -30,12 +30,21 @@ async def sync_manual_members(payload: dict):
     try:
         property_name = payload.get("property")
         members_data = payload.get("data", [])
+        start_date = payload.get("start_date")
         
         if not sync_service.supabase:
             raise Exception("Supabase not initialized")
             
+        # 1. Fetch property_id for logging
+        prop_res = sync_service.supabase.table("property_api_settings").select("id").eq("property_name", property_name).single().execute()
+        property_id = prop_res.data.get("id") if prop_res.data else None
+            
         from datetime import datetime, timezone
         now_iso = datetime.now(timezone.utc).isoformat()
+        
+        report_date = None
+        if start_date:
+            report_date = start_date.split("T")[0]
         
         batch = []
         for m in members_data:
@@ -46,14 +55,26 @@ async def sync_manual_members(payload: dict):
                 "mews_id": mews_id,
                 "property": property_name,
                 "data": encryption_service.encrypt_data(m),
-                "synced_at": now_iso
+                "synced_at": now_iso,
+                "report_date": report_date
             })
             
         if batch:
             sync_service.supabase.table("members_sync").upsert(batch).execute()
+            
+            # 2. Record in Log Import (sync_logs)
+            if property_id:
+                sync_service.supabase.table("sync_logs").insert({
+                    "property_id": property_id,
+                    "status": "success",
+                    "message": f"Manual Member Import for {report_date}",
+                    "records_synced": len(batch),
+                    "sync_type": "manual"
+                }).execute()
                 
         return {"status": "success", "inserted": len(batch)}
     except Exception as e:
+        print(f"Manual member sync error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/managed")
@@ -71,14 +92,12 @@ async def get_managed_members(
             query = query.eq("property", property)
             
         if start_date:
-            if "T" in start_date and not start_date.endswith("Z"):
-                start_date = f"{start_date}:00Z"
-            query = query.gte("synced_at", start_date)
+            report_date = start_date.split("T")[0]
+            query = query.gte("report_date", report_date)
             
         if end_date:
-            if "T" in end_date and not end_date.endswith("Z"):
-                end_date = f"{end_date}:00Z"
-            query = query.lte("synced_at", end_date)
+            report_date_end = end_date.split("T")[0]
+            query = query.lte("report_date", report_date_end)
             
         res = query.execute()
         data = []
