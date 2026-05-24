@@ -33,8 +33,11 @@ async def get_live_reservations(
             "cursor": result["cursor"]
         }
     except Exception as e:
-        print(f"Error fetching reservations: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        error_msg = f"Error fetching live reservations: {str(e)}"
+        print(error_msg)
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=error_msg)
 
 @router.get("/managed")
 async def get_managed_reservations():

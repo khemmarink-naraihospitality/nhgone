@@ -25,7 +25,7 @@ async def get_live_members(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/manual")
+@router.post("/sync-manual")
 async def sync_manual_members(payload: dict = Body(...)):
     try:
         property_name = payload.get("property")

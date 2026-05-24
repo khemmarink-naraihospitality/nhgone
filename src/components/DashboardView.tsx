@@ -166,7 +166,7 @@ export default function DashboardView({
     setSyncing(true);
     try {
       const apiUrl = "/api";
-      const endpoint = activeSection === "reservations" ? "/reservations/manual" : "/members/manual";
+      const endpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
