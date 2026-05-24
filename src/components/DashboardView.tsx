@@ -1,5 +1,4 @@
 "use client";
-// Updated Member Columns Mapping - 22 Apr 2026
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
@@ -80,17 +79,12 @@ export default function DashboardView({
 
   const getDefaultRange = () => {
     const now = new Date();
-    
-    // Start Date: Yesterday at 00:01 AM
     const start = new Date(now);
     start.setDate(now.getDate() - 1);
     start.setHours(0, 1, 0, 0);
-    
-    // End Date: Yesterday at 23:59 PM
     const end = new Date(now);
     end.setDate(now.getDate() - 1);
     end.setHours(23, 59, 59, 999);
-    
     return {
       start: new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16),
       end: new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16)
@@ -100,25 +94,6 @@ export default function DashboardView({
   const initialRange = getDefaultRange();
   const [startDate, setStartDate] = useState(initialRange.start);
   const [endDate, setEndDate] = useState(initialRange.end);
-
-  const setPreviousDay = () => {
-    // แยกส่วนวันที่ออกจากสตริง (YYYY-MM-DD)
-    const [datePart] = startDate.split('T');
-    const [year, month, day] = datePart.split('-').map(Number);
-    
-    // สร้าง Date object จากปี เดือน วัน (เดือนใน JS เริ่มที่ 0)
-    const d = new Date(year, month - 1, day);
-    d.setDate(d.getDate() - 1); // ย้อนหลัง 1 วัน
-    
-    // จัดรูปแบบกลับเป็น YYYY-MM-DD
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, '0');
-    const dd = String(d.getDate()).padStart(2, '0');
-    
-    // ตั้งค่าใหม่โดยล็อกเวลา 00:01 และ 23:59 เสมอ
-    setStartDate(`${yyyy}-${mm}-${dd}T00:01`);
-    setEndDate(`${yyyy}-${mm}-${dd}T23:59`);
-  };
 
   const fetchProperties = async () => {
     const { data: props, error } = await supabase.from("property_api_settings").select("property_name").order("property_name");
@@ -133,7 +108,7 @@ export default function DashboardView({
     if (!selectedProperty) return;
     setLoading(true);
     setError(null);
-    setSelectedIds([]); // Reset selection on fetch
+    setSelectedIds([]);
     try {
       const apiUrl = "/api";
       let endpoint = "";
@@ -149,16 +124,10 @@ export default function DashboardView({
         endpoint = activeSection === "reservations" ? "/reservations/saved" :
                    activeSection === "members" ? "/members/managed" : "/payments/managed";
         queryParams.append("property", selectedProperty);
-        
-        // Add date filters for saved reservations as requested
-        // Add date filters for saved data
-        if (activeSection === "reservations" || activeSection === "members" || activeSection === "payments") {
-            if (startDate) queryParams.append("start_date", startDate);
-            if (endDate) queryParams.append("end_date", endDate);
-        }
+        if (startDate) queryParams.append("start_date", startDate);
+        if (endDate) queryParams.append("end_date", endDate);
       }
       
-      // Set a 60-second timeout for the request
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 60000);
 
@@ -168,39 +137,21 @@ export default function DashboardView({
         });
         clearTimeout(timeoutId);
         
-        // Handle Vercel / Gateway Timeouts specifically
         if (response.status === 504 || response.status === 500) {
             setError("Big Data, Please select new date range");
             setLoading(false);
             return;
         }
 
-        // Check if response is JSON
-        const contentType = response.headers.get("content-type");
-        if (!contentType || !contentType.includes("application/json")) {
-          const text = await response.text();
-          console.error("Non-JSON response:", text.substring(0, 100));
-          setError("Big Data, Please select new date range");
-          setLoading(false);
-          return;
-        }
-
         const result = await response.json();
-        
         if (result.status === "success") {
           setData(result.data);
         } else {
-          setError(result.message || `Failed to fetch ${dataSource} ${activeSection} data`);
+          setError(result.message || "Failed to fetch data");
         }
       } catch (err: any) {
         clearTimeout(timeoutId);
-        if (err.name === 'AbortError') {
-          setError("Big Data, Please select new date range");
-        } else {
-          const fullUrl = `${apiUrl}${endpoint}`;
-          setError(`Backend server unreachable: ${err.message} (Tried to hit: ${fullUrl})`);
-          console.warn("Fetch error details:", err);
-        }
+        setError(err.name === 'AbortError' ? "Request timeout" : err.message);
       }
     } finally {
       setLoading(false);
@@ -208,11 +159,11 @@ export default function DashboardView({
   };
 
   const handleManualSync = async () => {
-    if (data.length === 0 || (activeSection !== "reservations" && activeSection !== "members")) return;
+    if (data.length === 0) return;
     setSyncing(true);
     try {
       const apiUrl = "/api";
-      const endpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
+      const endpoint = activeSection === "reservations" ? "/reservations/manual" : "/members/manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -237,58 +188,6 @@ export default function DashboardView({
     }
   };
 
-  const handleSync7Days = async () => {
-    if (!selectedProperty || syncing) return;
-    setSyncing(true);
-    setError(null);
-    try {
-        const now = new Date();
-        const end = new Date(now);
-        end.setDate(now.getDate() - 1);
-        end.setHours(23, 59, 59, 999);
-        
-        const start = new Date(now);
-        start.setDate(now.getDate() - 7);
-        start.setHours(0, 0, 0, 0);
-
-        const isoStart = new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16) + ":00Z";
-        const isoEnd = new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16) + ":00Z";
-
-        const apiUrl = "/api";
-        const fetchEndpoint = activeSection === "reservations" ? "/reservations/live" : "/members/live";
-        const syncEndpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
-
-        // 1. Fetch
-        const fetchRes = await fetch(`${apiUrl}${fetchEndpoint}?property_name=${encodeURIComponent(selectedProperty)}&start_date=${isoStart}&end_date=${isoEnd}`);
-        const fetchResult = await fetchRes.json();
-        
-        if (fetchResult.status !== "success") throw new Error(fetchResult.message || "Fetch failed");
-
-        // 2. Sync
-        const syncRes = await fetch(`${apiUrl}${syncEndpoint}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                property: selectedProperty,
-                data: fetchResult.data
-            })
-        });
-        const syncResult = await syncRes.json();
-        if (syncResult.status === "success") {
-            setSyncStatus({ inserted: syncResult.inserted, skipped: syncResult.skipped || 0 });
-            setShowSyncModal(true);
-            // If we are on saved view, refresh
-            if (dataSource === "saved") fetchData();
-        } else {
-            setError("Sync failed: " + syncResult.message);
-        }
-    } catch (err: any) {
-        setError("Error syncing last 7 days: " + err.message);
-    } finally {
-        setSyncing(false);
-    }
-  };
-
   const handleDeleteSelected = async () => {
     if (selectedIds.length === 0) return;
     if (!confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
@@ -296,535 +195,272 @@ export default function DashboardView({
     const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
     setLoading(true);
     try {
-      const apiUrl = "/api";
-      const response = await fetch(`${apiUrl}${endpoint}`, {
+      const response = await fetch(`/api${endpoint}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mews_ids: selectedIds })
       });
       const result = await response.json();
       if (result.status === "success") {
-        setData(prev => prev.filter(item => !selectedIds.includes(item.Identifier)));
+        setData(prev => prev.filter(item => !selectedIds.includes(item.Identifier || item.mews_id)));
         setSelectedIds([]);
-      } else {
-        setError("Delete failed: " + result.message);
       }
-    } catch (err: any) {
+    } catch (err) {
       setError("Error deleting records");
     } finally {
       setLoading(false);
     }
   };
 
-  const sectionKeys: Record<Section, string[]> = {
-    reservations: [
-      "Number", "Status", "First name", "Last name", "Arrival", "Departure", "Space number", "Total amount", "Created", 
-      "Email", "Group name", "Telephone", "Address", "Customer nationality", "Send marketing emails", "Booker", 
-      "Creator", "Release", "Confirmed", "Canceled", "Count (nights)", 
-      "Person count", "Count (bed, nightly)", "Requested category", "Space category", 
-      "Origin", "Channel manager ID", "Group channel manager ID", 
-      "Group channel confirmation number", "Travel agency confirmation number", "Segment", 
-      "Rate", "Voucher", "Products", "Company", "Travel agency", "Average rate (nightly)", 
-       "Canceled cost", "Commission", "Customer cost", "Balance of companions", 
-      "Payment card type", "Payment card number", "Expiration", "Automatic payment", "Bills", 
-      "Cancellation reason", "Notes", "Customer notes", "Customer classifications", 
-      "Pricing classification", "Booking purpose", "Reservation source", "Identifier", 
-      "Company Identifier", "Travel agency Identifier", "Reservation origin details", 
-      "Restoration reason"
-    ],
-    members: [
-      "Number", "Last Name", "First Name", "Email", "Phone", "Nationality", "Active", "Created", "Updated",
-      "Title", "Second Last Name", "Preferred Language", "Language", "Birth Date", "Birth Place", "Occupation", 
-      "Tax ID", "Loyalty Code", "Accounting Code", "Billing Code", 
-      "Car Registration", "Dietary", "Notes", "Classifications", "Options", "Identifier"
-    ],
-    payments: ["mews_id", "amount", "currency", "status", "processed_at"]
-  };
+  const allKeys = useMemo(() => {
+    if (data.length === 0) return [];
+    return Object.keys(data[0]).filter(k => 
+      !['id', 'mews_id', 'property_id', 'synced_at', 'report_date', 'property', 'data'].includes(k)
+    );
+  }, [data]);
 
-  // Prepend Import Date for saved reservations
-  let allKeys = sectionKeys[activeSection];
-  if (dataSource === "saved" && (activeSection === "reservations" || activeSection === "members")) {
-    allKeys = ["Import Date", ...allKeys];
-  }
+  const filteredAndSortedData = useMemo(() => {
+    let result = [...data];
+    if (searchTerm) {
+      const lowerSearch = searchTerm.toLowerCase();
+      result = result.filter(item => 
+        Object.values(item).some(val => 
+          String(val || "").toLowerCase().includes(lowerSearch)
+        )
+      );
+    }
+    if (sortConfig) {
+      result.sort((a, b) => {
+        const aVal = String(a[sortConfig.key] || "").toLowerCase();
+        const bVal = String(b[sortConfig.key] || "").toLowerCase();
+        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+    return result;
+  }, [data, searchTerm, sortConfig]);
 
-  const filteredData = data.filter(item => 
-    allKeys.some(key => 
-      String(item[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  );
+  const paginatedData = useMemo(() => {
+    return filteredAndSortedData.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+  }, [filteredAndSortedData, currentPage, rowsPerPage]);
 
-  const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-  const paginatedData = filteredData.slice(
-    (currentPage - 1) * rowsPerPage,
-    currentPage * rowsPerPage
-  );
-
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
+  const totalPages = Math.ceil(filteredAndSortedData.length / rowsPerPage);
 
   const toggleSelectAll = () => {
-    if (selectedIds.length === data.length) {
+    if (selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0) {
       setSelectedIds([]);
     } else {
-      setSelectedIds(data.map(item => item.Identifier));
+      setSelectedIds(filteredAndSortedData.map(r => r.Identifier || r.mews_id));
     }
   };
 
   const toggleSelectRow = (id: string) => {
-    setSelectedIds(prev => 
-      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
-    );
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const renderValue = (key: string, value: any) => {
+    if (value === null || value === undefined) return "-";
+    if (typeof value === 'boolean') return value ? "Yes" : "No";
+    
+    // Date formatting
+    if (typeof value === 'string' && (value.includes('T') || (value.includes('-') && value.includes(':')))) {
+      const d = new Date(value);
+      if (!isNaN(d.getTime()) && value.length > 10) {
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = months[d.getMonth()];
+        const year = d.getFullYear();
+        let hours = d.getHours();
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        hours = hours % 12 || 12;
+        return `${day}-${month}-${year} ${hours}:${minutes} ${ampm}`;
+      }
+    }
+    return String(value);
   };
 
   const exportToExcel = () => {
     if (data.length === 0) return;
-    const sanitizedData = data.map(item => {
-      const fullItem: any = {};
-      allKeys.forEach(key => {
-        fullItem[key] = item[key] !== undefined ? item[key] : null;
-      });
-      return fullItem;
-    });
-
-    const worksheet = XLSX.utils.json_to_sheet(sanitizedData);
-    const parametersData = [
-      [`${title} report - ${new Date().toLocaleString()}`],
-      [],
-      ["Property", selectedProperty],
-      ["Source", dataSource === "live" ? "Mews Live API" : "NHGOne Managed Database"],
-    ];
-    if (dataSource === "live" || (dataSource === "saved" && activeSection === "reservations")) {
-      parametersData.push(["Interval", `${startDate} to ${endDate}`]);
-    }
-    const paramSheet = XLSX.utils.aoa_to_sheet(parametersData);
-
+    const worksheet = XLSX.utils.json_to_sheet(filteredAndSortedData);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, paramSheet, "Parameters");
     XLSX.utils.book_append_sheet(workbook, worksheet, "Data");
     XLSX.writeFile(workbook, `NHGOne_${activeSection}_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
-  // State to track first load for "magic" pre-load
-  const [isFirstLoad, setIsFirstLoad] = useState(true);
+  const generateChartData = () => {
+    if (dataSource !== "saved" || data.length === 0) return [];
+    const countMap = new Map<string, number>();
+    data.forEach(item => {
+      const dateStr = item["Import Date"] || item.synced_at || item.created_at || item.report_date;
+      if (dateStr) {
+        const d = new Date(dateStr);
+        if (!isNaN(d.getTime())) {
+          const key = `${String(d.getDate()).padStart(2, '0')}-${d.getMonth()+1}-${d.getFullYear()}`;
+          countMap.set(key, (countMap.get(key) || 0) + 1);
+        }
+      }
+    });
+    return Array.from(countMap.entries()).map(([date, count]) => ({ date, count })).slice(-7);
+  };
+
+  const chartData = useMemo(() => generateChartData(), [data]);
 
   useEffect(() => {
     fetchProperties();
     const getUserRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-      if (user.user_metadata?.role) {
-        setUserRole(user.user_metadata.role);
-        return;
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        setUserRole(profile?.role || user.user_metadata?.role || null);
       }
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-      if (profile?.role) setUserRole(profile.role);
     };
     getUserRole();
   }, []);
 
-  const generateChartData = () => {
-    if (dataSource !== "saved" || data.length === 0) return [];
-    
-    const countMap = new Map<string, number>();
-    data.forEach(item => {
-      const importDateStr = item["Import Date"] || item.synced_at || item.created_at;
-      if (importDateStr) {
-        try {
-          const d = new Date(importDateStr);
-          if (!isNaN(d.getTime())) {
-            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-            const dateKey = `${String(d.getDate()).padStart(2, '0')}-${months[d.getMonth()]}-${d.getFullYear()}`;
-            countMap.set(dateKey, (countMap.get(dateKey) || 0) + 1);
-          }
-        } catch {
-          // ignore
-        }
-      }
-    });
-
-    const chartData = Array.from(countMap.entries()).map(([dateStr, count]) => {
-      return { date: dateStr, count };
-    });
-    
-    chartData.sort((a, b) => {
-      const partsA = a.date.split('-');
-      const partsB = b.date.split('-');
-      const dA = new Date(`${partsA[1]} ${partsA[0]} ${partsA[2]}`);
-      const dB = new Date(`${partsB[1]} ${partsB[0]} ${partsB[2]}`);
-      return dA.getTime() - dB.getTime();
-    });
-
-    return chartData.slice(-7);
-  };
-
-  // Automatic data fetch when selection changes
   useEffect(() => {
-    if (selectedProperty) {
-      fetchData();
-      if (isFirstLoad) setIsFirstLoad(false);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (selectedProperty) fetchData();
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
-    <div className="flex-1 flex flex-col bg-background text-foreground p-6 transition-colors duration-300">
+    <div className="flex-1 flex flex-col bg-background text-foreground p-6">
       <div className="max-w-7xl mx-auto w-full">
-        <PageHeader 
-          title={title} 
-          description={subtitle}
-        >
+        <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
             <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
-              <button
-                onClick={() => { setDataSource("live"); setData([]); setCurrentPage(1); }}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  dataSource === "live" ? "bg-emerald-500 text-white shadow-lg" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Live API
-              </button>
-              <button
-                onClick={() => { setDataSource("saved"); setData([]); setCurrentPage(1); }}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  dataSource === "saved" ? "bg-blue-500 text-white shadow-lg" : "text-slate-400 hover:text-white"
-                }`}
-              >
-                Database
-              </button>
+              <button onClick={() => setDataSource("live")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${dataSource === "live" ? "bg-emerald-500 text-white shadow-lg" : "text-slate-400"}`}>Live API</button>
+              <button onClick={() => setDataSource("saved")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${dataSource === "saved" ? "bg-blue-500 text-white shadow-lg" : "text-slate-400"}`}>Database</button>
             </div>
           )}
         </PageHeader>
           
-          <div className="flex flex-wrap items-end gap-4 mb-6">
-            <div className="flex flex-col gap-2 w-full md:w-80">
-              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Select Property</label>
-              <div className="relative group">
-                <select 
-                  value={selectedProperty}
-                  onChange={(e) => setSelectedProperty(e.target.value)}
-                  className="w-full bg-slate-100/10 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2.5 text-sm appearance-none cursor-pointer text-foreground shadow-sm focus:ring-[#AAA024] focus:outline-none focus:ring-2"
-                >
-                  {properties.map(p => <option key={p} value={p} className="bg-white dark:bg-slate-900 text-slate-900 dark:text-white">{p}</option>)}
-                </select>
-                <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                </div>
-              </div>
-            </div>
-
-            {(dataSource === "live" || dataSource === "saved") && (
-              <>
-                <div className="flex flex-col gap-2 w-full md:w-60">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Start Date & Time</label>
-                  <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-slate-100/10 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-foreground shadow-sm" />
-                </div>
-                <div className="flex flex-col gap-2 w-full md:w-60">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">End Date & Time</label>
-                  <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-slate-100/10 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-2 text-sm text-foreground shadow-sm" />
-                </div>
-              </>
-            )}
-
-            <button 
-              onClick={fetchData} 
-              disabled={loading} 
-              className="px-6 py-2.5 bg-[#AAA024] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all h-[42px] disabled:opacity-50"
-            >
-              Fetch Data
-            </button>
-
+        <div className="flex flex-wrap items-end gap-4 mb-6">
+          <div className="flex flex-col gap-2 w-full md:w-80">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Select Property</label>
+            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm appearance-none cursor-pointer text-foreground focus:ring-2 focus:ring-[#AAA024] focus:outline-none">
+              {properties.map(p => <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>)}
+            </select>
           </div>
-        <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-3xl border border-white/10 shadow-lg">
+          <div className="flex flex-col gap-2 w-full md:w-64">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
+            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground" />
+          </div>
+          <div className="flex flex-col gap-2 w-full md:w-64">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">End Date</label>
+            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground" />
+          </div>
+          <button onClick={fetchData} disabled={loading} className="px-6 py-2.5 bg-[#AAA024] text-white rounded-xl text-sm font-bold shadow-lg disabled:opacity-50 h-[42px]">Fetch Data</button>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-3xl border border-white/10">
           {showSectionTabs && (
-            <div className="flex gap-1 p-1 bg-black/20 rounded-2xl w-fit">
+            <div className="flex gap-1 p-1 bg-black/20 rounded-2xl">
               {(["reservations", "members", "payments"] as Section[]).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => { setActiveSection(s); setCurrentPage(1); setSearchTerm(""); }}
-                  className={`px-6 py-2 rounded-xl text-sm font-bold transition-all capitalize ${
-                    activeSection === s ? "bg-[#AAA024] text-white shadow-lg" : "text-slate-400 hover:text-white"
-                  }`}
-                >
-                  {s}
-                </button>
+                <button key={s} onClick={() => setActiveSection(s)} className={`px-6 py-2 rounded-xl text-sm font-bold capitalize transition-all ${activeSection === s ? "bg-[#AAA024] text-white shadow-lg" : "text-slate-400 hover:text-white"}`}>{s}</button>
               ))}
             </div>
           )}
-
-          <div className="flex flex-1 flex-wrap items-center justify-end gap-4 min-w-[300px]">
-            <div className="relative flex-1 max-w-md group">
-               <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 transition-colors group-focus-within:text-[#AAA024]">
-                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
-               </div>
-               <input type="text" placeholder={`Search in ${activeSection}...`} value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setCurrentPage(1); }} className="w-full bg-black/20 border border-white/5 rounded-2xl pl-11 pr-4 py-2.5 text-sm text-foreground shadow-inner placeholder:text-slate-600 focus:ring-2 focus:ring-[#AAA024] focus:outline-none" />
-            </div>
-
+          <div className="flex flex-1 items-center justify-end gap-4">
+            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-black/20 border border-white/5 rounded-2xl px-4 py-2.5 text-sm text-foreground focus:ring-2 focus:ring-[#AAA024] outline-none max-w-xs w-full" />
             <div className="flex gap-2">
-              {isSuperAdmin && dataSource === "saved" && selectedIds.length > 0 && (
-                <button onClick={handleDeleteSelected} disabled={loading} className="flex items-center gap-2 px-5 py-2.5 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl text-xs font-bold hover:bg-red-500/20 transition-all disabled:opacity-30">
-                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                   Delete ({selectedIds.length})
-                </button>
-              )}
-              {isSuperAdmin && (activeSection === "reservations" || activeSection === "members") && dataSource === "live" && (
-                <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="flex items-center gap-2 px-5 py-2.5 bg-blue-500/10 border border-blue-500/20 text-blue-500 rounded-2xl text-xs font-bold hover:bg-blue-500/20 transition-all disabled:opacity-30">
-                  {syncing ? <div className="animate-spin rounded-full h-4 w-4 border-2 border-blue-500/20 border-t-blue-500"></div> : <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" /></svg>}
-                  Import
-                </button>
-              )}
-              <button onClick={exportToExcel} disabled={data.length === 0} className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600/10 border border-emerald-500/20 text-emerald-500 rounded-2xl text-xs font-bold hover:bg-emerald-600/20 transition-all disabled:opacity-30">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                Excel
-              </button>
+              {showCheckboxes && selectedIds.length > 0 && <button onClick={handleDeleteSelected} className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs font-bold">Delete ({selectedIds.length})</button>}
+              {isSuperAdmin && dataSource === "live" && <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="px-4 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl text-xs font-bold disabled:opacity-30">Import</button>}
+              <button onClick={exportToExcel} disabled={data.length === 0} className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl text-xs font-bold disabled:opacity-30">Excel</button>
             </div>
           </div>
         </div>
 
         {error ? (
-          <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl flex items-center gap-3">
-             <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse"></div>
-            {error}
-          </div>
+          <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl mb-6">{error}</div>
         ) : loading ? (
           <div className="flex flex-col items-center justify-center py-24 gap-4">
             <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#AAA024]/20 border-t-[#AAA024]"></div>
-            <p className="text-slate-500 font-medium animate-pulse">Fetching {activeSection} data...</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl flex flex-col">
-            <div 
-              ref={topScrollRef} 
-              onScroll={handleTopScroll}
-              className="overflow-x-auto overflow-y-hidden h-4 mb-2 bg-white/5 border-b border-white/10"
-            >
-              <div style={{ width: tableContainerRef.current?.scrollWidth || '1200px', height: '1px' }}></div>
+          <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl flex flex-col mb-6">
+            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-4 mb-2 bg-white/5 border-b border-white/10">
+              <div style={{ width: tableContainerRef.current?.scrollWidth || 'auto', height: '1px' }}></div>
             </div>
-            
-            <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto custom-scrollbar">
+            <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-max">
                 <thead className="bg-white/5 sticky top-0 z-10 backdrop-blur-md">
                   <tr>
-                    {(isSuperAdmin && dataSource === "saved") && (
-                      <th className="p-4 w-10 border-b border-white/10">
-                        <input 
-                          type="checkbox" 
-                          className="rounded border-white/20 bg-white/5"
-                          checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0}
-                          onChange={toggleSelectAll}
-                        />
+                    {showCheckboxes && (
+                      <th className="p-4 border-b border-white/10">
+                        <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} />
                       </th>
                     )}
                     {allKeys.map((col) => (
-                      <th 
-                        key={col} 
-                        onClick={() => requestSort(col)}
-                        className="p-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
-                      >
+                      <th key={col} onClick={() => requestSort(col)} className="p-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10 cursor-pointer hover:bg-white/10 whitespace-nowrap">
                         <div className="flex items-center gap-1">
                           {col.replace(/([A-Z])/g, ' $1').trim()}
-                          <span className="text-[8px]">
-                            {sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "▲" : "▼") : "↕"}
-                          </span>
+                          <span>{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "▲" : "▼") : "↕"}</span>
                         </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {useMemo(() => {
-                    let filtered = [...data];
-                    if (searchTerm) {
-                      const lowerSearch = searchTerm.toLowerCase();
-                      filtered = filtered.filter(item => 
-                        Object.values(item).some(val => 
-                          String(val || "").toLowerCase().includes(lowerSearch)
-                        )
-                      );
-                    }
-                    if (sortConfig) {
-                      filtered.sort((a, b) => {
-                        const aVal = String(a[sortConfig.key] || "").toLowerCase();
-                        const bVal = String(b[sortConfig.key] || "").toLowerCase();
-                        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                        return 0;
-                      });
-                    }
-                    return filtered;
-                  }, [data, searchTerm, sortConfig]).length === 0 ? (
-                    <tr><td colSpan={allKeys.length + (showCheckboxes ? 1 : 0)} className="px-6 py-20 text-center text-slate-500 font-medium italic">No records found for this property.</td></tr>
+                  {filteredAndSortedData.length === 0 ? (
+                    <tr><td colSpan={100} className="p-10 text-center text-slate-500">No data found.</td></tr>
                   ) : (
-                    useMemo(() => {
-                      let filtered = [...data];
-                      if (searchTerm) {
-                        const lowerSearch = searchTerm.toLowerCase();
-                        filtered = filtered.filter(item => 
-                          Object.values(item).some(val => 
-                            String(val).toLowerCase().includes(lowerSearch)
-                          )
-                        );
-                      }
-                      if (sortConfig) {
-                        filtered.sort((a, b) => {
-                          const aVal = String(a[sortConfig.key] || "").toLowerCase();
-                          const bVal = String(b[sortConfig.key] || "").toLowerCase();
-                          if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-                          if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
-                          return 0;
-                        });
-                      }
-                      return filtered.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
-                    }, [data, searchTerm, sortConfig, currentPage, rowsPerPage]).map((item, idx) => (
-                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-white/10 transition-colors group ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-white/5' : ''}`}>
+                    paginatedData.map((item, idx) => (
+                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-white/10 group ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-white/5' : ''}`}>
                         {showCheckboxes && (
-                          <td className="px-6 py-4 w-10">
-                            <input 
-                              type="checkbox"
-                              checked={selectedIds.includes(item.Identifier || item.mews_id)}
-                              onChange={() => {
-                                const id = item.Identifier || item.mews_id;
-                                if (selectedIds.includes(id)) {
-                                  setSelectedIds(selectedIds.filter(x => x !== id));
-                                } else {
-                                  setSelectedIds([...selectedIds, id]);
-                                }
-                              }}
-                              className="w-4 h-4 rounded border-white/10 bg-black/50 text-[#AAA024] focus:ring-[#AAA024] cursor-pointer"
-                            />
+                          <td className="p-4">
+                            <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} />
                           </td>
                         )}
-                        {allKeys.map((key, colIdx) => (
-                          <td key={colIdx} className="px-6 py-4 text-sm text-slate-400 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">
-                            {renderValue(key, item[key])}
-                          </td>
-                        ))}
+                        {allKeys.map((key) => <td key={key} className="p-4 text-sm text-slate-400 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
                       </tr>
                     ))
                   )}
                 </tbody>
               </table>
             </div>
-            
-            {data.length > 0 && (
-              <div className="p-4 bg-white/5 border-t border-white/5 text-[10px] text-slate-500 flex flex-wrap justify-between items-center gap-4 px-8">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <label className="text-slate-500 uppercase font-bold text-[9px]">Rows per page:</label>
-                    <select value={rowsPerPage} onChange={(e) => { setRowsPerPage(Number(e.target.value)); setCurrentPage(1); }} className="bg-transparent border border-white/10 rounded px-2 py-1 text-[10px] focus:outline-none focus:ring-1 focus:ring-[#AAA024]">
-                      {[20, 50, 100, 200, 500].map(v => <option key={v} value={v} className="bg-slate-900 text-white">{v}</option>)}
-                    </select>
-                  </div>
-                  <span className="text-slate-400 font-medium">Showing {(currentPage-1)*rowsPerPage + 1} to {Math.min(currentPage*rowsPerPage, data.length)} of {data.length} records</span>
+            {filteredAndSortedData.length > 0 && (
+              <div className="p-4 bg-white/5 border-t border-white/5 flex justify-between items-center px-8">
+                <div className="flex items-center gap-4 text-[10px] text-slate-500">
+                  <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="bg-transparent border border-white/10 rounded px-2 py-1 outline-none">
+                    {[20, 50, 100, 200, 500].map(v => <option key={v} value={v} className="bg-slate-900 text-white">{v}</option>)}
+                  </select>
+                  <span>Showing {(currentPage-1)*rowsPerPage + 1} to {Math.min(currentPage*rowsPerPage, filteredAndSortedData.length)} of {filteredAndSortedData.length} records</span>
                 </div>
-
-                <div className="flex items-center gap-1">
-                  <button disabled={currentPage === 1} onClick={() => handlePageChange(currentPage - 1)} className="p-2 hover:bg-white/5 rounded-lg disabled:opacity-30 transition-all">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                  </button>
-                  <div className="flex gap-1">
-                    {[...Array(totalPages)].map((_, i) => {
-                      const p = i + 1;
-                      if (totalPages > 7 && (p > 1 && p < totalPages && (p < currentPage - 1 || p > currentPage + 1))) {
-                        if (p === currentPage - 2 || p === currentPage + 2) return <span key={p} className="px-1 text-slate-600">...</span>;
-                        return null;
-                      }
-                      return (
-                        <button key={p} onClick={() => handlePageChange(p)} className={`w-7 h-7 flex items-center justify-center rounded-lg text-[10px] font-bold transition-all ${currentPage === p ? "bg-[#AAA024] text-white shadow-lg" : "text-slate-400 hover:bg-white/5"}`}>{p}</button>
-                      );
-                    })}
-                  </div>
-                  <button disabled={currentPage === totalPages} onClick={() => handlePageChange(currentPage + 1)} className="p-2 hover:bg-white/5 rounded-lg disabled:opacity-30 transition-all">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </button>
+                <div className="flex gap-1">
+                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1 px-2 hover:bg-white/5 rounded disabled:opacity-30">Prev</button>
+                  {[...Array(Math.min(5, totalPages))].map((_, i) => (
+                    <button key={i} onClick={() => setCurrentPage(i+1)} className={`w-7 h-7 rounded-lg text-[10px] font-bold ${currentPage === i+1 ? "bg-[#AAA024] text-white" : "text-slate-400 hover:bg-white/5"}`}>{i+1}</button>
+                  ))}
+                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="p-1 px-2 hover:bg-white/5 rounded disabled:opacity-30">Next</button>
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {dataSource === "saved" && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments") && (
+        {dataSource === "saved" && data.length > 0 && (
           <ImportChart 
             data={chartData} 
-            title={`Import ${activeSection === "reservations" ? "reservation" : activeSection === "members" ? "member" : "payment"} Last 7 days`}
-            description={`Number of ${activeSection} imported per day`}
-            unitLabel={activeSection === "reservations" ? "Reservations" : activeSection === "members" ? "Members" : "Payments"}
+            title={`Last 7 days Import Activity`}
+            description={`Trends for ${activeSection}`}
+            unitLabel={activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}
           />
         )}
 
         {showSyncModal && syncStatus && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setShowSyncModal(false)}></div>
-            <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl max-w-sm w-full relative animate-in zoom-in-95 duration-200">
-              <div className="flex flex-col items-center text-center gap-6">
-                <div className="w-16 h-16 bg-emerald-500/10 rounded-full flex items-center justify-center text-emerald-500"><svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg></div>
-                <div><h3 className="text-xl font-bold text-white mb-2">Import Complete</h3><p className="text-slate-400 text-sm">The data has been successfully synchronized with the database.</p></div>
-                <div className="grid grid-cols-2 gap-4 w-full">
-                  <div className="bg-white/5 border border-white/5 p-4 rounded-2xl"><p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">New Records</p><p className="text-2xl font-bold text-emerald-400">{syncStatus.inserted}</p></div>
-                  <div className="bg-white/5 border border-white/5 p-4 rounded-2xl"><p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-1">Duplicates</p><p className="text-2xl font-bold text-slate-300">{syncStatus.skipped}</p></div>
-                </div>
-                <button onClick={() => setShowSyncModal(false)} className="w-full py-3 bg-[#AAA024] text-white font-bold rounded-2xl shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all">Confirm</button>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl max-w-sm w-full text-center">
+              <h3 className="text-xl font-bold text-white mb-2">Import Complete</h3>
+              <div className="grid grid-cols-2 gap-4 my-6">
+                <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[10px] font-bold text-slate-500 mb-1 uppercase">New</p><p className="text-2xl font-bold text-emerald-400">{syncStatus.inserted}</p></div>
+                <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[10px] font-bold text-slate-500 mb-1 uppercase">Dup</p><p className="text-2xl font-bold text-slate-400">{syncStatus.skipped}</p></div>
               </div>
+              <button onClick={() => setShowSyncModal(false)} className="w-full py-3 bg-[#AAA024] text-white font-bold rounded-2xl">Confirm</button>
             </div>
           </div>
         )}
       </div>
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(170, 160, 36, 0.3); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(170, 160, 36, 0.5); }
-      `}</style>
     </div>
   );
-
-  function renderValue(key: string, value: any) {
-    if (value === null || value === undefined) return <span className="text-slate-600 italic">null</span>;
-    if (typeof value === 'boolean') return value ? <span className="text-emerald-400 font-bold">YES</span> : <span className="text-slate-500 italic">no</span>;
-    
-    const formatDate = (date: Date) => {
-      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      const day = String(date.getDate()).padStart(2, '0');
-      const month = months[date.getMonth()];
-      const year = date.getFullYear();
-      
-      let hours = date.getHours();
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      const seconds = String(date.getSeconds()).padStart(2, '0');
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      
-      hours = hours % 12;
-      hours = hours ? hours : 12; // the hour '0' should be '12'
-      const hStr = String(hours).padStart(2, '0');
-      
-      return `${day}-${month}-${year}, ${hStr}:${minutes} ${ampm}`;
-    };
-
-    // Custom format for Import Date
-    if (key === "Import Date" && value) {
-      try {
-        const d = new Date(value);
-        if (!isNaN(d.getTime())) {
-          return <span className="text-[#AAA024] font-bold">{formatDate(d)}</span>;
-        }
-      } catch (e) {}
-    }
-
-    // Format dates
-    const dateKeys = ["Created", "Updated", "Birth Date", "Arrival", "Departure", "Released", "Cancelled", "Confirmed", "synced_at", "processed_at", "Import Date"];
-    const isDateKey = key.toLowerCase().includes('utc') || dateKeys.some(k => key.includes(k));
-    
-    if (isDateKey && typeof value === 'string' && (value.includes('T') || (value.includes('-') && value.length >= 10))) {
-      try {
-        const d = new Date(value);
-        if (!isNaN(d.getTime())) {
-          return <span className="text-slate-300 font-mono text-xs">{formatDate(d)}</span>;
-        }
-      } catch (e) {}
-    }
-
-    if (key === 'State' || key === 'status' || key === 'Status') return <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${value === 'Confirmed' || value === 'Checked in' || value === 'Checked out' ? 'bg-emerald-500/10 text-emerald-400' : value === 'Started' ? 'bg-blue-500/10 text-blue-400' : 'bg-white/5 text-slate-400'}`}>{value}</span>;
-    if (typeof value === 'object') return <span className="text-[10px] text-slate-500 truncate block">{JSON.stringify(value).substring(0, 50)}...</span>;
-    return <span className={typeof value === 'number' ? 'text-[#AAA024] font-bold' : 'text-slate-300'}>{String(value)}</span>;
-  }
 }
