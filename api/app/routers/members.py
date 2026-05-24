@@ -102,7 +102,7 @@ async def get_managed_members(
         if not sync_service.supabase:
             raise Exception("Supabase not initialized")
             
-        query = sync_service.supabase.table("members_sync").select("data, synced_at").order("synced_at", desc=True)
+        query = sync_service.supabase.table("members_sync").select("data, synced_at, report_date").order("synced_at", desc=True)
         if property and property != "All" and property != "null":
             query = query.eq("property", property)
             
@@ -121,6 +121,7 @@ async def get_managed_members(
         for r in res.data:
             item = encryption_service.decrypt_data(r["data"])
             item["Import Date"] = r["synced_at"]
+            item["report_date"] = r.get("report_date")
             data.append(item)
             
         return {"status": "success", "data": data}
