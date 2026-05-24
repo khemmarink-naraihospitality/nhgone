@@ -458,8 +458,6 @@ export default function DashboardView({
     return chartData.slice(-7);
   };
 
-  const chartData = generateChartData();
-
   // Automatic data fetch when selection changes
   useEffect(() => {
     if (selectedProperty) {
@@ -612,14 +610,8 @@ export default function DashboardView({
                         <input 
                           type="checkbox" 
                           className="rounded border-white/20 bg-white/5"
-                          checked={selectedIds.length === data.length && data.length > 0}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedIds(data.map(r => r.Identifier || r.mews_id));
-                            } else {
-                              setSelectedIds([]);
-                            }
-                          }}
+                          checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0}
+                          onChange={toggleSelectAll}
                         />
                       </th>
                     )}
@@ -646,11 +638,10 @@ export default function DashboardView({
                       const lowerSearch = searchTerm.toLowerCase();
                       filtered = filtered.filter(item => 
                         Object.values(item).some(val => 
-                          String(val).toLowerCase().includes(lowerSearch)
+                          String(val || "").toLowerCase().includes(lowerSearch)
                         )
                       );
                     }
-                    
                     if (sortConfig) {
                       filtered.sort((a, b) => {
                         const aVal = String(a[sortConfig.key] || "").toLowerCase();
