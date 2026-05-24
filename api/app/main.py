@@ -46,7 +46,7 @@ async def daily_auto_sync(force_all: bool = False):
     try:
         # 1. Fetch properties that are enabled
         query = sync_service.supabase.table("property_api_settings") \
-            .select("property_name, sync_hour, sync_minute") \
+            .select("id, property_name, sync_hour, sync_minute") \
             .eq("sync_enabled", True)
             
         if not force_all:
@@ -54,16 +54,16 @@ async def daily_auto_sync(force_all: bool = False):
             query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
             
         props_res = query.execute()
-            
-        properties = [p["property_name"] for p in props_res.data]
+        sync_items = props_res.data
         
-        if not properties:
+        if not sync_items:
             return
 
-        print(f"Found {len(properties)} properties scheduled for sync: {properties}")
+        print(f"Found {len(sync_items)} properties scheduled for sync")
         
         # 2. Sync for each scheduled property
-        for prop in properties:
+        for prop_settings in sync_items:
+            prop = prop_settings["property_name"]
             try:
                 print(f"Starting scheduled sync for property: {prop}")
                 from datetime import timezone
@@ -108,6 +108,7 @@ async def daily_auto_sync(force_all: bool = False):
                 total_synced = len(res_batch) + len(mem_batch)
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
+                    "property_id": prop_settings["id"],
                     "status": "success",
                     "records_synced": total_synced,
                     "message": f"Successfully synced {len(res_batch)} reservations and {len(mem_batch)} members"
@@ -116,6 +117,7 @@ async def daily_auto_sync(force_all: bool = False):
             except Exception as prop_err:
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
+                    "property_id": prop_settings["id"],
                     "status": "error",
                     "records_synced": 0,
                     "message": str(prop_err)
