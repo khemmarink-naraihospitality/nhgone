@@ -246,15 +246,14 @@ export default function DashboardView({
         const itemDateStr = item.report_date || item["Import Date"] || item.synced_at || item.created_at || item.processed_at;
         if (!itemDateStr) return true;
         
-        // Handle YYYY-MM-DD vs Full ISO
         const rawDate = new Date(itemDateStr);
         if (isNaN(rawDate.getTime())) return true;
         
-        const itemDate = rawDate.toISOString().slice(0, 16);
-        const startCompare = startDate;
-        const endCompare = endDate;
+        // Use local time components to match datetime-local input format (YYYY-MM-DDTHH:mm)
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const itemDate = `${rawDate.getFullYear()}-${pad(rawDate.getMonth()+1)}-${pad(rawDate.getDate())}T${pad(rawDate.getHours())}:${pad(rawDate.getMinutes())}`;
         
-        return itemDate >= startCompare && itemDate <= endCompare;
+        return itemDate >= startDate && itemDate <= endDate;
       });
     }
 
