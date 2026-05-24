@@ -85,7 +85,7 @@ export default function DashboardView({
     start.setDate(now.getDate() - defaultDays);
     start.setHours(0, 1, 0, 0);
     const end = new Date(now);
-    end.setDate(now.getDate() - 1);
+    end.setDate(now.getDate());
     end.setHours(23, 59, 59, 999);
     return {
       start: new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16),
@@ -377,6 +377,17 @@ export default function DashboardView({
             </div>
           </div>
         </div>
+        
+        {dataSource === "saved" && data.length > 0 && (
+          <div className="mb-8">
+            <ImportChart 
+              data={chartData} 
+              title={`Last 7 days Import Activity`}
+              description={`Trends for ${activeSection}`}
+              unitLabel={activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}
+            />
+          </div>
+        )}
 
         {error ? (
           <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl mb-6">{error}</div>
@@ -444,15 +455,6 @@ export default function DashboardView({
               </div>
             )}
           </div>
-        )}
-
-        {dataSource === "saved" && data.length > 0 && (
-          <ImportChart 
-            data={chartData} 
-            title={`Last 7 days Import Activity`}
-            description={`Trends for ${activeSection}`}
-            unitLabel={activeSection.charAt(0).toUpperCase() + activeSection.slice(1)}
-          />
         )}
 
         {showSyncModal && syncStatus && (
