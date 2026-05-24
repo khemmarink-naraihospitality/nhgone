@@ -137,10 +137,13 @@ export default function DashboardView({
         });
         clearTimeout(timeoutId);
         
-        if (response.status === 504 || response.status === 500) {
-            setError("Big Data, Please select new date range");
-            setLoading(false);
-            return;
+        if (!response.ok) {
+          const contentType = response.headers.get("content-type");
+          if (contentType && contentType.includes("application/json")) {
+            const errResult = await response.json();
+            throw new Error(errResult.message || `Server error: ${response.status}`);
+          }
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
         }
 
         const result = await response.json();
