@@ -61,6 +61,9 @@ async def get_sync_properties():
         decrypted_data = [encryption_service.decrypt_data(row) for row in res.data]
         return {"status": "success", "data": decrypted_data}
     except Exception as e:
+        print(f"Error in get_sync_properties: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/sync/properties")

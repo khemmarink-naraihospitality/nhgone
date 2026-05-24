@@ -22,16 +22,15 @@ export default function AdminSyncPage() {
   const fetchProperties = async () => {
     setLoading(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties`);
-      const result = await response.json();
-      if (result.status === "success") {
-        setProperties(result.data);
-      } else {
-        console.error("API error response:", result);
-      }
-    } catch (err: any) {
-      console.error("Connection failed: Backend server is likely offline (Check run_backend.bat)", err.message);
+      const { data, error } = await supabase
+        .from("property_api_settings")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, updated_at")
+        .order("property_name");
+      
+      if (error) throw error;
+      setProperties(data || []);
+    } catch (err: unknown) {
+      console.error("Failed to fetch sync settings:", err);
     } finally {
       setLoading(false);
     }
@@ -42,22 +41,19 @@ export default function AdminSyncPage() {
   }, []);
 
   const handleToggleSync = async (prop: PropertySyncSettings) => {
-    const updated = { ...prop, sync_enabled: !prop.sync_enabled };
-    try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties/${prop.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sync_hour: updated.sync_hour,
-          sync_minute: updated.sync_minute,
-          sync_enabled: updated.sync_enabled
-        })
-      });
-      if (response.ok) {
-        setProperties(properties.map(p => p.id === prop.id ? updated : p));
-      }
-    } catch (err) {
+    const newEnabled = !prop.sync_enabled;
+    // Optimistic update
+    setProperties(prev => prev.map(p => p.id === prop.id ? { ...p, sync_enabled: newEnabled } : p));
+    
+    const { error } = await supabase
+      .from("property_api_settings")
+      .update({ sync_enabled: newEnabled })
+      .eq("id", prop.id);
+
+    if (error) {
+      console.error("Failed to toggle sync:", error);
+      // Revert on error
+      setProperties(prev => prev.map(p => p.id === prop.id ? { ...p, sync_enabled: prop.sync_enabled } : p));
       alert("Failed to update sync status");
     }
   };
@@ -66,21 +62,20 @@ export default function AdminSyncPage() {
     if (!editingProperty) return;
     setSaving(true);
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties/${editingProperty.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const { error } = await supabase
+        .from("property_api_settings")
+        .update({
           sync_hour: editingProperty.sync_hour,
           sync_minute: editingProperty.sync_minute,
-          sync_enabled: editingProperty.sync_enabled
+          sync_enabled: editingProperty.sync_enabled,
         })
-      });
-      if (response.ok) {
-        setProperties(properties.map(p => p.id === editingProperty.id ? editingProperty : p));
-        setEditingProperty(null);
-      }
+        .eq("id", editingProperty.id);
+      
+      if (error) throw error;
+      setProperties(prev => prev.map(p => p.id === editingProperty.id ? editingProperty : p));
+      setEditingProperty(null);
     } catch (err) {
+      console.error("Failed to save settings:", err);
       alert("Failed to save settings");
     } finally {
       setSaving(false);
@@ -105,6 +100,7 @@ export default function AdminSyncPage() {
            <button 
              onClick={fetchProperties}
              className="p-2 text-slate-400 hover:text-[#AAA024] transition-colors"
+             title="Refresh"
            >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
            </button>
@@ -123,6 +119,8 @@ export default function AdminSyncPage() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr><td colSpan={4} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+              ) : properties.length === 0 ? (
+                <tr><td colSpan={4} className="py-20 text-center text-slate-400 text-sm">No properties configured. Add properties via API Setting first.</td></tr>
               ) : properties.map((prop) => (
                 <tr key={prop.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-5">
@@ -170,9 +168,13 @@ export default function AdminSyncPage() {
                  </button>
               </div>
 
+              <div className="mb-6">
+                <p className="text-white/60 text-sm">{editingProperty.property_name}</p>
+              </div>
+
               <div className="space-y-6">
                  <div>
-                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">Scheduled Time (24h)</label>
+                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">Scheduled Time (24h, Asia/Bangkok)</label>
                     <div className="grid grid-cols-2 gap-4">
                        <div className="space-y-2">
                           <label className="text-[10px] font-bold text-white/20 ml-1">HOUR (0-23)</label>
