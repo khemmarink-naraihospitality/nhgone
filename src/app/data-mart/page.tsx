@@ -11,6 +11,7 @@ export default function DataMartPage() {
       defaultSection="reservations"
       allowToggleDataSource={false}
       showSectionTabs={true}
+      defaultDays={7}
     />
   );
 }

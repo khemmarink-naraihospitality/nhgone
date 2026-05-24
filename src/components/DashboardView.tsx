@@ -16,6 +16,7 @@ interface DashboardViewProps {
   defaultSection: Section;
   allowToggleDataSource?: boolean;
   showSectionTabs?: boolean;
+  defaultDays?: number;
 }
 
 export default function DashboardView({ 
@@ -24,7 +25,8 @@ export default function DashboardView({
   defaultDataSource, 
   defaultSection,
   allowToggleDataSource = false,
-  showSectionTabs = true
+  showSectionTabs = true,
+  defaultDays = 1
 }: DashboardViewProps) {
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [dataSource, setDataSource] = useState<DataSource>(defaultDataSource);
@@ -80,7 +82,7 @@ export default function DashboardView({
   const getDefaultRange = () => {
     const now = new Date();
     const start = new Date(now);
-    start.setDate(now.getDate() - 1);
+    start.setDate(now.getDate() - defaultDays);
     start.setHours(0, 1, 0, 0);
     const end = new Date(now);
     end.setDate(now.getDate() - 1);
