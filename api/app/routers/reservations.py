@@ -149,6 +149,8 @@ async def get_saved_reservations(
             
         # Fallback order: If no report_date exists for older records, it still shows by synced_at
             
+        # Limit to 2000 records to prevent timeout during decryption loop
+        query = query.limit(2000)
         res = query.execute()
         
         # Inject synced_at into the data object for frontend display

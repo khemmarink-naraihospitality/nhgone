@@ -114,6 +114,8 @@ async def get_managed_members(
             report_date_end = end_date.split("T")[0]
             query = query.lte("report_date", report_date_end)
             
+        # Limit to 2000 records to prevent timeout during decryption loop
+        query = query.limit(2000)
         res = query.execute()
         data = []
         for r in res.data:
