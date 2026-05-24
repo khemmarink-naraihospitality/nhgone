@@ -108,7 +108,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
       <aside className="w-64 border-r border-border-primary p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-bg-sidebar transition-colors duration-300">
-        <Link href="/dashboard" className="flex items-center gap-3 hover:opacity-80 transition-opacity cursor-pointer">
+        <div className="flex items-center gap-3">
           <img 
             src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
             alt="NHG Logo" 
@@ -117,7 +117,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           <div className="text-xl font-black text-[#AAA024] tracking-tighter">
             NHGOne
           </div>
-        </Link>
+        </div>
         <nav className="flex flex-col gap-2">
           {pathname.startsWith("/admin") ? (
             <>
@@ -131,10 +131,10 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           ) : (
             <>
               <Link href="/dashboard" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/dashboard" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Dashboard</Link>
+              <div className="h-px bg-white/5 my-2 mx-4"></div>
               <Link href="/live-data" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/live-data" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Live Data</Link>
-              <Link href="/reservations" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/reservations" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Reservation</Link>
-              <Link href="/members" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/members" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Member</Link>
-              <Link href="/payments" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/payments" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Payment</Link>
+              <Link href="/data-mart" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/data-mart" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Data Mart</Link>
+              <div className="h-px bg-white/5 my-2 mx-4"></div>
               <Link href="/log-import" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/log-import" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Log Import</Link>
             </>
           )}

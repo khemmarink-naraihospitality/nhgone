@@ -103,7 +103,7 @@ function LoginContent() {
 
           {/* Inline Error Message (Unauthorized) */}
           {(displayError) && (
-            <div className="mb-8 text-center animate-in fade-in slide-in-from-top-1 duration-300">
+            <div className="mb-8 text-center">
               <p className="text-red-500 text-sm font-bold leading-relaxed whitespace-pre-line">
                 {displayError.split('. ').join('.\n')}
               </p>
@@ -112,7 +112,7 @@ function LoginContent() {
 
           {/* Conditional Email Input */}
           {showEmailLogin && (
-            <form onSubmit={handleEmailLogin} className="w-full space-y-5 animate-in fade-in slide-in-from-top-2 duration-300">
+            <form onSubmit={handleEmailLogin} className="w-full space-y-5">
               <div className="space-y-1.5">
                 <label className="text-sm font-semibold text-gray-700 ml-1">Email Address</label>
                 <input 

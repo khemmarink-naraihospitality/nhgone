@@ -56,13 +56,14 @@ export default function DashboardView({
   const getDefaultRange = () => {
     const now = new Date();
     
-    // Start Date: Today - 2 days at 12:01 AM
+    // Start Date: Yesterday at 00:01 AM
     const start = new Date(now);
-    start.setDate(now.getDate() - 2);
+    start.setDate(now.getDate() - 1);
     start.setHours(0, 1, 0, 0);
     
-    // End Date: Today at 23:59 PM
+    // End Date: Yesterday at 23:59 PM
     const end = new Date(now);
+    end.setDate(now.getDate() - 1);
     end.setHours(23, 59, 59, 999);
     
     return {
@@ -78,8 +79,11 @@ export default function DashboardView({
   const setPreviousDay = () => {
     const start = new Date(startDate);
     start.setDate(start.getDate() - 1);
+    start.setHours(0, 1, 0, 0); // Enforce 00:01
+
     const end = new Date(endDate);
     end.setDate(end.getDate() - 1);
+    end.setHours(23, 59, 59, 999); // Enforce 23:59
     
     setStartDate(new Date(start.getTime() - (start.getTimezoneOffset() * 60000)).toISOString().slice(0, 16));
     setEndDate(new Date(end.getTime() - (end.getTimezoneOffset() * 60000)).toISOString().slice(0, 16));
@@ -123,9 +127,9 @@ export default function DashboardView({
         }
       }
       
-      // Set a 20-second timeout for the request
+      // Set a 60-second timeout for the request
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 20000);
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
 
       try {
         const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
@@ -281,9 +285,9 @@ export default function DashboardView({
 
   const sectionKeys: Record<Section, string[]> = {
     reservations: [
-      "Number", "Group name", "Last name", "First name", "Email", "Telephone", "Address", 
+      "Number", "Arrival", "Departure", "First name", "Last name", "Email", "Group name", "Telephone", "Address", 
       "Customer nationality", "Send marketing emails", "Booker", "Status", "Creator", 
-      "Created", "Release", "Confirmed", "Canceled", "Arrival", "Departure", "Count (nights)", 
+      "Created", "Release", "Confirmed", "Canceled", "Count (nights)", 
       "Person count", "Count (bed, nightly)", "Requested category", "Space category", 
       "Space number", "Origin", "Channel manager ID", "Group channel manager ID", 
       "Group channel confirmation number", "Travel agency confirmation number", "Segment", 
@@ -427,55 +431,10 @@ export default function DashboardView({
   // Automatic data fetch when selection changes
   useEffect(() => {
     if (selectedProperty) {
-      if (isFirstLoad && (activeSection === "reservations" || activeSection === "members" || activeSection === "payments")) {
-        // Custom fetch logic for initial load (works for both saved and live)
-        const triggerInitialFetch = async () => {
-          setLoading(true);
-          setError(null);
-          try {
-            const result = await (async () => {
-                const apiPrefix = "/api";
-                const qParams = new URLSearchParams();
-                qParams.append("property", selectedProperty);
-                
-                // For Database pages, we generally want to see MOST RECENT data on load
-                // We'll skip specific date filtering to let the backend return the latest records
-                if (dataSource === "live") {
-                    qParams.append("start_date", startDate); 
-                    qParams.append("end_date", endDate);
-                }
-                
-                let ep = "";
-                if (dataSource === "live") {
-                    if (activeSection === "reservations") ep = "/reservations/live";
-                    else if (activeSection === "members") ep = "/members/live";
-                    else if (activeSection === "payments") ep = "/payments/live";
-                } else {
-                    if (activeSection === "reservations") ep = "/reservations/saved";
-                    else if (activeSection === "members") ep = "/members/managed";
-                    else if (activeSection === "payments") ep = "/payments/managed";
-                }
-
-                // Append specific param for live property search if needed
-                if (dataSource === "live") qParams.set("property_name", selectedProperty);
-
-                const res = await fetch(`${apiPrefix}${ep}?${qParams.toString()}`);
-                return await res.json();
-            })();
-
-            if (result.status === "success") setData(result.data);
-          } catch (err) {
-            console.warn("Initial pre-load fetch failed", err);
-          } finally {
-            setLoading(false);
-            setIsFirstLoad(false);
-          }
-        };
-        triggerInitialFetch();
-      } else {
-        fetchData();
-      }
+      fetchData();
+      if (isFirstLoad) setIsFirstLoad(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
@@ -730,20 +689,32 @@ export default function DashboardView({
     if (value === null || value === undefined) return <span className="text-slate-600 italic">null</span>;
     if (typeof value === 'boolean') return value ? <span className="text-emerald-400 font-bold">YES</span> : <span className="text-slate-500 italic">no</span>;
     
+    const formatDate = (date: Date) => {
+      const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = months[date.getMonth()];
+      const year = date.getFullYear();
+      
+      let hours = date.getHours();
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const seconds = String(date.getSeconds()).padStart(2, '0');
+      const ampm = hours >= 12 ? 'PM' : 'AM';
+      
+      hours = hours % 12;
+      hours = hours ? hours : 12; // the hour '0' should be '12'
+      const hStr = String(hours).padStart(2, '0');
+      
+      return `${day}-${month}-${year}, ${hStr}:${minutes} ${ampm}`;
+    };
+
     // Custom format for Import Date
     if (key === "Import Date" && value) {
       try {
         const d = new Date(value);
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const day = String(d.getDate()).padStart(2, '0');
-        const month = months[d.getMonth()];
-        const year = d.getFullYear();
-        const hours = String(d.getHours()).padStart(2, '0');
-        const mins = String(d.getMinutes()).padStart(2, '0');
-        return <span className="text-[#AAA024] font-bold">{`${day}-${month}-${year} ${hours}:${mins}`}</span>;
-      } catch (e) {
-        return <span>{String(value)}</span>;
-      }
+        if (!isNaN(d.getTime())) {
+          return <span className="text-[#AAA024] font-bold">{formatDate(d)}</span>;
+        }
+      } catch (e) {}
     }
 
     // Format dates
@@ -754,7 +725,7 @@ export default function DashboardView({
       try {
         const d = new Date(value);
         if (!isNaN(d.getTime())) {
-          return <span className="text-slate-300 font-mono text-xs">{d.toLocaleString()}</span>;
+          return <span className="text-slate-300 font-mono text-xs">{formatDate(d)}</span>;
         }
       } catch (e) {}
     }

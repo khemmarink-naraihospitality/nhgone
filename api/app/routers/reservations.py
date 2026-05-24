@@ -106,8 +106,6 @@ async def get_saved_reservations(
             
         query = sync_service.supabase.table("reservations_sync").select("data, synced_at").order("synced_at", desc=True)
         
-        print(f"DEBUG: Fetching saved reservations for property: '{property}'")
-        
         if property and property != "All" and property != "null":
             query = query.eq("property", property)
             
@@ -123,7 +121,6 @@ async def get_saved_reservations(
             query = query.lte("synced_at", end_date)
             
         res = query.execute()
-        print(f"DEBUG: Found {len(res.data)} records for '{property}'")
         
         # Inject synced_at into the data object for frontend display
         data = []
