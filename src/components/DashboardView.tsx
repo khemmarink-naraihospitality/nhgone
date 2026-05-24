@@ -249,7 +249,9 @@ export default function DashboardView({
         const rawDate = new Date(itemDateStr);
         if (isNaN(rawDate.getTime())) return true;
         
-        // Use local time components to match datetime-local input format (YYYY-MM-DDTHH:mm)
+        // [STANDARD] Use local time components to match datetime-local input format (YYYY-MM-DDTHH:mm).
+        // AVOID .toISOString() because Thailand (UTC+7) shifts 00:00 (Local) -> 17:00 (Prev Day UTC),
+        // causing records to disappear from the filtered view.
         const pad = (n: number) => String(n).padStart(2, '0');
         const itemDate = `${rawDate.getFullYear()}-${pad(rawDate.getMonth()+1)}-${pad(rawDate.getDate())}T${pad(rawDate.getHours())}:${pad(rawDate.getMinutes())}`;
         
