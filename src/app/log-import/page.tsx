@@ -84,7 +84,7 @@ export default function LogImportPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <PageHeader title="Log Import" subtitle="Auto Import activity logs and sync status" />
+      <PageHeader title="Log Import" description="Auto Import activity logs and sync status" />
 
       <div className="p-6 flex flex-col gap-6 overflow-y-auto flex-1">
         {/* Summary Cards */}
