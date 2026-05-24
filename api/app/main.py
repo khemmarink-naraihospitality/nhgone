@@ -104,14 +104,32 @@ async def daily_auto_sync(force_all: bool = False):
                     sync_service.supabase.table("members_sync").upsert(mem_batch).execute()
                     print(f"Successfully synced {len(mem_batch)} members for {prop}")
 
+                # --- C. Sync Payments ---
+                pay_result = await sync_service.get_mapped_payments(property_name=prop)
+                pay_batch = []
+                for p in pay_result:
+                    p_id = p.get("mews_id")
+                    if p_id:
+                        pay_batch.append({
+                            "mews_id": p_id,
+                            "property": prop,
+                            "data": encryption_service.encrypt_data(p),
+                            "processed_at": p.get("Processed At"),
+                            "created_at": now_iso
+                        })
+                
+                if pay_batch:
+                    sync_service.supabase.table("payments").upsert(pay_batch).execute()
+                    print(f"Successfully synced {len(pay_batch)} payments for {prop}")
+
                 # Log overall success
-                total_synced = len(res_batch) + len(mem_batch)
+                total_synced = len(res_batch) + len(mem_batch) + len(pay_batch)
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
                     "property_id": prop_settings["id"],
                     "status": "success",
                     "records_synced": total_synced,
-                    "message": f"Successfully synced {len(res_batch)} reservations and {len(mem_batch)} members"
+                    "message": f"Synced: {len(res_batch)} Res, {len(mem_batch)} Mem, {len(pay_batch)} Pay"
                 }).execute()
                     
             except Exception as prop_err:

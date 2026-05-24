@@ -319,4 +319,46 @@ class SyncService:
             logger.error(f"Error mapping members for {property_name}: {str(e)}")
             raise e
 
+    async def get_mapped_payments(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Fetch payments and map all columns.
+        """
+        try:
+            if not start_date or not end_date:
+                bkk_tz = ZoneInfo("Asia/Bangkok")
+                now_bkk = datetime.now(bkk_tz)
+                yesterday_bkk = now_bkk - timedelta(days=1)
+                
+                if not start_date:
+                    start_dt = yesterday_bkk.replace(hour=0, minute=1, second=0, microsecond=0)
+                    start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not end_date:
+                    end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            payload = {
+                "Limitation": {"Count": 1000},
+                "CreatedUtc": {
+                    "StartUtc": start_date,
+                    "EndUtc": end_date
+                }
+            }
+            
+            response = await mews_client.post("/api/connector/v1/payments/getAll", payload, property_name=property_name)
+            
+            mapped_payments = []
+            for pay in response.get("Payments", []):
+                mapped_payments.append({
+                    "mews_id": pay["Id"],
+                    "Amount": pay.get("Amount", {}).get("Value"),
+                    "Currency": pay.get("Amount", {}).get("Currency"),
+                    "Status": pay.get("State"),
+                    "Processed At": pay.get("CreatedUtc"),
+                    "Identifier": pay.get("Id")
+                })
+            return mapped_payments
+        except Exception as e:
+            logger.error(f"Error mapping payments for {property_name}: {str(e)}")
+            raise e
+
 sync_service = SyncService()
