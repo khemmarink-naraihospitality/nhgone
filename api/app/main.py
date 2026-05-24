@@ -28,7 +28,7 @@ app.include_router(members.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
 
-async def daily_auto_sync():
+async def daily_auto_sync(force_all: bool = False):
     """
     Automated job to fetch and store Mews reservations.
     Now dynamically checks which properties are scheduled for the current minute.
@@ -37,20 +37,23 @@ async def daily_auto_sync():
     current_hour = now.hour
     current_minute = now.minute
     
-    print(f"[{now.isoformat()}] Checking for scheduled syncs at {current_hour:02d}:{current_minute:02d}...")
+    print(f"[{now.isoformat()}] Checking for scheduled syncs at {current_hour:02d}:{current_minute:02d} (force_all={force_all})...")
     
     if not sync_service.supabase:
         print(f"[{now.isoformat()}] [ERROR] Supabase client not initialized. Skipping automated sync.")
         return
         
     try:
-        # 1. Fetch properties that are enabled and scheduled for this exact minute
-        props_res = sync_service.supabase.table("property_api_settings") \
+        # 1. Fetch properties that are enabled
+        query = sync_service.supabase.table("property_api_settings") \
             .select("property_name, sync_hour, sync_minute") \
-            .eq("sync_enabled", True) \
-            .eq("sync_hour", current_hour) \
-            .eq("sync_minute", current_minute) \
-            .execute()
+            .eq("sync_enabled", True)
+            
+        if not force_all:
+            # Only match specific minute if not forced
+            query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
+            
+        props_res = query.execute()
             
         properties = [p["property_name"] for p in props_res.data]
         
@@ -141,8 +144,8 @@ async def trigger_auto_sync():
     Designed to be called by Vercel Cron or GitHub Actions.
     """
     try:
-        await daily_auto_sync()
-        return {"status": "success", "message": "Automated sync check completed"}
+        await daily_auto_sync(force_all=True)
+        return {"status": "success", "message": "Automated sync for all enabled properties completed"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
