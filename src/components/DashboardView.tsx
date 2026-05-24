@@ -126,8 +126,20 @@ export default function DashboardView({
         endpoint = activeSection === "reservations" ? "/reservations/saved" :
                    activeSection === "members" ? "/members/managed" : "/payments/managed";
         queryParams.append("property", selectedProperty);
-        if (startDate) queryParams.append("start_date", startDate);
-        if (endDate) queryParams.append("end_date", endDate);
+        
+        // For 'saved' data, we ensure we fetch at least a 7-day range for the chart,
+        // but if the user selects a larger range for the table, we honor that.
+        const now = new Date();
+        const sevenDaysAgo = new Date(now);
+        sevenDaysAgo.setDate(now.getDate() - 7);
+        const sevenDaysAgoStr = sevenDaysAgo.toISOString().split('T')[0] + "T00:00";
+        const todayEndStr = now.toISOString().split('T')[0] + "T23:59";
+        
+        const apiStart = (startDate && startDate < sevenDaysAgoStr) ? startDate : sevenDaysAgoStr;
+        const apiEnd = (endDate && endDate > todayEndStr) ? endDate : todayEndStr;
+        
+        queryParams.append("start_date", apiStart);
+        queryParams.append("end_date", apiEnd);
       }
       
       const controller = new AbortController();
@@ -228,6 +240,15 @@ export default function DashboardView({
 
   const filteredAndSortedData = useMemo(() => {
     let result = [...data];
+    if (dataSource === "saved") {
+      result = result.filter(item => {
+        const itemDateStr = item["Import Date"] || item.synced_at || item.created_at || item.processed_at;
+        if (!itemDateStr) return true;
+        const itemDate = new Date(itemDateStr).toISOString().slice(0, 16);
+        return itemDate >= startDate && itemDate <= endDate;
+      });
+    }
+
     if (searchTerm) {
       const lowerSearch = searchTerm.toLowerCase();
       result = result.filter(item => 
