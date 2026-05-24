@@ -10,7 +10,6 @@ interface PropertySyncSettings {
   sync_hour: number;
   sync_minute: number;
   sync_enabled: boolean;
-  updated_at?: string;
 }
 
 export default function AdminSyncPage() {
@@ -24,7 +23,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, updated_at")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled")
         .order("property_name");
       
       if (error) throw error;
