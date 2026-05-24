@@ -182,10 +182,10 @@ export default function DashboardView({
         setSyncStatus({ inserted: result.inserted, skipped: result.skipped || 0 });
         setShowSyncModal(true);
       } else {
-        setError("Failed to sync: " + result.message);
+        setError("Failed to sync: " + (result.message || result.detail || "Unknown error"));
       }
     } catch (err: any) {
-      setError("Error syncing data.");
+      setError("Error syncing data: " + err.message);
     } finally {
       setSyncing(false);
     }
@@ -207,9 +207,11 @@ export default function DashboardView({
       if (result.status === "success") {
         setData(prev => prev.filter(item => !selectedIds.includes(item.Identifier || item.mews_id)));
         setSelectedIds([]);
+      } else {
+        setError("Delete failed: " + (result.message || result.detail || "Unknown error"));
       }
-    } catch (err) {
-      setError("Error deleting records");
+    } catch (err: any) {
+      setError("Error deleting records: " + err.message);
     } finally {
       setLoading(false);
     }
