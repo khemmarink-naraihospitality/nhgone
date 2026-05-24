@@ -1,7 +1,7 @@
 "use client";
 // Updated Member Columns Mapping - 22 Apr 2026
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "./PageHeader";
 import * as XLSX from 'xlsx';
@@ -29,6 +29,31 @@ export default function DashboardView({
 }: DashboardViewProps) {
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [dataSource, setDataSource] = useState<DataSource>(defaultDataSource);
+  const [sortConfig, setSortConfig] = useState<{ key: string, direction: 'asc' | 'desc' } | null>(null);
+  
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+
+  // Sync scrollbars
+  const handleTopScroll = () => {
+    if (topScrollRef.current && tableContainerRef.current) {
+      tableContainerRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+    }
+  };
+
+  const handleTableScroll = () => {
+    if (topScrollRef.current && tableContainerRef.current) {
+      topScrollRef.current.scrollLeft = tableContainerRef.current.scrollLeft;
+    }
+  };
+
+  const requestSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
   
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -570,39 +595,110 @@ export default function DashboardView({
           </div>
         ) : (
           <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl shadow-2xl flex flex-col">
-            <div className="overflow-x-auto custom-scrollbar">
+            <div 
+              ref={topScrollRef} 
+              onScroll={handleTopScroll}
+              className="overflow-x-auto overflow-y-hidden h-4 mb-2 bg-white/5 border-b border-white/10"
+            >
+              <div style={{ width: tableContainerRef.current?.scrollWidth || '1200px', height: '1px' }}></div>
+            </div>
+            
+            <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto custom-scrollbar">
               <table className="w-full text-left border-collapse min-w-max">
                 <thead className="bg-white/5 sticky top-0 z-10 backdrop-blur-md">
                   <tr>
-                    {isSuperAdmin && dataSource === "saved" && (
-                      <th className="px-6 py-4 w-10">
+                    {(isSuperAdmin && dataSource === "saved") && (
+                      <th className="p-4 w-10 border-b border-white/10">
                         <input 
                           type="checkbox" 
-                          checked={data.length > 0 && selectedIds.length === data.length}
-                          onChange={toggleSelectAll}
-                          className="w-4 h-4 rounded border-white/10 bg-black/50 text-[#AAA024] focus:ring-[#AAA024] cursor-pointer"
+                          className="rounded border-white/20 bg-white/5"
+                          checked={selectedIds.length === data.length && data.length > 0}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedIds(data.map(r => r.Identifier || r.mews_id));
+                            } else {
+                              setSelectedIds([]);
+                            }
+                          }}
                         />
                       </th>
                     )}
-                    {allKeys.map((key) => (
-                      <th key={key} className="px-6 py-4 font-bold text-slate-300 text-[10px] uppercase tracking-wider whitespace-nowrap">
-                        {key.replace(/([A-Z])/g, ' $1').trim()}
+                    {allKeys.map((col) => (
+                      <th 
+                        key={col} 
+                        onClick={() => requestSort(col)}
+                        className="p-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10 cursor-pointer hover:bg-white/10 transition-colors"
+                      >
+                        <div className="flex items-center gap-1">
+                          {col.replace(/([A-Z])/g, ' $1').trim()}
+                          <span className="text-[8px]">
+                            {sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "▲" : "▼") : "↕"}
+                          </span>
+                        </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5">
-                  {data.length === 0 ? (
+                  {useMemo(() => {
+                    let filtered = [...data];
+                    if (searchTerm) {
+                      const lowerSearch = searchTerm.toLowerCase();
+                      filtered = filtered.filter(item => 
+                        Object.values(item).some(val => 
+                          String(val).toLowerCase().includes(lowerSearch)
+                        )
+                      );
+                    }
+                    
+                    if (sortConfig) {
+                      filtered.sort((a, b) => {
+                        const aVal = String(a[sortConfig.key] || "").toLowerCase();
+                        const bVal = String(b[sortConfig.key] || "").toLowerCase();
+                        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                        return 0;
+                      });
+                    }
+                    return filtered;
+                  }, [data, searchTerm, sortConfig]).length === 0 ? (
                     <tr><td colSpan={allKeys.length + (showCheckboxes ? 1 : 0)} className="px-6 py-20 text-center text-slate-500 font-medium italic">No records found for this property.</td></tr>
                   ) : (
-                    paginatedData.map((item, idx) => (
-                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-white/10 transition-colors group ${selectedIds.includes(item.Identifier) ? 'bg-white/5' : ''}`}>
+                    useMemo(() => {
+                      let filtered = [...data];
+                      if (searchTerm) {
+                        const lowerSearch = searchTerm.toLowerCase();
+                        filtered = filtered.filter(item => 
+                          Object.values(item).some(val => 
+                            String(val).toLowerCase().includes(lowerSearch)
+                          )
+                        );
+                      }
+                      if (sortConfig) {
+                        filtered.sort((a, b) => {
+                          const aVal = String(a[sortConfig.key] || "").toLowerCase();
+                          const bVal = String(b[sortConfig.key] || "").toLowerCase();
+                          if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+                          if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+                          return 0;
+                        });
+                      }
+                      return filtered.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+                    }, [data, searchTerm, sortConfig, currentPage, rowsPerPage]).map((item, idx) => (
+                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-white/10 transition-colors group ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-white/5' : ''}`}>
                         {showCheckboxes && (
                           <td className="px-6 py-4 w-10">
                             <input 
                               type="checkbox"
-                              checked={selectedIds.includes(item.Identifier)}
-                              onChange={() => toggleSelectRow(item.Identifier)}
+                              checked={selectedIds.includes(item.Identifier || item.mews_id)}
+                              onChange={() => {
+                                const id = item.Identifier || item.mews_id;
+                                if (selectedIds.includes(id)) {
+                                  setSelectedIds(selectedIds.filter(x => x !== id));
+                                } else {
+                                  setSelectedIds([...selectedIds, id]);
+                                }
+                              }}
                               className="w-4 h-4 rounded border-white/10 bg-black/50 text-[#AAA024] focus:ring-[#AAA024] cursor-pointer"
                             />
                           </td>

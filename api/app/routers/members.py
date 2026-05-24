@@ -25,20 +25,23 @@ async def get_live_members(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/sync-manual")
-async def sync_manual_members(payload: dict):
+@router.post("/manual")
+async def sync_manual_members(payload: dict = Body(...)):
     try:
         property_name = payload.get("property")
         members_data = payload.get("data", [])
         start_date = payload.get("start_date")
         
-        if not sync_service.supabase:
-            raise Exception("Supabase not initialized")
-            
-        # 1. Fetch property_id for logging
-        prop_res = sync_service.supabase.table("property_api_settings").select("id").eq("property_name", property_name).single().execute()
-        property_id = prop_res.data.get("id") if prop_res.data else None
-            
+        # 1. Fetch property_id for logging (Flexible fetch)
+        property_id = None
+        try:
+            prop_res = sync_service.supabase.table("property_api_settings").select("id").ilike("property_name", f"%{property_name}%").execute()
+            if prop_res.data:
+                property_id = prop_res.data[0].get("id")
+        except Exception as e:
+            print(f"Logging fetch error (members): {str(e)}")
+
+        inserted = 0
         from datetime import datetime, timezone
         now_iso = datetime.now(timezone.utc).isoformat()
         
@@ -46,11 +49,15 @@ async def sync_manual_members(payload: dict):
         if start_date:
             report_date = start_date.split("T")[0]
         
+        # Prepare batch upsert
         batch = []
         for m in members_data:
             mews_id = m.get("Identifier")
-            if not mews_id: continue
-            
+            if not mews_id:
+                # Use LoyaltyNumber or some other ID if Identifier is missing
+                mews_id = m.get("LoyaltyNumber")
+                if not mews_id: continue
+                
             batch.append({
                 "mews_id": mews_id,
                 "property": property_name,
@@ -61,20 +68,28 @@ async def sync_manual_members(payload: dict):
             
         if batch:
             sync_service.supabase.table("members_sync").upsert(batch).execute()
+            inserted = len(batch)
             
             # 2. Record in Log Import (sync_logs)
-            if property_id:
-                sync_service.supabase.table("sync_logs").insert({
-                    "property_id": property_id,
+            try:
+                log_payload = {
+                    "property": property_name,
                     "status": "success",
-                    "message": f"Manual Member Import for {report_date}",
-                    "records_synced": len(batch),
+                    "message": f"Manual Member Import for {report_date or 'Selection'}",
+                    "records_synced": inserted,
                     "sync_type": "manual"
-                }).execute()
+                }
+                if property_id:
+                    log_payload["property_id"] = property_id
                 
-        return {"status": "success", "inserted": len(batch)}
+                sync_service.supabase.table("sync_logs").insert(log_payload).execute()
+            except Exception as e:
+                print(f"Logging insert error (members): {str(e)}")
+                
+        return {"status": "success", "inserted": inserted}
     except Exception as e:
-        print(f"Manual member sync error: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/managed")

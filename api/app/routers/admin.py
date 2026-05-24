@@ -109,12 +109,21 @@ async def get_sync_logs(
     """
     try:
         admin_supabase = get_supabase_client()
-        query = admin_supabase.table("sync_logs").select("*").order("created_at", desc=True).limit(limit)
+        # Join with property_api_settings to get the property name if property_id is present
+        query = admin_supabase.table("sync_logs").select("*, property_api_settings(property_name)").order("created_at", desc=True).limit(limit)
         
         if property and property != "All":
             query = query.eq("property", property)
             
         res = query.execute()
-        return {"status": "success", "data": res.data}
+        
+        # Format the data to ensure 'property' field is populated from the join
+        formatted_data = []
+        for row in res.data:
+            if not row.get("property") and row.get("property_api_settings"):
+                row["property"] = row["property_api_settings"].get("property_name")
+            formatted_data.append(row)
+            
+        return {"status": "success", "data": formatted_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
