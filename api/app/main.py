@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
@@ -113,7 +113,9 @@ async def daily_auto_sync(force_all: bool = False):
                         pay_batch.append({
                             "mews_id": p_id,
                             "property": prop,
-                            "data": encryption_service.encrypt_data(p),
+                            "amount": p.get("Amount"),
+                            "currency": p.get("Currency"),
+                            "status": p.get("Status"),
                             "processed_at": p.get("Processed At"),
                             "created_at": now_iso
                         })
@@ -158,14 +160,15 @@ async def start_scheduler():
     print("Scheduler initialized (Local environment only).")
 
 @app.get("/sync/auto")
-async def trigger_auto_sync():
+async def trigger_auto_sync(force: bool = Query(False)):
     """
     Endpoint to trigger the automated sync job.
     Designed to be called by Vercel Cron or GitHub Actions.
+    If force=False (default), it respects the sync_hour/sync_minute in the database.
     """
     try:
-        await daily_auto_sync(force_all=True)
-        return {"status": "success", "message": "Automated sync for all enabled properties completed"}
+        await daily_auto_sync(force_all=force)
+        return {"status": "success", "message": f"Automated sync completed (force={force})"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
