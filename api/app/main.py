@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
@@ -160,17 +160,15 @@ async def start_scheduler():
     print("Scheduler initialized (Local environment only).")
 
 @app.get("/sync/auto")
-async def trigger_auto_sync(force: bool = Query(False)):
+async def trigger_auto_sync(force: bool = Query(False), background_tasks: BackgroundTasks = None):
     """
     Endpoint to trigger the automated sync job.
     Designed to be called by Vercel Cron or GitHub Actions.
     If force=False (default), it respects the sync_hour/sync_minute in the database.
+    Runs in the background so the response returns immediately.
     """
-    try:
-        await daily_auto_sync(force_all=force)
-        return {"status": "success", "message": f"Automated sync completed (force={force})"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+    background_tasks.add_task(daily_auto_sync, force_all=force)
+    return {"status": "accepted", "message": f"Sync job started in background (force={force})"}
 
 @app.get("/health")
 async def health_check():
