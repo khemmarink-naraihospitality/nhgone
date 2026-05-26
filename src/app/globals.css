@@ -90,19 +90,43 @@ h1, h2, h3, .h-display {
 
 /* Brand Buttons - Sharp architectural look */
 .btn-brand {
-  @apply tracked-caps px-6 py-2 transition-all active:scale-[0.985] text-xs;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  font-weight: 500;
+  padding: 0.5rem 1.5rem;
+  transition: all 0.2s ease;
+  font-size: 0.75rem;
   border-radius: var(--r-subtle);
   font-family: var(--font-sans);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-brand:active {
+  transform: scale(0.985);
 }
 
 .btn-primary {
-  @apply btn-brand bg-narai-green text-galangal hover:opacity-90;
+  background-color: var(--narai-green);
+  color: var(--galangal);
+}
+.btn-primary:hover {
+  opacity: 0.9;
 }
 
 .btn-secondary {
-  @apply btn-brand border-2 border-narai-green text-narai-green hover:bg-narai-green/5;
+  border: 2px solid var(--narai-green);
+  color: var(--narai-green);
+}
+.btn-secondary:hover {
+  background-color: rgba(21, 42, 0, 0.05);
 }
 
 .btn-lemongrass {
-  @apply btn-brand bg-lemongrass text-white hover:bg-[#8f871e];
+  background-color: var(--lemongrass);
+  color: white;
+}
+.btn-lemongrass:hover {
+  background-color: #8f871e;
 }
