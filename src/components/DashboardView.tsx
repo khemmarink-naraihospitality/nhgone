@@ -264,18 +264,22 @@ export default function DashboardView({
     );
 
     // Get the predefined order for the current section
-    const order = SECTION_COLUMNS[activeSection] || [];
+    const order = (SECTION_COLUMNS[activeSection] || []).map(k => k.toLowerCase());
     
     // Sort keys based on predefined order. 
-    // Keys not in the list go to the end in their original relative order.
     return [...detectedKeys].sort((a, b) => {
-      const indexA = order.indexOf(a);
-      const indexB = order.indexOf(b);
+      const aLower = a.toLowerCase();
+      const bLower = b.toLowerCase();
+      
+      const indexA = order.indexOf(aLower);
+      const indexB = order.indexOf(bLower);
       
       if (indexA !== -1 && indexB !== -1) return indexA - indexB;
       if (indexA !== -1) return -1;
       if (indexB !== -1) return 1;
-      return detectedKeys.indexOf(a) - detectedKeys.indexOf(b);
+      
+      // If neither is in the predefined list, maintain original object order
+      return 0; 
     });
   }, [data, activeSection]);
 
