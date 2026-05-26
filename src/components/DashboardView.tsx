@@ -407,95 +407,124 @@ export default function DashboardView({
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
-    <div className="flex-1 flex flex-col bg-background text-foreground p-6">
+    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-12">
       <div className="max-w-7xl mx-auto w-full">
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
-            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-full p-1">
-              <button onClick={() => setDataSource("live")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${dataSource === "live" ? "bg-emerald-500 text-white shadow-lg" : "text-slate-400"}`}>Live API</button>
-              <button onClick={() => setDataSource("saved")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${dataSource === "saved" ? "bg-blue-500 text-white shadow-lg" : "text-slate-400"}`}>Database</button>
+            <div className="flex items-center gap-1 bg-[#152A00]/5 border border-[#152A00]/10 p-1">
+              <button 
+                onClick={() => setDataSource("live")} 
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+              >
+                Live API
+              </button>
+              <button 
+                onClick={() => setDataSource("saved")} 
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "saved" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+              >
+                Database
+              </button>
             </div>
           )}
         </PageHeader>
           
-        <div className="flex flex-wrap items-end gap-4 mb-6">
+        <div className="flex flex-wrap items-end gap-x-8 gap-y-6 mt-14 mb-10">
           <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">Select Property</label>
-            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2.5 text-sm appearance-none cursor-pointer text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none">
-              {properties.map(p => <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>)}
+            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
+            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-3 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none">
+              {properties.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
-          <div className="flex flex-col gap-2 w-full md:w-64">
-            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">Start Date</label>
-            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none" />
+          <div className="flex flex-col gap-2 w-full md:w-56">
+            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Start Date</label>
+            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
           </div>
-          <div className="flex flex-col gap-2 w-full md:w-64">
-            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">End Date</label>
-            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none" />
+          <div className="flex flex-col gap-2 w-full md:w-56">
+            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">End Date</label>
+            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
           </div>
-          <button onClick={fetchData} disabled={loading} className="btn-lemongrass h-[42px]">Fetch Data</button>
+          <button onClick={fetchData} disabled={loading} className="btn-brand btn-primary h-[46px]">Sync Data</button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-sm border border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-6 mb-1 bg-[#fffaf0] p-6 border border-[#152A00]/14 border-b-0">
           {showSectionTabs && (
-            <div className="flex gap-1 p-1 bg-black/20 rounded-sm">
+            <div className="flex gap-8 border-b border-[#152A00]/10">
               {(["reservations", "members", "payments"] as Section[]).map((s) => (
-                <button key={s} onClick={() => setActiveSection(s)} className={`px-6 py-2 rounded-sm text-[11px] tracked-caps transition-all ${activeSection === s ? "bg-white/10 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}>{s}</button>
+                <button 
+                  key={s} 
+                  onClick={() => setActiveSection(s)} 
+                  className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 ${activeSection === s ? "border-[#152A00] text-[#152A00]" : "border-transparent text-[#152A00]/30 hover:text-[#152A00]"}`}
+                >
+                  {s}
+                </button>
               ))}
             </div>
           )}
-          <div className="flex flex-1 items-center justify-end gap-4">
-            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-black/20 border border-white/5 rounded-sm px-4 py-2.5 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] outline-none max-w-xs w-full" />
-            <div className="flex gap-2">
-              {showCheckboxes && selectedIds.length > 0 && <button onClick={handleDeleteSelected} className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-sm text-[10px] tracked-caps">Delete ({selectedIds.length})</button>}
-              {isSuperAdmin && dataSource === "live" && <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-secondary py-1 text-[10px]">Import</button>}
-              <button onClick={exportToExcel} disabled={data.length === 0} className="btn-lemongrass py-1 text-[10px]">Excel</button>
+          <div className="flex flex-1 items-center justify-end gap-6">
+            <div className="relative max-w-xs w-full">
+              <input type="text" placeholder="Filter records..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-3 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+            </div>
+            <div className="flex gap-3">
+              {showCheckboxes && selectedIds.length > 0 && (
+                <button onClick={handleDeleteSelected} className="px-6 py-2 bg-[#250719] text-[#FFEFD2] text-[10px] tracked-caps">
+                  Delete ({selectedIds.length})
+                </button>
+              )}
+              {isSuperAdmin && dataSource === "live" && (
+                <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-brand btn-secondary py-2 text-[10px]">
+                  Import To Managed
+                </button>
+              )}
+              <button onClick={exportToExcel} disabled={data.length === 0} className="btn-brand btn-primary py-2 text-[10px]">
+                Export Excel
+              </button>
             </div>
           </div>
         </div>
 
         {error ? (
-          <div className="p-6 bg-red-500/10 border border-red-500/20 text-red-400 rounded-2xl mb-6">{error}</div>
+          <div className="p-8 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-10">{error}</div>
         ) : loading ? (
-          <div className="flex flex-col items-center justify-center py-24 gap-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-4 border-[#AAA024]/20 border-t-[#AAA024]"></div>
+          <div className="flex flex-col items-center justify-center py-32 bg-[#fffaf0] border border-[#152A00]/14">
+            <div className="animate-spin h-8 w-8 border-2 border-[#152A00]/10 border-t-[#152A00]"></div>
+            <p className="mt-4 text-[10px] tracked-caps opacity-40 font-bold">Retrieving portfolio data...</p>
           </div>
         ) : (
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl flex flex-col mb-6">
-            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-4 mb-2 bg-white/5 border-b border-white/10">
+          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)]">
+            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-2 bg-[#152A00]/5">
               <div style={{ width: tableContainerRef.current?.scrollWidth || 'auto', height: '1px' }}></div>
             </div>
             <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-max">
-                <thead className="bg-white/5 sticky top-0 z-10 backdrop-blur-md">
-                  <tr>
+                <thead>
+                  <tr className="bg-[#152A00]/5">
                     {showCheckboxes && (
-                      <th className="p-4 border-b border-white/10">
-                        <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} />
+                      <th className="p-5 border-b border-[#152A00]/10">
+                        <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} className="accent-[#152A00]" />
                       </th>
                     )}
                     {allKeys.map((col) => (
-                      <th key={col} onClick={() => requestSort(col)} className="p-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-white/10 cursor-pointer hover:bg-white/10 whitespace-nowrap">
-                        <div className="flex items-center gap-1">
+                      <th key={col} onClick={() => requestSort(col)} className="p-5 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
+                        <div className="flex items-center gap-2">
                           {col.replace(/([A-Z])/g, ' $1').trim()}
-                          <span>{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "▲" : "▼") : "↕"}</span>
+                          <span className="text-[8px] opacity-40">{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "↑" : "↓") : "•"}</span>
                         </div>
                       </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-white/5">
+                <tbody className="divide-y divide-[#152A00]/5">
                   {filteredAndSortedData.length === 0 ? (
-                    <tr><td colSpan={100} className="p-10 text-center text-slate-500">No data found.</td></tr>
+                    <tr><td colSpan={100} className="p-20 text-center text-[#152A00]/30 font-display text-2xl italic">No entries found in this range.</td></tr>
                   ) : (
                     paginatedData.map((item, idx) => (
-                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-white/10 group ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-white/5' : ''}`}>
+                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-[#152A00]/5' : ''}`}>
                         {showCheckboxes && (
-                          <td className="p-4">
-                            <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} />
+                          <td className="p-5">
+                            <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} className="accent-[#152A00]" />
                           </td>
                         )}
-                        {allKeys.map((key) => <td key={key} className="p-4 text-sm text-slate-400 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
+                        {allKeys.map((key) => <td key={key} className="p-5 text-[13px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
                       </tr>
                     ))
                   )}
@@ -503,19 +532,24 @@ export default function DashboardView({
               </table>
             </div>
             {filteredAndSortedData.length > 0 && (
-              <div className="p-4 bg-white/5 border-t border-white/5 flex justify-between items-center px-8">
-                <div className="flex items-center gap-4 text-[10px] text-slate-500">
-                  <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="bg-transparent border border-white/10 rounded px-2 py-1 outline-none">
-                    {[20, 50, 100, 200, 500].map(v => <option key={v} value={v} className="bg-slate-900 text-white">{v}</option>)}
-                  </select>
-                  <span>Showing {(currentPage-1)*rowsPerPage + 1} to {Math.min(currentPage*rowsPerPage, filteredAndSortedData.length)} of {filteredAndSortedData.length} records</span>
+              <div className="p-8 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-6">
+                <div className="flex items-center gap-6 text-[10px] font-bold tracked-caps text-[#152A00]/40">
+                  <div className="flex items-center gap-2">
+                    <span>PAGE SIZE</span>
+                    <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="bg-transparent border border-[#152A00]/10 px-2 py-1 outline-none text-[#152A00]">
+                      {[20, 50, 100, 200, 500].map(v => <option key={v} value={v}>{v}</option>)}
+                    </select>
+                  </div>
+                  <span>{(currentPage-1)*rowsPerPage + 1} – {Math.min(currentPage*rowsPerPage, filteredAndSortedData.length)} OF {filteredAndSortedData.length} RECORDS</span>
                 </div>
-                <div className="flex gap-1">
-                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="p-1 px-2 hover:bg-white/5 rounded disabled:opacity-30">Prev</button>
-                  {[...Array(Math.min(5, totalPages))].map((_, i) => (
-                    <button key={i} onClick={() => setCurrentPage(i+1)} className={`w-7 h-7 rounded-lg text-[10px] font-bold ${currentPage === i+1 ? "bg-[#AAA024] text-white" : "text-slate-400 hover:bg-white/5"}`}>{i+1}</button>
-                  ))}
-                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="p-1 px-2 hover:bg-white/5 rounded disabled:opacity-30">Next</button>
+                <div className="flex gap-2">
+                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[#152A00]/10 disabled:opacity-20 hover:bg-[#152A00]/5 transition-colors">PREVIOUS</button>
+                  <div className="flex gap-1">
+                    {[...Array(Math.min(5, totalPages))].map((_, i) => (
+                      <button key={i} onClick={() => setCurrentPage(i+1)} className={`w-8 h-8 text-[10px] font-bold transition-all ${currentPage === i+1 ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00] hover:bg-[#152A00]/5 border border-[#152A00]/10"}`}>{i+1}</button>
+                    ))}
+                  </div>
+                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[#152A00]/10 disabled:opacity-20 hover:bg-[#152A00]/5 transition-colors">NEXT</button>
                 </div>
               </div>
             )}
@@ -523,14 +557,29 @@ export default function DashboardView({
         )}
 
         {showSyncModal && syncStatus && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-white/10 rounded-3xl p-8 shadow-2xl max-w-sm w-full text-center">
-              <h3 className="text-xl font-bold text-white mb-2">Import Complete</h3>
-              <div className="grid grid-cols-2 gap-4 my-6">
-                <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[10px] font-bold text-slate-500 mb-1 uppercase">New</p><p className="text-2xl font-bold text-emerald-400">{syncStatus.inserted}</p></div>
-                <div className="bg-white/5 p-4 rounded-2xl"><p className="text-[10px] font-bold text-slate-500 mb-1 uppercase">Dup</p><p className="text-2xl font-bold text-slate-400">{syncStatus.skipped}</p></div>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#152A00]/40 backdrop-blur-sm">
+            <div className="bg-white border border-[#152A00]/14 p-12 shadow-[40px_40px_100px_rgba(21,42,0,0.1)] max-w-md w-full text-center relative overflow-hidden">
+              <div className="absolute top-0 left-0 w-full h-1 bg-[#152A00]"></div>
+              <h3 className="font-display text-3xl text-[#152A00] mb-2 text-left">Synchronization Complete</h3>
+              <p className="text-[#152A00]/60 text-sm mb-10 text-left">Portfolio data has been successfully imported to the management layer.</p>
+              
+              <div className="grid grid-cols-2 gap-1px bg-[#152A00]/10 border border-[#152A00]/10 my-8">
+                <div className="bg-[#fffaf0] p-6 text-left">
+                  <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-2">NEW ENTRIES</p>
+                  <p className="text-4xl font-display text-[#152A00]">{syncStatus.inserted}</p>
+                </div>
+                <div className="bg-[#fffaf0] p-6 text-left">
+                  <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-2">DUPLICATES</p>
+                  <p className="text-4xl font-display text-[#152A00]/40">{syncStatus.skipped}</p>
+                </div>
               </div>
-              <button onClick={() => setShowSyncModal(false)} className="w-full py-3 bg-[#AAA024] text-white font-bold rounded-2xl">Confirm</button>
+              
+              <button 
+                onClick={() => setShowSyncModal(false)} 
+                className="w-full py-5 bg-[#152A00] text-[#FFEFD2] text-[11px] font-bold tracked-caps transition-all active:scale-[0.985]"
+              >
+                RETURN TO MANAGEMENT
+              </button>
             </div>
           </div>
         )}

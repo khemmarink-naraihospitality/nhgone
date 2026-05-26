@@ -20,39 +20,34 @@
 
 :root {
   /* ---------- Core palette ---------- */
-  --narai-green:   #152A00;  /* PANTONE 2411C  — primary dark */
-  --galangal:      #FFEFD2;  /* PANTONE 9142C  — primary light / cream */
-
+  --narai-green:   #152A00;  /* Primary Dark */
+  --galangal:      #FFEFD2;  /* Primary Light (Cream) */
+  --paper:         #fffaf0;  /* Card Background */
+  
   /* ---------- Secondary palette ---------- */
-  --ginger:        #A76400;  /* PANTONE 7512C  */
-  --pomelo:        #E1FFB3;  /* PANTONE 7486C  */
-  --lemongrass:    #AAA024;  /* PANTONE 7745C  */
-  --aubergine:     #250719;  /* PANTONE 262C   */
+  --ginger:        #A76400;  
+  --pomelo:        #E1FFB3;  
+  --lemongrass:    #AAA024;  
+  --aubergine:     #250719;  
 
   /* ---------- Semantic Mappings ---------- */
-  --brand-gold: var(--lemongrass);
   --bg-primary: var(--galangal);
   --text-primary: var(--narai-green);
-  --border-primary: rgba(21, 42, 0, 0.1);
-  --bg-sidebar: #f6e3c1;
+  --border-brand: rgba(21, 42, 0, 0.14);
   
   /* ---------- Type families ---------- */
   --font-display: "Nib Pro", serif;
   --font-sans:    "IBM Plex Sans", system-ui, sans-serif;
   
-  /* ---------- Radii & Borders ---------- */
-  --r-sharp: 0;
-  --r-subtle: 2px;
-  --r-card: 2px;
-  --hairline: 1px solid rgba(21, 42, 0, 0.14);
+  /* ---------- Layout ---------- */
+  --r-sharp: 0px;
 }
 
 [data-theme='dark'] {
-  --bg-primary: #020617;
-  --text-primary: #ffffff;
-  --border-primary: rgba(255, 255, 255, 0.1);
-  --bg-sidebar: #050a00; /* Deepest Narai Green */
-  --narai-green: #ffffff;
+  --bg-primary: #050a00; /* Deepest Narai Green */
+  --text-primary: var(--galangal);
+  --border-brand: rgba(255, 239, 210, 0.1);
+  --paper: #0a1400;
 }
 
 body {
@@ -60,73 +55,80 @@ body {
   color: var(--text-primary);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 @theme inline {
+  --color-brand-green: var(--narai-green);
   --color-brand-gold: var(--lemongrass);
-  --color-narai-green: #152A00;
   --color-galangal: var(--galangal);
   --font-display: var(--font-display);
   --font-sans: var(--font-sans);
 }
 
-/* Typography Utility Classes - Strict Brand Rules */
+/* Typography Utility Classes */
 .font-display { font-family: var(--font-display); }
-.font-sans { font-family: var(--font-sans); }
 
 h1, h2, h3, .h-display {
   font-family: var(--font-display);
+  font-weight: 400;
+  line-height: 0.92;
   letter-spacing: -0.01em;
-  text-transform: none; /* Sentence case enforced */
+  text-transform: none;
 }
 
-/* Tracked Caps for Subheaders, CTAs, and Eyebrows (+10%) */
 .tracked-caps {
   text-transform: uppercase;
   letter-spacing: 0.10em;
   font-weight: 500;
 }
 
-/* Brand Buttons - Sharp architectural look */
-.btn-brand {
-  text-transform: uppercase;
-  letter-spacing: 0.10em;
-  font-weight: 500;
-  padding: 0.5rem 1.5rem;
-  transition: all 0.2s ease;
-  font-size: 0.75rem;
-  border-radius: var(--r-subtle);
-  font-family: var(--font-sans);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+/* Brand Card Style */
+.card-brand {
+  background: var(--paper);
+  border: 1px solid var(--border-brand);
+  padding: 18px 20px;
+  border-radius: var(--r-sharp);
+  display: flex;
+  flex-direction: column;
 }
 
-.btn-brand:active {
-  transform: scale(0.985);
+/* Brand Buttons - Precise Padding & Typography */
+.btn-brand {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  padding: 14px 22px;
+  border: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  transition: all 0.14s cubic-bezier(0.22, 0.61, 0.36, 1);
+  border-radius: var(--r-sharp);
+  font-weight: 500;
 }
 
 .btn-primary {
-  background-color: var(--narai-green);
+  background: var(--narai-green);
   color: var(--galangal);
 }
+
 .btn-primary:hover {
-  opacity: 0.9;
+  background: #1f3a08;
 }
 
 .btn-secondary {
-  border: 2px solid var(--narai-green);
+  background: transparent;
   color: var(--narai-green);
+  border: 1.5px solid var(--narai-green);
 }
+
 .btn-secondary:hover {
-  background-color: rgba(21, 42, 0, 0.05);
+  background: rgba(21, 42, 0, 0.08);
 }
 
 .btn-lemongrass {
-  background-color: var(--lemongrass);
+  background: var(--lemongrass);
   color: white;
-}
-.btn-lemongrass:hover {
-  background-color: #8f871e;
 }

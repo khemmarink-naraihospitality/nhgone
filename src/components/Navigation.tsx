@@ -107,46 +107,51 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
-      <aside className="w-64 border-r border-border-primary p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-bg-sidebar transition-colors duration-300">
-        <div className="flex items-center gap-4 mb-4">
-          <img 
-            src="/brand/logo-icon-light.png" 
-            alt="NHG Logo" 
-            className="w-10 h-10 object-contain"
-          />
-          <div className="text-lg font-bold font-display text-white tracking-tight leading-none">
+      <aside className="w-64 border-r border-[#FFEFD2]/10 p-8 flex flex-col gap-10 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+        <div className="flex items-center gap-4 mb-2">
+          <div className="bg-white p-1.5 rounded-sm">
+            <img 
+              src="/brand/logo-icon-light.png" 
+              alt="NHG Logo" 
+              className="w-8 h-8 object-contain"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = "https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png";
+              }}
+            />
+          </div>
+          <div className="text-xl font-bold font-display text-white tracking-tight leading-none">
             NHGOne
           </div>
         </div>
         <nav className="flex flex-col gap-1">
           {pathname.startsWith("/admin") ? (
             <>
-              <Link href="/admin" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Dashboard</Link>
-              <Link href="/admin/users" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>User Management</Link>
-              <Link href="/admin/smtp" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Email SMTP</Link>
-              <Link href="/admin/sync" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Auto Sync</Link>
-              <Link href="/admin/api-settings" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>API Setting</Link>
-              <Link href="/admin/logs" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Activity Log</Link>
+              <Link href="/admin" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              <Link href="/admin/users" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
+              <Link href="/admin/smtp" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
+              <Link href="/admin/sync" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Auto Sync</Link>
+              <Link href="/admin/api-settings" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
+              <Link href="/admin/logs" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
             </>
           ) : (
             <>
-              <Link href="/dashboard" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Dashboard</Link>
-              <div className="h-px bg-white/5 my-3 mx-4"></div>
-              <Link href="/live-data" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Live Data</Link>
-              <Link href="/data-mart" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Data Mart</Link>
-              <div className="h-px bg-white/5 my-3 mx-4"></div>
-              <Link href="/log-import" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Log Import</Link>
+              <Link href="/dashboard" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              <div className="h-px bg-white/5 my-4 mx-4"></div>
+              <Link href="/live-data" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Live Data</Link>
+              <Link href="/data-mart" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
+              <div className="h-px bg-white/5 my-4 mx-4"></div>
+              <Link href="/log-import" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
             </>
           )}
         </nav>
 
         <div className="mt-auto pb-4">
            {pathname.startsWith("/admin") && (
-             <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 text-sm font-medium text-slate-400 hover:text-white hover:bg-white/5 rounded-xl transition-all border border-white/5 shadow-sm group">
-                <svg className="w-5 h-5 text-slate-500 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+             <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 text-[11px] font-bold tracked-caps text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all group">
+                <svg className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                 </svg>
-                Back to Dashboard
+                EXIT ADMIN
              </Link>
            )}
         </div>
