@@ -1,46 +1,108 @@
 @import "tailwindcss";
 
+/* ---------------------------------------------------------------
+   NARAI HOSPITALITY GROUP — colours + type tokens
+   Source of truth: Narai_Guidelines_27.08.24.pdf
+   --------------------------------------------------------------- */
+
+@font-face {
+  font-family: "Nib Pro";
+  src: url("/fonts/nib-regular.otf") format("opentype");
+  font-weight: 400; font-style: normal; font-display: swap;
+}
+
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Thin.ttf")       format("truetype"); font-weight: 100; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Light.ttf")      format("truetype"); font-weight: 300; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Regular.ttf")    format("truetype"); font-weight: 400; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Medium.ttf")     format("truetype"); font-weight: 500; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-SemiBold.ttf")   format("truetype"); font-weight: 600; font-style: normal; font-display: swap; }
+@font-face { font-family: "IBM Plex Sans"; src: url("/fonts/IBMPlexSans-Bold.ttf")       format("truetype"); font-weight: 700; font-style: normal; font-display: swap; }
+
 :root {
-  --brand-gold: #AAA024;
-  --bg-primary: #ffffff;
-  --text-primary: #0f172a;
-  --border-primary: rgba(0, 0, 0, 0.1);
-  --bg-sidebar: #f8fafc;
+  /* ---------- Core palette ---------- */
+  --narai-green:   #152A00;  /* PANTONE 2411C  — primary dark */
+  --galangal:      #FFEFD2;  /* PANTONE 9142C  — primary light / cream */
+
+  /* ---------- Secondary palette ---------- */
+  --ginger:        #A76400;  /* PANTONE 7512C  */
+  --pomelo:        #E1FFB3;  /* PANTONE 7486C  */
+  --lemongrass:    #AAA024;  /* PANTONE 7745C  */
+  --aubergine:     #250719;  /* PANTONE 262C   */
+
+  /* ---------- Semantic Mappings ---------- */
+  --brand-gold: var(--lemongrass);
+  --bg-primary: var(--galangal);
+  --text-primary: var(--narai-green);
+  --border-primary: rgba(21, 42, 0, 0.1);
+  --bg-sidebar: #f6e3c1;
+  
+  /* ---------- Type families ---------- */
+  --font-display: "Nib Pro", serif;
+  --font-sans:    "IBM Plex Sans", system-ui, sans-serif;
+  
+  /* ---------- Radii & Borders ---------- */
+  --r-sharp: 0;
+  --r-subtle: 2px;
+  --r-card: 2px;
+  --hairline: 1px solid rgba(21, 42, 0, 0.14);
 }
 
 [data-theme='dark'] {
   --bg-primary: #020617;
   --text-primary: #ffffff;
   --border-primary: rgba(255, 255, 255, 0.1);
-  --bg-sidebar: #0f172a;
-  color-scheme: dark;
+  --bg-sidebar: #050a00; /* Deepest Narai Green */
+  --narai-green: #ffffff;
 }
 
 body {
   background: var(--bg-primary);
   color: var(--text-primary);
-  transition: background 0.3s ease, color 0.3s ease;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 @theme inline {
-  --color-background: var(--bg-primary);
-  --color-foreground: var(--text-primary);
-  --color-brand-gold: var(--brand-gold);
-  --color-border-primary: var(--border-primary);
-  --color-bg-sidebar: var(--bg-sidebar);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-brand-gold: var(--lemongrass);
+  --color-narai-green: #152A00;
+  --color-galangal: var(--galangal);
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Typography Utility Classes - Strict Brand Rules */
+.font-display { font-family: var(--font-display); }
+.font-sans { font-family: var(--font-sans); }
+
+h1, h2, h3, .h-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+  text-transform: none; /* Sentence case enforced */
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Tracked Caps for Subheaders, CTAs, and Eyebrows (+10%) */
+.tracked-caps {
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  font-weight: 500;
+}
+
+/* Brand Buttons - Sharp architectural look */
+.btn-brand {
+  @apply tracked-caps px-6 py-2 transition-all active:scale-[0.985] text-xs;
+  border-radius: var(--r-subtle);
+  font-family: var(--font-sans);
+}
+
+.btn-primary {
+  @apply btn-brand bg-narai-green text-galangal hover:opacity-90;
+}
+
+.btn-secondary {
+  @apply btn-brand border-2 border-narai-green text-narai-green hover:bg-narai-green/5;
+}
+
+.btn-lemongrass {
+  @apply btn-brand bg-lemongrass text-white hover:bg-[#8f871e];
 }

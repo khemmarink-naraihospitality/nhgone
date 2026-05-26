@@ -108,34 +108,34 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
       <aside className="w-64 border-r border-border-primary p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-bg-sidebar transition-colors duration-300">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4 mb-4">
           <img 
-            src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
+            src="/brand/logo-icon-light.png" 
             alt="NHG Logo" 
-            className="w-10 h-10 object-contain drop-shadow-[0_0_8px_rgba(170,160,36,0.3)]"
+            className="w-10 h-10 object-contain"
           />
-          <div className="text-xl font-black text-[#AAA024] tracking-tighter">
+          <div className="text-lg font-bold font-display text-white tracking-tight leading-none">
             NHGOne
           </div>
         </div>
-        <nav className="flex flex-col gap-2">
+        <nav className="flex flex-col gap-1">
           {pathname.startsWith("/admin") ? (
             <>
-              <Link href="/admin" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Dashboard</Link>
-              <Link href="/admin/users" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin/users" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>User Management</Link>
-              <Link href="/admin/smtp" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin/smtp" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Email SMTP</Link>
-              <Link href="/admin/sync" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin/sync" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Auto Import Schedule</Link>
-              <Link href="/admin/api-settings" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin/api-settings" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>API Setting</Link>
-              <Link href="/admin/logs" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/admin/logs" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Activity Log</Link>
+              <Link href="/admin" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Dashboard</Link>
+              <Link href="/admin/users" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>User Management</Link>
+              <Link href="/admin/smtp" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Email SMTP</Link>
+              <Link href="/admin/sync" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Auto Sync</Link>
+              <Link href="/admin/api-settings" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>API Setting</Link>
+              <Link href="/admin/logs" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Activity Log</Link>
             </>
           ) : (
             <>
-              <Link href="/dashboard" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/dashboard" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Dashboard</Link>
-              <div className="h-px bg-white/5 my-2 mx-4"></div>
-              <Link href="/live-data" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/live-data" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Live Data</Link>
-              <Link href="/data-mart" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/data-mart" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Data Mart</Link>
-              <div className="h-px bg-white/5 my-2 mx-4"></div>
-              <Link href="/log-import" className={`px-4 py-2 hover:bg-white/5 rounded-lg transition-colors ${pathname === "/log-import" ? "text-[#AAA024] font-medium bg-white/5" : "text-slate-400 hover:text-white"}`}>Log Import</Link>
+              <Link href="/dashboard" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Dashboard</Link>
+              <div className="h-px bg-white/5 my-3 mx-4"></div>
+              <Link href="/live-data" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Live Data</Link>
+              <Link href="/data-mart" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Data Mart</Link>
+              <div className="h-px bg-white/5 my-3 mx-4"></div>
+              <Link href="/log-import" className={`px-4 py-2 hover:bg-white/5 rounded-sm transition-colors text-[11px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-white/10" : "text-slate-400"}`}>Log Import</Link>
             </>
           )}
         </nav>

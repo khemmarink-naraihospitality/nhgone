@@ -57,7 +57,7 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#f0f2f5] p-4 font-sans text-[#1a1f36]">
+    <div className="min-h-screen flex items-center justify-center bg-bg-primary p-4 font-sans text-text-primary">
       {/* Background soft gradient for extra premium feel */}
       <div className="absolute inset-0 bg-gradient-to-tr from-[#AAA024]/5 via-white to-[#AAA024]/10 pointer-events-none" />
       
@@ -72,8 +72,8 @@ function LoginContent() {
              />
           </div>
 
-          <h1 className="text-2xl font-bold mb-2 tracking-tight">NHGOne</h1>
-          <p className="text-gray-500 text-sm mb-10 text-center">Log in to your workspace</p>
+          <h1 className="text-3xl font-bold font-display mb-1 tracking-tight text-narai-green">NHGOne</h1>
+          <p className="text-narai-green/60 text-xs mb-10 text-center font-medium uppercase tracking-widest">Workspace Access</p>
 
           {/* Google Button */}
           <button 

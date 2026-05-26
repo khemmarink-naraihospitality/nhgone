@@ -420,36 +420,36 @@ export default function DashboardView({
           
         <div className="flex flex-wrap items-end gap-4 mb-6">
           <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Select Property</label>
-            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm appearance-none cursor-pointer text-foreground focus:ring-2 focus:ring-[#AAA024] focus:outline-none">
+            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">Select Property</label>
+            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2.5 text-sm appearance-none cursor-pointer text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none">
               {properties.map(p => <option key={p} value={p} className="bg-slate-900 text-white">{p}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2 w-full md:w-64">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Start Date</label>
-            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground" />
+            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">Start Date</label>
+            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none" />
           </div>
           <div className="flex flex-col gap-2 w-full md:w-64">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">End Date</label>
-            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm text-foreground" />
+            <label className="text-[10px] font-bold text-slate-400 tracked-caps ml-1">End Date</label>
+            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-sm px-4 py-2 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] focus:outline-none" />
           </div>
-          <button onClick={fetchData} disabled={loading} className="px-6 py-2.5 bg-[#AAA024] text-white rounded-xl text-sm font-bold shadow-lg disabled:opacity-50 h-[42px]">Fetch Data</button>
+          <button onClick={fetchData} disabled={loading} className="btn-lemongrass h-[42px]">Fetch Data</button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-3xl border border-white/10">
+        <div className="flex flex-wrap items-center justify-between gap-6 mb-6 bg-white/5 p-4 rounded-sm border border-white/10">
           {showSectionTabs && (
-            <div className="flex gap-1 p-1 bg-black/20 rounded-2xl">
+            <div className="flex gap-1 p-1 bg-black/20 rounded-sm">
               {(["reservations", "members", "payments"] as Section[]).map((s) => (
-                <button key={s} onClick={() => setActiveSection(s)} className={`px-6 py-2 rounded-xl text-sm font-bold capitalize transition-all ${activeSection === s ? "bg-[#AAA024] text-white shadow-lg" : "text-slate-400 hover:text-white"}`}>{s}</button>
+                <button key={s} onClick={() => setActiveSection(s)} className={`px-6 py-2 rounded-sm text-[11px] tracked-caps transition-all ${activeSection === s ? "bg-white/10 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}>{s}</button>
               ))}
             </div>
           )}
           <div className="flex flex-1 items-center justify-end gap-4">
-            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-black/20 border border-white/5 rounded-2xl px-4 py-2.5 text-sm text-foreground focus:ring-2 focus:ring-[#AAA024] outline-none max-w-xs w-full" />
+            <input type="text" placeholder="Search..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="bg-black/20 border border-white/5 rounded-sm px-4 py-2.5 text-sm text-foreground focus:ring-1 focus:ring-[#AAA024] outline-none max-w-xs w-full" />
             <div className="flex gap-2">
-              {showCheckboxes && selectedIds.length > 0 && <button onClick={handleDeleteSelected} className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl text-xs font-bold">Delete ({selectedIds.length})</button>}
-              {isSuperAdmin && dataSource === "live" && <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="px-4 py-2 bg-blue-500/10 text-blue-500 border border-blue-500/20 rounded-xl text-xs font-bold disabled:opacity-30">Import</button>}
-              <button onClick={exportToExcel} disabled={data.length === 0} className="px-4 py-2 bg-emerald-500/10 text-emerald-500 border border-emerald-500/20 rounded-xl text-xs font-bold disabled:opacity-30">Excel</button>
+              {showCheckboxes && selectedIds.length > 0 && <button onClick={handleDeleteSelected} className="px-4 py-2 bg-red-500/10 text-red-500 border border-red-500/20 rounded-sm text-[10px] tracked-caps">Delete ({selectedIds.length})</button>}
+              {isSuperAdmin && dataSource === "live" && <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-secondary py-1 text-[10px]">Import</button>}
+              <button onClick={exportToExcel} disabled={data.length === 0} className="btn-lemongrass py-1 text-[10px]">Excel</button>
             </div>
           </div>
         </div>

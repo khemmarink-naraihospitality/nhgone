@@ -21,8 +21,8 @@ export default function ImportChart({ data, title = "Import Stats", description 
       <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl mt-6">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
-            <p className="text-xs text-slate-400 mt-1">{description}</p>
+            <h3 className="text-xl font-bold text-white font-display tracking-tight leading-none">{title}</h3>
+            <p className="text-[10px] text-slate-400 mt-1 tracked-caps">{description}</p>
           </div>
         </div>
         <div className="h-[240px] flex items-center justify-center border-t border-white/5">
@@ -39,12 +39,12 @@ export default function ImportChart({ data, title = "Import Stats", description 
     <div className="w-full bg-white/5 border border-white/10 rounded-3xl p-6 shadow-2xl backdrop-blur-xl mt-6">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h3 className="text-xl font-bold text-white tracking-tight">{title}</h3>
-          <p className="text-xs text-slate-400 mt-1">{description}</p>
+          <h3 className="text-xl font-bold text-white font-display tracking-tight leading-none">{title}</h3>
+          <p className="text-[10px] text-slate-400 mt-2 tracked-caps">{description}</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#AAA024]/10 rounded-lg border border-[#AAA024]/20">
-          <div className="w-2 h-2 rounded-full bg-[#AAA024] animate-pulse"></div>
-          <span className="text-[10px] uppercase font-bold text-[#AAA024] tracking-widest">Active</span>
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-white/5 border border-white/10 rounded-sm">
+          <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+          <span className="text-[10px] font-bold text-slate-300 tracked-caps">Insight Active</span>
         </div>
       </div>
 
@@ -85,7 +85,7 @@ export default function ImportChart({ data, title = "Import Stats", description 
                 </div>
 
                 {/* Label */}
-                <div className="text-[10px] font-bold text-slate-400 text-center uppercase tracking-wider group-hover:text-white transition-colors whitespace-nowrap">
+                <div className="text-[10px] font-bold text-slate-400 text-center tracked-caps group-hover:text-white transition-colors whitespace-nowrap">
                   {item.date}
                 </div>
               </div>
