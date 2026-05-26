@@ -8,7 +8,7 @@ from app.services.encryption import encryption_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
 import traceback
-from datetime import datetime
+from datetime import datetime, timedelta
 
 app = FastAPI(title="NHGOne API")
 
@@ -44,14 +44,23 @@ async def daily_auto_sync(force_all: bool = False):
         return
         
     try:
+        # Determine report date (Yesterday)
+        yesterday_bkk = now - timedelta(days=1)
+        report_date = yesterday_bkk.date().isoformat()
+        
         # 1. Fetch properties that are enabled
         query = sync_service.supabase.table("property_api_settings") \
             .select("id, property_name, sync_hour, sync_minute") \
             .eq("sync_enabled", True)
             
         if not force_all:
-            # Only match specific minute if not forced
-            query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
+            # If current minute is 0, we might be hitting the Vercel hourly cron.
+            # In that case, we should sync ALL properties scheduled for this hour to be safe.
+            if current_minute == 0:
+                query = query.eq("sync_hour", current_hour)
+            else:
+                # Otherwise, stay precise (for local/frequent scheduler)
+                query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
             
         props_res = query.execute()
         sync_items = props_res.data
@@ -61,88 +70,150 @@ async def daily_auto_sync(force_all: bool = False):
 
         print(f"Found {len(sync_items)} properties scheduled for sync")
         
+        # Helper to avoid statement timeouts
+        async def chunked_upsert(table_name, items, on_conflict, chunk_size=200):
+            total = len(items)
+            for i in range(0, total, chunk_size):
+                chunk = items[i:i+chunk_size]
+                try:
+                    sync_service.supabase.table(table_name).upsert(chunk, on_conflict=on_conflict).execute()
+                except Exception as e:
+                    print(f"Error in chunked_upsert ({table_name}, {i}-{i+chunk_size}): {str(e)}")
+                    # If it's a timeout, we might want to retry with smaller chunk or stop
+                    if "timeout" in str(e).lower():
+                        # Try once more with smaller chunk
+                        mini_chunk_size = chunk_size // 2
+                        for j in range(0, len(chunk), mini_chunk_size):
+                            sync_service.supabase.table(table_name).upsert(chunk[j:j+mini_chunk_size], on_conflict=on_conflict).execute()
+                    else:
+                        raise e
+
         # 2. Sync for each scheduled property
         for prop_settings in sync_items:
             prop = prop_settings["property_name"]
+            prop_id = prop_settings["id"]
+            
+            # --- Try to Acquire Lock ---
+            try:
+                lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                    "target_property_id": prop_id,
+                    "timeout_mins": 15
+                }).execute().data
+                
+                if not lock_acquired:
+                    print(f"Skipping {prop}: Sync already in progress or recently attempted.")
+                    continue
+            except Exception as lock_err:
+                print(f"Error acquiring lock for {prop}: {lock_err}")
+                continue
+
             try:
                 print(f"Starting scheduled sync for property: {prop}")
                 from datetime import timezone
                 now_iso = now.astimezone(timezone.utc).isoformat()
                 
+                counts = {"res": 0, "mem": 0, "pay": 0}
+                
                 # --- A. Sync Reservations ---
-                # We use yesterday as default range for auto-sync in get_mapped_reservations
-                res_result = await sync_service.get_mapped_reservations(property_name=prop)
-                res_batch = []
-                for r in res_result.get("data", []):
-                    m_id = r.get("Identifier")
-                    if m_id:
-                        res_batch.append({
-                            "mews_id": m_id,
-                            "property": prop,
-                            "data": encryption_service.encrypt_data(r),
-                            "synced_at": now_iso
-                        })
+                try:
+                    res_result = await sync_service.get_mapped_reservations(property_name=prop)
+                    res_batch = []
+                    for r in res_result.get("data", []):
+                        m_id = r.get("Identifier")
+                        if m_id:
+                            res_batch.append({
+                                "mews_id": m_id,
+                                "property": prop,
+                                "data": encryption_service.encrypt_data(r),
+                                "synced_at": now_iso,
+                                "report_date": report_date
+                            })
+                    
+                    if res_batch:
+                        await chunked_upsert("reservations_sync", res_batch, on_conflict="mews_id")
+                        counts["res"] = len(res_batch)
+                        print(f"Successfully synced {len(res_batch)} reservations for {prop}")
+                except Exception as e:
+                    print(f"Error syncing reservations for {prop}: {e}")
+                    raise e
                 
-                if res_batch:
-                    sync_service.supabase.table("reservations_sync").upsert(res_batch).execute()
-                    print(f"Successfully synced {len(res_batch)} reservations for {prop}")
-                
-                # --- B. Sync Members (Arrival Based) ---
-                mem_result = await sync_service.get_mapped_members(property_name=prop)
-                mem_batch = []
-                for m in mem_result:
-                    m_id = m.get("Identifier")
-                    if m_id:
-                        mem_batch.append({
-                            "mews_id": m_id,
-                            "property": prop,
-                            "data": encryption_service.encrypt_data(m),
-                            "synced_at": now_iso
-                        })
-                
-                if mem_batch:
-                    sync_service.supabase.table("members_sync").upsert(mem_batch).execute()
-                    print(f"Successfully synced {len(mem_batch)} members for {prop}")
+                # --- B. Sync Members ---
+                try:
+                    mem_result = await sync_service.get_mapped_members(property_name=prop)
+                    mem_batch = []
+                    for m in mem_result:
+                        m_id = m.get("Identifier")
+                        if m_id:
+                            mem_batch.append({
+                                "mews_id": m_id,
+                                "property": prop,
+                                "data": encryption_service.encrypt_data(m),
+                                "synced_at": now_iso,
+                                "report_date": report_date
+                            })
+                    
+                    if mem_batch:
+                        await chunked_upsert("members_sync", mem_batch, on_conflict="mews_id")
+                        counts["mem"] = len(mem_batch)
+                        print(f"Successfully synced {len(mem_batch)} members for {prop}")
+                except Exception as e:
+                    print(f"Error syncing members for {prop}: {e}")
+                    raise e
 
                 # --- C. Sync Payments ---
-                pay_result = await sync_service.get_mapped_payments(property_name=prop)
-                pay_batch = []
-                for p in pay_result:
-                    p_id = p.get("mews_id")
-                    if p_id:
-                        pay_batch.append({
-                            "mews_id": p_id,
-                            "property": prop,
-                            "amount": p.get("Amount"),
-                            "currency": p.get("Currency"),
-                            "status": p.get("Status"),
-                            "processed_at": p.get("Processed At"),
-                            "created_at": now_iso
-                        })
-                
-                if pay_batch:
-                    sync_service.supabase.table("payments").upsert(pay_batch).execute()
-                    print(f"Successfully synced {len(pay_batch)} payments for {prop}")
+                try:
+                    pay_result = await sync_service.get_mapped_payments(property_name=prop)
+                    pay_batch = []
+                    for p in pay_result:
+                        p_id = p.get("mews_id")
+                        if p_id:
+                            pay_batch.append({
+                                "mews_id": p_id,
+                                "property": prop,
+                                "amount": p.get("Amount"),
+                                "currency": p.get("Currency"),
+                                "status": p.get("Status"),
+                                "processed_at": p.get("Processed At"),
+                                "created_at": now_iso
+                            })
+                    
+                    if pay_batch:
+                        await chunked_upsert("payments", pay_batch, on_conflict="mews_id")
+                        counts["pay"] = len(pay_batch)
+                        print(f"Successfully synced {len(pay_batch)} payments for {prop}")
+                except Exception as e:
+                    print(f"Error syncing payments for {prop}: {e}")
+                    raise e
 
                 # Log overall success
-                total_synced = len(res_batch) + len(mem_batch) + len(pay_batch)
+                total_synced = counts["res"] + counts["mem"] + counts["pay"]
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
-                    "property_id": prop_settings["id"],
+                    "property_id": prop_id,
                     "status": "success",
                     "records_synced": total_synced,
-                    "message": f"Synced: {len(res_batch)} Res, {len(mem_batch)} Mem, {len(pay_batch)} Pay"
+                    "message": f"Synced: {counts['res']} Res, {counts['mem']} Mem, {counts['pay']} Pay"
                 }).execute()
                     
             except Exception as prop_err:
+                err_msg = str(prop_err)
+                if len(err_msg) > 1000:
+                    err_msg = err_msg[:1000] + "..."
+                
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
-                    "property_id": prop_settings["id"],
+                    "property_id": prop_id,
                     "status": "error",
                     "records_synced": 0,
-                    "message": str(prop_err)
+                    "message": f"Step Failed. Error: {err_msg}"
                 }).execute()
                 print(f"Error syncing {prop}: {str(prop_err)}")
+            finally:
+                # --- Release Lock ---
+                try:
+                    sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+                except:
+                    pass
                 
     except Exception as e:
         print(f"Error in automated sync check: {str(e)}")

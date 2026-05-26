@@ -97,7 +97,12 @@ async def sync_manual_reservations(payload: dict):
             })
             
         if batch:
-            sync_service.supabase.table("reservations_sync").upsert(batch).execute()
+            # Chunking to prevent statement timeouts
+            chunk_size = 300
+            for i in range(0, len(batch), chunk_size):
+                chunk = batch[i:i+chunk_size]
+                sync_service.supabase.table("reservations_sync").upsert(chunk, on_conflict="mews_id").execute()
+            
             inserted = len(batch)
             
             # 2. Record in Log Import (sync_logs)

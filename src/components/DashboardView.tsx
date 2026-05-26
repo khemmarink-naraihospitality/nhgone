@@ -19,6 +19,30 @@ interface DashboardViewProps {
   defaultDays?: number;
 }
 
+const SECTION_COLUMNS: Record<Section, string[]> = {
+  reservations: [
+    "Number", "Status", "Arrival", "Departure", "Last name", "First name", "Email", "Telephone", "Group name", 
+    "Address", "Customer nationality", "Send marketing emails", "Booker", "Creator", "Created", "Release", "Confirmed", "Canceled",
+    "Count (nights)", "Person count", "Count (bed, nightly)", "Requested category",
+    "Space category", "Space number", "Origin", "Channel manager ID", "Group channel manager ID",
+    "Group channel confirmation number", "Travel agency confirmation number", "Segment", "Rate", "Voucher",
+    "Products", "Company", "Travel agency", "Average rate (nightly)", "Total amount", "Canceled cost",
+    "Commission", "Customer cost", "Balance of companions", "Payment card type", "Payment card number",
+    "Expiration", "Automatic payment", "Bills", "Cancellation reason", "Notes", "Customer notes",
+    "Customer classifications", "Pricing classification", "Booking purpose", "Reservation source",
+    "Identifier", "Company Identifier", "Travel agency Identifier", "Reservation origin details", "Restoration reason"
+  ],
+  members: [
+    "Number", "Title", "Last Name", "First Name", "Second Last Name", "Nationality", "Preferred Language",
+    "Language", "Birth Date", "Birth Place", "Occupation", "Email", "Phone", "Tax ID", "Loyalty Code",
+    "Accounting Code", "Billing Code", "Car Registration", "Dietary", "Notes", "Created", "Updated",
+    "Active", "Classifications", "Options", "Identifier"
+  ],
+  payments: [
+    "mews_id", "Amount", "Currency", "Status", "Processed At", "Identifier"
+  ]
+};
+
 export default function DashboardView({ 
   title, 
   subtitle, 
@@ -233,10 +257,27 @@ export default function DashboardView({
 
   const allKeys = useMemo(() => {
     if (data.length === 0) return [];
-    return Object.keys(data[0]).filter(k => 
+    
+    // Get all unique keys present in the data (excluding system/internal keys)
+    const detectedKeys = Object.keys(data[0]).filter(k => 
       !['id', 'mews_id', 'property_id', 'synced_at', 'report_date', 'property', 'data'].includes(k)
     );
-  }, [data]);
+
+    // Get the predefined order for the current section
+    const order = SECTION_COLUMNS[activeSection] || [];
+    
+    // Sort keys based on predefined order. 
+    // Keys not in the list go to the end in their original relative order.
+    return [...detectedKeys].sort((a, b) => {
+      const indexA = order.indexOf(a);
+      const indexB = order.indexOf(b);
+      
+      if (indexA !== -1 && indexB !== -1) return indexA - indexB;
+      if (indexA !== -1) return -1;
+      if (indexB !== -1) return 1;
+      return detectedKeys.indexOf(a) - detectedKeys.indexOf(b);
+    });
+  }, [data, activeSection]);
 
   const filteredAndSortedData = useMemo(() => {
     let result = [...data];
