@@ -11,6 +11,7 @@ interface SyncLog {
   records_synced: number;
   message: string;
   created_at: string;
+  target_table: string;
 }
 
 export default function LogImportPage() {
@@ -155,6 +156,7 @@ export default function LogImportPage() {
                 <tr className="border-b border-white/[0.06]">
                   <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Date & Time</th>
                   <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Property</th>
+                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Table</th>
                   <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Status</th>
                   <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Records</th>
                   <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Message</th>
@@ -189,6 +191,9 @@ export default function LogImportPage() {
                         <span className="text-[#AAA024] font-bold text-xs">{formatDate(log.created_at)}</span>
                       </td>
                       <td className="px-5 py-3 text-slate-300 font-medium text-xs">{log.property || "-"}</td>
+                      <td className="px-5 py-3">
+                        <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{log.target_table || "All"}</span>
+                      </td>
                       <td className="px-5 py-3">
                         <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
                           log.status === "success" 

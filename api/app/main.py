@@ -192,6 +192,7 @@ async def daily_auto_sync(force_all: bool = False):
                     "property_id": prop_id,
                     "status": "success",
                     "records_synced": total_synced,
+                    "target_table": "All",
                     "message": f"Synced: {counts['res']} Res, {counts['mem']} Mem, {counts['pay']} Pay"
                 }).execute()
                     
@@ -205,6 +206,7 @@ async def daily_auto_sync(force_all: bool = False):
                     "property_id": prop_id,
                     "status": "error",
                     "records_synced": 0,
+                    "target_table": "All",
                     "message": f"Step Failed. Error: {err_msg}"
                 }).execute()
                 print(f"Error syncing {prop}: {str(prop_err)}")

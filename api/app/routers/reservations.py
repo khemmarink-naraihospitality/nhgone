@@ -108,10 +108,11 @@ async def sync_manual_reservations(payload: dict):
             # 2. Record in Log Import (sync_logs)
             try:
                 log_payload = {
-                    "property": property_name,  # Ensure text name is provided
+                    "property": property_name,
                     "status": "success",
                     "message": f"Manual Import for {report_date or 'Selection'}",
                     "records_synced": inserted,
+                    "target_table": "Reservations",
                     "sync_type": "manual"
                 }
                 if property_id:

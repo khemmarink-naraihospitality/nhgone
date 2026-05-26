@@ -82,6 +82,7 @@ async def sync_manual_members(payload: dict = Body(...)):
                     "status": "success",
                     "message": f"Manual Member Import for {report_date or 'Selection'}",
                     "records_synced": inserted,
+                    "target_table": "Customers",
                     "sync_type": "manual"
                 }
                 if property_id:
