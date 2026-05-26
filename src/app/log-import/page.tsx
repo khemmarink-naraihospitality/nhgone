@@ -20,6 +20,8 @@ export default function LogImportPage() {
   const [error, setError] = useState<string | null>(null);
   const [filterProperty, setFilterProperty] = useState("All");
   const [properties, setProperties] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 20;
 
   const fetchProperties = async () => {
     const { data: props } = await supabase.from("property_api_settings").select("property_name").order("property_name");
@@ -36,7 +38,7 @@ export default function LogImportPage() {
       if (filterProperty && filterProperty !== "All") {
         params.append("property", filterProperty);
       }
-      params.append("limit", "200");
+      params.append("limit", "100");
 
       const response = await fetch(`/api/admin/sync/logs?${params.toString()}`);
       const result = await response.json();
@@ -59,7 +61,11 @@ export default function LogImportPage() {
 
   useEffect(() => {
     fetchLogs();
+    setCurrentPage(1); // Reset to first page when filter changes
   }, [filterProperty]);
+
+  const totalPages = Math.ceil(logs.length / itemsPerPage);
+  const paginatedLogs = logs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -185,7 +191,7 @@ export default function LogImportPage() {
                     </td>
                   </tr>
                 ) : (
-                  logs.map((log, idx) => (
+                  paginatedLogs.map((log, idx) => (
                     <tr key={log.id || idx} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
                       <td className="px-5 py-3">
                         <span className="text-[#AAA024] font-bold text-xs">{formatDate(log.created_at)}</span>
@@ -214,6 +220,45 @@ export default function LogImportPage() {
             </table>
           </div>
         </div>
+
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              disabled={currentPage === 1}
+              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-20 hover:bg-white/10 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            
+            {[...Array(totalPages)].map((_, i) => (
+              <button
+                key={i + 1}
+                onClick={() => setCurrentPage(i + 1)}
+                className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
+                  currentPage === i + 1 
+                    ? "bg-[#AAA024] text-white" 
+                    : "bg-white/5 text-slate-500 hover:bg-white/10"
+                }`}
+              >
+                {i + 1}
+              </button>
+            ))}
+
+            <button 
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              disabled={currentPage === totalPages}
+              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-20 hover:bg-white/10 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          </div>
+        )}
       </div>
 
       <style jsx>{`
