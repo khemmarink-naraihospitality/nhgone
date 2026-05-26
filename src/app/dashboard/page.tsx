@@ -38,32 +38,31 @@ export default function Dashboard() {
         <PageHeader 
           title={
             <>
-              Welcome to <span className="bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">NHGOne</span>
+              Welcome to <span className="text-narai-green font-display">NHGOne</span>
             </>
           } 
-          description="Your Unified Managed Layer for MEWS PMS"
         />
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
-          <StatCard title="Managed Reservations" value={stats?.reservations ?? 0} color="blue" href="/data-mart" />
-          <StatCard title="Chinatown Members" value={stats?.members ?? 0} color="emerald" href="/data-mart" />
-          <StatCard title="Processed Payments" value={stats?.payments ?? 0} color="amber" href="/data-mart" />
+          <StatCard title="Managed Reservations" value={stats?.reservations ?? 0} color="green" href="/data-mart" />
+          <StatCard title="Chinatown Members" value={stats?.members ?? 0} color="lemongrass" href="/data-mart" />
+          <StatCard title="Processed Payments" value={stats?.payments ?? 0} color="aubergine" href="/data-mart" />
         </div>
 
-        <section className="bg-slate-100/50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-3xl p-8 backdrop-blur-xl transition-colors">
-          <h2 className="text-2xl font-bold text-foreground mb-6">System Health</h2>
-          <div className="flex items-center gap-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl w-fit">
-            <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-emerald-400 font-medium text-sm">FastAPI Backend: Online</span>
+        <section className="bg-white/5 border border-white/10 rounded-sm p-8 backdrop-blur-xl transition-colors">
+          <h2 className="text-2xl font-bold text-foreground mb-6 font-display">System Health</h2>
+          <div className="flex items-center gap-4 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-sm w-fit">
+            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span className="text-emerald-400 font-bold text-[10px] tracked-caps">FastAPI Backend: Online</span>
           </div>
-          <div className="mt-8 text-slate-500 dark:text-slate-400 grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="mt-8 text-slate-400 grid grid-cols-1 md:grid-cols-2 gap-8">
              <div>
-                <h3 className="text-foreground font-semibold mb-2">Integration Strategy</h3>
-                <p className="text-sm leading-relaxed">Secure server-side token injection with POST-only pattern. No MEWS credentials are exposed to the browser.</p>
+                <h3 className="text-foreground font-bold mb-2 text-[11px] tracked-caps">Integration Strategy</h3>
+                <p className="text-sm leading-relaxed opacity-80">Secure server-side token injection with POST-only pattern. No MEWS credentials are exposed to the browser.</p>
              </div>
              <div>
-                <h3 className="text-foreground font-semibold mb-2">Sync Pattern</h3>
-                <p className="text-sm leading-relaxed">Local-first management layer in Supabase with RLS. Preserves enriched data while staying synced with PMS.</p>
+                <h3 className="text-foreground font-bold mb-2 text-[11px] tracked-caps">Sync Pattern</h3>
+                <p className="text-sm leading-relaxed opacity-80">Local-first management layer in Supabase with RLS. Preserves enriched data while staying synced with PMS.</p>
              </div>
           </div>
         </section>
@@ -73,17 +72,22 @@ export default function Dashboard() {
 }
 
 function StatCard({ title, value, color, href }: { title: string, value: number, color: string, href: string }) {
-  const colors: Record<string, string> = {
-    blue: "from-blue-500 to-indigo-600 shadow-blue-500/20",
-    emerald: "from-emerald-500 to-teal-600 shadow-emerald-500/20",
-    amber: "from-amber-500 to-orange-600 shadow-amber-500/20"
+  const themes: Record<string, string> = {
+    green: "bg-[#152A00] text-galangal border-white/5",
+    lemongrass: "bg-[#AAA024] text-white border-white/5",
+    aubergine: "bg-[#250719] text-galangal border-white/5"
   };
 
   return (
-    <Link href={href} className={`block p-8 rounded-3xl bg-gradient-to-br ${colors[color]} shadow-2xl transition-all transform hover:scale-105 active:scale-95 group`}>
-      <h3 className="text-white/80 font-medium mb-1 uppercase text-[10px] tracking-widest">{title}</h3>
-      <div className="text-5xl font-black text-white group-hover:translate-x-1 transition-transform">{value}</div>
-      <div className="mt-4 text-white/70 text-xs group-hover:text-white transition-colors">Manage Records &rarr;</div>
+    <Link href={href} className={`block p-8 rounded-sm ${themes[color]} border transition-all h-full group hover:opacity-90 active:scale-[0.985]`}>
+      <h3 className="font-bold mb-10 text-[11px] tracked-caps opacity-80">{title}</h3>
+      <div className="text-6xl font-black mb-4 font-display leading-none">{value}</div>
+      <div className="mt-4 text-[10px] tracked-caps opacity-60 group-hover:opacity-100 transition-opacity flex items-center gap-2">
+        Manage Records 
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
+        </svg>
+      </div>
     </Link>
   );
 }
