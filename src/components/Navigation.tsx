@@ -107,7 +107,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
-      <aside className="w-64 border-r border-[#FFEFD2]/10 p-8 flex flex-col gap-10 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+      <aside className="w-56 border-r border-[#FFEFD2]/10 p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
             <img 
@@ -123,21 +123,21 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         <nav className="flex flex-col gap-1">
           {pathname.startsWith("/admin") ? (
             <>
-              <Link href="/admin" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-              <Link href="/admin/users" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
-              <Link href="/admin/smtp" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
-              <Link href="/admin/sync" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Auto Sync</Link>
-              <Link href="/admin/api-settings" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
-              <Link href="/admin/logs" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
+              <Link href="/admin" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              <Link href="/admin/users" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
+              <Link href="/admin/smtp" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
+              <Link href="/admin/sync" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Auto Sync</Link>
+              <Link href="/admin/api-settings" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
+              <Link href="/admin/logs" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
             </>
           ) : (
             <>
-              <Link href="/dashboard" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
               <div className="h-px bg-white/5 my-4 mx-4"></div>
-              <Link href="/live-data" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Live Data</Link>
-              <Link href="/data-mart" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
+              <Link href="/live-data" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Live Data</Link>
+              <Link href="/data-mart" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
               <div className="h-px bg-white/5 my-4 mx-4"></div>
-              <Link href="/log-import" className={`px-4 py-3 border-l-2 transition-all text-[13px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
+              <Link href="/log-import" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
             </>
           )}
         </nav>

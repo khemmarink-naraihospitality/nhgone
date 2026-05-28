@@ -407,7 +407,7 @@ export default function DashboardView({
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-12">
+    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-6 md:p-8">
       <div className="max-w-7xl mx-auto w-full">
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
@@ -428,25 +428,25 @@ export default function DashboardView({
           )}
         </PageHeader>
           
-        <div className="flex flex-wrap items-end gap-x-8 gap-y-6 mt-14 mb-10">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-6">
           <div className="flex flex-col gap-2 w-full md:w-80">
             <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
-            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-3 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none">
+            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none">
               {properties.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2 w-full md:w-56">
             <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Start Date</label>
-            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
           </div>
           <div className="flex flex-col gap-2 w-full md:w-56">
             <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">End Date</label>
-            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
           </div>
           <button onClick={fetchData} disabled={loading} className="btn-brand btn-primary h-[46px]">Sync Data</button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-6 mb-1 bg-[#fffaf0] p-6 border border-[#152A00]/14 border-b-0">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[#fffaf0] p-4 border border-[#152A00]/14 border-b-0">
           {showSectionTabs && (
             <div className="flex gap-8 border-b border-[#152A00]/10">
               {(["reservations", "members", "payments"] as Section[]).map((s) => (
@@ -462,7 +462,7 @@ export default function DashboardView({
           )}
           <div className="flex flex-1 items-center justify-end gap-6">
             <div className="relative max-w-xs w-full">
-              <input type="text" placeholder="Filter records..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-3 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+              <input type="text" placeholder="Filter records..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
             </div>
             <div className="flex gap-3">
               {showCheckboxes && selectedIds.length > 0 && (
@@ -483,14 +483,14 @@ export default function DashboardView({
         </div>
 
         {error ? (
-          <div className="p-8 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-10">{error}</div>
+          <div className="p-4 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         ) : loading ? (
-          <div className="flex flex-col items-center justify-center py-32 bg-[#fffaf0] border border-[#152A00]/14">
+          <div className="flex flex-col items-center justify-center py-16 bg-[#fffaf0] border border-[#152A00]/14">
             <div className="animate-spin h-8 w-8 border-2 border-[#152A00]/10 border-t-[#152A00]"></div>
             <p className="mt-4 text-[10px] tracked-caps opacity-40 font-bold">Retrieving portfolio data...</p>
           </div>
         ) : (
-          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)]">
+          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)]">
             <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-2 bg-[#152A00]/5">
               <div style={{ width: tableContainerRef.current?.scrollWidth || 'auto', height: '1px' }}></div>
             </div>
@@ -499,12 +499,12 @@ export default function DashboardView({
                 <thead>
                   <tr className="bg-[#152A00]/5">
                     {showCheckboxes && (
-                      <th className="p-5 border-b border-[#152A00]/10">
+                      <th className="p-3 border-b border-[#152A00]/10">
                         <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} className="accent-[#152A00]" />
                       </th>
                     )}
                     {allKeys.map((col) => (
-                      <th key={col} onClick={() => requestSort(col)} className="p-5 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
+                      <th key={col} onClick={() => requestSort(col)} className="p-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
                         <div className="flex items-center gap-2">
                           {col.replace(/([A-Z])/g, ' $1').trim()}
                           <span className="text-[8px] opacity-40">{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "↑" : "↓") : "•"}</span>
@@ -515,16 +515,16 @@ export default function DashboardView({
                 </thead>
                 <tbody className="divide-y divide-[#152A00]/5">
                   {filteredAndSortedData.length === 0 ? (
-                    <tr><td colSpan={100} className="p-20 text-center text-[#152A00]/30 font-display text-2xl italic">No entries found in this range.</td></tr>
+                    <tr><td colSpan={100} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No entries found in this range.</td></tr>
                   ) : (
                     paginatedData.map((item, idx) => (
                       <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-[#152A00]/5' : ''}`}>
                         {showCheckboxes && (
-                          <td className="p-5">
+                          <td className="p-3">
                             <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} className="accent-[#152A00]" />
                           </td>
                         )}
-                        {allKeys.map((key) => <td key={key} className="p-5 text-[13px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
+                        {allKeys.map((key) => <td key={key} className="p-3 text-[12px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
                       </tr>
                     ))
                   )}
@@ -532,7 +532,7 @@ export default function DashboardView({
               </table>
             </div>
             {filteredAndSortedData.length > 0 && (
-              <div className="p-8 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-6">
+              <div className="p-4 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-4">
                 <div className="flex items-center gap-6 text-[10px] font-bold tracked-caps text-[#152A00]/40">
                   <div className="flex items-center gap-2">
                     <span>PAGE SIZE</span>

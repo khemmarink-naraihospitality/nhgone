@@ -64,19 +64,19 @@ function LoginContent() {
         <div className="absolute bottom-0 left-0 w-1/4 h-1/4 border-r border-t border-[#152A00]" />
       </div>
       
-      <div className="relative w-full max-w-md bg-white border border-[#152A00]/10 rounded-sm shadow-[20px_20px_60px_rgba(21,42,0,0.05)] p-10 md:p-14 transition-all">
+      <div className="relative w-full max-w-sm bg-white border border-[#152A00]/10 rounded-sm shadow-[20px_20px_60px_rgba(21,42,0,0.05)] p-8 md:p-10 transition-all">
         <div className="flex flex-col items-center">
           {/* Logo */}
-          <div className="mb-10 p-2 border border-[#152A00]/10 rounded-sm bg-white">
+          <div className="mb-6 p-2 border border-[#152A00]/10 rounded-sm bg-white">
              <img 
                src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
                alt="NHG Logo" 
-               className="w-10 h-10 object-contain"
+               className="w-8 h-8 object-contain"
              />
           </div>
 
           <h1 className="text-4xl font-black font-display mb-2 tracking-tight text-[#152A00]">NHGOne</h1>
-          <p className="text-[#152A00] text-[10px] mb-12 text-center font-bold tracked-caps opacity-60">ADMINISTRATIVE INTERFACE</p>
+          <p className="text-[#152A00] text-[10px] mb-8 text-center font-bold tracked-caps opacity-60">ADMINISTRATIVE INTERFACE</p>
 
           {/* Google Button */}
           <button 
@@ -93,7 +93,7 @@ function LoginContent() {
           </button>
 
           {/* Divider */}
-          <div className="relative w-full flex items-center my-10">
+          <div className="relative w-full flex items-center my-8">
             <div className="flex-grow border-t border-[#152A00]/10"></div>
             <button 
               onClick={() => setShowEmailLogin(!showEmailLogin)}
@@ -139,7 +139,7 @@ function LoginContent() {
               <button 
                 type="submit"
                 disabled={loading}
-                className="w-full py-4 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
+                className="w-full py-3 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
               >
                 {loading ? "AUTHENTICATING..." : "AUTHORIZE ACCESS"}
               </button>
