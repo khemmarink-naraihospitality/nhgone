@@ -90,183 +90,161 @@ export default function LogImportPage() {
   const lastSync = logs.length > 0 ? formatDate(logs[0].created_at) : "No sync yet";
 
   return (
-    <div className="flex flex-col h-full">
-      <PageHeader title="Log Import" description="Auto Import activity logs and sync status" />
+    <div className="flex flex-col min-h-screen bg-[#FFEFD2] text-[#152A00]">
+      <div className="p-12 max-w-7xl mx-auto w-full flex flex-col gap-10">
+        <PageHeader title="Log Import" description="History of automated portfolio synchronization and data health." />
 
-      <div className="p-6 flex flex-col gap-6 overflow-y-auto flex-1">
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Last Sync</p>
-            <p className="text-sm font-bold text-white truncate">{lastSync}</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#152A00]/10 border border-[#152A00]/10">
+          <div className="bg-[#fffaf0] p-6">
+            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">LAST ACTIVITY</p>
+            <p className="text-sm font-bold truncate">{lastSync}</p>
           </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Total Success</p>
-            <p className="text-2xl font-black text-emerald-400">{totalSuccess}</p>
+          <div className="bg-[#fffaf0] p-6 text-center md:text-left">
+            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">SUCCESS RATE</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-3xl font-display">{totalSuccess}</span>
+              <span className="text-[10px] font-bold opacity-30">BATCHES</span>
+            </div>
           </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Total Errors</p>
-            <p className="text-2xl font-black text-red-400">{totalError}</p>
+          <div className="bg-[#fffaf0] p-6 text-center md:text-left">
+            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">TOTAL ERRORS</p>
+            <div className="flex items-baseline gap-2">
+              <span className={`text-3xl font-display ${totalError > 0 ? "text-[#A76400]" : "text-[#152A00]"}`}>{totalError}</span>
+              <span className="text-[10px] font-bold opacity-30">EVENTS</span>
+            </div>
           </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5">
-            <p className="text-[10px] uppercase font-bold text-slate-500 tracking-wider mb-2">Records Synced</p>
-            <p className="text-2xl font-black text-[#AAA024]">{totalRecords.toLocaleString()}</p>
-          </div>
-        </div>
-
-        {/* Filter Bar */}
-        <div className="flex items-center gap-4">
-          <div className="flex flex-col gap-1">
-            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Filter by Property</span>
-            <select 
-              value={filterProperty} 
-              onChange={(e) => setFilterProperty(e.target.value)} 
-              className="bg-white/5 border border-white/10 text-white rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/50"
-            >
-              <option value="All">All Properties</option>
-              {properties.map(p => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
-          <div className="ml-auto">
-            <button 
-              onClick={fetchLogs} 
-              disabled={loading}
-              className="bg-[#AAA024] text-white px-5 py-2 rounded-xl text-sm font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50 flex items-center gap-2"
-            >
-              {loading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-              ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-              )}
-              Refresh
-            </button>
+          <div className="bg-[#fffaf0] p-6 text-center md:text-right">
+            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">RECORDS SYNCED</p>
+            <p className="text-3xl font-display text-[#152A00]">{totalRecords.toLocaleString()}</p>
           </div>
         </div>
 
-        {/* Error display */}
+        {/* Filter & Actions */}
+        <div className="flex flex-wrap items-end justify-between gap-8 py-6 border-y border-[#152A00]/10">
+          <div className="flex flex-col gap-3 min-w-[300px]">
+            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase ml-1">Entity / Property Filter</label>
+            <div className="relative border-b-2 border-[#152A00]/20 focus-within:border-[#152A00] transition-colors">
+              <select 
+                value={filterProperty} 
+                onChange={(e) => setFilterProperty(e.target.value)} 
+                className="w-full bg-transparent py-3 px-1 text-[13px] font-medium text-[#152A00] outline-none appearance-none cursor-pointer"
+              >
+                <option value="All">View All Portfolio Activity</option>
+                {properties.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+          <button 
+            onClick={fetchLogs} 
+            disabled={loading}
+            className="btn-brand btn-primary h-[50px] px-10"
+          >
+            {loading ? "SYNCING..." : "REFRESH LOGS"}
+          </button>
+        </div>
+
+        {/* Error State */}
         {error && (
-          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-400 text-sm">
+          <div className="p-6 bg-white border border-[#A76400]/20 text-[#A76400] text-sm">
             {error}
           </div>
         )}
 
-        {/* Log Table */}
-        <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl overflow-hidden flex-1">
-          <div className="overflow-x-auto custom-scrollbar">
-            <table className="w-full text-sm">
+        {/* Log Table Container */}
+        <div className="bg-[#fffaf0] border border-[#152A00]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-white/[0.06]">
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Date & Time</th>
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Property</th>
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Table</th>
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Status</th>
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Records</th>
-                  <th className="text-left px-5 py-4 text-[10px] uppercase font-bold text-slate-500 tracking-wider">Message</th>
+                <tr className="bg-[#152A00]/5 border-b border-[#152A00]/10">
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">TIMESTAMP</th>
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">PROPERTY</th>
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">TABLE / DOMAIN</th>
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">STATUS</th>
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">RECORDS</th>
+                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">MESSAGE</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-[#152A00]/5">
                 {loading && logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-16 text-slate-500">
-                      <div className="flex flex-col items-center gap-3">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024]"></div>
-                        <p className="text-sm">Loading logs...</p>
-                      </div>
+                    <td colSpan={6} className="text-center py-32 italic text-[#152A00]/30 font-display text-xl">
+                      Retrieving audit history...
                     </td>
                   </tr>
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="text-center py-16 text-slate-500">
-                      <div className="flex flex-col items-center gap-3">
-                        <svg className="w-12 h-12 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                        </svg>
-                        <p className="text-sm font-medium">No sync logs found</p>
-                        <p className="text-xs text-slate-600">Auto Import has not run yet or no logs recorded.</p>
-                      </div>
+                    <td colSpan={6} className="text-center py-32 italic text-[#152A00]/30 font-display text-xl">
+                      No activity transitions recorded.
                     </td>
                   </tr>
                 ) : (
                   paginatedLogs.map((log, idx) => (
-                    <tr key={log.id || idx} className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors">
-                      <td className="px-5 py-3">
-                        <span className="text-[#AAA024] font-bold text-xs">{formatDate(log.created_at)}</span>
+                    <tr key={log.id || idx} className="hover:bg-[#152A00]/3 transition-colors">
+                      <td className="px-6 py-4">
+                        <span className="text-[13px] font-bold text-[#152A00]">{formatDate(log.created_at)}</span>
                       </td>
-                      <td className="px-5 py-3 text-slate-300 font-medium text-xs">{log.property || "-"}</td>
-                      <td className="px-5 py-3">
-                        <span className="text-slate-400 font-bold text-[10px] uppercase tracking-widest">{log.target_table || "All"}</span>
+                      <td className="px-6 py-4 text-[#152A00]/80 text-[13px]">{log.property || "Global"}</td>
+                      <td className="px-6 py-4">
+                        <span className="bg-[#152A00]/5 px-2 py-1 text-[10px] font-bold text-[#152A00] tracked-caps uppercase">{log.target_table || "General"}</span>
                       </td>
-                      <td className="px-5 py-3">
-                        <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider ${
-                          log.status === "success" 
-                            ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" 
-                            : "bg-red-500/10 text-red-400 border border-red-500/20"
+                      <td className="px-6 py-4">
+                        <span className={`text-[10px] font-bold tracked-caps uppercase ${
+                          log.status === "success" ? "text-emerald-700" : "text-[#A76400]"
                         }`}>
-                          {log.status}
+                          {log.status === "success" ? "✓ SUCCESS" : "× FAILED"}
                         </span>
                       </td>
-                      <td className="px-5 py-3">
-                        <span className="text-white font-bold">{log.records_synced || 0}</span>
-                      </td>
-                      <td className="px-5 py-3 text-slate-400 text-xs max-w-md truncate">{log.message || "-"}</td>
+                      <td className="px-6 py-4 text-[#152A00] font-bold text-[13px]">{log.records_synced || 0}</td>
+                      <td className="px-6 py-4 text-[#152A00]/60 text-[12px] max-w-md truncate">{log.message || "—"}</td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
           </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="p-10 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-6">
+              <div className="text-[10px] font-bold tracked-caps text-[#152A00]/40 uppercase">
+                SHOWING {Math.min(itemsPerPage, paginatedLogs.length)} OF {logs.length} TOTAL AUDIT LOGS — PAGE {currentPage} OF {totalPages}
+              </div>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-6 py-2 border border-[#152A00]/10 text-[10px] font-bold tracked-caps hover:bg-[#152A00]/5 disabled:opacity-20 transition-all uppercase"
+                >
+                  PREVIOUS
+                </button>
+                <div className="flex gap-1">
+                  {[...Array(totalPages)].map((_, i) => (
+                    <button
+                      key={i + 1}
+                      onClick={() => setCurrentPage(i + 1)}
+                      className={`w-9 h-9 text-[10px] font-bold transition-all ${
+                        currentPage === i + 1 
+                          ? "bg-[#152A00] text-[#FFEFD2]" 
+                          : "border border-[#152A00]/10 text-[#152A00] hover:bg-[#152A00]/5"
+                      }`}
+                    >
+                      {i + 1}
+                    </button>
+                  ))}
+                </div>
+                <button 
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-6 py-2 border border-[#152A00]/10 text-[10px] font-bold tracked-caps hover:bg-[#152A00]/5 disabled:opacity-20 transition-all uppercase"
+                >
+                  NEXT
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-
-        {/* Pagination Controls */}
-        {totalPages > 1 && (
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <button 
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-              disabled={currentPage === 1}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-20 hover:bg-white/10 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-            </button>
-            
-            {[...Array(totalPages)].map((_, i) => (
-              <button
-                key={i + 1}
-                onClick={() => setCurrentPage(i + 1)}
-                className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${
-                  currentPage === i + 1 
-                    ? "bg-[#AAA024] text-white" 
-                    : "bg-white/5 text-slate-500 hover:bg-white/10"
-                }`}
-              >
-                {i + 1}
-              </button>
-            ))}
-
-            <button 
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-              disabled={currentPage === totalPages}
-              className="p-2 rounded-lg bg-white/5 border border-white/10 text-white disabled:opacity-20 hover:bg-white/10 transition-colors"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-              </svg>
-            </button>
-          </div>
-        )}
       </div>
-
-      <style jsx>{`
-        .custom-scrollbar::-webkit-scrollbar { height: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255, 255, 255, 0.02); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(170, 160, 36, 0.3); border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(170, 160, 36, 0.5); }
-      `}</style>
     </div>
   );
 }

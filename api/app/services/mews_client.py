@@ -43,7 +43,7 @@ class MewsClient:
             response = await client.post(
                 f"{self.base_url}{endpoint}",
                 json=payload,
-                timeout=30.0
+                timeout=60.0
             )
             response.raise_for_status()
             return response.json()
