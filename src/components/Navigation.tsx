@@ -111,12 +111,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
             <img 
-              src="/brand/logo-icon-light.png" 
+              src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
               alt="NHG Logo" 
               className="w-8 h-8 object-contain"
-              onError={(e) => {
-                (e.target as HTMLImageElement).src = "https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png";
-              }}
             />
           </div>
           <div className="text-xl font-bold font-display text-white tracking-tight leading-none">

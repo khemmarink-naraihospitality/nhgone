@@ -69,12 +69,9 @@ function LoginContent() {
           {/* Logo */}
           <div className="mb-10 p-2 border border-[#152A00]/10 rounded-sm bg-white">
              <img 
-               src="/brand/logo-icon-light.png" 
+               src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
                alt="NHG Logo" 
                className="w-10 h-10 object-contain"
-               onError={(e) => {
-                 (e.target as HTMLImageElement).src = "https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png";
-               }}
              />
           </div>
 
