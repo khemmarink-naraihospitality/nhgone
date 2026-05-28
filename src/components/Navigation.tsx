@@ -107,7 +107,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
-      <aside className="w-56 border-r border-[#FFEFD2]/10 p-6 flex flex-col gap-8 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+      <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
             <img 

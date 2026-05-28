@@ -407,7 +407,7 @@ export default function DashboardView({
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-6 md:p-8">
+    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-4 md:p-6">
       <div className="max-w-7xl mx-auto w-full">
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
@@ -428,7 +428,7 @@ export default function DashboardView({
           )}
         </PageHeader>
           
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-6">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-4 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
             <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
             <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none">
@@ -499,12 +499,12 @@ export default function DashboardView({
                 <thead>
                   <tr className="bg-[#152A00]/5">
                     {showCheckboxes && (
-                      <th className="p-3 border-b border-[#152A00]/10">
+                      <th className="p-2 px-3 border-b border-[#152A00]/10">
                         <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} className="accent-[#152A00]" />
                       </th>
                     )}
                     {allKeys.map((col) => (
-                      <th key={col} onClick={() => requestSort(col)} className="p-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
+                      <th key={col} onClick={() => requestSort(col)} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
                         <div className="flex items-center gap-2">
                           {col.replace(/([A-Z])/g, ' $1').trim()}
                           <span className="text-[8px] opacity-40">{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "↑" : "↓") : "•"}</span>
@@ -520,11 +520,11 @@ export default function DashboardView({
                     paginatedData.map((item, idx) => (
                       <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-[#152A00]/5' : ''}`}>
                         {showCheckboxes && (
-                          <td className="p-3">
+                          <td className="p-2 px-3">
                             <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} className="accent-[#152A00]" />
                           </td>
                         )}
-                        {allKeys.map((key) => <td key={key} className="p-3 text-[12px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
+                        {allKeys.map((key) => <td key={key} className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
                       </tr>
                     ))
                   )}

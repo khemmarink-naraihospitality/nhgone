@@ -33,22 +33,22 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="flex-1 p-6 md:p-8 bg-[#FFEFD2] text-[#152A00] font-sans transition-colors duration-300">
+    <div className="flex-1 p-4 md:p-6 bg-[#FFEFD2] text-[#152A00] font-sans transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
-        <div className="mb-8">
+        <div className="mb-4">
           <PageHeader 
             title="Overview" 
             description="Operational synchronization status for Narai Hospitality Group."
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-1px bg-[#152A00]/10 border border-[#152A00]/10 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-1px bg-[#152A00]/10 border border-[#152A00]/10 mb-6">
           <StatCard title="Total Reservations" value={stats?.reservations ?? 0} label="Database" href="/data-mart" />
           <StatCard title="Registered Members" value={stats?.members ?? 0} label="Chinatown" href="/data-mart" />
           <StatCard title="Payments Processed" value={stats?.payments ?? 0} label="Synced" href="/data-mart" />
         </div>
 
-        <section className="bg-[#fffaf0] border border-[#152A00]/14 p-8 relative overflow-hidden">
+        <section className="bg-[#fffaf0] border border-[#152A00]/14 p-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
           
           <h2 className="text-[10px] font-bold text-[#152A00]/60 mb-6 tracked-caps">Operational Health</h2>
@@ -76,11 +76,11 @@ export default function Dashboard() {
 
 function StatCard({ title, value, label, href }: { title: string, value: number, label: string, href: string }) {
   return (
-    <Link href={href} className="bg-[#fffaf0] p-6 flex flex-col gap-1 transition-colors hover:bg-white group relative">
+    <Link href={href} className="bg-[#fffaf0] p-4 flex flex-col gap-0 transition-colors hover:bg-white group relative">
       <div className="text-[9px] font-bold text-[#152A00]/50 tracked-caps">{label}</div>
       <h3 className="font-display text-xl text-[#152A00] mb-2">{title}</h3>
-      <div className="text-5xl font-display text-[#152A00] leading-none tracking-tighter">{value}</div>
-      <div className="mt-4 text-[10px] font-bold tracked-caps text-[#152A00]/40 group-hover:text-[#152A00] transition-colors flex items-center gap-2">
+      <div className="text-4xl font-display text-[#152A00] leading-none tracking-tighter">{value}</div>
+      <div className="mt-3 text-[10px] font-bold tracked-caps text-[#152A00]/40 group-hover:text-[#152A00] transition-colors flex items-center gap-2">
         Manage <span className="text-[14px]">→</span>
       </div>
     </Link>
