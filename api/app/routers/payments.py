@@ -1,8 +1,7 @@
 from fastapi import APIRouter, HTTPException, Query
-from app.services.mews_client import mews_client
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
-from typing import List, Optional
+from typing import Optional
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -13,27 +12,11 @@ async def get_live_payments(
     property_name: Optional[str] = Query(None)
 ):
     try:
-        payload = {
-            "Limitation": {"Count": 100}
-        }
-        
-        if start_date and end_date:
-            payload["CreatedUtc"] = {
-                "StartUtc": start_date,
-                "EndUtc": end_date
-            }
-            
-        response = await mews_client.post("/api/connector/v1/payments/getAll", payload, property_name=property_name)
-        
-        transformed = []
-        for pay in response.get("Payments", []):
-            transformed.append({
-                "mews_id": pay["Id"],
-                "amount": pay.get("Amount", {}).get("Value"),
-                "currency": pay.get("Amount", {}).get("Currency"),
-                "status": pay.get("State"),
-                "processed_at": pay.get("CreatedUtc")
-            })
+        transformed = await sync_service.get_mapped_payments(
+            property_name=property_name,
+            start_date=start_date,
+            end_date=end_date
+        )
         return {"status": "success", "data": transformed}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

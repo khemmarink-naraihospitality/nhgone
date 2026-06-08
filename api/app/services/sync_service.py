@@ -312,14 +312,14 @@ class SyncService:
 
     async def get_mapped_payments(self, property_name: str, start_date: str = None, end_date: str = None):
         """
-        Fetch payments and map all columns.
+        Fetch payments (with Cursor pagination) and map all columns.
         """
         try:
             if not start_date or not end_date:
                 bkk_tz = ZoneInfo("Asia/Bangkok")
                 now_bkk = datetime.now(bkk_tz)
                 yesterday_bkk = now_bkk - timedelta(days=1)
-                
+
                 if not start_date:
                     start_dt = yesterday_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
                     start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -327,25 +327,40 @@ class SyncService:
                     end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
                     end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            payload = {
-                "Limitation": {"Count": 1000},
-                "CreatedUtc": {
-                    "StartUtc": start_date,
-                    "EndUtc": end_date
+            chunk_size = 1000
+            all_payments = []
+            current_cursor = None
+
+            while True:
+                payload = {
+                    "CreatedUtc": {
+                        "StartUtc": start_date,
+                        "EndUtc": end_date
+                    },
+                    "Limitation": {"Count": chunk_size}
                 }
-            }
-            
-            response = await mews_client.post("/api/connector/v1/payments/getAll", payload, property_name=property_name)
-            
+                if current_cursor:
+                    payload["Limitation"]["Cursor"] = current_cursor
+
+                response = await mews_client.post("/api/connector/v1/payments/getAll", payload, property_name=property_name)
+                chunk = response.get("Payments", [])
+                current_cursor = response.get("Cursor")
+                all_payments.extend(chunk)
+
+                if not current_cursor or not chunk:
+                    break
+
             mapped_payments = []
-            for pay in response.get("Payments", []):
+            for pay in all_payments:
+                amount = pay.get("Amount") or {}
                 mapped_payments.append({
                     "mews_id": pay["Id"],
-                    "Amount": pay.get("Amount", {}).get("Value"),
-                    "Currency": pay.get("Amount", {}).get("Currency"),
+                    # Payments don't carry a "Value" field — use GrossValue (falling back to NetValue)
+                    "Amount": amount.get("GrossValue", amount.get("NetValue")),
+                    "Currency": amount.get("Currency"),
                     "Status": pay.get("State"),
                     "Processed At": pay.get("CreatedUtc"),
-                    "Identifier": pay.get("Id")
+                    "Identifier": pay.get("Identifier") or pay.get("Id")
                 })
             return mapped_payments
         except Exception as e:
