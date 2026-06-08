@@ -288,7 +288,7 @@ export default function DashboardView({
     if (dataSource === "saved") {
       result = result.filter(item => {
         // Prioritize data date over system timestamps
-        const itemDateStr = item.report_date || item["Import Date"] || item.synced_at || item.created_at || item.processed_at;
+        const itemDateStr = item.report_date || item["Import Date"] || item.processed_at || item.synced_at || item.created_at;
         if (!itemDateStr) return true;
         
         const rawDate = new Date(itemDateStr);
