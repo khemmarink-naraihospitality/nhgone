@@ -166,32 +166,53 @@ export default function DashboardView({
         queryParams.append("end_date", apiEnd);
       }
       
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000);
+      // /reservations/live paginates via Cursor (chunk_limit defaults to 1 server-side
+      // to avoid Vercel timeouts on the heavier reservation+relations fetch); follow the
+      // returned cursor here so the table isn't silently capped at one chunk (~500 rows).
+      const isPaginatedLive = dataSource === "live" && activeSection === "reservations";
 
       try {
-        const response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        
-        if (!response.ok) {
-          const contentType = response.headers.get("content-type");
-          if (contentType && contentType.includes("application/json")) {
-            const errResult = await response.json();
-            throw new Error(errResult.message || `Server error: ${response.status}`);
-          }
-          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
-        }
+        let accumulated: any[] = [];
+        let cursor: string | null = null;
 
-        const result = await response.json();
-        if (result.status === "success") {
-          setData(result.data);
-        } else {
-          setError(result.message || "Failed to fetch data");
-        }
+        do {
+          if (cursor) {
+            queryParams.set("cursor", cursor);
+          } else {
+            queryParams.delete("cursor");
+          }
+
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 60000);
+          let response: Response;
+          try {
+            response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
+              signal: controller.signal
+            });
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (!response.ok) {
+            const contentType = response.headers.get("content-type");
+            if (contentType && contentType.includes("application/json")) {
+              const errResult = await response.json();
+              throw new Error(errResult.message || `Server error: ${response.status}`);
+            }
+            throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          if (result.status !== "success") {
+            setError(result.message || "Failed to fetch data");
+            return;
+          }
+
+          accumulated = accumulated.concat(result.data || []);
+          setData([...accumulated]);
+          cursor = isPaginatedLive ? (result.cursor || null) : null;
+        } while (cursor);
       } catch (err: any) {
-        clearTimeout(timeoutId);
         setError(err.name === 'AbortError' ? "Request timeout" : err.message);
       }
     } finally {
