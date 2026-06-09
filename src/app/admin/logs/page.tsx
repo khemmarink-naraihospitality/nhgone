@@ -9,6 +9,7 @@ interface SyncLog {
   id: string;
   created_at: string;
   property: string;
+  target_table: string;
   status: string;
   records_synced: number;
   message: string;
@@ -78,6 +79,7 @@ export default function ActivityLogPage() {
                 <tr>
                   <th className="px-6 py-4">Timestamp</th>
                   <th className="px-6 py-4">Property</th>
+                  <th className="px-6 py-4">Data Set</th>
                   <th className="px-6 py-4">Status</th>
                   <th className="px-6 py-4 text-right">Records Imported</th>
                   <th className="px-6 py-4">Message</th>
@@ -86,7 +88,7 @@ export default function ActivityLogPage() {
               <tbody className="divide-y divide-slate-100">
                 {loading && logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400">
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                       <svg className="w-8 h-8 animate-spin mx-auto mb-3" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
@@ -96,7 +98,7 @@ export default function ActivityLogPage() {
                   </tr>
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
+                    <td colSpan={6} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
                       No activity logs recorded yet. Automated sync runs daily at 02:00 AM.
                     </td>
                   </tr>
@@ -111,6 +113,19 @@ export default function ActivityLogPage() {
                           <span className="w-2 h-2 rounded-full bg-blue-400"></span>
                           {log.property}
                         </div>
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        {(() => {
+                          const t = log.target_table || "All";
+                          const map: Record<string, { label: string; cls: string }> = {
+                            "Reservations": { label: "RESERVATIONS", cls: "bg-indigo-50 text-indigo-600 border-indigo-100" },
+                            "Customers":    { label: "CUSTOMERS",    cls: "bg-violet-50 text-violet-600 border-violet-100" },
+                            "Payments":     { label: "PAYMENTS",     cls: "bg-amber-50 text-amber-600 border-amber-100" },
+                            "All":          { label: "ALL DATA",     cls: "bg-slate-100 text-slate-600 border-slate-200" },
+                          };
+                          const { label, cls } = map[t] ?? { label: t.toUpperCase(), cls: "bg-slate-100 text-slate-500 border-slate-200" };
+                          return <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${cls}`}>{label}</span>;
+                        })()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         {log.status === "success" ? (
