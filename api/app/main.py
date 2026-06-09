@@ -193,21 +193,23 @@ async def daily_auto_sync(force_all: bool = False):
                     "status": "success",
                     "records_synced": total_synced,
                     "target_table": "All",
-                    "message": f"Synced: {counts['res']} Res, {counts['mem']} Mem, {counts['pay']} Pay"
+                    "sync_type": "auto",
+                    "message": f"Auto Sync: {counts['res']} Res, {counts['mem']} Mem, {counts['pay']} Pay"
                 }).execute()
-                    
+
             except Exception as prop_err:
                 err_msg = str(prop_err)
                 if len(err_msg) > 1000:
                     err_msg = err_msg[:1000] + "..."
-                
+
                 sync_service.supabase.table("sync_logs").insert({
                     "property": prop,
                     "property_id": prop_id,
                     "status": "error",
                     "records_synced": 0,
                     "target_table": "All",
-                    "message": f"Step Failed. Error: {err_msg}"
+                    "sync_type": "auto",
+                    "message": f"Auto Sync Failed: {err_msg}"
                 }).execute()
                 print(f"Error syncing {prop}: {str(prop_err)}")
             finally:
