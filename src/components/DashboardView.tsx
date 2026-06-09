@@ -39,7 +39,9 @@ const SECTION_COLUMNS: Record<Section, string[]> = {
     "Active", "Classifications", "Options", "Identifier"
   ],
   payments: [
-    "mews_id", "Amount", "Currency", "Status", "Processed At", "Identifier"
+    "mews_id", "Amount", "Currency", "Original Amount", "Status", "Type", "Kind",
+    "Number", "Processed At", "Charged At", "Identifier", "Receipt Identifier",
+    "Bill Id", "Account Id", "Notes"
   ]
 };
 

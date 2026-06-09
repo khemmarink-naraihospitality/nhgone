@@ -353,14 +353,23 @@ class SyncService:
             mapped_payments = []
             for pay in all_payments:
                 amount = pay.get("Amount") or {}
+                orig = pay.get("OriginalAmount") or {}
                 mapped_payments.append({
                     "mews_id": pay["Id"],
-                    # Payments don't carry a "Value" field — use GrossValue (falling back to NetValue)
                     "Amount": amount.get("GrossValue", amount.get("NetValue")),
                     "Currency": amount.get("Currency"),
+                    "Original Amount": orig.get("GrossValue", orig.get("NetValue")),
                     "Status": pay.get("State"),
+                    "Type": pay.get("Type"),
+                    "Kind": pay.get("Kind"),
+                    "Number": pay.get("Number"),
                     "Processed At": pay.get("CreatedUtc"),
-                    "Identifier": pay.get("Identifier") or pay.get("Id")
+                    "Charged At": pay.get("ChargedUtc"),
+                    "Identifier": pay.get("Identifier") or pay.get("Id"),
+                    "Receipt Identifier": pay.get("ReceiptIdentifier"),
+                    "Bill Id": pay.get("BillId"),
+                    "Account Id": pay.get("AccountId"),
+                    "Notes": pay.get("Notes"),
                 })
             return mapped_payments
         except Exception as e:
