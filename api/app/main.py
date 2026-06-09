@@ -111,9 +111,21 @@ async def daily_auto_sync(force_all: bool = False):
                 print(f"Starting scheduled sync for property: {prop}")
                 from datetime import timezone
                 now_iso = now.astimezone(timezone.utc).isoformat()
-                
-                counts = {"res": 0, "mem": 0, "pay": 0}
-                
+
+                def _log(target, status, count, msg):
+                    try:
+                        sync_service.supabase.table("sync_logs").insert({
+                            "property": prop,
+                            "property_id": prop_id,
+                            "target_table": target,
+                            "sync_type": "auto",
+                            "status": status,
+                            "records_synced": count,
+                            "message": msg,
+                        }).execute()
+                    except Exception as log_err:
+                        print(f"Log insert failed ({target}): {log_err}")
+
                 # --- A. Sync Reservations ---
                 try:
                     res_result = await sync_service.get_mapped_reservations(property_name=prop)
@@ -128,15 +140,15 @@ async def daily_auto_sync(force_all: bool = False):
                                 "synced_at": now_iso,
                                 "report_date": report_date
                             })
-                    
                     if res_batch:
                         await chunked_upsert("reservations_sync", res_batch, on_conflict="mews_id")
-                        counts["res"] = len(res_batch)
-                        print(f"Successfully synced {len(res_batch)} reservations for {prop}")
+                    _log("Reservations", "success", len(res_batch), f"Auto Sync: {len(res_batch)} records")
+                    print(f"Reservations synced: {len(res_batch)} for {prop}")
                 except Exception as e:
+                    err = str(e)[:1000]
+                    _log("Reservations", "error", 0, f"Auto Sync Failed: {err}")
                     print(f"Error syncing reservations for {prop}: {e}")
-                    raise e
-                
+
                 # --- B. Sync Members ---
                 try:
                     mem_result = await sync_service.get_mapped_members(property_name=prop)
@@ -151,14 +163,14 @@ async def daily_auto_sync(force_all: bool = False):
                                 "synced_at": now_iso,
                                 "report_date": report_date
                             })
-                    
                     if mem_batch:
                         await chunked_upsert("members_sync", mem_batch, on_conflict="mews_id")
-                        counts["mem"] = len(mem_batch)
-                        print(f"Successfully synced {len(mem_batch)} members for {prop}")
+                    _log("Customers", "success", len(mem_batch), f"Auto Sync: {len(mem_batch)} records")
+                    print(f"Members synced: {len(mem_batch)} for {prop}")
                 except Exception as e:
+                    err = str(e)[:1000]
+                    _log("Customers", "error", 0, f"Auto Sync Failed: {err}")
                     print(f"Error syncing members for {prop}: {e}")
-                    raise e
 
                 # --- C. Sync Payments ---
                 try:
@@ -176,42 +188,17 @@ async def daily_auto_sync(force_all: bool = False):
                                 "processed_at": p.get("Processed At"),
                                 "created_at": now_iso
                             })
-                    
                     if pay_batch:
                         await chunked_upsert("payments", pay_batch, on_conflict="mews_id")
-                        counts["pay"] = len(pay_batch)
-                        print(f"Successfully synced {len(pay_batch)} payments for {prop}")
+                    _log("Payments", "success", len(pay_batch), f"Auto Sync: {len(pay_batch)} records")
+                    print(f"Payments synced: {len(pay_batch)} for {prop}")
                 except Exception as e:
+                    err = str(e)[:1000]
+                    _log("Payments", "error", 0, f"Auto Sync Failed: {err}")
                     print(f"Error syncing payments for {prop}: {e}")
-                    raise e
-
-                # Log overall success
-                total_synced = counts["res"] + counts["mem"] + counts["pay"]
-                sync_service.supabase.table("sync_logs").insert({
-                    "property": prop,
-                    "property_id": prop_id,
-                    "status": "success",
-                    "records_synced": total_synced,
-                    "target_table": "All",
-                    "sync_type": "auto",
-                    "message": f"Auto Sync: {counts['res']} Res, {counts['mem']} Mem, {counts['pay']} Pay"
-                }).execute()
 
             except Exception as prop_err:
-                err_msg = str(prop_err)
-                if len(err_msg) > 1000:
-                    err_msg = err_msg[:1000] + "..."
-
-                sync_service.supabase.table("sync_logs").insert({
-                    "property": prop,
-                    "property_id": prop_id,
-                    "status": "error",
-                    "records_synced": 0,
-                    "target_table": "All",
-                    "sync_type": "auto",
-                    "message": f"Auto Sync Failed: {err_msg}"
-                }).execute()
-                print(f"Error syncing {prop}: {str(prop_err)}")
+                print(f"Unexpected error during sync setup for {prop}: {str(prop_err)}")
             finally:
                 # --- Release Lock ---
                 try:
