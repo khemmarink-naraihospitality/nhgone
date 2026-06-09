@@ -227,7 +227,9 @@ export default function DashboardView({
     setSyncing(true);
     try {
       const apiUrl = "/api";
-      const endpoint = activeSection === "reservations" ? "/reservations/sync-manual" : "/members/sync-manual";
+      const endpoint = activeSection === "reservations" ? "/reservations/sync-manual"
+                     : activeSection === "members"       ? "/members/sync-manual"
+                     :                                    "/payments/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -495,7 +497,7 @@ export default function DashboardView({
               )}
               {isSuperAdmin && dataSource === "live" && (
                 <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-brand btn-secondary py-2 text-[10px]">
-                  Import To Managed
+                  Import To Data Mart
                 </button>
               )}
               <button onClick={exportToExcel} disabled={data.length === 0} className="btn-brand btn-primary py-2 text-[10px]">

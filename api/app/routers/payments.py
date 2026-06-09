@@ -1,7 +1,8 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Body, HTTPException, Query
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from typing import Optional
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -31,6 +32,69 @@ async def sync_payment(data: dict):
         return {"status": "success", "data": res.data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/sync-manual")
+async def sync_manual_payments(payload: dict = Body(...)):
+    try:
+        property_name = payload.get("property")
+        payments_data = payload.get("data", [])
+        start_date = payload.get("start_date")
+
+        property_id = None
+        try:
+            prop_res = sync_service.supabase.table("property_api_settings").select("id").ilike("property_name", f"%{property_name}%").execute()
+            if prop_res.data:
+                property_id = prop_res.data[0].get("id")
+        except Exception as e:
+            print(f"Logging fetch error (payments): {str(e)}")
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        report_date = start_date.split("T")[0] if start_date else None
+
+        batch = []
+        for p in payments_data:
+            mews_id = p.get("mews_id")
+            if not mews_id:
+                continue
+            batch.append({
+                "mews_id": mews_id,
+                "property": property_name,
+                "amount": p.get("Amount"),
+                "currency": p.get("Currency"),
+                "status": p.get("Status"),
+                "processed_at": p.get("Processed At"),
+                "created_at": now_iso,
+            })
+
+        inserted = 0
+        if batch:
+            chunk_size = 300
+            for i in range(0, len(batch), chunk_size):
+                sync_service.supabase.table("payments").upsert(
+                    batch[i:i + chunk_size], on_conflict="mews_id"
+                ).execute()
+            inserted = len(batch)
+
+            try:
+                log_payload = {
+                    "property": property_name,
+                    "status": "success",
+                    "message": f"Manual Import for {report_date or 'Selection'}",
+                    "records_synced": inserted,
+                    "target_table": "Payments",
+                    "sync_type": "manual",
+                }
+                if property_id:
+                    log_payload["property_id"] = property_id
+                sync_service.supabase.table("sync_logs").insert(log_payload).execute()
+            except Exception as e:
+                print(f"Logging insert error (payments): {str(e)}")
+
+        return {"status": "success", "inserted": inserted}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Manual payment sync failed: {str(e)}")
 
 @router.get("/managed")
 async def get_managed_payments(
