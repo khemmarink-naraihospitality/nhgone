@@ -178,7 +178,36 @@ export default function PrintBillPage() {
   }, [billId, property]);
 
   if (loading) return <div className="p-10 text-center text-sm">Loading invoice...</div>;
-  if (error) return <div className="p-10 text-center text-red-600 text-sm">{error}</div>;
+
+  if (error) {
+    const isPermissionError = error.includes("does not have permission enabled for this resource");
+    if (isPermissionError) {
+      return (
+        <div className="max-w-lg mx-auto mt-16 p-6 border border-amber-300 bg-amber-50 rounded-sm">
+          <div className="font-bold text-amber-800 mb-2">
+            ไม่สามารถพิมพ์บิลนี้ได้ / Cannot print this bill
+          </div>
+          <p className="text-sm text-amber-900 mb-3 leading-relaxed">
+            MEWS ยังไม่ได้ให้สิทธิ์ "Order Items" กับระบบสำหรับพร็อพเพอร์ตี้นี้
+            จึงไม่สามารถดึงรายการ/ยอดเงิน/VAT ของบิลมาแสดงได้
+            <br />
+            MEWS has not granted this property&apos;s Connector API integration access to
+            Order Items (line-item) data, so the invoice&apos;s items, VAT, and total cannot
+            be retrieved.
+          </p>
+          <p className="text-sm text-amber-900 mb-4 leading-relaxed">
+            กรุณาติดต่อผู้ดูแลระบบ MEWS เพื่อเปิดสิทธิ์ "Order Items" ให้กับพร็อพเพอร์ตี้นี้ แล้วลองใหม่อีกครั้ง
+            <br />
+            Please contact your MEWS account admin to enable the &quot;Order Items&quot; scope
+            for this property&apos;s integration, then try again.
+          </p>
+          <p className="text-xs text-amber-700/70 leading-relaxed break-words">{error}</p>
+        </div>
+      );
+    }
+    return <div className="p-10 text-center text-red-600 text-sm">{error}</div>;
+  }
+
   if (!invoice) return null;
 
   return (

@@ -17,6 +17,8 @@ async def get_live_bills(
             end_date=end_date
         )
         return {"status": "success", "data": data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -25,5 +27,7 @@ async def get_bill_invoice(bill_id: str, property_name: Optional[str] = Query(No
     try:
         data = await sync_service.get_bill_invoice(property_name=property_name, bill_id=bill_id)
         return {"status": "success", "data": data}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
