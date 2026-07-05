@@ -540,9 +540,6 @@ export default function DashboardView({
                         </div>
                       </th>
                     ))}
-                    {activeSection === "bills" && (
-                      <th className="p-2 px-3 border-b border-[#152A00]/10"></th>
-                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#152A00]/5">
@@ -557,16 +554,6 @@ export default function DashboardView({
                           </td>
                         )}
                         {allKeys.map((key) => <td key={key} className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
-                        {activeSection === "bills" && (
-                          <td className="p-2 px-3">
-                            <button
-                              onClick={() => window.open(`/print-bill/${item.mews_id}?property=${encodeURIComponent(selectedProperty)}`, '_blank')}
-                              className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
-                            >
-                              Print
-                            </button>
-                          </td>
-                        )}
                       </tr>
                     ))
                   )}
