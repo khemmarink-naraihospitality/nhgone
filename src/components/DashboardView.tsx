@@ -6,7 +6,7 @@ import PageHeader from "./PageHeader";
 import * as XLSX from 'xlsx';
 import ImportChart from "./ImportChart";
 
-type Section = "reservations" | "members" | "payments";
+type Section = "reservations" | "members" | "payments" | "bills";
 type DataSource = "live" | "saved";
 
 interface DashboardViewProps {
@@ -42,6 +42,11 @@ const SECTION_COLUMNS: Record<Section, string[]> = {
     "mews_id", "Amount", "Currency", "Original Amount", "Status", "Type", "Kind",
     "Number", "Processed At", "Charged At", "Notes", "Identifier", "Receipt Identifier",
     "Bill Id", "Account Id"
+  ],
+  bills: [
+    "mews_id", "Name", "Description", "Prepayment", "Trigger Type", "Aggregation Type",
+    "Assignment Target", "Consumption Period", "Processing Offset",
+    "Companies", "Assignments", "Created At", "Updated At"
   ]
 };
 
@@ -143,8 +148,9 @@ export default function DashboardView({
       let queryParams = new URLSearchParams();
       
       if (dataSource === "live") {
-        endpoint = activeSection === "reservations" ? "/reservations/live" : 
-                          activeSection === "members" ? "/members/live" : "/payments/live";
+        endpoint = activeSection === "reservations" ? "/reservations/live" :
+                          activeSection === "members" ? "/members/live" :
+                          activeSection === "bills" ? "/bills/live" : "/payments/live";
         queryParams.append("property_name", selectedProperty);
         queryParams.append("start_date", startDate ? `${startDate}:00Z` : "");
         queryParams.append("end_date", endDate ? `${endDate}:00Z` : "");
@@ -474,7 +480,7 @@ export default function DashboardView({
         <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[#fffaf0] p-4 border border-[#152A00]/14 border-b-0">
           {showSectionTabs && (
             <div className="flex gap-8 border-b border-[#152A00]/10">
-              {(["reservations", "members", "payments"] as Section[]).map((s) => (
+              {(["reservations", "members", "payments", "bills"] as Section[]).map((s) => (
                 <button 
                   key={s} 
                   onClick={() => setActiveSection(s)} 
@@ -495,7 +501,7 @@ export default function DashboardView({
                   Delete ({selectedIds.length})
                 </button>
               )}
-              {isSuperAdmin && dataSource === "live" && (
+              {isSuperAdmin && dataSource === "live" && activeSection !== "bills" && (
                 <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-brand btn-secondary py-2 text-[10px]">
                   Import To Data Mart
                 </button>

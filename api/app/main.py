@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
-from app.routers import reservations, members, payments, admin
+from app.routers import reservations, members, payments, admin, bills
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -27,6 +27,7 @@ app.include_router(reservations.router)
 app.include_router(members.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
+app.include_router(bills.router)
 
 async def daily_auto_sync(force_all: bool = False):
     """

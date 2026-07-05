@@ -376,4 +376,67 @@ class SyncService:
             logger.error(f"Error mapping payments for {property_name}: {str(e)}")
             raise e
 
+    async def get_mapped_billing_automations(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Fetch billing automations with Cursor pagination.
+        Note: /billingAutomations/getAll has no date-range filter in the request body;
+        we post-filter by CreatedUtc client-side after fetching all records.
+        """
+        try:
+            chunk_size = 1000
+            all_automations = []
+            current_cursor = None
+
+            while True:
+                payload: dict = {"Limitation": {"Count": chunk_size}}
+                if current_cursor:
+                    payload["Limitation"]["Cursor"] = current_cursor
+
+                response = await mews_client.post(
+                    "/api/connector/v1/billingAutomations/getAll",
+                    payload,
+                    property_name=property_name
+                )
+                chunk = response.get("BillingAutomations", [])
+                current_cursor = response.get("Cursor")
+                all_automations.extend(chunk)
+
+                if not current_cursor or not chunk:
+                    break
+
+            if start_date or end_date:
+                filtered = []
+                for a in all_automations:
+                    created = a.get("CreatedUtc") or ""
+                    if start_date and created < start_date:
+                        continue
+                    if end_date and created > end_date:
+                        continue
+                    filtered.append(a)
+                all_automations = filtered
+
+            mapped = []
+            for a in all_automations:
+                assignments = a.get("Assignments") or []
+                companies = a.get("CompaniesWithRelations") or []
+                mapped.append({
+                    "mews_id": a["Id"],
+                    "Name": a.get("Name"),
+                    "Description": a.get("Description"),
+                    "Prepayment": a.get("Prepayment"),
+                    "Trigger Type": a.get("TriggerType"),
+                    "Aggregation Type": a.get("BillAggregationType"),
+                    "Assignment Target": a.get("AssignmentTargetType"),
+                    "Consumption Period": a.get("OrderItemConsumptionPeriod"),
+                    "Processing Offset": a.get("ProcessingStartOffset"),
+                    "Companies": len(companies),
+                    "Assignments": len(assignments),
+                    "Created At": a.get("CreatedUtc"),
+                    "Updated At": a.get("UpdatedUtc"),
+                })
+            return mapped
+        except Exception as e:
+            logger.error(f"Error mapping billing automations for {property_name}: {str(e)}")
+            raise e
+
 sync_service = SyncService()
