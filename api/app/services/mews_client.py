@@ -45,6 +45,16 @@ class MewsClient:
                 json=payload,
                 timeout=60.0
             )
+            if response.status_code in (401, 403):
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        f"MEWS rejected the request to {endpoint} with {response.status_code} "
+                        f"{response.reason_phrase}. The Connector API access token for property "
+                        f"'{property_name}' does not have permission enabled for this resource. "
+                        f"Check/enable it in the MEWS Marketplace or operator API integration settings."
+                    )
+                )
             response.raise_for_status()
             return response.json()
 
