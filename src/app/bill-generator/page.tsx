@@ -175,7 +175,7 @@ export default function BillGeneratorPage() {
                           onClick={() => window.open(`/print-bill/${b.mews_id}?property=${encodeURIComponent(selectedProperty)}`, "_blank")}
                           className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
                         >
-                          Generate Bill
+                          Print
                         </button>
                       </td>
                     </tr>
