@@ -132,3 +132,9 @@ h1, h2, h3, .h-display {
   background: var(--lemongrass);
   color: white;
 }
+
+@media print {
+  aside { display: none !important; }
+  main { overflow: visible !important; height: auto !important; }
+  .no-print { display: none !important; }
+}

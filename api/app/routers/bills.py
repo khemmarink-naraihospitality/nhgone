@@ -11,11 +11,19 @@ async def get_live_bills(
     property_name: Optional[str] = Query(None)
 ):
     try:
-        data = await sync_service.get_mapped_billing_automations(
+        data = await sync_service.get_mapped_bills(
             property_name=property_name,
             start_date=start_date,
             end_date=end_date
         )
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/{bill_id}/invoice")
+async def get_bill_invoice(bill_id: str, property_name: Optional[str] = Query(None)):
+    try:
+        data = await sync_service.get_bill_invoice(property_name=property_name, bill_id=bill_id)
         return {"status": "success", "data": data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

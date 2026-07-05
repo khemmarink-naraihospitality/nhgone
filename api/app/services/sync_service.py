@@ -8,6 +8,66 @@ from app.services.mews_client import mews_client
 
 logger = logging.getLogger(__name__)
 
+_THAI_NUM = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"]
+_THAI_UNIT = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"]
+
+
+def _read_thai_digits(num_str: str) -> str:
+    num_str = num_str.lstrip("0")
+    if not num_str:
+        return ""
+    n = len(num_str)
+    result = ""
+    for i, ch in enumerate(num_str):
+        digit = int(ch)
+        pos = n - i - 1
+        if digit == 0:
+            continue
+        if pos == 0 and digit == 1 and n > 1:
+            result += "เอ็ด"
+        elif pos == 1 and digit == 2:
+            result += "ยี่สิบ"
+        elif pos == 1 and digit == 1:
+            result += "สิบ"
+        else:
+            result += _THAI_NUM[digit] + _THAI_UNIT[pos]
+    return result
+
+
+def bahttext(amount) -> str:
+    """Convert a numeric amount to Thai baht text, e.g. 1250.50 -> 'หนึ่งพันสองร้อยห้าสิบบาทห้าสิบสตางค์'."""
+    try:
+        amount = float(amount or 0)
+    except (TypeError, ValueError):
+        amount = 0.0
+    amount = round(abs(amount) + 1e-9, 2)
+    baht = int(amount)
+    satang = int(round((amount - baht) * 100))
+
+    if baht == 0:
+        baht_words = "ศูนย์"
+    else:
+        groups = []
+        s = str(baht)
+        while s:
+            groups.insert(0, s[-6:])
+            s = s[:-6]
+        pieces = []
+        for idx, g in enumerate(groups):
+            words = _read_thai_digits(g)
+            if words:
+                scale_ups = len(groups) - idx - 1
+                pieces.append(words + "ล้าน" * scale_ups)
+        baht_words = "".join(pieces)
+
+    result = baht_words + "บาท"
+    if satang == 0:
+        result += "ถ้วน"
+    else:
+        result += _read_thai_digits(str(satang)) + "สตางค์"
+    return result
+
+
 class SyncService:
     def __init__(self):
         # We need the SERVICE_ROLE_KEY to bypass RLS for sync operations
@@ -376,67 +436,220 @@ class SyncService:
             logger.error(f"Error mapping payments for {property_name}: {str(e)}")
             raise e
 
-    async def get_mapped_billing_automations(self, property_name: str, start_date: str = None, end_date: str = None):
+    @staticmethod
+    def _split_date_windows(start_date: str, end_date: str, max_days: int = 89):
         """
-        Fetch billing automations with Cursor pagination.
-        Note: /billingAutomations/getAll has no date-range filter in the request body;
-        we post-filter by CreatedUtc client-side after fetching all records.
+        MEWS date-range filters (IssuedUtc, CreatedUtc, etc.) are capped at ~3 months per call.
+        Split a wider range into consecutive windows so callers can loop over them.
+        """
+        start_dt = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+        windows = []
+        cur = start_dt
+        while cur < end_dt:
+            window_end = min(cur + timedelta(days=max_days), end_dt)
+            windows.append((
+                cur.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                window_end.strftime("%Y-%m-%dT%H:%M:%SZ"),
+            ))
+            cur = window_end
+        return windows or [(start_date, end_date)]
+
+    @staticmethod
+    def _extract_owner_name(owner_data: dict) -> str:
+        wrapper = owner_data or {}
+        owner = wrapper.get("Value") or {}
+        if wrapper.get("Discriminator") == "BillCompanyData":
+            return owner.get("Name") or ""
+        return " ".join(filter(None, [
+            owner.get("TitlePrefix"), owner.get("FirstName"),
+            owner.get("SecondLastName"), owner.get("LastName")
+        ]))
+
+    async def get_mapped_bills(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Fetch real Bill (invoice/receipt) headers with Cursor pagination, chunked into
+        <=3-month IssuedUtc windows. Does NOT include line items (see get_bill_invoice
+        for the full itemized detail used when printing a single bill).
         """
         try:
-            chunk_size = 1000
-            all_automations = []
-            current_cursor = None
+            if not start_date or not end_date:
+                bkk_tz = ZoneInfo("Asia/Bangkok")
+                now_bkk = datetime.now(bkk_tz)
+                yesterday_bkk = now_bkk - timedelta(days=1)
+                if not start_date:
+                    start_dt = yesterday_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not end_date:
+                    end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-            while True:
-                payload: dict = {"Limitation": {"Count": chunk_size}}
-                if current_cursor:
-                    payload["Limitation"]["Cursor"] = current_cursor
+            all_bills = []
+            for window_start, window_end in self._split_date_windows(start_date, end_date):
+                current_cursor = None
+                while True:
+                    payload = {
+                        "IssuedUtc": {"StartUtc": window_start, "EndUtc": window_end},
+                        "Limitation": {"Count": 1000}
+                    }
+                    if current_cursor:
+                        payload["Limitation"]["Cursor"] = current_cursor
 
-                response = await mews_client.post(
-                    "/api/connector/v1/billingAutomations/getAll",
-                    payload,
-                    property_name=property_name
-                )
-                chunk = response.get("BillingAutomations", [])
-                current_cursor = response.get("Cursor")
-                all_automations.extend(chunk)
+                    response = await mews_client.post("/api/connector/v1/bills/getAll", payload, property_name=property_name)
+                    chunk = response.get("Bills", [])
+                    current_cursor = response.get("Cursor")
+                    all_bills.extend(chunk)
 
-                if not current_cursor or not chunk:
-                    break
-
-            if start_date or end_date:
-                filtered = []
-                for a in all_automations:
-                    created = a.get("CreatedUtc") or ""
-                    if start_date and created < start_date:
-                        continue
-                    if end_date and created > end_date:
-                        continue
-                    filtered.append(a)
-                all_automations = filtered
+                    if not current_cursor or not chunk:
+                        break
 
             mapped = []
-            for a in all_automations:
-                assignments = a.get("Assignments") or []
-                companies = a.get("CompaniesWithRelations") or []
+            for b in all_bills:
                 mapped.append({
-                    "mews_id": a["Id"],
-                    "Name": a.get("Name"),
-                    "Description": a.get("Description"),
-                    "Prepayment": a.get("Prepayment"),
-                    "Trigger Type": a.get("TriggerType"),
-                    "Aggregation Type": a.get("BillAggregationType"),
-                    "Assignment Target": a.get("AssignmentTargetType"),
-                    "Consumption Period": a.get("OrderItemConsumptionPeriod"),
-                    "Processing Offset": a.get("ProcessingStartOffset"),
-                    "Companies": len(companies),
-                    "Assignments": len(assignments),
-                    "Created At": a.get("CreatedUtc"),
-                    "Updated At": a.get("UpdatedUtc"),
+                    "mews_id": b.get("Id"),
+                    "Number": b.get("Number"),
+                    "Type": b.get("Type"),
+                    "State": b.get("State"),
+                    "Owner Name": self._extract_owner_name(b.get("OwnerData")),
+                    "Issued At": b.get("IssuedUtc"),
+                    "Due At": b.get("DueUtc"),
+                    "Paid At": b.get("PaidUtc"),
+                    "Notes": b.get("Notes"),
                 })
             return mapped
         except Exception as e:
-            logger.error(f"Error mapping billing automations for {property_name}: {str(e)}")
+            logger.error(f"Error mapping bills for {property_name}: {str(e)}")
+            raise e
+
+    async def get_bill_invoice(self, property_name: str, bill_id: str):
+        """
+        Build the full itemized invoice payload for a single bill: header, guest/company
+        address, line items (order items), computed VAT/subtotal/total, Thai baht-text,
+        and a best-effort payment-method match — shaped to populate the
+        "FullTAXInvoice LubdKohTao-TP" template placeholders.
+        """
+        try:
+            bill_res = await mews_client.post(
+                "/api/connector/v1/bills/getAll",
+                {"BillIds": [bill_id], "Limitation": {"Count": 1}},
+                property_name=property_name
+            )
+            bills = bill_res.get("Bills", [])
+            if not bills:
+                raise Exception("Bill not found")
+            bill = bills[0]
+
+            items = []
+            current_cursor = None
+            while True:
+                payload = {"BillIds": [bill_id], "Limitation": {"Count": 1000}}
+                if current_cursor:
+                    payload["Limitation"]["Cursor"] = current_cursor
+                item_res = await mews_client.post("/api/connector/v1/orderItems/getAll", payload, property_name=property_name)
+                chunk = item_res.get("OrderItems", [])
+                current_cursor = item_res.get("Cursor")
+                items.extend(chunk)
+                if not current_cursor or not chunk:
+                    break
+
+            pay_res = await mews_client.post(
+                "/api/connector/v1/payments/getAll",
+                {"BillIds": [bill_id], "Limitation": {"Count": 100}},
+                property_name=property_name
+            )
+            payments = pay_res.get("Payments", [])
+
+            owner_wrapper = bill.get("OwnerData") or {}
+            owner = owner_wrapper.get("Value") or {}
+            owner_name = self._extract_owner_name(owner_wrapper)
+            address = owner.get("Address") or {}
+            legal = owner.get("LegalIdentifiers") or {}
+            tax_id = legal.get("TaxIdentifier") or owner.get("TaxIdentifier") or ""
+
+            address_lines = [l for l in [
+                address.get("Line1"),
+                address.get("Line2"),
+                ", ".join(filter(None, [address.get("City"), address.get("SubdivisionCode")])),
+                address.get("CountryCode"),
+            ] if l]
+
+            rows = []
+            for it in items:
+                amt = it.get("Amount") or {}
+                gross = amt.get("GrossValue") or 0
+                net = amt.get("NetValue") or 0
+                rows.append({
+                    "name": it.get("BillingName") or it.get("Type") or "Item",
+                    "gross": gross,
+                    "net": net,
+                    "tax": gross - net,
+                })
+
+            if len(rows) > 5:
+                head, tail = rows[:4], rows[4:]
+                rows = head + [{
+                    "name": f"Other charges ({len(tail)} items)",
+                    "gross": sum(r["gross"] for r in tail),
+                    "net": sum(r["net"] for r in tail),
+                    "tax": sum(r["tax"] for r in tail),
+                }]
+
+            sub_total = sum(r["net"] for r in rows)
+            vat_total = sum(r["tax"] for r in rows)
+            net_amount = sub_total + vat_total
+            vat_rate_pct = round((vat_total / sub_total * 100), 2) if sub_total else 0
+
+            line_items = []
+            for i in range(5):
+                if i < len(rows):
+                    line_items.append({"no": i + 1, "description": rows[i]["name"], "amount": round(rows[i]["gross"], 2)})
+                else:
+                    line_items.append({"no": "", "description": "", "amount": ""})
+
+            method = {"cash": False, "card": False, "bank_transfer": False, "cheque": False}
+            bank_transfer_ref = ""
+            bank_transfer_date = ""
+            cheque = {"bank_name": "", "branch": "", "number": "", "date": ""}
+            for p in payments:
+                ptype = (p.get("Type") or "").lower()
+                pkind = (p.get("Kind") or "").lower()
+                if "cash" in ptype or "cash" in pkind:
+                    method["cash"] = True
+                elif "card" in ptype or "card" in pkind:
+                    method["card"] = True
+                elif "transfer" in ptype or "transfer" in pkind:
+                    method["bank_transfer"] = True
+                    bank_transfer_ref = p.get("Identifier") or ""
+                    bank_transfer_date = p.get("ChargedUtc") or p.get("CreatedUtc") or ""
+                elif "cheque" in ptype or "check" in ptype or "cheque" in pkind:
+                    method["cheque"] = True
+                    cheque["number"] = p.get("Number") or ""
+                    cheque["date"] = p.get("ChargedUtc") or ""
+
+            return {
+                "mews_id": bill.get("Id"),
+                "number": bill.get("Number"),
+                "type": bill.get("Type"),
+                "state": bill.get("State"),
+                "issued_at": bill.get("IssuedUtc"),
+                "due_at": bill.get("DueUtc"),
+                "owner_name": owner_name,
+                "address_lines": address_lines,
+                "post_code": address.get("PostalCode") or "",
+                "tax_id": tax_id,
+                "line_items": line_items,
+                "sub_total": round(sub_total, 2),
+                "vat_rate_pct": vat_rate_pct,
+                "vat": round(vat_total, 2),
+                "net_amount": round(net_amount, 2),
+                "baht_text": bahttext(net_amount),
+                "payment_method": method,
+                "bank_transfer_ref": bank_transfer_ref,
+                "bank_transfer_date": bank_transfer_date,
+                "cheque": cheque,
+            }
+        except Exception as e:
+            logger.error(f"Error building bill invoice for {bill_id}: {str(e)}")
             raise e
 
 sync_service = SyncService()
