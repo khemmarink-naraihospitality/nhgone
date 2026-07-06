@@ -114,21 +114,23 @@ export default function UserHeader() {
         </div>
 
         {isOpen && (
-          <div className="absolute right-0 mt-3 w-80 bg-background rounded-2xl shadow-2xl border border-border-primary overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 transform origin-top-right font-sans transition-colors duration-300">
-            <div className={`p-6 border-b border-border-primary ${theme === 'dark' ? 'bg-white/5' : 'bg-slate-50'}`}>
-               <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">Signed in as</p>
-               <p className="text-xs font-bold text-foreground break-all">{user?.email}</p>
+          <div className={`absolute right-0 mt-3 w-80 rounded-2xl shadow-2xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 transform origin-top-right font-sans transition-colors duration-300 ${
+            theme === 'dark' ? 'bg-[#0a1400] border-white/10' : 'bg-white border-[#152A00]/10'
+          }`}>
+            <div className={`p-6 border-b ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-[#152A00]/5 border-[#152A00]/10'}`}>
+               <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-[#152A00]/50'}`}>Signed in as</p>
+               <p className={`text-xs font-bold break-all ${theme === 'dark' ? 'text-white' : 'text-[#152A00]'}`}>{user?.email}</p>
                <p className={`text-[11px] mt-1 font-bold inline-block px-2 py-0.5 rounded ${theme === 'dark' ? 'bg-[#AAA024]/20 text-[#AAA024]' : 'bg-[#AAA024] text-white'}`}>{profile?.role || "User"}</p>
             </div>
-            
+
             <div className="p-2">
                 {isSuperAdmin && (
-                  <Link 
-                    href="/admin" 
+                  <Link
+                    href="/admin"
                     onClick={() => setIsOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-purple-100 hover:bg-white/5 rounded-xl transition-all group"
+                    className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group ${theme === 'dark' ? 'text-purple-200 hover:bg-white/5' : 'text-purple-700 hover:bg-purple-50'}`}
                   >
-                    <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center text-purple-400 group-hover:bg-purple-500 group-hover:text-white transition-colors">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500 group-hover:text-white' : 'bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white'}`}>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
                       </svg>
@@ -136,13 +138,13 @@ export default function UserHeader() {
                     Admin Console
                   </Link>
                 )}
-                
-                <Link 
-                  href="/profile" 
+
+                <Link
+                  href="/profile"
                   onClick={() => setIsOpen(false)}
-                  className="flex items-center gap-3 px-4 py-3 text-sm font-medium text-slate-300 hover:bg-white/5 rounded-xl transition-all group"
+                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group ${theme === 'dark' ? 'text-white/80 hover:bg-white/5' : 'text-[#152A00] hover:bg-[#152A00]/5'}`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-slate-400 group-hover:bg-white/10 group-hover:text-white transition-colors">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-white/5 text-white/50 group-hover:bg-white/10 group-hover:text-white' : 'bg-[#152A00]/5 text-[#152A00]/60 group-hover:bg-[#152A00]/10 group-hover:text-[#152A00]'}`}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                     </svg>
@@ -150,13 +152,13 @@ export default function UserHeader() {
                   Profile Settings
                 </Link>
 
-                <div className="h-px bg-white/5 my-1 mx-2" />
-                
-                <button 
+                <div className={`h-px my-1 mx-2 ${theme === 'dark' ? 'bg-white/10' : 'bg-[#152A00]/10'}`} />
+
+                <button
                   onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-sm font-medium text-red-400 hover:bg-red-500/10 rounded-xl transition-all group text-left"
+                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group text-left ${theme === 'dark' ? 'text-red-400 hover:bg-red-500/10' : 'text-red-600 hover:bg-red-50'}`}
                 >
-                  <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center text-red-500 group-hover:bg-red-500 group-hover:text-white transition-colors">
+                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-red-500/10 text-red-500 group-hover:bg-red-500 group-hover:text-white' : 'bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white'}`}>
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                     </svg>
