@@ -81,6 +81,9 @@ export default function BillGeneratorPage() {
   };
 
   const handleGetMewsPdf = async (bill: Bill) => {
+    // Open the tab synchronously (within the click's user-gesture) so the browser
+    // doesn't treat it as a popup once we redirect it after the async fetch below.
+    const previewWindow = window.open("", "_blank");
     try {
       const params = new URLSearchParams({ property_name: selectedProperty });
       const existingEventId = pdfEventIds[bill.mews_id];
@@ -95,23 +98,27 @@ export default function BillGeneratorPage() {
         for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
         const blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/pdf" });
         const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `bill-${bill.Number || bill.mews_id}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
+        if (previewWindow) {
+          previewWindow.location.href = url;
+        } else {
+          window.open(url, "_blank");
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
         setPdfEventIds((prev) => {
           const next = { ...prev };
           delete next[bill.mews_id];
           return next;
         });
       } else if (result.status === "pending") {
+        previewWindow?.close();
         setPdfEventIds((prev) => ({ ...prev, [bill.mews_id]: result.bill_print_event_id }));
         alert("MEWS is still generating this PDF. Click \"Get MEWS PDF\" again in a few seconds.");
       } else {
+        previewWindow?.close();
         alert("Failed to get PDF: " + (result.message || result.detail || "Unknown error"));
       }
     } catch (err: any) {
+      previewWindow?.close();
       alert("Failed to get PDF: " + err.message);
     }
   };
