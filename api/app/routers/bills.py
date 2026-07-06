@@ -1,8 +1,23 @@
+import re
 from fastapi import APIRouter, HTTPException, Query
 from app.services.sync_service import sync_service
 from typing import Optional
 
 router = APIRouter(prefix="/bills", tags=["Bills"])
+
+_GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def _validate_bill_id(bill_id: str):
+    """
+    MEWS bill ids are GUIDs. A malformed id (e.g. an empty/undefined value that
+    slipped through the frontend, or two ids accidentally joined together)
+    reaches MEWS's BillIds filter as a plain string and comes back as a cryptic
+    "Invalid JSON" deserialization error instead of a clear "bad id" message.
+    Catch that here before we ever call MEWS.
+    """
+    if not bill_id or not _GUID_RE.match(bill_id):
+        raise HTTPException(status_code=400, detail=f"Invalid bill id: '{bill_id}' is not a valid MEWS bill GUID.")
 
 @router.get("/live")
 async def get_live_bills(
@@ -24,6 +39,7 @@ async def get_live_bills(
 
 @router.get("/{bill_id}/invoice")
 async def get_bill_invoice(bill_id: str, property_name: Optional[str] = Query(None)):
+    _validate_bill_id(bill_id)
     try:
         data = await sync_service.get_bill_invoice(property_name=property_name, bill_id=bill_id)
         return {"status": "success", "data": data}
@@ -39,6 +55,7 @@ async def get_bill_pdf(
     bill_print_event_id: Optional[str] = Query(None),
     pdf_template: Optional[str] = Query(None),
 ):
+    _validate_bill_id(bill_id)
     try:
         result = await sync_service.get_bill_pdf(
             property_name=property_name,

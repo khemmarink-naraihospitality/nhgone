@@ -25,6 +25,7 @@ const fmtDate = (v: string) => {
 };
 
 const MAX_BATCH_PRINT = 100;
+const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
 
 export default function BillGeneratorPage() {
   const [properties, setProperties] = useState<string[]>([]);
@@ -128,9 +129,12 @@ export default function BillGeneratorPage() {
   };
 
   const filteredBills = useMemo(() => {
-    if (!searchTerm) return bills;
+    // Defensively drop any row without a real mews_id so a bad/missing id can
+    // never end up selectable and sent to MEWS as a malformed BillIds filter.
+    const withIds = bills.filter((b) => !!b.mews_id);
+    if (!searchTerm) return withIds;
     const lower = searchTerm.toLowerCase();
-    return bills.filter((b) => Object.values(b).some((v) => String(v || "").toLowerCase().includes(lower)));
+    return withIds.filter((b) => Object.values(b).some((v) => String(v || "").toLowerCase().includes(lower)));
   }, [bills, searchTerm]);
 
   const toggleSelectRow = (id: string) => {
@@ -154,6 +158,16 @@ export default function BillGeneratorPage() {
       return;
     }
     window.open(`/print-bill/${selectedIds.join(",")}?property=${encodeURIComponent(selectedProperty)}`, "_blank");
+  };
+
+  const handleGetMewsPdfSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (selectedIds.length > MAX_BATCH_PDF) {
+      alert(`Get MEWS PDF opens one tab per bill — please select ${MAX_BATCH_PDF} or fewer at a time (currently ${selectedIds.length}). Browsers block opening more tabs than that from a single click.`);
+      return;
+    }
+    const selectedBills = filteredBills.filter((b) => selectedIds.includes(b.mews_id));
+    selectedBills.forEach((bill) => handleGetMewsPdf(bill));
   };
 
   return (
@@ -210,6 +224,13 @@ export default function BillGeneratorPage() {
             className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
           >
             Print Selected ({selectedIds.length})
+          </button>
+          <button
+            onClick={handleGetMewsPdfSelected}
+            disabled={selectedIds.length === 0}
+            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Get MEWS PDF Selected ({selectedIds.length})
           </button>
         </div>
 
