@@ -257,6 +257,7 @@ export default function AdminUsersPage() {
                          onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
                        >
                           <option value="User">User</option>
+                          <option value="Finance">Finance</option>
                           <option value="Super Admin">Super Admin</option>
                        </select>
                     </div>
@@ -344,6 +345,7 @@ export default function AdminUsersPage() {
                       onChange={(e) => setNewUser({...newUser, role: e.target.value})}
                     >
                        <option value="User" className="bg-[#1a1a1a]">User</option>
+                       <option value="Finance" className="bg-[#1a1a1a]">Finance</option>
                        <option value="Super Admin" className="bg-[#1a1a1a]">Super Admin</option>
                     </select>
                  </div>

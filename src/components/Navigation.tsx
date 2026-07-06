@@ -11,6 +11,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const router = useRouter();
   const isLoginPage = pathname === "/";
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -30,17 +31,17 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       // We check by ID and fallback to Email to be absolute
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("id, email")
+        .select("id, email, role")
         .eq("id", user.id)
         .single();
 
       let finalProfile = profile;
-      
+
       // Secondary check by email if ID check didn't return data (just in case of sync issues)
       if (!finalProfile && user.email) {
         const { data: emailProfile } = await supabase
           .from("profiles")
-          .select("id, email")
+          .select("id, email, role")
           .eq("email", user.email)
           .single();
         finalProfile = emailProfile;
@@ -64,6 +65,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         }
       } else {
         // Authorized!
+        setUserRole(finalProfile.role || null);
         if (isLoginPage && pathname === "/") {
           router.push("/dashboard");
         }
@@ -130,6 +132,8 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               <Link href="/admin/api-settings" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
               <Link href="/admin/logs" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
             </>
+          ) : userRole?.toLowerCase() === "finance" ? (
+            <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bill Generator</Link>
           ) : (
             <>
               <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
