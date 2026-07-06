@@ -55,7 +55,15 @@ class MewsClient:
                         f"Check/enable it in the MEWS Marketplace or operator API integration settings."
                     )
                 )
-            response.raise_for_status()
+            if response.status_code >= 400:
+                try:
+                    error_body = response.json()
+                except ValueError:
+                    error_body = response.text
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"MEWS rejected the request to {endpoint} with {response.status_code} {response.reason_phrase}: {error_body}"
+                )
             return response.json()
 
 mews_client = MewsClient()
