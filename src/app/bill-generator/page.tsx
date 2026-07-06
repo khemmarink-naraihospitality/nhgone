@@ -24,6 +24,8 @@ const fmtDate = (v: string) => {
   return `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
 };
 
+const MAX_BATCH_PRINT = 100;
+
 export default function BillGeneratorPage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -32,6 +34,7 @@ export default function BillGeneratorPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [pdfEventIds, setPdfEventIds] = useState<Record<string, string>>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -73,6 +76,7 @@ export default function BillGeneratorPage() {
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || "Failed to fetch bills");
       setBills(result.data || []);
+      setSelectedIds([]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -129,6 +133,29 @@ export default function BillGeneratorPage() {
     return bills.filter((b) => Object.values(b).some((v) => String(v || "").toLowerCase().includes(lower)));
   }, [bills, searchTerm]);
 
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    const visibleIds = filteredBills.map((b) => b.mews_id);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    if (allSelected) {
+      setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
+    } else {
+      setSelectedIds((prev) => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
+
+  const handlePrintSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (selectedIds.length > MAX_BATCH_PRINT) {
+      alert(`Please select ${MAX_BATCH_PRINT} bills or fewer at a time for batch printing (currently ${selectedIds.length}).`);
+      return;
+    }
+    window.open(`/print-bill/${selectedIds.join(",")}?property=${encodeURIComponent(selectedProperty)}`, "_blank");
+  };
+
   return (
     <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
@@ -177,6 +204,13 @@ export default function BillGeneratorPage() {
               className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
             />
           </div>
+          <button
+            onClick={handlePrintSelected}
+            disabled={selectedIds.length === 0}
+            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Print Selected ({selectedIds.length})
+          </button>
         </div>
 
         {error ? (
@@ -186,6 +220,14 @@ export default function BillGeneratorPage() {
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
                 <tr className="bg-[#152A00]/5">
+                  <th className="p-2 px-3 border-b border-[#152A00]/10">
+                    <input
+                      type="checkbox"
+                      checked={filteredBills.length > 0 && filteredBills.every((b) => selectedIds.includes(b.mews_id))}
+                      onChange={toggleSelectAll}
+                      className="accent-[#152A00]"
+                    />
+                  </th>
                   {["Number", "Type", "State", "Owner Name", "Issued At", "Due At", "Paid At", "Notes"].map((col) => (
                     <th key={col} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
                       {col}
@@ -197,15 +239,23 @@ export default function BillGeneratorPage() {
               <tbody className="divide-y divide-[#152A00]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving bills...</td>
+                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving bills...</td>
                   </tr>
                 ) : filteredBills.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No bills found in this range.</td>
+                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No bills found in this range.</td>
                   </tr>
                 ) : (
                   filteredBills.map((b) => (
-                    <tr key={b.mews_id} className="hover:bg-[#152A00]/3 transition-colors">
+                    <tr key={b.mews_id} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(b.mews_id) ? "bg-[#152A00]/5" : ""}`}>
+                      <td className="p-2 px-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(b.mews_id)}
+                          onChange={() => toggleSelectRow(b.mews_id)}
+                          className="accent-[#152A00]"
+                        />
+                      </td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.Number || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.Type || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.State || "-"}</td>
