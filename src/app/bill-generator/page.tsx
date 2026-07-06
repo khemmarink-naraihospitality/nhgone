@@ -31,6 +31,7 @@ export default function BillGeneratorPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
+  const [pdfEventIds, setPdfEventIds] = useState<Record<string, string>>({});
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -76,6 +77,42 @@ export default function BillGeneratorPage() {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGetMewsPdf = async (bill: Bill) => {
+    try {
+      const params = new URLSearchParams({ property_name: selectedProperty });
+      const existingEventId = pdfEventIds[bill.mews_id];
+      if (existingEventId) params.append("bill_print_event_id", existingEventId);
+
+      const res = await fetch(`/api/bills/${bill.mews_id}/pdf?${params.toString()}`);
+      const result = await res.json();
+
+      if (result.status === "success" && result.pdf_base64) {
+        const byteChars = atob(result.pdf_base64);
+        const byteNumbers = new Array(byteChars.length);
+        for (let i = 0; i < byteChars.length; i++) byteNumbers[i] = byteChars.charCodeAt(i);
+        const blob = new Blob([new Uint8Array(byteNumbers)], { type: "application/pdf" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `bill-${bill.Number || bill.mews_id}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+        setPdfEventIds((prev) => {
+          const next = { ...prev };
+          delete next[bill.mews_id];
+          return next;
+        });
+      } else if (result.status === "pending") {
+        setPdfEventIds((prev) => ({ ...prev, [bill.mews_id]: result.bill_print_event_id }));
+        alert("MEWS is still generating this PDF. Click \"Get MEWS PDF\" again in a few seconds.");
+      } else {
+        alert("Failed to get PDF: " + (result.message || result.detail || "Unknown error"));
+      }
+    } catch (err: any) {
+      alert("Failed to get PDF: " + err.message);
     }
   };
 
@@ -171,12 +208,20 @@ export default function BillGeneratorPage() {
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{fmtDate(b["Paid At"])}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis">{b.Notes || "-"}</td>
                       <td className="p-2 px-3">
-                        <button
-                          onClick={() => window.open(`/print-bill/${b.mews_id}?property=${encodeURIComponent(selectedProperty)}`, "_blank")}
-                          className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
-                        >
-                          Print
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => window.open(`/print-bill/${b.mews_id}?property=${encodeURIComponent(selectedProperty)}`, "_blank")}
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                          >
+                            Print
+                          </button>
+                          <button
+                            onClick={() => handleGetMewsPdf(b)}
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
+                          >
+                            Get MEWS PDF
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))

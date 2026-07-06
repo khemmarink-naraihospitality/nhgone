@@ -652,4 +652,47 @@ class SyncService:
             logger.error(f"Error building bill invoice for {bill_id}: {str(e)}")
             raise e
 
+    async def get_bill_pdf(self, property_name: str, bill_id: str, pdf_template: str = None,
+                            print_reason: str = None, bill_print_event_id: str = None):
+        """
+        Calls MEWS bills/getPdf to get MEWS's own generated PDF for a bill (as an
+        alternative to our custom Thai tax invoice template). Per MEWS docs, the
+        response is either the ready PDF (Discriminator "BillPdfFile") or a pending
+        event (Discriminator "BillPrintEvent") that should be retried with the same
+        BillPrintEventId to avoid consuming additional print-event quota. We retry
+        briefly server-side; if still pending after that, we hand the event id back
+        to the caller so a later request can resume it.
+        """
+        try:
+            payload: dict = {"BillId": bill_id}
+            if pdf_template:
+                payload["PdfTemplate"] = pdf_template
+            if print_reason:
+                payload["PrintReason"] = print_reason
+
+            max_attempts = 4
+            wait_seconds = 2
+            event_id = bill_print_event_id
+
+            for attempt in range(max_attempts):
+                if event_id:
+                    payload["BillPrintEventId"] = event_id
+
+                response = await mews_client.post("/api/connector/v1/bills/getPdf", payload, property_name=property_name)
+                result = response.get("Result") or {}
+                discriminator = result.get("Discriminator")
+                value = result.get("Value") or {}
+
+                if discriminator == "BillPdfFile":
+                    return {"ready": True, "base64": value.get("Base64Data")}
+
+                event_id = value.get("BillPrintEventId") or event_id
+                if attempt < max_attempts - 1:
+                    await asyncio.sleep(wait_seconds)
+
+            return {"ready": False, "event_id": event_id}
+        except Exception as e:
+            logger.error(f"Error fetching bill PDF for {bill_id}: {str(e)}")
+            raise e
+
 sync_service = SyncService()
