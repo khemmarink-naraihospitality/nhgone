@@ -157,7 +157,16 @@ export default function BillGeneratorPage() {
       alert(`Please select ${MAX_BATCH_PRINT} bills or fewer at a time for batch printing (currently ${selectedIds.length}).`);
       return;
     }
-    window.open(`/print-bill/${selectedIds.join(",")}?property=${encodeURIComponent(selectedProperty)}`, "_blank");
+    if (selectedIds.length === 1) {
+      window.open(`/print-bill/${selectedIds[0]}?property=${encodeURIComponent(selectedProperty)}`, "_blank");
+      return;
+    }
+    // Multiple ids go through a query param (?ids=a,b,c) instead of the path segment.
+    // Browsers/Next.js can percent-encode a comma in a *path* segment inconsistently
+    // between client and server, silently merging split ids back together; query
+    // string values are decoded reliably via the standard URLSearchParams API.
+    const params = new URLSearchParams({ ids: selectedIds.join(","), property: selectedProperty });
+    window.open(`/print-bill/batch?${params.toString()}`, "_blank");
   };
 
   const handleGetMewsPdfSelected = () => {

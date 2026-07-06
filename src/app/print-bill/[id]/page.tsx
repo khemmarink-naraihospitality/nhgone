@@ -179,8 +179,15 @@ function PermissionErrorBanner({ error }: { error: string }) {
 export default function PrintBillPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  // The [id] segment accepts one bill id, or a comma-separated list for batch printing.
-  const billIds = (params.id as string).split(",").filter(Boolean);
+  // Single bill: /print-bill/{id}. Batch: /print-bill/batch?ids=a,b,c - a comma
+  // in a path segment can get percent-encoded/decoded inconsistently between
+  // client and server, so batch printing uses a query param instead, which
+  // URLSearchParams decodes reliably.
+  const idParam = params.id as string;
+  const idsFromQuery = searchParams.get("ids");
+  const billIds = idParam === "batch" && idsFromQuery
+    ? idsFromQuery.split(",").filter(Boolean)
+    : [idParam].filter(Boolean);
   const property = searchParams.get("property") || "";
 
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -221,7 +228,7 @@ export default function PrintBillPage() {
     };
     if (billIds.length > 0) fetchInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id, property]);
+  }, [idParam, idsFromQuery, property]);
 
   // Auto-open the browser's Print dialog as soon as the invoice(s) render, so
   // "Print" on the bill list goes straight to "Save as PDF" with no extra click.
