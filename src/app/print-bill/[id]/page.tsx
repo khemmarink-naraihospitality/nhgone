@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 
 interface LineItem {
@@ -194,7 +194,6 @@ export default function PrintBillPage() {
   const [failed, setFailed] = useState<{ id: string; message: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const hasAutoPrinted = useRef(false);
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -229,16 +228,6 @@ export default function PrintBillPage() {
     if (billIds.length > 0) fetchInvoices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idParam, idsFromQuery, property]);
-
-  // Auto-open the browser's Print dialog as soon as the invoice(s) render, so
-  // "Print" on the bill list goes straight to "Save as PDF" with no extra click.
-  useEffect(() => {
-    if (invoices.length > 0 && !hasAutoPrinted.current) {
-      hasAutoPrinted.current = true;
-      const timer = setTimeout(() => window.print(), 300);
-      return () => clearTimeout(timer);
-    }
-  }, [invoices]);
 
   if (loading) return <div className="p-10 text-center text-sm">Loading invoice{billIds.length > 1 ? "s" : ""}...</div>;
 

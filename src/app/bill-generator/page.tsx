@@ -117,7 +117,7 @@ export default function BillGeneratorPage() {
       } else if (result.status === "pending") {
         previewWindow?.close();
         setPdfEventIds((prev) => ({ ...prev, [bill.mews_id]: result.bill_print_event_id }));
-        alert("MEWS is still generating this PDF. Click \"Get MEWS PDF\" again in a few seconds.");
+        alert("MEWS is still generating this PDF. Click \"MEWS Bill\" again in a few seconds.");
       } else {
         previewWindow?.close();
         alert("Failed to get PDF: " + (result.message || result.detail || "Unknown error"));
@@ -172,7 +172,7 @@ export default function BillGeneratorPage() {
   const handleGetMewsPdfSelected = () => {
     if (selectedIds.length === 0) return;
     if (selectedIds.length > MAX_BATCH_PDF) {
-      alert(`Get MEWS PDF opens one tab per bill — please select ${MAX_BATCH_PDF} or fewer at a time (currently ${selectedIds.length}). Browsers block opening more tabs than that from a single click.`);
+      alert(`MEWS Bill opens one tab per bill — please select ${MAX_BATCH_PDF} or fewer at a time (currently ${selectedIds.length}). Browsers block opening more tabs than that from a single click.`);
       return;
     }
     const selectedBills = filteredBills.filter((b) => selectedIds.includes(b.mews_id));
@@ -232,14 +232,14 @@ export default function BillGeneratorPage() {
             disabled={selectedIds.length === 0}
             className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            Print Selected ({selectedIds.length})
+            NHG Bill Selected ({selectedIds.length})
           </button>
           <button
             onClick={handleGetMewsPdfSelected}
             disabled={selectedIds.length === 0}
             className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            Get MEWS PDF Selected ({selectedIds.length})
+            MEWS Bill Selected ({selectedIds.length})
           </button>
         </div>
 
@@ -300,13 +300,13 @@ export default function BillGeneratorPage() {
                             onClick={() => window.open(`/print-bill/${b.mews_id}?property=${encodeURIComponent(selectedProperty)}`, "_blank")}
                             className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
                           >
-                            Print
+                            NHG Bill
                           </button>
                           <button
                             onClick={() => handleGetMewsPdf(b)}
                             className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
                           >
-                            Get MEWS PDF
+                            MEWS Bill
                           </button>
                         </div>
                       </td>
