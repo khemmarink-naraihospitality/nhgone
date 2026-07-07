@@ -66,6 +66,12 @@ export default function AdminUsersPage() {
         setShowCreateModal(false);
         setNewUser({ email: "", password: "", role: "User", full_name: "" });
         fetchUsers();
+        if (!result.email_sent) {
+          alert(
+            `User created, but the welcome email failed to send: ${result.email_error || "unknown error"}. ` +
+            `Please share the password with them directly.`
+          );
+        }
       } else {
         alert("Error: " + (result.detail || result.message));
       }
