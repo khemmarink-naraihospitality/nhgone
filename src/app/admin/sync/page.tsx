@@ -10,7 +10,20 @@ interface PropertySyncSettings {
   sync_hour: number;
   sync_minute: number;
   sync_enabled: boolean;
+  sync_reservations: boolean;
+  sync_members: boolean;
+  sync_payments: boolean;
+  sync_bills: boolean;
+  sync_resources: boolean;
 }
+
+const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] = [
+  { key: "sync_reservations", label: "Reservations" },
+  { key: "sync_members", label: "Members" },
+  { key: "sync_payments", label: "Payments" },
+  { key: "sync_bills", label: "Bills (+ Order Items)" },
+  { key: "sync_resources", label: "Resources" },
+];
 
 export default function AdminSyncPage() {
   const [properties, setProperties] = useState<PropertySyncSettings[]>([]);
@@ -23,7 +36,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources")
         .order("property_name");
       
       if (error) throw error;
@@ -67,6 +80,11 @@ export default function AdminSyncPage() {
           sync_hour: editingProperty.sync_hour,
           sync_minute: editingProperty.sync_minute,
           sync_enabled: editingProperty.sync_enabled,
+          sync_reservations: editingProperty.sync_reservations,
+          sync_members: editingProperty.sync_members,
+          sync_payments: editingProperty.sync_payments,
+          sync_bills: editingProperty.sync_bills,
+          sync_resources: editingProperty.sync_resources,
         })
         .eq("id", editingProperty.id);
       
@@ -200,8 +218,25 @@ export default function AdminSyncPage() {
                     </div>
                  </div>
 
+                 <div>
+                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">Data To Sync</label>
+                    <div className="space-y-2">
+                       {SYNC_TABLE_OPTIONS.map((opt) => (
+                         <label key={opt.key} className="flex items-center gap-3 bg-white/5 px-4 py-2.5 rounded-xl border border-white/5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editingProperty[opt.key] as boolean}
+                              onChange={(e) => setEditingProperty({ ...editingProperty, [opt.key]: e.target.checked })}
+                              className="accent-[#AAA024] w-4 h-4"
+                            />
+                            <span className="text-sm text-white">{opt.label}</span>
+                         </label>
+                       ))}
+                    </div>
+                 </div>
+
                  <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <button 
+                    <button
                       onClick={() => setEditingProperty({...editingProperty, sync_enabled: !editingProperty.sync_enabled})}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editingProperty.sync_enabled ? 'bg-emerald-500' : 'bg-white/10'}`}
                     >

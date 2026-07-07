@@ -53,7 +53,7 @@ async def daily_auto_sync(force_all: bool = False):
         
         # 1. Fetch properties that are enabled
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, sync_hour, sync_minute") \
+            .select("id, property_name, sync_hour, sync_minute, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources") \
             .eq("sync_enabled", True)
             
         if not force_all:
@@ -130,127 +130,132 @@ async def daily_auto_sync(force_all: bool = False):
                         print(f"Log insert failed ({target}): {log_err}")
 
                 # --- A. Sync Reservations ---
-                try:
-                    res_result = await sync_service.get_mapped_reservations(property_name=prop)
-                    res_batch = []
-                    for r in res_result.get("data", []):
-                        m_id = r.get("Identifier")
-                        if m_id:
-                            res_batch.append({
-                                "mews_id": m_id,
-                                "property": prop,
-                                "data": encryption_service.encrypt_data(r),
-                                "synced_at": now_iso,
-                                "report_date": report_date
-                            })
-                    if res_batch:
-                        await chunked_upsert("reservations_sync", res_batch, on_conflict="mews_id")
-                    _log("Reservations", "success", len(res_batch), f"Auto Sync: {len(res_batch)} records")
-                    print(f"Reservations synced: {len(res_batch)} for {prop}")
-                except Exception as e:
-                    err = str(e)[:1000]
-                    _log("Reservations", "error", 0, f"Auto Sync Failed: {err}")
-                    print(f"Error syncing reservations for {prop}: {e}")
+                if prop_settings.get("sync_reservations", True):
+                    try:
+                        res_result = await sync_service.get_mapped_reservations(property_name=prop)
+                        res_batch = []
+                        for r in res_result.get("data", []):
+                            m_id = r.get("Identifier")
+                            if m_id:
+                                res_batch.append({
+                                    "mews_id": m_id,
+                                    "property": prop,
+                                    "data": encryption_service.encrypt_data(r),
+                                    "synced_at": now_iso,
+                                    "report_date": report_date
+                                })
+                        if res_batch:
+                            await chunked_upsert("reservations_sync", res_batch, on_conflict="mews_id")
+                        _log("Reservations", "success", len(res_batch), f"Auto Sync: {len(res_batch)} records")
+                        print(f"Reservations synced: {len(res_batch)} for {prop}")
+                    except Exception as e:
+                        err = str(e)[:1000]
+                        _log("Reservations", "error", 0, f"Auto Sync Failed: {err}")
+                        print(f"Error syncing reservations for {prop}: {e}")
 
                 # --- B. Sync Members ---
-                try:
-                    mem_result = await sync_service.get_mapped_members(property_name=prop)
-                    mem_batch = []
-                    for m in mem_result:
-                        m_id = m.get("Identifier")
-                        if m_id:
-                            mem_batch.append({
-                                "mews_id": m_id,
-                                "property": prop,
-                                "data": encryption_service.encrypt_data(m),
-                                "synced_at": now_iso,
-                                "report_date": report_date
-                            })
-                    if mem_batch:
-                        await chunked_upsert("members_sync", mem_batch, on_conflict="mews_id")
-                    _log("Customers", "success", len(mem_batch), f"Auto Sync: {len(mem_batch)} records")
-                    print(f"Members synced: {len(mem_batch)} for {prop}")
-                except Exception as e:
-                    err = str(e)[:1000]
-                    _log("Customers", "error", 0, f"Auto Sync Failed: {err}")
-                    print(f"Error syncing members for {prop}: {e}")
+                if prop_settings.get("sync_members", True):
+                    try:
+                        mem_result = await sync_service.get_mapped_members(property_name=prop)
+                        mem_batch = []
+                        for m in mem_result:
+                            m_id = m.get("Identifier")
+                            if m_id:
+                                mem_batch.append({
+                                    "mews_id": m_id,
+                                    "property": prop,
+                                    "data": encryption_service.encrypt_data(m),
+                                    "synced_at": now_iso,
+                                    "report_date": report_date
+                                })
+                        if mem_batch:
+                            await chunked_upsert("members_sync", mem_batch, on_conflict="mews_id")
+                        _log("Customers", "success", len(mem_batch), f"Auto Sync: {len(mem_batch)} records")
+                        print(f"Members synced: {len(mem_batch)} for {prop}")
+                    except Exception as e:
+                        err = str(e)[:1000]
+                        _log("Customers", "error", 0, f"Auto Sync Failed: {err}")
+                        print(f"Error syncing members for {prop}: {e}")
 
                 # --- C. Sync Payments ---
-                try:
-                    pay_result = await sync_service.get_mapped_payments(property_name=prop)
-                    pay_batch = []
-                    for p in pay_result:
-                        p_id = p.get("mews_id")
-                        if p_id:
-                            pay_batch.append({
-                                "mews_id": p_id,
-                                "property": prop,
-                                "amount": p.get("Amount"),
-                                "currency": p.get("Currency"),
-                                "status": p.get("Status"),
-                                "processed_at": p.get("Processed At"),
-                                "created_at": now_iso
-                            })
-                    if pay_batch:
-                        await chunked_upsert("payments", pay_batch, on_conflict="mews_id")
-                    _log("Payments", "success", len(pay_batch), f"Auto Sync: {len(pay_batch)} records")
-                    print(f"Payments synced: {len(pay_batch)} for {prop}")
-                except Exception as e:
-                    err = str(e)[:1000]
-                    _log("Payments", "error", 0, f"Auto Sync Failed: {err}")
-                    print(f"Error syncing payments for {prop}: {e}")
+                if prop_settings.get("sync_payments", True):
+                    try:
+                        pay_result = await sync_service.get_mapped_payments(property_name=prop)
+                        pay_batch = []
+                        for p in pay_result:
+                            p_id = p.get("mews_id")
+                            if p_id:
+                                pay_batch.append({
+                                    "mews_id": p_id,
+                                    "property": prop,
+                                    "amount": p.get("Amount"),
+                                    "currency": p.get("Currency"),
+                                    "status": p.get("Status"),
+                                    "processed_at": p.get("Processed At"),
+                                    "created_at": now_iso
+                                })
+                        if pay_batch:
+                            await chunked_upsert("payments", pay_batch, on_conflict="mews_id")
+                        _log("Payments", "success", len(pay_batch), f"Auto Sync: {len(pay_batch)} records")
+                        print(f"Payments synced: {len(pay_batch)} for {prop}")
+                    except Exception as e:
+                        err = str(e)[:1000]
+                        _log("Payments", "error", 0, f"Auto Sync Failed: {err}")
+                        print(f"Error syncing payments for {prop}: {e}")
 
                 # --- D. Sync Resources ---
-                try:
-                    resrc_result = await sync_service.get_mapped_resources(property_name=prop)
-                    resrc_batch = []
-                    for r in resrc_result:
-                        r_id = r.get("Identifier")
-                        if r_id:
-                            resrc_batch.append({
-                                "mews_id": r_id,
-                                "property": prop,
-                                "data": encryption_service.encrypt_data(r),
-                                "synced_at": now_iso,
-                                "report_date": report_date
-                            })
-                    if resrc_batch:
-                        await chunked_upsert("resources_sync", resrc_batch, on_conflict="mews_id")
-                    _log("Resources", "success", len(resrc_batch), f"Auto Sync: {len(resrc_batch)} records")
-                    print(f"Resources synced: {len(resrc_batch)} for {prop}")
-                except Exception as e:
-                    err = str(e)[:1000]
-                    _log("Resources", "error", 0, f"Auto Sync Failed: {err}")
-                    print(f"Error syncing resources for {prop}: {e}")
+                if prop_settings.get("sync_resources", True):
+                    try:
+                        resrc_result = await sync_service.get_mapped_resources(property_name=prop)
+                        resrc_batch = []
+                        for r in resrc_result:
+                            r_id = r.get("Identifier")
+                            if r_id:
+                                resrc_batch.append({
+                                    "mews_id": r_id,
+                                    "property": prop,
+                                    "data": encryption_service.encrypt_data(r),
+                                    "synced_at": now_iso,
+                                    "report_date": report_date
+                                })
+                        if resrc_batch:
+                            await chunked_upsert("resources_sync", resrc_batch, on_conflict="mews_id")
+                        _log("Resources", "success", len(resrc_batch), f"Auto Sync: {len(resrc_batch)} records")
+                        print(f"Resources synced: {len(resrc_batch)} for {prop}")
+                    except Exception as e:
+                        err = str(e)[:1000]
+                        _log("Resources", "error", 0, f"Auto Sync Failed: {err}")
+                        print(f"Error syncing resources for {prop}: {e}")
 
                 # --- E. Sync Bills + Order Items ---
-                try:
-                    bill_result = await sync_service.get_mapped_bills_with_items(property_name=prop)
-                    bill_batch = []
-                    for b in bill_result:
-                        b_id = b.get("mews_id")
-                        if b_id:
-                            # Per-bill report_date (from the bill's own Issued At)
-                            # rather than the shared `report_date` var above - keeps
-                            # Data Mart date-range filtering correct even though this
-                            # runs daily with a "yesterday" window, matching the fix
-                            # applied to the one-time wide-range backfills.
-                            issued = b.get("Issued At")
-                            bill_batch.append({
-                                "mews_id": b_id,
-                                "property": prop,
-                                "data": encryption_service.encrypt_data(b),
-                                "synced_at": now_iso,
-                                "report_date": issued.split("T")[0] if issued else report_date
-                            })
-                    if bill_batch:
-                        await chunked_upsert("bills_sync", bill_batch, on_conflict="mews_id")
-                    _log("Bills", "success", len(bill_batch), f"Auto Sync: {len(bill_batch)} records")
-                    print(f"Bills synced: {len(bill_batch)} for {prop}")
-                except Exception as e:
-                    err = str(e)[:1000]
-                    _log("Bills", "error", 0, f"Auto Sync Failed: {err}")
-                    print(f"Error syncing bills for {prop}: {e}")
+                if prop_settings.get("sync_bills", True):
+                    try:
+                        bill_result = await sync_service.get_mapped_bills_with_items(property_name=prop)
+                        bill_batch = []
+                        for b in bill_result:
+                            b_id = b.get("mews_id")
+                            if b_id:
+                                # Per-bill report_date (from the bill's own Issued At)
+                                # rather than the shared `report_date` var above - keeps
+                                # Data Mart date-range filtering correct even though this
+                                # runs daily with a "yesterday" window, matching the fix
+                                # applied to the one-time wide-range backfills.
+                                issued = b.get("Issued At")
+                                bill_batch.append({
+                                    "mews_id": b_id,
+                                    "property": prop,
+                                    "data": encryption_service.encrypt_data(b),
+                                    "synced_at": now_iso,
+                                    "report_date": issued.split("T")[0] if issued else report_date
+                                })
+                        if bill_batch:
+                            await chunked_upsert("bills_sync", bill_batch, on_conflict="mews_id")
+                        _log("Bills", "success", len(bill_batch), f"Auto Sync: {len(bill_batch)} records")
+                        print(f"Bills synced: {len(bill_batch)} for {prop}")
+                    except Exception as e:
+                        err = str(e)[:1000]
+                        _log("Bills", "error", 0, f"Auto Sync Failed: {err}")
+                        print(f"Error syncing bills for {prop}: {e}")
 
             except Exception as prop_err:
                 print(f"Unexpected error during sync setup for {prop}: {str(prop_err)}")
