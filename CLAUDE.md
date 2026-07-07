@@ -71,8 +71,8 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 - `/data-mart` — Synced data from `reservations_sync`/`members_sync`/`payments`, rendered by the shared `src/components/DashboardView.tsx` (also used by `/live-data`), which enforces a per-section column order via `SECTION_COLUMNS` (58 columns for reservations, matching the MEWS Reservation Report schema)
 - `/managed-members`, `/managed-payments` — Synced members/payments views
 - `/log-import` — Import history
-- `/bill-generator` — Lists real MEWS bills (headers only, via `bills/getAll`) per property/date range; "NHG Bill" opens `/print-bill/{id}` (or `/print-bill/batch?ids=a,b,c` for multiple), "MEWS Bill" fetches MEWS's own generated PDF (`bills/getPdf`)
-- `/print-bill/[id]` — Fetches full itemized invoice data (`GET /bills/{id}/invoice`, joins `orderItems`+`payments` by BillIds) and the property's HTML template (`GET /bills/template`), then does `<<Token>>` string substitution and renders via `dangerouslySetInnerHTML` — see `renderInvoiceTemplate` in that file for the full token list
+- `/bill-generator` (sidebar label "Bills") — Lists MEWS bills per property/date range, toggled between "Live API" (`bills/getAll`, always current) and "Database" (`bills/managed`, reads `bills_sync` — faster once a range has been backfilled via "Import To Data Mart"); "NHG Bill" opens `/print-bill/{id}` (or `/print-bill/batch?ids=a,b,c` for multiple), "MEWS Bill" fetches MEWS's own generated PDF (`bills/getPdf`)
+- `/print-bill/[id]` — Fetches full itemized invoice data (`GET /bills/{id}/invoice`) and the property's HTML template (`GET /bills/template`), then does `<<Token>>` string substitution and renders via `dangerouslySetInnerHTML` — see `renderInvoiceTemplate` in that file for the full token list. `get_bill_invoice` (`sync_service.py`) checks `bills_sync` first and only falls back to live `bills/getAll`+`orderItems/getAll` if the bill isn't cached; `payments/getAll` is always called live since `payments` has no queryable Bill Id column
 - `/rr3` — Lists guests checking in for a property/date range (via `GET /rr3/cards`, which joins Reservations+Customers+Resources in one live MEWS call — see `sync_service.get_rr3_cards`); "Print All" opens `/print-rr3` to print every Thai Hotel Act ร.ร.๓ lodger registration card in one document (fixed legal form layout, not per-property customizable, ported directly from the property's original Google Apps Script)
 - `/admin/*` — User management, API settings per property, SMTP config, per-property billing templates, sync scheduling, activity logs
 
@@ -94,6 +94,7 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 | `smtp_settings` | Single global SMTP config (encrypted password) for system emails, e.g. welcome emails on user creation |
 | `resources_sync` | Encrypted MEWS resource (room/space) snapshots; `mews_id` is the unique key |
 | `billing_templates` | Per-property HTML invoice/receipt template (`<<Token>>` placeholders), edited at Admin > Billing Templates |
+| `bills_sync` | Archived MEWS bill headers + order items + owner address/tax ID; `mews_id` is the unique key; backs the Bills page's "Database" mode and `get_bill_invoice`'s cache path |
 
 ### Chunked upsert pattern
 
