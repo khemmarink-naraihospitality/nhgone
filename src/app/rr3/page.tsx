@@ -18,12 +18,15 @@ interface Rr3Card {
   NationalityName: string;
 }
 
+const MAX_BATCH_PRINT = 100;
+
 export default function Rr3Page() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [cards, setCards] = useState<Rr3Card[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -65,6 +68,7 @@ export default function Rr3Page() {
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to fetch RR3 cards");
       setCards(result.data || []);
+      setSelectedIds([]);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -86,6 +90,30 @@ export default function Rr3Page() {
   const handlePrintOne = (card: Rr3Card) => {
     const params = printParams();
     params.append("card_id", card.CardId);
+    window.open(`/print-rr3?${params.toString()}`, "_blank");
+  };
+
+  const toggleSelectRow = (id: string) => {
+    setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const toggleSelectAll = () => {
+    const visibleIds = cards.map((c) => c.CardId);
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
+    setSelectedIds(allSelected ? [] : visibleIds);
+  };
+
+  const handlePrintSelected = () => {
+    if (selectedIds.length === 0) return;
+    if (selectedIds.length > MAX_BATCH_PRINT) {
+      alert(`Please select ${MAX_BATCH_PRINT} guests or fewer at a time for batch printing (currently ${selectedIds.length}).`);
+      return;
+    }
+    // Multiple ids go through a query param (?card_ids=a,b,c), not a path segment -
+    // a comma in a path segment can get percent-encoded/decoded inconsistently
+    // between client and server (see /print-bill's batch flow for the same fix).
+    const params = printParams();
+    params.append("card_ids", selectedIds.join(","));
     window.open(`/print-rr3?${params.toString()}`, "_blank");
   };
 
@@ -135,6 +163,13 @@ export default function Rr3Page() {
           >
             Print All ({cards.length})
           </button>
+          <button
+            onClick={handlePrintSelected}
+            disabled={selectedIds.length === 0}
+            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+          >
+            Print Selected ({selectedIds.length})
+          </button>
         </div>
 
         {error ? (
@@ -144,6 +179,14 @@ export default function Rr3Page() {
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
                 <tr className="bg-[#152A00]/5">
+                  <th className="p-2 px-3 border-b border-[#152A00]/10">
+                    <input
+                      type="checkbox"
+                      checked={cards.length > 0 && cards.every((c) => selectedIds.includes(c.CardId))}
+                      onChange={toggleSelectAll}
+                      className="accent-[#152A00]"
+                    />
+                  </th>
                   {["Reservation No.", "First Name", "Last Name", "Room", "Nationality", "Check-in", "Check-out"].map((col) => (
                     <th key={col} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
                       {col}
@@ -155,15 +198,23 @@ export default function Rr3Page() {
               <tbody className="divide-y divide-[#152A00]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
+                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
                   </tr>
                 ) : cards.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
+                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
                   </tr>
                 ) : (
                   cards.map((c) => (
-                    <tr key={c.CardId} className="hover:bg-[#152A00]/3 transition-colors">
+                    <tr key={c.CardId} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(c.CardId) ? "bg-[#152A00]/5" : ""}`}>
+                      <td className="p-2 px-3">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.includes(c.CardId)}
+                          onChange={() => toggleSelectRow(c.CardId)}
+                          className="accent-[#152A00]"
+                        />
+                      </td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.ReservationsNumber || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.FirstName || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.LastName || "-"}</td>

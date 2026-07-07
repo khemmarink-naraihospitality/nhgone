@@ -110,6 +110,8 @@ export default function PrintRr3Page() {
   const startDate = searchParams.get("start_date") || "";
   const endDate = searchParams.get("end_date") || "";
   const cardId = searchParams.get("card_id");
+  const cardIdsParam = searchParams.get("card_ids");
+  const cardIds = cardIdsParam ? cardIdsParam.split(",").filter(Boolean) : null;
 
   const [cards, setCards] = useState<Rr3Card[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -127,7 +129,12 @@ export default function PrintRr3Page() {
         const result = await res.json();
         if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to load RR3 cards");
         let data: Rr3Card[] = result.data || [];
-        if (cardId) data = data.filter((c) => c.CardId === cardId);
+        if (cardIds) {
+          const idSet = new Set(cardIds);
+          data = data.filter((c) => idSet.has(c.CardId));
+        } else if (cardId) {
+          data = data.filter((c) => c.CardId === cardId);
+        }
         setCards(data);
       } catch (err: any) {
         setError(err.message);
@@ -136,7 +143,8 @@ export default function PrintRr3Page() {
       }
     };
     if (property) fetchCards();
-  }, [property, startDate, endDate, cardId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [property, startDate, endDate, cardId, cardIdsParam]);
 
   if (loading) return <div className="p-10 text-center text-sm">Loading...</div>;
   if (error) return <div className="p-10 text-center text-red-600 text-sm">{error}</div>;
