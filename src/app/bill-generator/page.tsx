@@ -230,7 +230,7 @@ export default function BillGeneratorPage() {
               <select
                 value={selectedProperty}
                 onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none"
               >
                 {properties.map((p) => (
                   <option key={p} value={p}>{p}</option>
@@ -243,7 +243,7 @@ export default function BillGeneratorPage() {
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
               />
             </div>
             <div className="flex flex-col gap-2 w-full md:w-48">
@@ -252,10 +252,10 @@ export default function BillGeneratorPage() {
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
               />
             </div>
-            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[46px]">
+            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px]">
               {loading ? "Loading..." : "Fetch Bills"}
             </button>
           </div>
@@ -263,14 +263,14 @@ export default function BillGeneratorPage() {
             <button
               onClick={handlePrintSelected}
               disabled={selectedIds.length === 0}
-              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap h-[42px] disabled:opacity-30 disabled:cursor-not-allowed"
             >
               NHG Bill Selected ({selectedIds.length})
             </button>
             <button
               onClick={handleGetMewsPdfSelected}
               disabled={selectedIds.length === 0}
-              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[42px] disabled:opacity-30 disabled:cursor-not-allowed"
             >
               MEWS Bill Selected ({selectedIds.length})
             </button>
