@@ -26,6 +26,7 @@ const fmtDate = (v: string) => {
 
 const MAX_BATCH_PRINT = 100;
 const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
+const PAGE_SIZE = 100; // matches MAX_BATCH_PRINT so "select all" on a page never exceeds the batch-print cap
 
 type DataSource = "live" | "database";
 
@@ -38,6 +39,7 @@ export default function BillGeneratorPage() {
   const [pdfEventIds, setPdfEventIds] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dataSource, setDataSource] = useState<DataSource>("database");
+  const [page, setPage] = useState(0);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -93,6 +95,7 @@ export default function BillGeneratorPage() {
       if (result.status !== "success") throw new Error(result.message || "Failed to fetch bills");
       setBills(result.data || []);
       setSelectedIds([]);
+      setPage(0);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -149,12 +152,21 @@ export default function BillGeneratorPage() {
     return bills.filter((b) => !!b.mews_id);
   }, [bills]);
 
+  const totalPages = Math.max(1, Math.ceil(filteredBills.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages - 1);
+  const pagedBills = useMemo(
+    () => filteredBills.slice(currentPage * PAGE_SIZE, (currentPage + 1) * PAGE_SIZE),
+    [filteredBills, currentPage]
+  );
+
   const toggleSelectRow = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
-    const visibleIds = filteredBills.map((b) => b.mews_id);
+    // Only the current page (max PAGE_SIZE/MAX_BATCH_PRINT rows) so "select all"
+    // can never exceed the batch-print cap.
+    const visibleIds = pagedBills.map((b) => b.mews_id);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
     if (allSelected) {
       setSelectedIds((prev) => prev.filter((id) => !visibleIds.includes(id)));
@@ -275,7 +287,7 @@ export default function BillGeneratorPage() {
                   <th className="p-2 px-3 border-b border-[#152A00]/10">
                     <input
                       type="checkbox"
-                      checked={filteredBills.length > 0 && filteredBills.every((b) => selectedIds.includes(b.mews_id))}
+                      checked={pagedBills.length > 0 && pagedBills.every((b) => selectedIds.includes(b.mews_id))}
                       onChange={toggleSelectAll}
                       className="accent-[#152A00]"
                     />
@@ -298,7 +310,7 @@ export default function BillGeneratorPage() {
                     <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No bills found in this range.</td>
                   </tr>
                 ) : (
-                  filteredBills.map((b) => (
+                  pagedBills.map((b) => (
                     <tr key={b.mews_id} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(b.mews_id) ? "bg-[#152A00]/5" : ""}`}>
                       <td className="p-2 px-3">
                         <input
@@ -337,6 +349,31 @@ export default function BillGeneratorPage() {
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {!error && filteredBills.length > 0 && (
+          <div className="flex items-center justify-between mb-8 -mt-4">
+            <span className="text-[11px] text-[#152A00]/50">
+              Showing {currentPage * PAGE_SIZE + 1}-{Math.min((currentPage + 1) * PAGE_SIZE, filteredBills.length)} of {filteredBills.length} bills
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={currentPage === 0}
+                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Prev
+              </button>
+              <span className="text-[11px] text-[#152A00]/60 whitespace-nowrap">Page {currentPage + 1} of {totalPages}</span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={currentPage >= totalPages - 1}
+                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>
