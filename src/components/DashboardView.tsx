@@ -486,7 +486,7 @@ export default function DashboardView({
         <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[#fffaf0] p-4 border border-[#152A00]/14 border-b-0">
           {showSectionTabs && (
             <div className="flex gap-8 border-b border-[#152A00]/10">
-              {(["reservations", "members", "payments", "bills"] as Section[]).map((s) => (
+              {(["reservations", "members", "payments", "bills", "resources"] as Section[]).map((s) => (
                 <button 
                   key={s} 
                   onClick={() => setActiveSection(s)} 
