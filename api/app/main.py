@@ -223,6 +223,35 @@ async def daily_auto_sync(force_all: bool = False):
                     _log("Resources", "error", 0, f"Auto Sync Failed: {err}")
                     print(f"Error syncing resources for {prop}: {e}")
 
+                # --- E. Sync Bills + Order Items ---
+                try:
+                    bill_result = await sync_service.get_mapped_bills_with_items(property_name=prop)
+                    bill_batch = []
+                    for b in bill_result:
+                        b_id = b.get("mews_id")
+                        if b_id:
+                            # Per-bill report_date (from the bill's own Issued At)
+                            # rather than the shared `report_date` var above - keeps
+                            # Data Mart date-range filtering correct even though this
+                            # runs daily with a "yesterday" window, matching the fix
+                            # applied to the one-time wide-range backfills.
+                            issued = b.get("Issued At")
+                            bill_batch.append({
+                                "mews_id": b_id,
+                                "property": prop,
+                                "data": encryption_service.encrypt_data(b),
+                                "synced_at": now_iso,
+                                "report_date": issued.split("T")[0] if issued else report_date
+                            })
+                    if bill_batch:
+                        await chunked_upsert("bills_sync", bill_batch, on_conflict="mews_id")
+                    _log("Bills", "success", len(bill_batch), f"Auto Sync: {len(bill_batch)} records")
+                    print(f"Bills synced: {len(bill_batch)} for {prop}")
+                except Exception as e:
+                    err = str(e)[:1000]
+                    _log("Bills", "error", 0, f"Auto Sync Failed: {err}")
+                    print(f"Error syncing bills for {prop}: {e}")
+
             except Exception as prop_err:
                 print(f"Unexpected error during sync setup for {prop}: {str(prop_err)}")
             finally:
