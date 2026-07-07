@@ -5,6 +5,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import asyncio
 from app.services.mews_client import mews_client
+from app.services.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
@@ -580,6 +581,30 @@ class SyncService:
             owner.get("SecondLastName"), owner.get("LastName")
         ]))
 
+    @staticmethod
+    def _extract_owner_address(owner_data: dict) -> dict:
+        """
+        Shared by get_mapped_bills_with_items (archived for the Data Mart) and
+        get_bill_invoice (live print path) so a cached bill has everything
+        needed to print without re-fetching from MEWS.
+        """
+        wrapper = owner_data or {}
+        owner = wrapper.get("Value") or {}
+        address = owner.get("Address") or {}
+        legal = owner.get("LegalIdentifiers") or {}
+        tax_id = legal.get("TaxIdentifier") or owner.get("TaxIdentifier") or ""
+        address_lines = [l for l in [
+            address.get("Line1"),
+            address.get("Line2"),
+            ", ".join(filter(None, [address.get("City"), address.get("SubdivisionCode")])),
+            address.get("CountryCode"),
+        ] if l]
+        return {
+            "address_lines": address_lines,
+            "post_code": address.get("PostalCode") or "",
+            "tax_id": tax_id,
+        }
+
     async def get_mapped_bills(self, property_name: str, start_date: str = None, end_date: str = None):
         """
         Fetch real Bill (invoice/receipt) headers with Cursor pagination, chunked into
@@ -707,12 +732,16 @@ class SyncService:
             mapped = []
             for b in all_bills:
                 bill_id = b.get("Id")
+                owner_address = self._extract_owner_address(b.get("OwnerData"))
                 mapped.append({
                     "mews_id": bill_id,
                     "Number": b.get("Number"),
                     "Type": b.get("Type"),
                     "State": b.get("State"),
                     "Owner Name": self._extract_owner_name(b.get("OwnerData")),
+                    "Address Lines": owner_address["address_lines"],
+                    "Post Code": owner_address["post_code"],
+                    "Tax Id": owner_address["tax_id"],
                     "Issued At": b.get("IssuedUtc"),
                     "Due At": b.get("DueUtc"),
                     "Paid At": b.get("PaidUtc"),
@@ -730,30 +759,85 @@ class SyncService:
         address, line items (order items), computed VAT/subtotal/total, Thai baht-text,
         and a best-effort payment-method match — shaped to populate the
         "FullTAXInvoice LubdKohTao-TP" template placeholders.
+
+        Checks bills_sync (Data Mart) first: a backfilled bill already has the
+        header/owner/order-items, so this skips the two heaviest live MEWS calls
+        (bills/getAll, orderItems/getAll) for anything already synced - only
+        payment method is always fetched live, since the payments Data Mart table
+        doesn't store a queryable Bill Id. Falls back to a full live fetch if the
+        bill isn't cached, or the cached row predates the Address/Tax Id fields.
         """
         try:
-            bill_res = await mews_client.post(
-                "/api/connector/v1/bills/getAll",
-                {"BillIds": [bill_id], "Limitation": {"Count": 1}},
-                property_name=property_name
-            )
-            bills = bill_res.get("Bills", [])
-            if not bills:
-                raise Exception("Bill not found")
-            bill = bills[0]
+            cached = None
+            if self.supabase:
+                try:
+                    cache_res = self.supabase.table("bills_sync").select("data").eq("mews_id", bill_id).limit(1).execute()
+                    if cache_res.data:
+                        cached = encryption_service.decrypt_data(cache_res.data[0]["data"])
+                except Exception as cache_err:
+                    logger.warning(f"bills_sync cache lookup failed for {bill_id}: {cache_err}")
 
-            items = []
-            current_cursor = None
-            while True:
-                payload = {"BillIds": [bill_id], "Limitation": {"Count": 1000}}
-                if current_cursor:
-                    payload["Limitation"]["Cursor"] = current_cursor
-                item_res = await mews_client.post("/api/connector/v1/orderItems/getAll", payload, property_name=property_name)
-                chunk = item_res.get("OrderItems", [])
-                current_cursor = item_res.get("Cursor")
-                items.extend(chunk)
-                if not current_cursor or not chunk:
-                    break
+            rows = []
+            if cached and "Address Lines" in cached and "Order Items" in cached:
+                owner_name = cached.get("Owner Name") or ""
+                address_lines = cached.get("Address Lines") or []
+                post_code = cached.get("Post Code") or ""
+                tax_id = cached.get("Tax Id") or ""
+                number = cached.get("Number")
+                bill_type = cached.get("Type")
+                state = cached.get("State")
+                issued_at = cached.get("Issued At")
+                due_at = cached.get("Due At")
+                for it in cached.get("Order Items") or []:
+                    gross = it.get("Amount") or 0
+                    net = it.get("Net Amount") or 0
+                    rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net})
+            else:
+                bill_res = await mews_client.post(
+                    "/api/connector/v1/bills/getAll",
+                    {"BillIds": [bill_id], "Limitation": {"Count": 1}},
+                    property_name=property_name
+                )
+                bills = bill_res.get("Bills", [])
+                if not bills:
+                    raise Exception("Bill not found")
+                bill = bills[0]
+
+                items = []
+                current_cursor = None
+                while True:
+                    payload = {"BillIds": [bill_id], "Limitation": {"Count": 1000}}
+                    if current_cursor:
+                        payload["Limitation"]["Cursor"] = current_cursor
+                    item_res = await mews_client.post("/api/connector/v1/orderItems/getAll", payload, property_name=property_name)
+                    chunk = item_res.get("OrderItems", [])
+                    current_cursor = item_res.get("Cursor")
+                    items.extend(chunk)
+                    if not current_cursor or not chunk:
+                        break
+
+                owner_wrapper = bill.get("OwnerData") or {}
+                owner_name = self._extract_owner_name(owner_wrapper)
+                owner_address = self._extract_owner_address(owner_wrapper)
+                address_lines = owner_address["address_lines"]
+                post_code = owner_address["post_code"]
+                tax_id = owner_address["tax_id"]
+                number = bill.get("Number")
+                bill_type = bill.get("Type")
+                state = bill.get("State")
+                issued_at = bill.get("IssuedUtc")
+                due_at = bill.get("DueUtc")
+
+                for it in items:
+                    amt = it.get("Amount") or {}
+                    gross = amt.get("GrossValue") or 0
+                    net = amt.get("NetValue") or 0
+                    rows.append({
+                        "name": it.get("BillingName") or it.get("Type") or "Item",
+                        "gross": gross,
+                        "net": net,
+                        "tax": gross - net,
+                    })
 
             pay_res = await mews_client.post(
                 "/api/connector/v1/payments/getAll",
@@ -761,32 +845,6 @@ class SyncService:
                 property_name=property_name
             )
             payments = pay_res.get("Payments", [])
-
-            owner_wrapper = bill.get("OwnerData") or {}
-            owner = owner_wrapper.get("Value") or {}
-            owner_name = self._extract_owner_name(owner_wrapper)
-            address = owner.get("Address") or {}
-            legal = owner.get("LegalIdentifiers") or {}
-            tax_id = legal.get("TaxIdentifier") or owner.get("TaxIdentifier") or ""
-
-            address_lines = [l for l in [
-                address.get("Line1"),
-                address.get("Line2"),
-                ", ".join(filter(None, [address.get("City"), address.get("SubdivisionCode")])),
-                address.get("CountryCode"),
-            ] if l]
-
-            rows = []
-            for it in items:
-                amt = it.get("Amount") or {}
-                gross = amt.get("GrossValue") or 0
-                net = amt.get("NetValue") or 0
-                rows.append({
-                    "name": it.get("BillingName") or it.get("Type") or "Item",
-                    "gross": gross,
-                    "net": net,
-                    "tax": gross - net,
-                })
 
             if len(rows) > 5:
                 head, tail = rows[:4], rows[4:]
@@ -830,15 +888,15 @@ class SyncService:
                     cheque["date"] = p.get("ChargedUtc") or ""
 
             return {
-                "mews_id": bill.get("Id"),
-                "number": bill.get("Number"),
-                "type": bill.get("Type"),
-                "state": bill.get("State"),
-                "issued_at": bill.get("IssuedUtc"),
-                "due_at": bill.get("DueUtc"),
+                "mews_id": bill_id,
+                "number": number,
+                "type": bill_type,
+                "state": state,
+                "issued_at": issued_at,
+                "due_at": due_at,
                 "owner_name": owner_name,
                 "address_lines": address_lines,
-                "post_code": address.get("PostalCode") or "",
+                "post_code": post_code,
                 "tax_id": tax_id,
                 "line_items": line_items,
                 "sub_total": round(sub_total, 2),

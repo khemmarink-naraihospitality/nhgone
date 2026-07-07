@@ -27,6 +27,8 @@ const fmtDate = (v: string) => {
 const MAX_BATCH_PRINT = 100;
 const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
 
+type DataSource = "live" | "database";
+
 export default function BillGeneratorPage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -36,6 +38,7 @@ export default function BillGeneratorPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [pdfEventIds, setPdfEventIds] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [dataSource, setDataSource] = useState<DataSource>("live");
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -68,12 +71,25 @@ export default function BillGeneratorPage() {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({
-        property_name: selectedProperty,
-        start_date: `${startDate}T00:00:00Z`,
-        end_date: `${endDate}T23:59:59Z`,
-      });
-      const res = await fetch(`/api/bills/live?${params.toString()}`);
+      let res: Response;
+      if (dataSource === "database") {
+        // Data Mart: fast Supabase read of whatever's already been synced (e.g.
+        // via "Import To Data Mart" or a manual backfill) - won't show bills
+        // that haven't been synced for this property/range yet.
+        const params = new URLSearchParams({
+          property: selectedProperty,
+          start_date: `${startDate}T00:00:00Z`,
+          end_date: `${endDate}T23:59:59Z`,
+        });
+        res = await fetch(`/api/bills/managed?${params.toString()}`);
+      } else {
+        const params = new URLSearchParams({
+          property_name: selectedProperty,
+          start_date: `${startDate}T00:00:00Z`,
+          end_date: `${endDate}T23:59:59Z`,
+        });
+        res = await fetch(`/api/bills/live?${params.toString()}`);
+      }
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || "Failed to fetch bills");
       setBills(result.data || []);
@@ -182,7 +198,22 @@ export default function BillGeneratorPage() {
   return (
     <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="Bill Generator" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it." />
+        <PageHeader title="Bill Generator" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it.">
+          <div className="flex border border-[#152A00]/20 overflow-hidden">
+            <button
+              onClick={() => setDataSource("live")}
+              className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+            >
+              Live API
+            </button>
+            <button
+              onClick={() => setDataSource("database")}
+              className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+            >
+              Database
+            </button>
+          </div>
+        </PageHeader>
 
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
