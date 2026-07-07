@@ -27,6 +27,9 @@ const fmtDate = (v: string) => {
 const MAX_BATCH_PRINT = 100;
 const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
 const PAGE_SIZE = 100; // matches MAX_BATCH_PRINT so "select all" on a page never exceeds the batch-print cap
+const PRINT_CHUNK_SIZE = 20; // each bill can render as multiple physical pages (Original+Copy), so one
+// /print-bill/batch tab holding all 100 selected bills can bog down the browser's print pipeline -
+// splitting into 20-at-a-time tabs keeps each tab's document small enough to print/save reliably
 
 type DataSource = "live" | "database";
 
@@ -179,8 +182,17 @@ export default function BillGeneratorPage() {
     // Browsers/Next.js can percent-encode a comma in a *path* segment inconsistently
     // between client and server, silently merging split ids back together; query
     // string values are decoded reliably via the standard URLSearchParams API.
-    const params = new URLSearchParams({ ids: selectedIds.join(","), property: selectedProperty });
-    window.open(`/print-bill/batch?${params.toString()}`, "_blank");
+    //
+    // Large selections are split into PRINT_CHUNK_SIZE-sized tabs instead of one
+    // giant document - each bill's invoice can span several physical pages
+    // (Original + Copy), so a single tab holding all 100 selected bills could
+    // mean 300+ pages for the browser's print pipeline to lay out at once, which
+    // is what was causing the page to hang.
+    for (let i = 0; i < selectedIds.length; i += PRINT_CHUNK_SIZE) {
+      const chunk = selectedIds.slice(i, i + PRINT_CHUNK_SIZE);
+      const params = new URLSearchParams({ ids: chunk.join(","), property: selectedProperty });
+      window.open(`/print-bill/batch?${params.toString()}`, "_blank");
+    }
   };
 
   const handleGetMewsPdfSelected = () => {
