@@ -35,10 +35,9 @@ export default function BillGeneratorPage() {
   const [bills, setBills] = useState<Bill[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState("");
   const [pdfEventIds, setPdfEventIds] = useState<Record<string, string>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [dataSource, setDataSource] = useState<DataSource>("live");
+  const [dataSource, setDataSource] = useState<DataSource>("database");
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -147,11 +146,8 @@ export default function BillGeneratorPage() {
   const filteredBills = useMemo(() => {
     // Defensively drop any row without a real mews_id so a bad/missing id can
     // never end up selectable and sent to MEWS as a malformed BillIds filter.
-    const withIds = bills.filter((b) => !!b.mews_id);
-    if (!searchTerm) return withIds;
-    const lower = searchTerm.toLowerCase();
-    return withIds.filter((b) => Object.values(b).some((v) => String(v || "").toLowerCase().includes(lower)));
-  }, [bills, searchTerm]);
+    return bills.filter((b) => !!b.mews_id);
+  }, [bills]);
 
   const toggleSelectRow = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
@@ -204,13 +200,13 @@ export default function BillGeneratorPage() {
               onClick={() => setDataSource("live")}
               className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
             >
-              Live API
+              MEWS
             </button>
             <button
               onClick={() => setDataSource("database")}
               className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
             >
-              Database
+              Data Mart
             </button>
           </div>
         </PageHeader>
@@ -249,15 +245,7 @@ export default function BillGeneratorPage() {
           <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[46px]">
             {loading ? "Loading..." : "Fetch Bills"}
           </button>
-          <div className="flex-1 min-w-[200px]">
-            <input
-              type="text"
-              placeholder="Filter records..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
-            />
-          </div>
+          <div className="flex-1" />
           <button
             onClick={handlePrintSelected}
             disabled={selectedIds.length === 0}
