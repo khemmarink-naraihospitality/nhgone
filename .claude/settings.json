@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m ' *)",
+      "Bash(python -m py_compile app/routers/bills.py)",
+      "Bash(sleep 4 && curl -s -m 5 http://127.0.0.1:8000/health; echo; cat /tmp/uvicorn_verify.log)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -m 60 \"http://127.0.0.1:8000/bills/live?property_name=Lub%20d%20Koh%20Tao%20Tanote%20Bay&start_date=2026-06-01T00:00:00Z&end_date=2026-07-06T23:59:59Z\")",
+      "Bash(py -c ' *)",
+      "Bash(curl -s -m 60 \"http://127.0.0.1:8000/bills/5c04674a-af61-4eb3-95b7-b47f003c27e3/invoice?property_name=Lub%20d%20Koh%20Tao%20Tanote%20Bay\")",
+      "Bash(py -m json.tool)",
+      "Bash(taskkill //PID 30828 //F)",
+      "Bash(python -m py_compile app/routers/bills.py app/services/sync_service.py)",
+      "Bash(sleep 4 && curl -s -m 5 http://127.0.0.1:8000/health; echo; cat /tmp/uvicorn_pdf_test.log)",
+      "Bash(curl -s -m 60 \"http://127.0.0.1:8000/bills/5c04674a-af61-4eb3-95b7-b47f003c27e3/pdf?property_name=Lub%20d%20Koh%20Tao%20Tanote%20Bay\")",
+      "Bash(taskkill //PID 18768 //F)"
+    ]
+  }
+}

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
-from app.routers import reservations, members, payments, admin, bills
+from app.routers import reservations, members, payments, admin, bills, resources, rr3
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -28,6 +28,8 @@ app.include_router(members.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
 app.include_router(bills.router)
+app.include_router(resources.router)
+app.include_router(rr3.router)
 
 async def daily_auto_sync(force_all: bool = False):
     """
@@ -197,6 +199,29 @@ async def daily_auto_sync(force_all: bool = False):
                     err = str(e)[:1000]
                     _log("Payments", "error", 0, f"Auto Sync Failed: {err}")
                     print(f"Error syncing payments for {prop}: {e}")
+
+                # --- D. Sync Resources ---
+                try:
+                    resrc_result = await sync_service.get_mapped_resources(property_name=prop)
+                    resrc_batch = []
+                    for r in resrc_result:
+                        r_id = r.get("Identifier")
+                        if r_id:
+                            resrc_batch.append({
+                                "mews_id": r_id,
+                                "property": prop,
+                                "data": encryption_service.encrypt_data(r),
+                                "synced_at": now_iso,
+                                "report_date": report_date
+                            })
+                    if resrc_batch:
+                        await chunked_upsert("resources_sync", resrc_batch, on_conflict="mews_id")
+                    _log("Resources", "success", len(resrc_batch), f"Auto Sync: {len(resrc_batch)} records")
+                    print(f"Resources synced: {len(resrc_batch)} for {prop}")
+                except Exception as e:
+                    err = str(e)[:1000]
+                    _log("Resources", "error", 0, f"Auto Sync Failed: {err}")
+                    print(f"Error syncing resources for {prop}: {e}")
 
             except Exception as prop_err:
                 print(f"Unexpected error during sync setup for {prop}: {str(prop_err)}")

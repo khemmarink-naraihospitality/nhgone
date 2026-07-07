@@ -68,6 +68,53 @@ def bahttext(amount) -> str:
     return result
 
 
+# RR3 (ร.ร.๓ Thai Hotel Act lodger registration card) support - ported from the
+# user's existing, proven Google Apps Script rather than re-derived from docs.
+_RR3_COUNTRY_MAP = {
+    "TH": "Thailand", "SA": "Saudi Arabia", "IN": "India", "US": "United States",
+    "GB": "United Kingdom", "CN": "China", "JP": "Japan", "DE": "Germany",
+    "FR": "France", "KR": "South Korea", "AE": "United Arab Emirates", "RU": "Russia",
+    "SG": "Singapore", "MY": "Malaysia", "ID": "Indonesia", "VN": "Vietnam",
+    "PH": "Philippines", "CH": "Switzerland", "IT": "Italy", "ES": "Spain",
+    "BR": "Brazil", "CA": "Canada", "AU": "Australia", "ZA": "South Africa",
+}
+
+_RR3_PROPERTY_THAI_NAMES = {
+    "Lub d Bangkok Chinatown": "หลับดี แบงค็อก เยาวราช",
+    "Lub d Bangkok Siam": "หลับดี แบงค็อก สยาม",
+    "Lub d Koh Samui Chaweng Beach": "หลับดี เกาะสมุย หาดเฉวง",
+    "Lub d Koh Tao Tanote Bay": "หลับดี เกาะเต่า อ่าวโตนด",
+    "Lub d Philippines Makati": "หลับดี มะนิลา มาคาติ",
+    "Lub d Phuket Patong": "หลับดี ภูเก็ต ป่าตอง",
+    "Lub d Siem Reap": "หลับดี เสียมเรียบ",
+    "Marasca Samui": "มาราสก้า สมุย",
+}
+
+
+def _rr3_country_name(code: str) -> str:
+    return _RR3_COUNTRY_MAP.get(code, code or "")
+
+
+def _rr3_format_thai_date(utc_str: str) -> str:
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Bangkok"))
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return ""
+
+
+def _rr3_format_thai_time(utc_str: str) -> str:
+    if not utc_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Bangkok"))
+        return dt.strftime("%H:%M")
+    except Exception:
+        return ""
+
+
 class SyncService:
     def __init__(self):
         # We need the SERVICE_ROLE_KEY to bypass RLS for sync operations
@@ -368,6 +415,73 @@ class SyncService:
             return mapped_members
         except Exception as e:
             logger.error(f"Error mapping members for {property_name}: {str(e)}")
+            raise e
+
+    async def get_mapped_resources(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Fetch resources (rooms/spaces) directly from MEWS resources/getAll API
+        using UpdatedUtc date range filter, same pattern as get_mapped_members.
+        """
+        try:
+            if not start_date or not end_date:
+                bkk_tz = ZoneInfo("Asia/Bangkok")
+                now_bkk = datetime.now(bkk_tz)
+                yesterday_bkk = now_bkk - timedelta(days=1)
+
+                if not start_date:
+                    start_dt = yesterday_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not end_date:
+                    end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            all_resources = []
+            current_cursor = None
+            chunk_size = 500
+
+            while True:
+                res_payload = {
+                    "UpdatedUtc": {
+                        "StartUtc": start_date,
+                        "EndUtc": end_date
+                    },
+                    "Extent": {"Resources": True},
+                    "Limitation": {"Count": chunk_size}
+                }
+                if current_cursor:
+                    res_payload["Limitation"]["Cursor"] = current_cursor
+
+                res_res = await mews_client.post(
+                    "/api/connector/v1/resources/getAll",
+                    res_payload,
+                    property_name=property_name
+                )
+                chunk = res_res.get("Resources", [])
+                current_cursor = res_res.get("Cursor")
+                all_resources.extend(chunk)
+
+                if not current_cursor or not chunk:
+                    break
+
+            mapped_resources = []
+            for res in all_resources:
+                data_obj = res.get("Data") or {}
+                mapped_resources.append({
+                    "Name": res.get("Name", ""),
+                    "State": res.get("State", ""),
+                    "Active": res.get("IsActive", True),
+                    "Parent Resource Id": res.get("ParentResourceId", ""),
+                    "Floor Number": data_obj.get("FloorNumber", ""),
+                    "Location Notes": data_obj.get("LocationNotes", ""),
+                    "Created": res.get("CreatedUtc", ""),
+                    "Updated": res.get("UpdatedUtc", ""),
+                    "Identifier": res.get("Id", ""),
+                    "mews_id": res.get("Id", "")
+                })
+
+            return mapped_resources
+        except Exception as e:
+            logger.error(f"Error mapping resources for {property_name}: {str(e)}")
             raise e
 
     async def get_mapped_payments(self, property_name: str, start_date: str = None, end_date: str = None):
@@ -693,6 +807,124 @@ class SyncService:
             return {"ready": False, "event_id": event_id}
         except Exception as e:
             logger.error(f"Error fetching bill PDF for {bill_id}: {str(e)}")
+            raise e
+
+    async def get_rr3_cards(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Builds Thai Hotel Act RR3 (ร.ร.๓) lodger registration cards by joining
+        Reservations + Customers + Resources for a date range - a direct port of
+        the user's existing, proven Google Apps Script: same request shape (the
+        older, un-versioned reservations/getAll with top-level StartUtc/EndUtc +
+        Extent, CustomerId/CompanionIds fields - deliberately NOT the newer
+        /getAll/2023-06-06 + AccountId shape get_mapped_reservations uses, since
+        that variant doesn't support Extent-embedded Customers/Resources), same
+        client-side re-filter by StartUtc, and same field fallback logic.
+        """
+        try:
+            if not start_date or not end_date:
+                now_utc = datetime.now(timezone.utc)
+                yesterday_utc = now_utc - timedelta(days=1)
+                if not start_date:
+                    start_date = yesterday_utc.strftime("%Y-%m-%dT00:00:00Z")
+                if not end_date:
+                    end_date = now_utc.strftime("%Y-%m-%dT23:59:59Z")
+
+            payload = {
+                "StartUtc": start_date,
+                "EndUtc": end_date,
+                "Extent": {"Reservations": True, "Customers": True, "Resources": True}
+            }
+            response = await mews_client.post("/api/connector/v1/reservations/getAll", payload, property_name=property_name)
+
+            wanted_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+            wanted_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+
+            def in_range(res):
+                start_utc = res.get("StartUtc")
+                if not start_utc:
+                    return False
+                try:
+                    t = datetime.fromisoformat(start_utc.replace("Z", "+00:00"))
+                except Exception:
+                    return False
+                return wanted_start <= t <= wanted_end
+
+            reservations = [r for r in response.get("Reservations", []) if in_range(r)]
+            customers_map = {c["Id"]: c for c in response.get("Customers", []) if c.get("Id")}
+            resources_map = {r["Id"]: r for r in response.get("Resources", []) if r.get("Id")}
+
+            hotel_name = _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)
+
+            cards = []
+            for reservation in reservations:
+                companion_ids = reservation.get("CompanionIds") or []
+                guest_ids = companion_ids if companion_ids else (
+                    [reservation["CustomerId"]] if reservation.get("CustomerId") else []
+                )
+
+                for guest_id in guest_ids:
+                    customer = customers_map.get(guest_id)
+                    if not customer:
+                        continue
+
+                    room_number = ""
+                    assigned_resource_id = reservation.get("AssignedResourceId")
+                    if assigned_resource_id and assigned_resource_id in resources_map:
+                        room_number = resources_map[assigned_resource_id].get("Name", "")
+
+                    address = customer.get("Address") or {}
+                    line1 = (address.get("Line1") or "").strip()
+                    line2 = (address.get("Line2") or "").strip()
+                    if line1 or line2:
+                        parts = [address.get("Line1"), address.get("Line2"), address.get("City"),
+                                 address.get("PostalCode"), address.get("CountryCode")]
+                        address_details = " ".join(p for p in parts if p)
+                    elif (customer.get("BirthPlace") or "").strip():
+                        address_details = customer.get("BirthPlace")
+                    else:
+                        address_details = _rr3_country_name(customer.get("NationalityCode"))
+
+                    identity_card_value = ""
+                    identity_card = customer.get("IdentityCard")
+                    identity_cards = customer.get("IdentityCards")
+                    if isinstance(identity_card, dict):
+                        identity_card_value = identity_card.get("Number", "")
+                    elif isinstance(identity_cards, list) and identity_cards:
+                        identity_card_value = identity_cards[0].get("Number", "")
+
+                    passport = customer.get("Passport") or {}
+                    occupation = customer.get("Occupation") or "นักธุรกิจ"
+                    first_name = customer.get("FirstName", "")
+                    last_name = customer.get("LastName", "")
+
+                    cards.append({
+                        "CardId": f"{reservation.get('Number', '')}::{guest_id}",
+                        "ReservationsNumber": reservation.get("Number", ""),
+                        "HotelName": hotel_name,
+                        "FirstName": first_name,
+                        "LastName": last_name,
+                        "RoomNumber": room_number,
+                        "CheckIn": _rr3_format_thai_date(reservation.get("StartUtc")),
+                        "CheckInTime": _rr3_format_thai_time(reservation.get("StartUtc")),
+                        "CheckOut": _rr3_format_thai_date(reservation.get("EndUtc")),
+                        "CheckOutTime": _rr3_format_thai_time(reservation.get("EndUtc")),
+                        "PassportNumber": passport.get("Number", ""),
+                        "IdentityCardNumber": identity_card_value,
+                        "NationalityCode": customer.get("NationalityCode", ""),
+                        "NationalityName": _rr3_country_name(customer.get("NationalityCode")),
+                        "AddressDetails": address_details,
+                        "Telephone": customer.get("Phone", ""),
+                        "Email": customer.get("Email", ""),
+                        "Occupation": occupation,
+                        "AlienBook": customer.get("IdentityDocumentSupportNumber", ""),
+                        "GuestSign": f"{first_name} {last_name}".strip(),
+                        "Departure": "",
+                        "Destination": "",
+                    })
+
+            return cards
+        except Exception as e:
+            logger.error(f"Error building RR3 cards for {property_name}: {str(e)}")
             raise e
 
 sync_service = SyncService()

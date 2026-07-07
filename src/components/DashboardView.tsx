@@ -6,7 +6,7 @@ import PageHeader from "./PageHeader";
 import * as XLSX from 'xlsx';
 import ImportChart from "./ImportChart";
 
-type Section = "reservations" | "members" | "payments" | "bills";
+type Section = "reservations" | "members" | "payments" | "bills" | "resources";
 type DataSource = "live" | "saved";
 
 interface DashboardViewProps {
@@ -45,6 +45,9 @@ const SECTION_COLUMNS: Record<Section, string[]> = {
   ],
   bills: [
     "mews_id", "Number", "Type", "State", "Owner Name", "Issued At", "Due At", "Paid At", "Notes"
+  ],
+  resources: [
+    "Identifier", "Name", "State", "Active", "Parent Resource Id", "Floor Number", "Location Notes", "Created", "Updated"
   ]
 };
 
@@ -148,13 +151,15 @@ export default function DashboardView({
       if (dataSource === "live") {
         endpoint = activeSection === "reservations" ? "/reservations/live" :
                           activeSection === "members" ? "/members/live" :
-                          activeSection === "bills" ? "/bills/live" : "/payments/live";
+                          activeSection === "bills" ? "/bills/live" :
+                          activeSection === "resources" ? "/resources/live" : "/payments/live";
         queryParams.append("property_name", selectedProperty);
         queryParams.append("start_date", startDate ? `${startDate}:00Z` : "");
         queryParams.append("end_date", endDate ? `${endDate}:00Z` : "");
       } else {
         endpoint = activeSection === "reservations" ? "/reservations/saved" :
-                   activeSection === "members" ? "/members/managed" : "/payments/managed";
+                   activeSection === "members" ? "/members/managed" :
+                   activeSection === "resources" ? "/resources/managed" : "/payments/managed";
         queryParams.append("property", selectedProperty);
         
         // For 'saved' data, we ensure we fetch at least a 7-day range for the chart,
@@ -233,6 +238,7 @@ export default function DashboardView({
       const apiUrl = "/api";
       const endpoint = activeSection === "reservations" ? "/reservations/sync-manual"
                      : activeSection === "members"       ? "/members/sync-manual"
+                     : activeSection === "resources"      ? "/resources/sync-manual"
                      :                                    "/payments/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
@@ -262,7 +268,9 @@ export default function DashboardView({
     if (selectedIds.length === 0) return;
     if (!confirm(`Are you sure you want to delete ${selectedIds.length} records?`)) return;
     
-    const endpoint = activeSection === "reservations" ? "/reservations/saved" : "/members/managed";
+    const endpoint = activeSection === "reservations" ? "/reservations/saved"
+                    : activeSection === "resources"    ? "/resources/managed"
+                    :                                    "/members/managed";
     setLoading(true);
     try {
       const response = await fetch(`/api${endpoint}`, {
