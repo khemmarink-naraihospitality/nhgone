@@ -1,9 +1,11 @@
 import re
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from pydantic import BaseModel
 from app.services.sync_service import sync_service
+from app.services.encryption import encryption_service
 from app.config import get_supabase_client
 from typing import Optional
+from datetime import datetime, timezone
 
 router = APIRouter(prefix="/bills", tags=["Bills"])
 
@@ -200,6 +202,129 @@ async def get_live_bills(
         return {"status": "success", "data": data}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/sync-manual")
+async def sync_manual_bills(payload: dict = Body(...)):
+    """
+    Backfills bills_sync with full Bill + Order Item data for a property/date
+    range. Unlike the other sections' sync-manual endpoints, this does NOT take
+    already-fetched frontend data - the payload only carries the property/date
+    range, and this re-fetches via get_mapped_bills_with_items directly, since
+    the live list view (get_mapped_bills) deliberately omits order items to
+    stay fast, but the Data Mart archive needs them.
+    """
+    try:
+        property_name = payload.get("property")
+        start_date = payload.get("start_date")
+        end_date = payload.get("end_date")
+
+        property_id = None
+        try:
+            prop_res = sync_service.supabase.table("property_api_settings").select("id").ilike("property_name", f"%{property_name}%").execute()
+            if prop_res.data:
+                property_id = prop_res.data[0].get("id")
+        except Exception as e:
+            print(f"Logging fetch error (bills): {str(e)}")
+
+        bills_data = await sync_service.get_mapped_bills_with_items(
+            property_name=property_name, start_date=start_date, end_date=end_date
+        )
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        report_date = start_date.split("T")[0] if start_date else None
+
+        batch = []
+        for b in bills_data:
+            mews_id = b.get("mews_id")
+            if not mews_id:
+                continue
+            batch.append({
+                "mews_id": mews_id,
+                "property": property_name,
+                "data": encryption_service.encrypt_data(b),
+                "synced_at": now_iso,
+                "report_date": report_date
+            })
+
+        inserted = 0
+        if batch:
+            chunk_size = 200
+            for i in range(0, len(batch), chunk_size):
+                chunk = batch[i:i + chunk_size]
+                try:
+                    sync_service.supabase.table("bills_sync").upsert(chunk, on_conflict="mews_id").execute()
+                except Exception as e:
+                    if "timeout" in str(e).lower():
+                        mini_size = chunk_size // 2
+                        for j in range(0, len(chunk), mini_size):
+                            sync_service.supabase.table("bills_sync").upsert(chunk[j:j + mini_size], on_conflict="mews_id").execute()
+                    else:
+                        raise
+            inserted = len(batch)
+
+            try:
+                log_payload = {
+                    "property": property_name,
+                    "status": "success",
+                    "message": f"Manual Bill Import for {report_date or 'Selection'}",
+                    "records_synced": inserted,
+                    "target_table": "Bills",
+                    "sync_type": "manual"
+                }
+                if property_id:
+                    log_payload["property_id"] = property_id
+                sync_service.supabase.table("sync_logs").insert(log_payload).execute()
+            except Exception as e:
+                print(f"Logging insert error (bills): {str(e)}")
+
+        return {"status": "success", "inserted": inserted}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Manual bill sync failed: {str(e)}")
+
+@router.get("/managed")
+async def get_managed_bills(
+    property: Optional[str] = Query(None),
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None)
+):
+    try:
+        supabase = get_supabase_client()
+        query = supabase.table("bills_sync").select("data, synced_at, report_date").order("synced_at", desc=True)
+        if property and property != "All" and property != "null":
+            query = query.eq("property", property)
+        if start_date:
+            query = query.gte("report_date", start_date.split("T")[0])
+        if end_date:
+            query = query.lte("report_date", end_date.split("T")[0])
+        query = query.limit(2000)
+        res = query.execute()
+
+        data = []
+        for r in res.data:
+            item = encryption_service.decrypt_data(r["data"])
+            item["Import Date"] = r["synced_at"]
+            item["report_date"] = r.get("report_date")
+            data.append(item)
+
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.delete("/managed")
+async def delete_saved_bills(payload: dict = Body(...)):
+    try:
+        supabase = get_supabase_client()
+        ids = payload.get("mews_ids", [])
+        if not ids:
+            return {"status": "success", "deleted": 0}
+        supabase.table("bills_sync").delete().in_("mews_id", ids).execute()
+        return {"status": "success", "deleted": len(ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

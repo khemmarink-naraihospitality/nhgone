@@ -635,6 +635,95 @@ class SyncService:
             logger.error(f"Error mapping bills for {property_name}: {str(e)}")
             raise e
 
+    async def get_mapped_bills_with_items(self, property_name: str, start_date: str = None, end_date: str = None):
+        """
+        Full Bill + Order Item archive for the Data Mart (unlike get_mapped_bills,
+        which is header-only for the fast list view). For each bill in the date
+        range, fetches its order items in bulk via BillIds (chunked to <=1000 ids
+        per MEWS's limit) rather than one-by-one, to avoid N+1 calls across what
+        can be thousands of bills for a wide date range.
+        """
+        try:
+            if not start_date or not end_date:
+                bkk_tz = ZoneInfo("Asia/Bangkok")
+                now_bkk = datetime.now(bkk_tz)
+                yesterday_bkk = now_bkk - timedelta(days=1)
+                if not start_date:
+                    start_dt = yesterday_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
+                    start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not end_date:
+                    end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+            all_bills = []
+            for window_start, window_end in self._split_date_windows(start_date, end_date):
+                current_cursor = None
+                while True:
+                    payload = {
+                        "IssuedUtc": {"StartUtc": window_start, "EndUtc": window_end},
+                        "Limitation": {"Count": 1000}
+                    }
+                    if current_cursor:
+                        payload["Limitation"]["Cursor"] = current_cursor
+
+                    response = await mews_client.post("/api/connector/v1/bills/getAll", payload, property_name=property_name)
+                    chunk = response.get("Bills", [])
+                    current_cursor = response.get("Cursor")
+                    all_bills.extend(chunk)
+
+                    if not current_cursor or not chunk:
+                        break
+
+            order_items_by_bill = {}
+            bill_ids = [b.get("Id") for b in all_bills if b.get("Id")]
+            for i in range(0, len(bill_ids), 1000):
+                id_batch = bill_ids[i:i + 1000]
+                current_cursor = None
+                while True:
+                    item_payload = {"BillIds": id_batch, "Limitation": {"Count": 1000}}
+                    if current_cursor:
+                        item_payload["Limitation"]["Cursor"] = current_cursor
+
+                    item_res = await mews_client.post("/api/connector/v1/orderItems/getAll", item_payload, property_name=property_name)
+                    item_chunk = item_res.get("OrderItems", [])
+                    current_cursor = item_res.get("Cursor")
+
+                    for item in item_chunk:
+                        bill_id_ref = item.get("BillId")
+                        if not bill_id_ref:
+                            continue
+                        amt = item.get("Amount") or {}
+                        order_items_by_bill.setdefault(bill_id_ref, []).append({
+                            "Name": item.get("BillingName") or item.get("Type") or "",
+                            "Type": item.get("Type"),
+                            "Amount": amt.get("GrossValue"),
+                            "Net Amount": amt.get("NetValue"),
+                            "Currency": amt.get("Currency"),
+                        })
+
+                    if not current_cursor or not item_chunk:
+                        break
+
+            mapped = []
+            for b in all_bills:
+                bill_id = b.get("Id")
+                mapped.append({
+                    "mews_id": bill_id,
+                    "Number": b.get("Number"),
+                    "Type": b.get("Type"),
+                    "State": b.get("State"),
+                    "Owner Name": self._extract_owner_name(b.get("OwnerData")),
+                    "Issued At": b.get("IssuedUtc"),
+                    "Due At": b.get("DueUtc"),
+                    "Paid At": b.get("PaidUtc"),
+                    "Notes": b.get("Notes"),
+                    "Order Items": order_items_by_bill.get(bill_id, []),
+                })
+            return mapped
+        except Exception as e:
+            logger.error(f"Error mapping bills with items for {property_name}: {str(e)}")
+            raise e
+
     async def get_bill_invoice(self, property_name: str, bill_id: str):
         """
         Build the full itemized invoice payload for a single bill: header, guest/company

@@ -159,7 +159,8 @@ export default function DashboardView({
       } else {
         endpoint = activeSection === "reservations" ? "/reservations/saved" :
                    activeSection === "members" ? "/members/managed" :
-                   activeSection === "resources" ? "/resources/managed" : "/payments/managed";
+                   activeSection === "resources" ? "/resources/managed" :
+                   activeSection === "bills" ? "/bills/managed" : "/payments/managed";
         queryParams.append("property", selectedProperty);
         
         // For 'saved' data, we ensure we fetch at least a 7-day range for the chart,
@@ -239,6 +240,7 @@ export default function DashboardView({
       const endpoint = activeSection === "reservations" ? "/reservations/sync-manual"
                      : activeSection === "members"       ? "/members/sync-manual"
                      : activeSection === "resources"      ? "/resources/sync-manual"
+                     : activeSection === "bills"          ? "/bills/sync-manual"
                      :                                    "/payments/sync-manual";
       const response = await fetch(`${apiUrl}${endpoint}`, {
         method: "POST",
@@ -270,6 +272,7 @@ export default function DashboardView({
     
     const endpoint = activeSection === "reservations" ? "/reservations/saved"
                     : activeSection === "resources"    ? "/resources/managed"
+                    : activeSection === "bills"         ? "/bills/managed"
                     :                                    "/members/managed";
     setLoading(true);
     try {
@@ -507,7 +510,7 @@ export default function DashboardView({
                   Delete ({selectedIds.length})
                 </button>
               )}
-              {isSuperAdmin && dataSource === "live" && activeSection !== "bills" && (
+              {isSuperAdmin && dataSource === "live" && (
                 <button onClick={handleManualSync} disabled={data.length === 0 || syncing} className="btn-brand btn-secondary py-2 text-[10px]">
                   Import To Data Mart
                 </button>
