@@ -28,8 +28,8 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   </div>
   <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
     <div>
-      <div>เลขที่ / No. : &lt;&lt;InvoiceNoF&gt;&gt;</div>
-      <div>วันที่ / Date : &lt;&lt;DateF&gt;&gt;</div>
+      <div>เลขที่ / No. : <<InvoiceNoF>></div>
+      <div>วันที่ / Date : <<DateF>></div>
       <div>เลขที่อ้างอิง / Inv Ref : </div>
     </div>
     <div style="text-align:right;">
@@ -38,9 +38,9 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
     </div>
   </div>
   <div style="border-top:1px solid #000;border-bottom:1px solid #000;padding:8px 0;margin-bottom:8px;">
-    <div>ชื่อ / Name : &lt;&lt;OwnerName&gt;&gt;</div>
-    <div>ที่อยู่ / Address : &lt;&lt;AddressLine1&gt;&gt; &lt;&lt;AddressLine2&gt;&gt; &lt;&lt;AddressLine3&gt;&gt; &lt;&lt;AddressLine4&gt;&gt; &lt;&lt;AddressLine5&gt;&gt; &lt;&lt;PostCode&gt;&gt;</div>
-    <div>เลขประจำตัวผู้เสียภาษี : &lt;&lt;TAXID&gt;&gt;</div>
+    <div>ชื่อ / Name : <<OwnerName>></div>
+    <div>ที่อยู่ / Address : <<AddressLine1>> <<AddressLine2>> <<AddressLine3>> <<AddressLine4>> <<AddressLine5>> <<PostCode>></div>
+    <div>เลขประจำตัวผู้เสียภาษี : <<TAXID>></div>
   </div>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
     <thead>
@@ -51,21 +51,21 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
       </tr>
     </thead>
     <tbody>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No1&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description1&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP1&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No2&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description2&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP2&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No3&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description3&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP3&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No4&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description4&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP4&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No5&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description5&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP5&gt;&gt;</td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No1>></td><td style="border:1px solid #000;padding:4px;"><<Description1>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP1>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No2>></td><td style="border:1px solid #000;padding:4px;"><<Description2>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP2>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No3>></td><td style="border:1px solid #000;padding:4px;"><<Description3>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP3>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No4>></td><td style="border:1px solid #000;padding:4px;"><<Description4>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP4>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No5>></td><td style="border:1px solid #000;padding:4px;"><<Description5>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP5>></td></tr>
       <tr>
         <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">บาท<br/>Baht</td>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">&lt;&lt;BahtTextE&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span>&lt;&lt;SubTotal&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3"><<BahtTextE>></td>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span><<SubTotal>></span></div></td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (&lt;&lt;VATC&gt;&gt;)</span><span>&lt;&lt;VAT&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (<<VATC>>)</span><span><<VAT>></span></div></td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:0;font-weight:bold;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Total Amount</span><span>&lt;&lt;NetAmount&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:0;font-weight:bold;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Total Amount</span><span><<NetAmount>></span></div></td>
       </tr>
     </tbody>
   </table>
@@ -73,16 +73,16 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
     <tbody>
       <tr>
-        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;">&lt;&lt;CH&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;"><<CH>></td>
         <td style="border:1px solid #000;padding:4px;">เงินสด/Cash</td>
-        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;">&lt;&lt;CD&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;"><<CD>></td>
         <td style="border:1px solid #000;padding:4px;">เครดิตการ์ด/Credit Card</td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;BT&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;">เงินโอน/Bank Transfer &lt;&lt;BankTransferDateF&gt;&gt;<br/>Bank Transfer Ref. &lt;&lt;BankTransferRef&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;CK&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;">เช็ค/Cheque : ธนาคาร/Bank : &lt;&lt;BankName&gt;&gt;<br/>สาขา/Branch : &lt;&lt;Branch&gt;&gt;<br/>เลขที่/No. : &lt;&lt;CNo&gt;&gt; วันที่/Date : &lt;&lt;CDateF&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;text-align:center;"><<BT>></td>
+        <td style="border:1px solid #000;padding:4px;">เงินโอน/Bank Transfer <<BankTransferDateF>><br/>Bank Transfer Ref. <<BankTransferRef>></td>
+        <td style="border:1px solid #000;padding:4px;text-align:center;"><<CK>></td>
+        <td style="border:1px solid #000;padding:4px;">เช็ค/Cheque : ธนาคาร/Bank : <<BankName>><br/>สาขา/Branch : <<Branch>><br/>เลขที่/No. : <<CNo>> วันที่/Date : <<CDateF>></td>
       </tr>
     </tbody>
   </table>
@@ -91,7 +91,7 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   <div style="text-align:right;">
     <div>—------------------------------</div>
     <div>[Signature Name]</div>
-    <div>&lt;&lt;DateF&gt;&gt;</div>
+    <div><<DateF>></div>
   </div>
 </div>
 <div style="border:1px solid #000;padding:24px;font-size:12px;line-height:1.4;color:#000;background:#fff;font-family:'IBM Plex Sans',sans-serif;margin-top:32px;">
@@ -104,8 +104,8 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   </div>
   <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
     <div>
-      <div>เลขที่ / No. : &lt;&lt;InvoiceNoF&gt;&gt;</div>
-      <div>วันที่ / Date : &lt;&lt;DateF&gt;&gt;</div>
+      <div>เลขที่ / No. : <<InvoiceNoF>></div>
+      <div>วันที่ / Date : <<DateF>></div>
       <div>เลขที่อ้างอิง / Inv Ref : </div>
     </div>
     <div style="text-align:right;">
@@ -114,9 +114,9 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
     </div>
   </div>
   <div style="border-top:1px solid #000;border-bottom:1px solid #000;padding:8px 0;margin-bottom:8px;">
-    <div>ชื่อ / Name : &lt;&lt;OwnerName&gt;&gt;</div>
-    <div>ที่อยู่ / Address : &lt;&lt;AddressLine1&gt;&gt; &lt;&lt;AddressLine2&gt;&gt; &lt;&lt;AddressLine3&gt;&gt; &lt;&lt;AddressLine4&gt;&gt; &lt;&lt;AddressLine5&gt;&gt; &lt;&lt;PostCode&gt;&gt;</div>
-    <div>เลขประจำตัวผู้เสียภาษี : &lt;&lt;TAXID&gt;&gt;</div>
+    <div>ชื่อ / Name : <<OwnerName>></div>
+    <div>ที่อยู่ / Address : <<AddressLine1>> <<AddressLine2>> <<AddressLine3>> <<AddressLine4>> <<AddressLine5>> <<PostCode>></div>
+    <div>เลขประจำตัวผู้เสียภาษี : <<TAXID>></div>
   </div>
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
     <thead>
@@ -127,21 +127,21 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
       </tr>
     </thead>
     <tbody>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No1&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description1&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP1&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No2&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description2&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP2&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No3&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description3&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP3&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No4&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description4&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP4&gt;&gt;</td></tr>
-      <tr><td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;No5&gt;&gt;</td><td style="border:1px solid #000;padding:4px;">&lt;&lt;Description5&gt;&gt;</td><td style="border:1px solid #000;padding:4px;text-align:right;">&lt;&lt;AmountP5&gt;&gt;</td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No1>></td><td style="border:1px solid #000;padding:4px;"><<Description1>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP1>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No2>></td><td style="border:1px solid #000;padding:4px;"><<Description2>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP2>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No3>></td><td style="border:1px solid #000;padding:4px;"><<Description3>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP3>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No4>></td><td style="border:1px solid #000;padding:4px;"><<Description4>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP4>></td></tr>
+      <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No5>></td><td style="border:1px solid #000;padding:4px;"><<Description5>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP5>></td></tr>
       <tr>
         <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">บาท<br/>Baht</td>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">&lt;&lt;BahtTextE&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span>&lt;&lt;SubTotal&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3"><<BahtTextE>></td>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span><<SubTotal>></span></div></td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (&lt;&lt;VATC&gt;&gt;)</span><span>&lt;&lt;VAT&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (<<VATC>>)</span><span><<VAT>></span></div></td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:0;font-weight:bold;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Total Amount</span><span>&lt;&lt;NetAmount&gt;&gt;</span></div></td>
+        <td style="border:1px solid #000;padding:0;font-weight:bold;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Total Amount</span><span><<NetAmount>></span></div></td>
       </tr>
     </tbody>
   </table>
@@ -149,16 +149,16 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   <table style="width:100%;border-collapse:collapse;margin-bottom:8px;">
     <tbody>
       <tr>
-        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;">&lt;&lt;CH&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;"><<CH>></td>
         <td style="border:1px solid #000;padding:4px;">เงินสด/Cash</td>
-        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;">&lt;&lt;CD&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;width:32px;text-align:center;"><<CD>></td>
         <td style="border:1px solid #000;padding:4px;">เครดิตการ์ด/Credit Card</td>
       </tr>
       <tr>
-        <td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;BT&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;">เงินโอน/Bank Transfer &lt;&lt;BankTransferDateF&gt;&gt;<br/>Bank Transfer Ref. &lt;&lt;BankTransferRef&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;text-align:center;">&lt;&lt;CK&gt;&gt;</td>
-        <td style="border:1px solid #000;padding:4px;">เช็ค/Cheque : ธนาคาร/Bank : &lt;&lt;BankName&gt;&gt;<br/>สาขา/Branch : &lt;&lt;Branch&gt;&gt;<br/>เลขที่/No. : &lt;&lt;CNo&gt;&gt; วันที่/Date : &lt;&lt;CDateF&gt;&gt;</td>
+        <td style="border:1px solid #000;padding:4px;text-align:center;"><<BT>></td>
+        <td style="border:1px solid #000;padding:4px;">เงินโอน/Bank Transfer <<BankTransferDateF>><br/>Bank Transfer Ref. <<BankTransferRef>></td>
+        <td style="border:1px solid #000;padding:4px;text-align:center;"><<CK>></td>
+        <td style="border:1px solid #000;padding:4px;">เช็ค/Cheque : ธนาคาร/Bank : <<BankName>><br/>สาขา/Branch : <<Branch>><br/>เลขที่/No. : <<CNo>> วันที่/Date : <<CDateF>></td>
       </tr>
     </tbody>
   </table>
@@ -167,7 +167,7 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
   <div style="text-align:right;">
     <div>—------------------------------</div>
     <div>[Signature Name]</div>
-    <div>&lt;&lt;DateF&gt;&gt;</div>
+    <div><<DateF>></div>
   </div>
 </div>"""
 
