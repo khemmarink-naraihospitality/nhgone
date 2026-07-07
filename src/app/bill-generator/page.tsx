@@ -41,19 +41,9 @@ export default function BillGeneratorPage() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [page, setPage] = useState(0);
 
-  const getDefaultRange = () => {
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(now.getDate() - 30);
-    return {
-      start: start.toISOString().split("T")[0],
-      end: now.toISOString().split("T")[0],
-    };
-  };
-
-  const initialRange = getDefaultRange();
-  const [startDate, setStartDate] = useState(initialRange.start);
-  const [endDate, setEndDate] = useState(initialRange.end);
+  const DEFAULT_PROPERTY = "Lub d Koh Tao Tanote Bay";
+  const [startDate, setStartDate] = useState("2025-01-01");
+  const [endDate, setEndDate] = useState("2025-01-31");
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -61,7 +51,7 @@ export default function BillGeneratorPage() {
       if (data && data.length > 0) {
         const names = data.map((p) => p.property_name);
         setProperties(names);
-        setSelectedProperty(names[0]);
+        setSelectedProperty(names.includes(DEFAULT_PROPERTY) ? DEFAULT_PROPERTY : names[0]);
       }
     };
     fetchProperties();
