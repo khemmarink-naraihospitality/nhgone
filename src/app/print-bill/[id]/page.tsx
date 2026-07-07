@@ -136,6 +136,7 @@ export default function PrintBillPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [template, setTemplate] = useState<string | null>(null);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -189,11 +190,16 @@ export default function PrintBillPage() {
       try {
         const res = await fetch(`/api/bills/template?property_name=${encodeURIComponent(property)}`);
         const result = await res.json();
-        if (result.status === "success") setTemplate(result.data.html_template);
-      } catch {
-        // If the template fails to load, the page below just won't render
-        // anything for the invoices - the loading/error states above already
-        // cover the main failure paths a user needs to see.
+        if (result.status === "success") {
+          setTemplate(result.data.html_template);
+        } else {
+          // A non-success response (e.g. a 500) still parses as JSON, so this
+          // must be checked explicitly - otherwise the page silently sits on
+          // "Loading template..." forever with no indication anything failed.
+          setTemplateError(result.message || result.detail || "Failed to load billing template");
+        }
+      } catch (err: any) {
+        setTemplateError(err.message || "Failed to load billing template");
       }
     };
     if (property) fetchTemplate();
@@ -208,6 +214,7 @@ export default function PrintBillPage() {
   }
 
   if (invoices.length === 0) return null;
+  if (templateError) return <div className="p-10 text-center text-red-600 text-sm">{templateError}</div>;
   if (!template) return <div className="p-10 text-center text-sm">Loading template...</div>;
 
   return (
