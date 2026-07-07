@@ -42,113 +42,54 @@ const fmtDate = (v: string) => {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 };
 
-function InvoiceCopy({ inv, label, labelTh }: { inv: Invoice; label: string; labelTh: string }) {
+const escapeHtml = (s: string) =>
+  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+// Substitutes <<Token>> placeholders in an admin-edited HTML template with
+// this bill's real data. Company name/address/tax id are NOT tokens - they're
+// static text the admin types directly into their property's own template.
+function renderInvoiceTemplate(template: string, inv: Invoice): string {
   const box = (checked: boolean) => (checked ? "☑" : "☐");
-  return (
-    <div className="border border-black p-6 text-[12px] leading-snug text-black bg-white" style={{ fontFamily: "'IBM Plex Sans', sans-serif" }}>
-      <div className="text-center border-b border-black pb-2 mb-2">
-        <div className="font-bold">บริษัท คอมมอนแอเรีย เกาะเต่า จำกัด (สาขาที่ 00001)</div>
-        <div>Common Area Koh Tao Co., Ltd. (Branch No. 00001)</div>
-        <div>เลขที่ 53 หมู่ที่ 3 ตำบลเกาะเต่า อำเภอเกาะพะงัน จังหวัด สุราษฎร์ธานี 84360</div>
-        <div>53 M.3 Koh Tao, Koh Phangan, Suratthani, Thailand 84360</div>
-        <div>เลขประจำตัวผู้เสียภาษี Tax ID No. 0105566073505</div>
-      </div>
+  const addr = inv.address_lines || [];
+  const tokens: Record<string, string> = {
+    InvoiceNoF: inv.number || "",
+    DateF: fmtDate(inv.issued_at),
+    OwnerName: inv.owner_name || "",
+    AddressLine1: addr[0] || "",
+    AddressLine2: addr[1] || "",
+    AddressLine3: addr[2] || "",
+    AddressLine4: addr[3] || "",
+    AddressLine5: addr[4] || "",
+    PostCode: inv.post_code || "",
+    TAXID: inv.tax_id || "",
+    BahtTextE: inv.baht_text || "",
+    SubTotal: fmtAmount(inv.sub_total),
+    VATC: `${inv.vat_rate_pct}%`,
+    VAT: fmtAmount(inv.vat),
+    NetAmount: fmtAmount(inv.net_amount),
+    CH: box(inv.payment_method.cash),
+    CD: box(inv.payment_method.card),
+    BT: box(inv.payment_method.bank_transfer),
+    CK: box(inv.payment_method.cheque),
+    BankTransferDateF: fmtDate(inv.bank_transfer_date),
+    BankTransferRef: inv.bank_transfer_ref || "",
+    BankName: inv.cheque.bank_name || "",
+    Branch: inv.cheque.branch || "",
+    CNo: inv.cheque.number || "",
+    CDateF: fmtDate(inv.cheque.date),
+  };
+  for (let i = 0; i < 5; i++) {
+    const li = inv.line_items[i];
+    tokens[`No${i + 1}`] = li && li.no !== "" ? String(li.no) : "";
+    tokens[`Description${i + 1}`] = li ? li.description : "";
+    tokens[`AmountP${i + 1}`] = li && li.amount !== "" ? fmtAmount(li.amount) : "";
+  }
 
-      <div className="flex justify-between mb-2">
-        <div>
-          <div>เลขที่ / No. : {inv.number}</div>
-          <div>วันที่ / Date : {fmtDate(inv.issued_at)}</div>
-          <div>เลขที่อ้างอิง / Inv Ref : </div>
-        </div>
-        <div className="text-right">
-          <div className="font-bold">RECEIPT/TAX INVOICE ({label})</div>
-          <div>ใบเสร็จรับเงิน / ใบกำกับภาษี ({labelTh})</div>
-        </div>
-      </div>
-
-      <div className="border-t border-b border-black py-2 mb-2">
-        <div>ชื่อ / Name : {inv.owner_name}</div>
-        <div>ที่อยู่ / Address : {inv.address_lines.join(" ")} {inv.post_code}</div>
-        <div>เลขประจำตัวผู้เสียภาษี : {inv.tax_id}</div>
-      </div>
-
-      <table className="w-full border-collapse mb-2">
-        <thead>
-          <tr>
-            <th className="border border-black p-1 w-12">เลขที่<br />No</th>
-            <th className="border border-black p-1">รายละเอียด<br />Description</th>
-            <th className="border border-black p-1 w-28">จำนวนเงิน<br />Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inv.line_items.map((li, i) => (
-            <tr key={i}>
-              <td className="border border-black p-1 text-center h-6">{li.no}</td>
-              <td className="border border-black p-1">{li.description}</td>
-              <td className="border border-black p-1 text-right">{fmtAmount(li.amount)}</td>
-            </tr>
-          ))}
-          <tr>
-            <td className="border border-black p-1 align-top" rowSpan={3}>บาท<br />Baht</td>
-            <td className="border border-black p-1 align-top" rowSpan={3}>{inv.baht_text}</td>
-            <td className="border border-black p-0">
-              <div className="flex justify-between px-1"><span>จำนวนเงิน Net Amount</span><span>{fmtAmount(inv.sub_total)}</span></div>
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black p-0">
-              <div className="flex justify-between px-1"><span>VAT ({inv.vat_rate_pct}%)</span><span>{fmtAmount(inv.vat)}</span></div>
-            </td>
-          </tr>
-          <tr>
-            <td className="border border-black p-0 font-bold">
-              <div className="flex justify-between px-1"><span>Total Amount</span><span>{fmtAmount(inv.net_amount)}</span></div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <div className="font-bold mb-1">รับชำระโดย/ Received By :</div>
-      <table className="w-full border-collapse mb-2">
-        <tbody>
-          <tr>
-            <td className="border border-black p-1 w-8 text-center">{box(inv.payment_method.cash)}</td>
-            <td className="border border-black p-1">เงินสด/Cash</td>
-            <td className="border border-black p-1 w-8 text-center">{box(inv.payment_method.card)}</td>
-            <td className="border border-black p-1">เครดิตการ์ด/Credit Card</td>
-          </tr>
-          <tr>
-            <td className="border border-black p-1 text-center">{box(inv.payment_method.bank_transfer)}</td>
-            <td className="border border-black p-1">
-              เงินโอน/Bank Transfer {fmtDate(inv.bank_transfer_date)}<br />
-              Bank Transfer Ref. {inv.bank_transfer_ref}
-            </td>
-            <td className="border border-black p-1 text-center">{box(inv.payment_method.cheque)}</td>
-            <td className="border border-black p-1">
-              เช็ค/Cheque : ธนาคาร/Bank : {inv.cheque.bank_name}<br />
-              สาขา/Branch : {inv.cheque.branch}<br />
-              เลขที่/No. : {inv.cheque.number} วันที่/Date : {fmtDate(inv.cheque.date)}
-            </td>
-          </tr>
-        </tbody>
-      </table>
-
-      <p className="text-[10px] mb-1">
-        หากชำระเงินด้วยเช็ค ใบเสร็จรับเงินฉบับนี้จะสมบูรณ์ต่อเมื่อขึ้นเงินตามเช็คได้แล้ว<br />
-        If payment is made by cheque, this receipt will not be valid until the cheque is honoured by the bank.
-      </p>
-      <p className="text-[10px] mb-6">
-        หากชำระด้วยบัตรเครดิต ใบเสร็จรับเงินนี้จะสมบูรณ์เมื่อผู้ถือบัตรยอมจ่ายเงินให้ผู้ออกบัตรแล้ว<br />
-        If payment is made by Credit Card, this receipt will not be valid until the cardholder pays to the card-issuing office.
-      </p>
-
-      <div className="text-right">
-        <div>—------------------------------</div>
-        <div>Apinya Ladok</div>
-        <div>{fmtDate(inv.issued_at)}</div>
-      </div>
-    </div>
-  );
+  let result = template;
+  for (const [key, value] of Object.entries(tokens)) {
+    result = result.split(`<<${key}>>`).join(escapeHtml(value));
+  }
+  return result;
 }
 
 function PermissionErrorBanner({ error }: { error: string }) {
@@ -194,6 +135,7 @@ export default function PrintBillPage() {
   const [failed, setFailed] = useState<{ id: string; message: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [template, setTemplate] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -229,6 +171,21 @@ export default function PrintBillPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [idParam, idsFromQuery, property]);
 
+  useEffect(() => {
+    const fetchTemplate = async () => {
+      try {
+        const res = await fetch(`/api/bills/template?property_name=${encodeURIComponent(property)}`);
+        const result = await res.json();
+        if (result.status === "success") setTemplate(result.data.html_template);
+      } catch {
+        // If the template fails to load, the page below just won't render
+        // anything for the invoices - the loading/error states above already
+        // cover the main failure paths a user needs to see.
+      }
+    };
+    if (property) fetchTemplate();
+  }, [property]);
+
   if (loading) return <div className="p-10 text-center text-sm">Loading invoice{billIds.length > 1 ? "s" : ""}...</div>;
 
   if (error) {
@@ -238,6 +195,7 @@ export default function PrintBillPage() {
   }
 
   if (invoices.length === 0) return null;
+  if (!template) return <div className="p-10 text-center text-sm">Loading template...</div>;
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4">
@@ -262,12 +220,9 @@ export default function PrintBillPage() {
         {invoices.map((inv, idx) => (
           <div
             key={inv.mews_id}
-            className="flex flex-col gap-8"
             style={idx < invoices.length - 1 ? { pageBreakAfter: "always" } : undefined}
-          >
-            <InvoiceCopy inv={inv} label="Original" labelTh="ต้นฉบับ" />
-            <InvoiceCopy inv={inv} label="Copy" labelTh="สำเนา" />
-          </div>
+            dangerouslySetInnerHTML={{ __html: renderInvoiceTemplate(template, inv) }}
+          />
         ))}
       </div>
     </div>

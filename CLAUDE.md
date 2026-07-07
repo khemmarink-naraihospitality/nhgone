@@ -71,7 +71,9 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 - `/data-mart` — Synced data from `reservations_sync`/`members_sync`/`payments`, rendered by the shared `src/components/DashboardView.tsx` (also used by `/live-data`), which enforces a per-section column order via `SECTION_COLUMNS` (58 columns for reservations, matching the MEWS Reservation Report schema)
 - `/managed-members`, `/managed-payments` — Synced members/payments views
 - `/log-import` — Import history
-- `/admin/*` — User management, API settings per property, SMTP config, sync scheduling, activity logs
+- `/bill-generator` — Lists real MEWS bills (headers only, via `bills/getAll`) per property/date range; "NHG Bill" opens `/print-bill/{id}` (or `/print-bill/batch?ids=a,b,c` for multiple), "MEWS Bill" fetches MEWS's own generated PDF (`bills/getPdf`)
+- `/print-bill/[id]` — Fetches full itemized invoice data (`GET /bills/{id}/invoice`, joins `orderItems`+`payments` by BillIds) and the property's HTML template (`GET /bills/template`), then does `<<Token>>` string substitution and renders via `dangerouslySetInnerHTML` — see `renderInvoiceTemplate` in that file for the full token list
+- `/admin/*` — User management, API settings per property, SMTP config, per-property billing templates, sync scheduling, activity logs
 
 ### Auth guard
 
@@ -89,6 +91,7 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 | `sync_logs` | Per-sync result log |
 | `sync_locks` | DB-level mutex to prevent concurrent syncs |
 | `smtp_settings` | Single global SMTP config (encrypted password) for system emails, e.g. welcome emails on user creation |
+| `billing_templates` | Per-property HTML invoice/receipt template (`<<Token>>` placeholders), edited at Admin > Billing Templates |
 
 ### Chunked upsert pattern
 
