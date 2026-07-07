@@ -846,46 +846,7 @@ class SyncService:
             )
             payments = pay_res.get("Payments", [])
 
-            if len(rows) > 5:
-                head, tail = rows[:4], rows[4:]
-                rows = head + [{
-                    "name": f"Other charges ({len(tail)} items)",
-                    "gross": sum(r["gross"] for r in tail),
-                    "net": sum(r["net"] for r in tail),
-                    "tax": sum(r["tax"] for r in tail),
-                }]
-
-            sub_total = sum(r["net"] for r in rows)
-            vat_total = sum(r["tax"] for r in rows)
-            net_amount = sub_total + vat_total
-            vat_rate_pct = round((vat_total / sub_total * 100), 2) if sub_total else 0
-
-            line_items = []
-            for i in range(5):
-                if i < len(rows):
-                    line_items.append({"no": i + 1, "description": rows[i]["name"], "amount": round(rows[i]["gross"], 2)})
-                else:
-                    line_items.append({"no": "", "description": "", "amount": ""})
-
-            method = {"cash": False, "card": False, "bank_transfer": False, "cheque": False}
-            bank_transfer_ref = ""
-            bank_transfer_date = ""
-            cheque = {"bank_name": "", "branch": "", "number": "", "date": ""}
-            for p in payments:
-                ptype = (p.get("Type") or "").lower()
-                pkind = (p.get("Kind") or "").lower()
-                if "cash" in ptype or "cash" in pkind:
-                    method["cash"] = True
-                elif "card" in ptype or "card" in pkind:
-                    method["card"] = True
-                elif "transfer" in ptype or "transfer" in pkind:
-                    method["bank_transfer"] = True
-                    bank_transfer_ref = p.get("Identifier") or ""
-                    bank_transfer_date = p.get("ChargedUtc") or p.get("CreatedUtc") or ""
-                elif "cheque" in ptype or "check" in ptype or "cheque" in pkind:
-                    method["cheque"] = True
-                    cheque["number"] = p.get("Number") or ""
-                    cheque["date"] = p.get("ChargedUtc") or ""
+            computed = self._compute_invoice_amounts(rows, payments)
 
             return {
                 "mews_id": bill_id,
@@ -898,19 +859,226 @@ class SyncService:
                 "address_lines": address_lines,
                 "post_code": post_code,
                 "tax_id": tax_id,
-                "line_items": line_items,
-                "sub_total": round(sub_total, 2),
-                "vat_rate_pct": vat_rate_pct,
-                "vat": round(vat_total, 2),
-                "net_amount": round(net_amount, 2),
-                "baht_text": bahttext(net_amount),
-                "payment_method": method,
-                "bank_transfer_ref": bank_transfer_ref,
-                "bank_transfer_date": bank_transfer_date,
-                "cheque": cheque,
+                **computed,
             }
         except Exception as e:
             logger.error(f"Error building bill invoice for {bill_id}: {str(e)}")
+            raise e
+
+    @staticmethod
+    def _compute_invoice_amounts(rows: list, payments: list) -> dict:
+        """
+        Shared by get_bill_invoice (single) and get_bill_invoices_batch (batch):
+        turns raw order-item rows + payment records into the invoice's computed
+        fields (5-row line items with >5 bundled into "Other charges", VAT
+        breakdown, Thai baht-text, and a best-effort payment-method match).
+        """
+        rows = list(rows)
+        if len(rows) > 5:
+            head, tail = rows[:4], rows[4:]
+            rows = head + [{
+                "name": f"Other charges ({len(tail)} items)",
+                "gross": sum(r["gross"] for r in tail),
+                "net": sum(r["net"] for r in tail),
+                "tax": sum(r["tax"] for r in tail),
+            }]
+
+        sub_total = sum(r["net"] for r in rows)
+        vat_total = sum(r["tax"] for r in rows)
+        net_amount = sub_total + vat_total
+        vat_rate_pct = round((vat_total / sub_total * 100), 2) if sub_total else 0
+
+        line_items = []
+        for i in range(5):
+            if i < len(rows):
+                line_items.append({"no": i + 1, "description": rows[i]["name"], "amount": round(rows[i]["gross"], 2)})
+            else:
+                line_items.append({"no": "", "description": "", "amount": ""})
+
+        method = {"cash": False, "card": False, "bank_transfer": False, "cheque": False}
+        bank_transfer_ref = ""
+        bank_transfer_date = ""
+        cheque = {"bank_name": "", "branch": "", "number": "", "date": ""}
+        for p in payments:
+            ptype = (p.get("Type") or "").lower()
+            pkind = (p.get("Kind") or "").lower()
+            if "cash" in ptype or "cash" in pkind:
+                method["cash"] = True
+            elif "card" in ptype or "card" in pkind:
+                method["card"] = True
+            elif "transfer" in ptype or "transfer" in pkind:
+                method["bank_transfer"] = True
+                bank_transfer_ref = p.get("Identifier") or ""
+                bank_transfer_date = p.get("ChargedUtc") or p.get("CreatedUtc") or ""
+            elif "cheque" in ptype or "check" in ptype or "cheque" in pkind:
+                method["cheque"] = True
+                cheque["number"] = p.get("Number") or ""
+                cheque["date"] = p.get("ChargedUtc") or ""
+
+        return {
+            "line_items": line_items,
+            "sub_total": round(sub_total, 2),
+            "vat_rate_pct": vat_rate_pct,
+            "vat": round(vat_total, 2),
+            "net_amount": round(net_amount, 2),
+            "baht_text": bahttext(net_amount),
+            "payment_method": method,
+            "bank_transfer_ref": bank_transfer_ref,
+            "bank_transfer_date": bank_transfer_date,
+            "cheque": cheque,
+        }
+
+    async def get_bill_invoices_batch(self, property_name: str, bill_ids: list) -> dict:
+        """
+        Same invoice-building logic as get_bill_invoice, but for many bills at
+        once: one bills_sync cache lookup (IN query) instead of N, one live
+        bills/getAll + orderItems/getAll pair for whatever isn't cached (BillIds
+        batch, matching get_mapped_bills_with_items's pattern) instead of N live
+        pairs, and one payments/getAll call for the whole batch instead of N -
+        this is what makes multi-print meaningfully faster than printing each
+        bill individually through get_bill_invoice in a loop.
+
+        Returns {bill_id: invoice_dict} for every bill that was found; ids that
+        don't exist or fail to resolve are simply omitted from the result.
+        """
+        try:
+            seen = set()
+            bill_ids = [b for b in bill_ids if b and not (b in seen or seen.add(b))]
+            if not bill_ids:
+                return {}
+
+            headers = {}
+
+            if self.supabase:
+                try:
+                    cache_res = self.supabase.table("bills_sync").select("mews_id, data").in_("mews_id", bill_ids).execute()
+                    for r in cache_res.data or []:
+                        decrypted = encryption_service.decrypt_data(r["data"])
+                        if "Address Lines" not in decrypted or "Order Items" not in decrypted:
+                            continue
+                        rows = []
+                        for it in decrypted.get("Order Items") or []:
+                            gross = it.get("Amount") or 0
+                            net = it.get("Net Amount") or 0
+                            rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net})
+                        headers[r["mews_id"]] = {
+                            "owner_name": decrypted.get("Owner Name") or "",
+                            "address_lines": decrypted.get("Address Lines") or [],
+                            "post_code": decrypted.get("Post Code") or "",
+                            "tax_id": decrypted.get("Tax Id") or "",
+                            "number": decrypted.get("Number"),
+                            "type": decrypted.get("Type"),
+                            "state": decrypted.get("State"),
+                            "issued_at": decrypted.get("Issued At"),
+                            "due_at": decrypted.get("Due At"),
+                            "rows": rows,
+                        }
+                except Exception as cache_err:
+                    logger.warning(f"bills_sync batch cache lookup failed: {cache_err}")
+
+            missing_ids = [b for b in bill_ids if b not in headers]
+            if missing_ids:
+                bills_by_id = {}
+                for i in range(0, len(missing_ids), 1000):
+                    id_batch = missing_ids[i:i + 1000]
+                    current_cursor = None
+                    while True:
+                        payload = {"BillIds": id_batch, "Limitation": {"Count": 1000}}
+                        if current_cursor:
+                            payload["Limitation"]["Cursor"] = current_cursor
+                        res = await mews_client.post("/api/connector/v1/bills/getAll", payload, property_name=property_name)
+                        chunk = res.get("Bills", [])
+                        current_cursor = res.get("Cursor")
+                        for b in chunk:
+                            bills_by_id[b.get("Id")] = b
+                        if not current_cursor or not chunk:
+                            break
+
+                items_by_bill = {}
+                for i in range(0, len(missing_ids), 1000):
+                    id_batch = missing_ids[i:i + 1000]
+                    current_cursor = None
+                    while True:
+                        payload = {"BillIds": id_batch, "Limitation": {"Count": 1000}}
+                        if current_cursor:
+                            payload["Limitation"]["Cursor"] = current_cursor
+                        res = await mews_client.post("/api/connector/v1/orderItems/getAll", payload, property_name=property_name)
+                        chunk = res.get("OrderItems", [])
+                        current_cursor = res.get("Cursor")
+                        for item in chunk:
+                            bref = item.get("BillId")
+                            if not bref:
+                                continue
+                            amt = item.get("Amount") or {}
+                            gross = amt.get("GrossValue") or 0
+                            net = amt.get("NetValue") or 0
+                            items_by_bill.setdefault(bref, []).append({
+                                "name": item.get("BillingName") or item.get("Type") or "Item",
+                                "gross": gross,
+                                "net": net,
+                                "tax": gross - net,
+                            })
+                        if not current_cursor or not chunk:
+                            break
+
+                for bid, bill in bills_by_id.items():
+                    owner_wrapper = bill.get("OwnerData") or {}
+                    owner_address = self._extract_owner_address(owner_wrapper)
+                    headers[bid] = {
+                        "owner_name": self._extract_owner_name(owner_wrapper),
+                        "address_lines": owner_address["address_lines"],
+                        "post_code": owner_address["post_code"],
+                        "tax_id": owner_address["tax_id"],
+                        "number": bill.get("Number"),
+                        "type": bill.get("Type"),
+                        "state": bill.get("State"),
+                        "issued_at": bill.get("IssuedUtc"),
+                        "due_at": bill.get("DueUtc"),
+                        "rows": items_by_bill.get(bid, []),
+                    }
+
+            found_ids = [b for b in bill_ids if b in headers]
+            if not found_ids:
+                return {}
+
+            payments_by_bill = {}
+            for i in range(0, len(found_ids), 1000):
+                id_batch = found_ids[i:i + 1000]
+                current_cursor = None
+                while True:
+                    payload = {"BillIds": id_batch, "Limitation": {"Count": 1000}}
+                    if current_cursor:
+                        payload["Limitation"]["Cursor"] = current_cursor
+                    res = await mews_client.post("/api/connector/v1/payments/getAll", payload, property_name=property_name)
+                    chunk = res.get("Payments", [])
+                    current_cursor = res.get("Cursor")
+                    for p in chunk:
+                        bref = p.get("BillId")
+                        if bref:
+                            payments_by_bill.setdefault(bref, []).append(p)
+                    if not current_cursor or not chunk:
+                        break
+
+            results = {}
+            for bid in found_ids:
+                h = headers[bid]
+                computed = self._compute_invoice_amounts(h["rows"], payments_by_bill.get(bid, []))
+                results[bid] = {
+                    "mews_id": bid,
+                    "number": h["number"],
+                    "type": h["type"],
+                    "state": h["state"],
+                    "issued_at": h["issued_at"],
+                    "due_at": h["due_at"],
+                    "owner_name": h["owner_name"],
+                    "address_lines": h["address_lines"],
+                    "post_code": h["post_code"],
+                    "tax_id": h["tax_id"],
+                    **computed,
+                }
+            return results
+        except Exception as e:
+            logger.error(f"Error building batch bill invoices for {property_name}: {str(e)}")
             raise e
 
     async def get_bill_pdf(self, property_name: str, bill_id: str, pdf_template: str = None,

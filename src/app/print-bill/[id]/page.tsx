@@ -140,21 +140,34 @@ export default function PrintBillPage() {
   useEffect(() => {
     const fetchInvoices = async () => {
       try {
-        const settled = await Promise.allSettled(
-          billIds.map(async (id) => {
-            const res = await fetch(`/api/bills/${id}/invoice?property_name=${encodeURIComponent(property)}`);
-            const result = await res.json();
-            if (result.status !== "success") throw new Error(result.message || result.detail || `Failed to load invoice ${id}`);
-            return result.data as Invoice;
-          })
-        );
+        let okInvoices: Invoice[] = [];
+        let failures: { id: string; message: string }[] = [];
 
-        const okInvoices: Invoice[] = [];
-        const failures: { id: string; message: string }[] = [];
-        settled.forEach((r, i) => {
-          if (r.status === "fulfilled") okInvoices.push(r.value);
-          else failures.push({ id: billIds[i], message: r.reason?.message || "Unknown error" });
-        });
+        if (billIds.length > 1) {
+          // Multi-print: one batched request instead of N separate ones - the
+          // backend builds every invoice in a single pass (one cache lookup,
+          // one payments/getAll call for the whole batch).
+          const params = new URLSearchParams({ ids: billIds.join(","), property_name: property });
+          const res = await fetch(`/api/bills/invoices-batch?${params.toString()}`);
+          const result = await res.json();
+          if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to load invoices");
+          const byId = result.data as Record<string, Invoice>;
+          okInvoices = billIds.filter((id) => byId[id]).map((id) => byId[id]);
+          failures = (result.missing as string[] || []).map((id) => ({ id, message: "Bill not found or failed to load" }));
+        } else {
+          const settled = await Promise.allSettled(
+            billIds.map(async (id) => {
+              const res = await fetch(`/api/bills/${id}/invoice?property_name=${encodeURIComponent(property)}`);
+              const result = await res.json();
+              if (result.status !== "success") throw new Error(result.message || result.detail || `Failed to load invoice ${id}`);
+              return result.data as Invoice;
+            })
+          );
+          settled.forEach((r, i) => {
+            if (r.status === "fulfilled") okInvoices.push(r.value);
+            else failures.push({ id: billIds[i], message: r.reason?.message || "Unknown error" });
+          });
+        }
 
         setInvoices(okInvoices);
         setFailed(failures);

@@ -328,6 +328,28 @@ async def delete_saved_bills(payload: dict = Body(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/invoices-batch")
+async def get_bill_invoices_batch(ids: str = Query(...), property_name: Optional[str] = Query(None)):
+    """
+    Multi-print's fast path: builds every requested invoice in one shot (one
+    bills_sync cache lookup, one payments/getAll call for the whole batch)
+    instead of the frontend firing N separate /{bill_id}/invoice requests -
+    see get_bill_invoices_batch in sync_service.py for why that matters.
+    ids is a comma-separated list of bill GUIDs (query param, not a path
+    segment, so commas can't get mangled by inconsistent encoding).
+    """
+    bill_ids = [i for i in ids.split(",") if i]
+    for bid in bill_ids:
+        _validate_bill_id(bid)
+    try:
+        data = await sync_service.get_bill_invoices_batch(property_name=property_name, bill_ids=bill_ids)
+        missing = [b for b in bill_ids if b not in data]
+        return {"status": "success", "data": data, "missing": missing}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/{bill_id}/invoice")
 async def get_bill_invoice(bill_id: str, property_name: Optional[str] = Query(None)):
     _validate_bill_id(bill_id)
