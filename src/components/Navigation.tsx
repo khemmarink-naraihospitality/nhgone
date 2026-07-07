@@ -134,14 +134,14 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               <Link href="/admin/logs" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
             </>
           ) : userRole?.toLowerCase() === "finance" ? (
-            <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bill Generator</Link>
+            <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
           ) : (
             <>
               <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
               <div className="h-px bg-white/5 my-4 mx-4"></div>
               <Link href="/live-data" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/live-data" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Live Data</Link>
               <Link href="/data-mart" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
-              <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bill Generator</Link>
+              <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
               <Link href="/rr3" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
               <div className="h-px bg-white/5 my-4 mx-4"></div>
               <Link href="/log-import" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
