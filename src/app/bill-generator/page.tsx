@@ -27,9 +27,10 @@ const fmtDate = (v: string) => {
 const MAX_BATCH_PRINT = 100;
 const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
 const PAGE_SIZE = 100; // matches MAX_BATCH_PRINT so "select all" on a page never exceeds the batch-print cap
-const PRINT_CHUNK_SIZE = 20; // each bill can render as multiple physical pages (Original+Copy), so one
-// /print-bill/batch tab holding all 100 selected bills can bog down the browser's print pipeline -
-// splitting into 20-at-a-time tabs keeps each tab's document small enough to print/save reliably
+const PRINT_CHUNK_SIZE = 100; // one tab for the full selection. The "hang" that originally prompted
+// 20-per-tab chunking turned out to be the billing_templates fetch failing silently (page stuck on
+// "Loading template..." forever) - not print-pipeline overload - so full-batch tabs are back. If a
+// selection cap above 100 is ever allowed, revisit whether one tab still prints reliably.
 
 type DataSource = "live" | "database";
 
