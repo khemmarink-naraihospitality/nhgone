@@ -131,7 +131,8 @@ export default function PrintRr3Page() {
   useEffect(() => {
     const fetchTemplate = async () => {
       try {
-        const res = await fetch(`/api/rr3/template?property_name=${encodeURIComponent(property)}`);
+        // No property_name - the RR3 card is one shared template for every property.
+        const res = await fetch(`/api/rr3/template`);
         const result = await res.json();
         if (result.status === "success") {
           setTemplate(result.data.html_template);
@@ -145,8 +146,8 @@ export default function PrintRr3Page() {
         setTemplateError(err.message || "Failed to load RR3 template");
       }
     };
-    if (property) fetchTemplate();
-  }, [property]);
+    fetchTemplate();
+  }, []);
 
   if (loading) return <div className="p-10 text-center text-sm">Loading...</div>;
   if (error) return <div className="p-10 text-center text-red-600 text-sm">{error}</div>;

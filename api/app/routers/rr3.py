@@ -77,8 +77,14 @@ table, tbody { vertical-align:top; overflow:visible; }
 </tr></table>"""
 
 class Rr3TemplateUpdate(BaseModel):
-    property_name: str
     html_template: str
+
+# The RR3 card is one fixed government form shared by every property (unlike
+# billing templates, which vary per property's own invoice design) - so
+# rr3_templates stores a single global row rather than one per property. Reuses
+# the same table's property_name column as a fixed sentinel key rather than a
+# schema change, since only one row is ever expected to exist.
+_RR3_GLOBAL_KEY = "__global__"
 
 @router.get("/cards")
 async def get_rr3_cards(
@@ -99,14 +105,15 @@ async def get_rr3_cards(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/template")
-async def get_rr3_template(property_name: str = Query(...)):
+async def get_rr3_template():
     """
-    Returns the property's saved RR3 card HTML template, or the official-form
-    DEFAULT_RR3_TEMPLATE (with is_default=True) if none has been saved yet.
+    Returns the single shared RR3 card HTML template (same form for every
+    property), or the official-form DEFAULT_RR3_TEMPLATE (with is_default=True)
+    if none has been saved yet.
     """
     try:
         supabase = get_supabase_client()
-        res = supabase.table("rr3_templates").select("html_template").eq("property_name", property_name).limit(1).execute()
+        res = supabase.table("rr3_templates").select("html_template").eq("property_name", _RR3_GLOBAL_KEY).limit(1).execute()
         if res.data:
             return {"status": "success", "data": {"html_template": res.data[0]["html_template"], "is_default": False}}
     except Exception as e:
@@ -121,8 +128,8 @@ async def get_rr3_template(property_name: str = Query(...)):
 async def save_rr3_template(request: Rr3TemplateUpdate):
     try:
         supabase = get_supabase_client()
-        existing = supabase.table("rr3_templates").select("id").eq("property_name", request.property_name).limit(1).execute()
-        payload = {"property_name": request.property_name, "html_template": request.html_template}
+        existing = supabase.table("rr3_templates").select("id").eq("property_name", _RR3_GLOBAL_KEY).limit(1).execute()
+        payload = {"property_name": _RR3_GLOBAL_KEY, "html_template": request.html_template}
         if existing.data:
             supabase.table("rr3_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
         else:

@@ -69,6 +69,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   tokens: TokenDoc[];
   defaultNote: string;
   tokenNote: string;
+  perProperty: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -76,13 +77,18 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     tokens: BILLING_TOKENS,
     defaultNote: "This property has no saved billing template yet - showing the generic default. Edit the placeholder company details below and save.",
     tokenNote: "Company name/address/Tax ID are not tokens - type them directly since they're fixed per property.",
+    perProperty: true,
   },
   rr3: {
     label: "RR3",
     endpoint: "/rr3/template",
     tokens: RR3_TOKENS,
-    defaultNote: "This property has no saved RR3 template yet - showing the official-form default. Save to customize it for this property.",
+    defaultNote: "No RR3 template saved yet - showing the official-form default. Save to customize it.",
     tokenNote: "Include the <style> block: it controls fonts, the A4 card frame, and page breaks.",
+    // The RR3 card is a single fixed government form used by every property -
+    // no per-property selector, unlike Billing where each property has its own
+    // invoice design.
+    perProperty: false,
   },
 };
 
@@ -115,11 +121,12 @@ export default function TemplatesPage() {
   }, []);
 
   useEffect(() => {
-    if (!selectedProperty) return;
+    if (config.perProperty && !selectedProperty) return;
     const fetchTemplate = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`${apiUrl}${config.endpoint}?property_name=${encodeURIComponent(selectedProperty)}`);
+        const query = config.perProperty ? `?property_name=${encodeURIComponent(selectedProperty)}` : "";
+        const res = await fetch(`${apiUrl}${config.endpoint}${query}`);
         const result = await res.json();
         if (result.status === "success") {
           setHtml(result.data.html_template);
@@ -138,13 +145,15 @@ export default function TemplatesPage() {
   }, [selectedProperty, templateType]);
 
   const handleSave = async () => {
-    if (!selectedProperty || !html.trim()) return;
+    if ((config.perProperty && !selectedProperty) || !html.trim()) return;
     setSaving(true);
     try {
+      const body: Record<string, string> = { html_template: html };
+      if (config.perProperty) body.property_name = selectedProperty;
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ property_name: selectedProperty, html_template: html }),
+        body: JSON.stringify(body),
       });
       const result = await res.json();
       if (result.status === "success") {
@@ -181,18 +190,20 @@ export default function TemplatesPage() {
 
       <div className="mt-8 max-w-6xl grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
         <div className="bg-slate-50 border border-slate-200 rounded-3xl p-8 shadow-sm">
-          <div className="space-y-1.5 mb-6 max-w-sm">
-            <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property</label>
-            <select
-              value={selectedProperty}
-              onChange={(e) => setSelectedProperty(e.target.value)}
-              className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
-            >
-              {properties.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
-          </div>
+          {config.perProperty && (
+            <div className="space-y-1.5 mb-6 max-w-sm">
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property</label>
+              <select
+                value={selectedProperty}
+                onChange={(e) => setSelectedProperty(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+              >
+                {properties.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {isDefault && !loading && (
             <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
