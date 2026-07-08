@@ -67,8 +67,7 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 
 - `/` — Login page (Supabase Auth)
 - `/dashboard` — KPI overview
-- `/live-data` — Live MEWS data fetched via `/api/reservations/live`
-- `/data-mart` — Synced data from `reservations_sync`/`members_sync`/`payments`, rendered by the shared `src/components/DashboardView.tsx` (also used by `/live-data`), which enforces a per-section column order via `SECTION_COLUMNS` (58 columns for reservations, matching the MEWS Reservation Report schema)
+- `/data-mart` — Synced data from `reservations_sync`/`members_sync`/`payments`, rendered by the shared `src/components/DashboardView.tsx`, which enforces a per-section column order via `SECTION_COLUMNS` (58 columns for reservations, matching the MEWS Reservation Report schema). A MEWS/Data Mart toggle switches to live MEWS fetches (`/api/*/live`) with an "Import To Data Mart" button; the old standalone `/live-data` page was removed in favor of this toggle
 - `/managed-members`, `/managed-payments` — Synced members/payments views
 - `/log-import` — Import history
 - `/bill-generator` (sidebar label "Bills") — Lists MEWS bills per property/date range, toggled between "Live API" (`bills/getAll`, always current) and "Database" (`bills/managed`, reads `bills_sync` — faster once a range has been backfilled via "Import To Data Mart"); "NHG Bill" opens `/print-bill/{id}` (or `/print-bill/batch?ids=a,b,c` for multiple), "MEWS Bill" fetches MEWS's own generated PDF (`bills/getPdf`)

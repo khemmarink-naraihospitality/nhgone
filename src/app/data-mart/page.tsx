@@ -4,12 +4,12 @@ import DashboardView from "@/components/DashboardView";
 
 export default function DataMartPage() {
   return (
-    <DashboardView 
+    <DashboardView
       title="Data Mart"
-      subtitle="Historical PMS data synchronized with NHGOne database"
+      subtitle="Synchronized PMS data; switch to MEWS for a live view and import it here"
       defaultDataSource="saved"
       defaultSection="reservations"
-      allowToggleDataSource={false}
+      allowToggleDataSource={true}
       showSectionTabs={true}
     />
   );

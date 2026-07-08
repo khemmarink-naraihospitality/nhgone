@@ -452,17 +452,17 @@ export default function DashboardView({
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
             <div className="flex items-center gap-1 bg-[#152A00]/5 border border-[#152A00]/10 p-1">
-              <button 
-                onClick={() => setDataSource("live")} 
+              <button
+                onClick={() => setDataSource("live")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
               >
-                Live API
+                MEWS
               </button>
-              <button 
-                onClick={() => setDataSource("saved")} 
+              <button
+                onClick={() => setDataSource("saved")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "saved" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
               >
-                Database
+                Data Mart
               </button>
             </div>
           )}
