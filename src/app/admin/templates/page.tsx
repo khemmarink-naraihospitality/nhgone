@@ -95,7 +95,11 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+  // Same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env var is set
+  // (in Vercel) to a stale API deployment that predates the template endpoints,
+  // so requests through it come back {"detail":"Not Found"} while /api on this
+  // origin works - the print pages already hardcode /api for the same reason.
+  const apiUrl = "/api";
   const config = TEMPLATE_CONFIG[templateType];
 
   useEffect(() => {
