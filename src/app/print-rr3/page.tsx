@@ -31,11 +31,13 @@ interface Rr3Card {
 const escapeHtml = (s: string) =>
   String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// Faithful port of the user's proven Google Apps Script's renderCard() - this is
-// a fixed Thai Hotel Act form layout, not per-property customizable, so it's a
-// direct HTML-string port (not the token-substitution system used for billing
-// templates), injected via dangerouslySetInnerHTML for exact fidelity to the
-// original (avoids subtle JSX/entity conversion drift on a legal document).
+// Layout matched to the official Thai Hotel Act ร.ร.๓ blank form (user-supplied
+// scan, 2026-07-08): all four checkboxes (1.1/1.2/2.1/2.2) render empty for the
+// guest to tick by hand, English labels sit on their own line under the Thai
+// text, and there's no Email/Confirmation Number line - the original Google
+// Script port had pre-ticked 1.1/2.1, inline English labels, and both extra
+// lines, which the user asked to remove in favor of the official layout.
+// Injected via dangerouslySetInnerHTML for exact fidelity on a legal document.
 function renderRr3CardHtml(d: Rr3Card): string {
   const idDigits = (d.IdentityCardNumber || "").replace(/\D/g, "");
   const pattern = [1, 4, 5, 2, 1];
@@ -46,60 +48,70 @@ function renderRr3CardHtml(d: Rr3Card): string {
       idBoxesHtml += `<span class="s4">${escapeHtml(idDigits[idx] || "")}</span>`;
       idx++;
     }
-    if (p < pattern.length - 1) idBoxesHtml += `<span class="s3">-</span>`;
+    if (p < pattern.length - 1) idBoxesHtml += `<span class="dash">-</span>`;
   });
+
+  const dotted = '<p class="s1">............................................................................................................................................................................................</p>';
 
   const rows: string[] = [];
   rows.push('<table class="center-table" cellspacing="0">');
-  rows.push('<tr style="min-height:200mm"><td style="width:100%;border:0pt solid;" colspan="3">');
-  rows.push(`<h5 style="text-align:right;margin-top:-20px;">Confirmation Number : ..<span>${escapeHtml(d.ReservationsNumber)}</span>..</h5>`);
+  rows.push('<tr><td style="width:100%;border:0pt solid;" colspan="3">');
   rows.push('<p class="s1" style="padding-right:5pt;text-align:right;">ร.ร. ๓</p>');
-  rows.push(`<p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม <span>${escapeHtml(d.HotelName)}.</span></p>`);
+  rows.push(`<p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม.............<span class="val">${escapeHtml(d.HotelName)}</span>.............</p>`);
   rows.push('<p class="s1" style="text-align:center;">(Lodger Registration Card)</p>');
-  rows.push(`<p class="s1" style="padding-left:5pt;">ชื่อตัว .........................<span class="firstname">${escapeHtml(d.FirstName)}</span>......................... ชื่อสกุล ............................ <span class="lastname">${escapeHtml(d.LastName)}</span> ...............</p>`);
-  rows.push('<p class="s1">&nbsp;(Name)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Surname)</p>');
-  rows.push(`<p class="s3" style="padding-left:5pt;"><span class="s1">เลขประจำตัวประชาชน</span> <span>${idBoxesHtml}</span></p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">(Identification Card No.)</p>');
-  rows.push(`<p class="s1" style="padding-left:5pt;">ใบสำคัญประจำตัวคนต่างด้าว เลขที่ .........................<span class="alienbook">${escapeHtml(d.AlienBook)}</span>........................... (Alien Registration Book No.)</p>`);
-  rows.push(`<p class="s1" style="padding-left:5pt;">หนังสือเดินทางเลขที่ ..................................<span class="passport">${escapeHtml(d.PassportNumber)}</span>......................................</p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">(Passport No.)</p>');
-  rows.push(`<p class="s1" style="padding-left:5pt;">อาชีพ......................<span class="occupation">${escapeHtml(d.Occupation)}</span>......................... สัญชาติ ........................<span class="nationality">${escapeHtml(d.NationalityName)}</span>................................</p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">(Occupation)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; (Nationality)</p>');
-  rows.push(`<p class="s1" style="padding-left:5pt;">ที่อยู่ปัจจุบัน .................<span class="address">${escapeHtml(d.AddressDetails)}</span>............................</p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">(Current Address)</p>');
-  rows.push(`<p class="s1" style="padding-left:5pt;">หมายเลขโทรศัพท์ ...................<span class="phone">${escapeHtml(d.Telephone)}</span>.....................</p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">(Telephone No.)</p>');
-  rows.push(`<p class="s1">Email : <span>${escapeHtml(d.Email)}</span></p>`);
-  rows.push('<p class="s1" style="padding-left:38pt;">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>');
-  rows.push('<p class="s5" style="padding-left:66pt;">&#9745; <span class="s1">1.1 เดินทางมาจากที่อยู่ปัจจุบัน ที่เป็นภูมิลำเนาข้างต้น (Depart from the current address above)</span></p>');
-  rows.push(`<p class="s5" style="padding-left:65pt;"> <span class="s1">1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) ...........................<span class="departure">${escapeHtml(d.Departure)}</span>...................................... (Place of Departure)</span></p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">.............................................................................................................................................................................................................................................</p>');
-  rows.push('<p class="s1" style="padding-left:44pt;">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด (Next Destination)</p>');
-  rows.push('<p class="s5" style="padding-left:65pt;">&#9745; <span class="s1">2.1 เดินทางกลับไปยังที่อยู่ปัจจุบัน ที่เป็นภูมิลำเนา (Back to the current address above)</span></p>');
-  rows.push(`<p class="s5" style="padding-left:65pt;"> <span class="s1">2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) ....................................<span class="destination">${escapeHtml(d.Destination)}</span> ........................... (Next Destination)</span></p>`);
-  rows.push('<p class="s1" style="padding-left:5pt;">.............................................................................................................................................................................................................................................</p>');
+  rows.push(`<p class="s1">ชื่อตัว ....................<span class="val">${escapeHtml(d.FirstName)}</span>.................... ชื่อสกุล ....................<span class="val">${escapeHtml(d.LastName)}</span>....................</p>`);
+  rows.push('<p class="s1">(Name)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Surname)</p>');
+  rows.push(`<p class="s1">เลขประจำตัวประชาชน&nbsp;&nbsp;${idBoxesHtml}</p>`);
+  rows.push('<p class="s1">(Identification Card No.)</p>');
+  rows.push(`<p class="s1">ใบสำคัญประจำตัวคนต่างด้าวเลขที่........................................<span class="val">${escapeHtml(d.AlienBook)}</span>...............................................................</p>`);
+  rows.push('<p class="s1">(Alien Registration Book No.)</p>');
+  rows.push(`<p class="s1">หนังสือเดินทางเลขที่..............................................<span class="val">${escapeHtml(d.PassportNumber)}</span>........................................................................</p>`);
+  rows.push('<p class="s1">(Passport No.)</p>');
+  rows.push(`<p class="s1">อาชีพ......................<span class="val">${escapeHtml(d.Occupation)}</span>.......................สัญชาติ ......................<span class="val">${escapeHtml(d.NationalityName)}</span>............................</p>`);
+  rows.push('<p class="s1">(Occupation)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;(Nationality)</p>');
+  rows.push(`<p class="s1">ที่อยู่ปัจจุบัน.....................................<span class="val">${escapeHtml(d.AddressDetails)}</span>...............................................................................</p>`);
+  rows.push('<p class="s1">(Current Address)</p>');
+  rows.push(`<p class="s1">........................................................................หมายเลขโทรศัพท์.................<span class="val">${escapeHtml(d.Telephone)}</span>.......................</p>`);
+  rows.push('<p class="s1" style="text-align:center;">(Telephone No.)</p>');
+  rows.push('<p class="s1" style="padding-left:30pt;">1. เดินทางมาจากสถานที่ใด</p>');
+  rows.push('<p class="s1" style="padding-left:46pt;">(Place of Departure)</p>');
+  rows.push('<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 1.1 เดินทางมาจากที่อยู่ปัจจุบันที่เป็นภูมิลำเนาข้างต้น.</p>');
+  rows.push('<p class="s1" style="padding-left:82pt;">(Depart from the current address above)</p>');
+  rows.push(`<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) ..............<span class="val">${escapeHtml(d.Departure)}</span>..............</p>`);
+  rows.push('<p class="s1" style="padding-left:82pt;">(Place of Departure)</p>');
+  rows.push(dotted);
+  rows.push(dotted);
+  rows.push('<p class="s1" style="padding-left:30pt;">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด</p>');
+  rows.push('<p class="s1" style="padding-left:46pt;">(Next Destination)</p>');
+  rows.push('<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 2.1 เดินทางกลับไปยังที่อยู่ปัจจุบันที่เป็นภูมิลำเนา</p>');
+  rows.push('<p class="s1" style="padding-left:82pt;">(Back to the current address above)</p>');
+  rows.push(`<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ)..............<span class="val">${escapeHtml(d.Destination)}</span>..............</p>`);
+  rows.push('<p class="s1" style="padding-left:82pt;">(Next Destination)</p>');
+  rows.push(dotted);
+  rows.push(dotted);
   rows.push("</td></tr>");
   rows.push('<tr style="height:120pt">');
-  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก</p><p class="s1" style="text-align:center;">(Date of Arrival)</p><p class="s1" style="text-align:center;"><span class="arrivaldate">${escapeHtml(d.CheckIn)}</span></p><p class="s1" style="text-align:center;">เวลา <span class="arrivaltime">${escapeHtml(d.CheckInTime)}</span></p><p class="s1" style="padding-left:13pt;">(Time)</p></td>`);
-  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี ที่ออกไป</p><p class="s1" style="text-align:center;">(Expected Departure)</p><p class="s1" style="text-align:center;"><span class="departdate">${escapeHtml(d.CheckOut)}</span></p><p class="s1" style="text-align:center;">เวลา <span class="departtime">${escapeHtml(d.CheckOutTime)}</span></p><p class="s1" style="padding-left:13pt;">(Time)</p></td>`);
-  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">ห้องพักเลขที่ ............<span class="roomno">${escapeHtml(d.RoomNumber)}</span>...........</p><p class="s1" style="padding-left:4pt;">(Room No.)</p><p class="s1" style="text-align:center;">ลายมือชื่อผู้พัก (Guest Signature)</p><p class="s1" style="padding-top:14pt;text-align:center;"> ..............................................</p><p class="s1" style="padding-top:5pt;text-align:center;"><span class="guestsign">${escapeHtml(d.GuestSign)}</span></p></td>`);
+  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี</p><p class="s1" style="text-align:center;">ที่เข้าพัก</p><p class="s1" style="text-align:center;">(Date of Arrival)</p><p class="s1" style="text-align:center;">.......<span class="val">${escapeHtml(d.CheckIn)}</span>.......</p><p class="s1" style="padding-left:10pt;">เวลา ........<span class="val">${escapeHtml(d.CheckInTime)}</span>........</p><p class="s1" style="padding-left:10pt;">(Time)</p></td>`);
+  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี</p><p class="s1" style="text-align:center;">ที่ออกไป</p><p class="s1" style="text-align:center;">(Expected Departure)</p><p class="s1" style="text-align:center;">.......<span class="val">${escapeHtml(d.CheckOut)}</span>.......</p><p class="s1" style="padding-left:10pt;">เวลา ........<span class="val">${escapeHtml(d.CheckOutTime)}</span>........</p><p class="s1" style="padding-left:10pt;">(Time)</p></td>`);
+  rows.push(`<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="padding-left:6pt;">ห้องพักเลขที่............<span class="val">${escapeHtml(d.RoomNumber)}</span>............</p><p class="s1" style="padding-left:6pt;">(Room No.)</p><p class="s1" style="text-align:center;">ลายมือชื่อผู้พัก</p><p class="s1" style="text-align:center;">(Guest Signature)</p><p class="s1" style="padding-top:12pt;text-align:center;">..............................................</p><p class="s1" style="text-align:center;"><span class="val">${escapeHtml(d.GuestSign)}</span></p></td>`);
   rows.push("</tr></table>");
   return rows.join("");
 }
 
 const RR3_STYLES = `
-.s1 { color:black; font-family:"Angsana New",serif; font-weight:normal; font-size:14pt; }
-.s2 { color:black; font-family:"Angsana New",serif; font-weight:bold; font-size:14pt; }
-.s3 { color:black; font-family:Symbol,serif; font-size:18pt; }
-.s4 { color:black; font-family:"Angsana New",serif; font-size:14pt; display:inline-block; min-width:22px; text-align:center; background:#f7f7f7; border:1.5px solid #e0e0e0; border-radius:4px; margin:0 1px; }
-.s5 { color:black; font-family:Wingdings; font-size:14pt; }
+.s1 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:normal; font-size:14pt; }
+.s2 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:bold; font-size:15pt; }
+.s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; display:inline-block; width:16pt; height:17pt; text-align:center; border:1pt solid black; margin:0 1.5pt; vertical-align:middle; }
+.dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 2pt; }
+.chk { display:inline-block; width:9pt; height:9pt; border:1pt solid black; vertical-align:-1pt; margin-right:3pt; }
+.val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; }
 table, tbody { vertical-align:top; overflow:visible; }
-.center-table { margin:0 auto; width:210mm; height:297mm; padding:15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:2pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; }
-.firstname,.lastname,.alienbook,.passport,.occupation,.nationality,.address,.phone,.departure,.destination,.arrivaldate,.arrivaltime,.departdate,.departtime,.roomno,.guestsign { background:#f7f7f7; padding:2px 6px; border-radius:4px; font-weight:bold; color:#2a2a2a; font-family:"Angsana New",serif; font-size:14pt; }
+.center-table { margin:0 auto; width:210mm; height:297mm; padding:14mm 15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; }
+.center-table p { margin:1.5pt 0; }
 @page { size:A4 portrait; margin:0mm; }
 @media print {
   html, body { width:210mm; height:297mm; margin:0; padding:0; background:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
-  .center-table { box-shadow:none; border:2pt solid black; margin:0; }
+  .center-table { box-shadow:none; border:1pt solid black; margin:0; }
   .center-table:last-of-type { page-break-after:auto; break-after:auto; }
 }
 `;
