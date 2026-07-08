@@ -14,15 +14,19 @@ router = APIRouter(prefix="/rr3", tags=["RR3"])
 # here - NOT &lt;&lt;...&gt;&gt; - or substitution silently never matches
 # (see the DEFAULT_HTML_TEMPLATE bug fixed in 967dd08).
 DEFAULT_RR3_TEMPLATE = """<style>
-.s1 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:normal; font-size:14pt; }
-.s2 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:bold; font-size:15pt; }
-.s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; display:inline-block; width:16pt; height:17pt; text-align:center; border:1pt solid black; margin:0 1.5pt; vertical-align:middle; }
-.dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 2pt; }
+/* line-height is set explicitly and tight (the app shell's default ~1.5 plus
+   the two-line Thai/English structure otherwise pushes the card past one A4
+   page, which is what makes the layout drift from the official scan) */
+.s1 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:normal; font-size:14pt; line-height:1.12; }
+.s2 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:bold; font-size:15pt; line-height:1.12; }
+.s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:13pt; line-height:1; display:inline-block; width:14pt; height:15pt; text-align:center; border:1pt solid black; margin:0 1pt; vertical-align:middle; }
+.dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 1.5pt; }
 .chk { display:inline-block; width:9pt; height:9pt; border:1pt solid black; vertical-align:-1pt; margin-right:3pt; }
-.val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; }
+.val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; line-height:1.12; }
+.val:empty { padding:0; }
 table, tbody { vertical-align:top; overflow:visible; }
-.center-table { margin:0 auto; width:210mm; height:297mm; padding:14mm 15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; }
-.center-table p { margin:1.5pt 0; }
+.center-table { margin:0 auto; width:210mm; height:297mm; padding:12mm 15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; overflow:hidden; }
+.center-table p { margin:1pt 0; }
 @page { size:A4 portrait; margin:0mm; }
 @media print {
   html, body { width:210mm; height:297mm; margin:0; padding:0; background:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
