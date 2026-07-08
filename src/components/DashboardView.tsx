@@ -451,7 +451,7 @@ export default function DashboardView({
       <div className="max-w-7xl mx-auto w-full">
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
-            <div className="flex items-center gap-1 bg-[#152A00]/5 border border-[#152A00]/10 p-1">
+            <div className="flex border border-[#152A00]/20 overflow-hidden">
               <button
                 onClick={() => setDataSource("live")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
