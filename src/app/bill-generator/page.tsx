@@ -216,7 +216,7 @@ export default function BillGeneratorPage() {
   return (
     <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; Data Mart mode reads the faster, previously-imported cache.">
+        <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; Data Mart mode reads from our own database (faster, already imported).">
           <div className="flex flex-col gap-2">
             <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Mode</label>
             <div className="flex border border-[#152A00]/20 overflow-hidden">
