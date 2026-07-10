@@ -15,8 +15,6 @@ interface UserProfile {
   created_at?: string;
 }
 
-const APPROVE_ROLE_OPTIONS = ["User", "Finance", "Super Admin"];
-
 interface RolePermissionRow {
   role: string;
   dashboard: boolean;
@@ -36,10 +34,6 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role">; label: string }[
   { key: "admin", label: "Admin" },
 ];
 
-// Fixed set, matching the Role dropdowns used elsewhere on this page (Create/
-// Edit/Approve) - Super Admin is always locked to full access in the grid.
-const GRID_ROLES = ["User", "Finance", "Super Admin"];
-
 export default function AdminUsersPage() {
   const [activeTab, setActiveTab] = useState<"users" | "roles">("users");
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -47,6 +41,8 @@ export default function AdminUsersPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [rolePermissions, setRolePermissions] = useState<RolePermissionRow[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(true);
+  const [newRoleName, setNewRoleName] = useState("");
+  const [addingRole, setAddingRole] = useState(false);
 
 
   const fetchUsers = async () => {
@@ -76,17 +72,45 @@ export default function AdminUsersPage() {
     if (error) {
       console.error("Failed to fetch role_permissions:", error.message);
     } else {
-      // Always render all GRID_ROLES in a fixed order, falling back to
-      // full-access defaults for any role missing a row (e.g. table just
-      // created and not yet seeded) rather than silently omitting it.
-      const byRole = new Map((data as RolePermissionRow[]).map((r) => [r.role, r]));
-      setRolePermissions(
-        GRID_ROLES.map((role) => byRole.get(role) || {
-          role, dashboard: true, data_mart: true, bills: true, rr3: true, log_import: true, admin: role === "Super Admin",
-        })
-      );
+      // Renders every role that actually has a row - roles are created via
+      // handleAddRole below, not a fixed list. Super Admin always sorts last
+      // (it's the locked/read-only row); everything else is alphabetical.
+      const rows = [...(data as RolePermissionRow[])].sort((a, b) => {
+        if (a.role === "Super Admin") return 1;
+        if (b.role === "Super Admin") return -1;
+        return a.role.localeCompare(b.role);
+      });
+      setRolePermissions(rows);
     }
     setLoadingRoles(false);
+  };
+
+  const handleAddRole = async () => {
+    const name = newRoleName.trim();
+    if (!name) return;
+    if (rolePermissions.some((r) => r.role.toLowerCase() === name.toLowerCase())) {
+      alert(`Role "${name}" already exists`);
+      return;
+    }
+    setAddingRole(true);
+    try {
+      // New roles start Dashboard-only (matching the "User" role's own
+      // tightened default) rather than all-false, so a freshly created role
+      // isn't immediately a blank/broken experience before anyone's had a
+      // chance to check more boxes for it.
+      const newRow: RolePermissionRow = {
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, log_import: false, admin: false,
+      };
+      const { error } = await supabase.from("role_permissions").insert(newRow);
+      if (error) {
+        alert("Error creating role: " + error.message);
+      } else {
+        setNewRoleName("");
+        fetchRolePermissions();
+      }
+    } finally {
+      setAddingRole(false);
+    }
   };
 
   const handleTogglePermission = async (role: string, key: keyof Omit<RolePermissionRow, "role">) => {
@@ -366,9 +390,28 @@ export default function AdminUsersPage() {
 
       {activeTab === "roles" && (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
-            <h3 className="text-sm font-bold text-slate-700">Role × Menu Access</h3>
-            <p className="text-xs text-slate-500 mt-1">Controls which sidebar menu items each role can see. Super Admin always has full access and can&apos;t be edited here.</p>
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold text-slate-700">Role × Menu Access</h3>
+              <p className="text-xs text-slate-500 mt-1">Controls which sidebar menu items each role can see. Super Admin always has full access and can&apos;t be edited here.</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={newRoleName}
+                onChange={(e) => setNewRoleName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleAddRole(); }}
+                placeholder="New role name..."
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 w-48"
+              />
+              <button
+                onClick={handleAddRole}
+                disabled={addingRole || !newRoleName.trim()}
+                className="px-4 py-2 bg-[#AAA024] text-white rounded-xl text-xs font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {addingRole ? "Adding..." : "+ Add Role"}
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -445,9 +488,9 @@ export default function AdminUsersPage() {
                          value={editingUser.role}
                          onChange={(e) => setEditingUser({...editingUser, role: e.target.value})}
                        >
-                          <option value="User">User</option>
-                          <option value="Finance">Finance</option>
-                          <option value="Super Admin">Super Admin</option>
+                          {rolePermissions.map((r) => (
+                            <option key={r.role} value={r.role}>{r.role}</option>
+                          ))}
                        </select>
                     </div>
                     <div className="space-y-1">
@@ -504,8 +547,8 @@ export default function AdminUsersPage() {
                       value={approveRole}
                       onChange={(e) => setApproveRole(e.target.value)}
                     >
-                       {APPROVE_ROLE_OPTIONS.map((r) => (
-                         <option key={r} value={r}>{r}</option>
+                       {rolePermissions.map((r) => (
+                         <option key={r.role} value={r.role}>{r.role}</option>
                        ))}
                     </select>
                  </div>
@@ -580,9 +623,9 @@ export default function AdminUsersPage() {
                       value={newUser.role}
                       onChange={(e) => setNewUser({...newUser, role: e.target.value})}
                     >
-                       <option value="User" className="bg-[#1a1a1a]">User</option>
-                       <option value="Finance" className="bg-[#1a1a1a]">Finance</option>
-                       <option value="Super Admin" className="bg-[#1a1a1a]">Super Admin</option>
+                       {rolePermissions.map((r) => (
+                         <option key={r.role} value={r.role} className="bg-[#1a1a1a]">{r.role}</option>
+                       ))}
                     </select>
                  </div>
 
