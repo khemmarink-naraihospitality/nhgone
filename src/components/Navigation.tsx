@@ -56,6 +56,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const [userRole, setUserRole] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
   const [menuPermissions, setMenuPermissions] = useState<MenuPermissions | null>(null);
+  // Distinguishes "haven't fetched yet" from "fetched, got nothing" (both
+  // otherwise look like menuPermissions === null) - without this the admin
+  // guard below couldn't tell when it's safe to make a final allow/deny
+  // decision and would spin forever on a failed fetch instead of redirecting.
+  const [permissionsLoaded, setPermissionsLoaded] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -163,6 +168,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         } else {
           setMenuPermissions(null);
         }
+        setPermissionsLoaded(true);
         if (isLoginPage && pathname === "/") {
           router.push("/dashboard");
         }
@@ -177,6 +183,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         setIsAuthorized(false);
         setPendingEmail(null);
         setMenuPermissions(null);
+        setPermissionsLoaded(false);
         router.push("/");
       } else if (event === 'SIGNED_IN') {
         checkAuth();
@@ -187,6 +194,20 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       subscription.unsubscribe();
     };
   }, [pathname, isLoginPage, router]);
+
+  const isSuperAdminRole = userRole === "Super Admin" || userRole?.toLowerCase() === "super_admin";
+  const onAdminPath = pathname.startsWith("/admin");
+
+  // Admin section access guard: redirects away once the role_permissions
+  // fetch has actually settled (permissionsLoaded) and the role isn't
+  // allowed - waiting for that explicit signal (rather than just checking
+  // menuPermissions !== null, which can't tell "still fetching" from
+  // "fetched, no row") avoids kicking out a legitimate admin mid-fetch.
+  useEffect(() => {
+    if (onAdminPath && !isSuperAdminRole && permissionsLoaded && !menuPermissions?.admin) {
+      router.push("/dashboard");
+    }
+  }, [onAdminPath, isSuperAdminRole, permissionsLoaded, menuPermissions, router]);
 
   // Loading state to prevent flicker
   if (isAuthorized === null && !isLoginPage) {
@@ -210,6 +231,18 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
   if (isLoginPage) {
     return <>{children}</>;
+  }
+
+  // Block rendering admin content for a non-Super-Admin: either permissions
+  // are still resolving (show the spinner, matching the isAuthorized===null
+  // state above) or they've resolved and access is denied (render nothing -
+  // the effect above is already redirecting to /dashboard).
+  if (onAdminPath && !isSuperAdminRole && (!permissionsLoaded || !menuPermissions?.admin)) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#AAA024]"></div>
+      </div>
+    );
   }
 
   // Falls back to the pre-Role-Settings hardcoded rule (Finance = Bills only,
