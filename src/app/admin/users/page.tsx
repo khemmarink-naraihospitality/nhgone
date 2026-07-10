@@ -73,11 +73,11 @@ export default function AdminUsersPage() {
       console.error("Failed to fetch role_permissions:", error.message);
     } else {
       // Renders every role that actually has a row - roles are created via
-      // handleAddRole below, not a fixed list. Super Admin always sorts last
+      // handleAddRole below, not a fixed list. Super Admin always sorts first
       // (it's the locked/read-only row); everything else is alphabetical.
       const rows = [...(data as RolePermissionRow[])].sort((a, b) => {
-        if (a.role === "Super Admin") return 1;
-        if (b.role === "Super Admin") return -1;
+        if (a.role === "Super Admin") return -1;
+        if (b.role === "Super Admin") return 1;
         return a.role.localeCompare(b.role);
       });
       setRolePermissions(rows);
