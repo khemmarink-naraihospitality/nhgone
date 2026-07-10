@@ -24,6 +24,8 @@ interface Invoice {
   sub_total: number;
   vat_rate_pct: number;
   vat: number;
+  provincial_tax_rate_pct: number;
+  provincial_tax: number;
   net_amount: number;
   baht_text: string;
   payment_method: { cash: boolean; card: boolean; bank_transfer: boolean; cheque: boolean };
@@ -66,6 +68,8 @@ function renderInvoiceTemplate(template: string, inv: Invoice): string {
     SubTotal: fmtAmount(inv.sub_total),
     VATC: `${inv.vat_rate_pct}%`,
     VAT: fmtAmount(inv.vat),
+    PTC: `${inv.provincial_tax_rate_pct ?? 1}%`,
+    PT: fmtAmount(inv.provincial_tax ?? 0),
     NetAmount: fmtAmount(inv.net_amount),
     CH: box(inv.payment_method.cash),
     CD: box(inv.payment_method.card),

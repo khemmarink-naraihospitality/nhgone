@@ -724,6 +724,10 @@ class SyncService:
                             "Amount": amt.get("GrossValue"),
                             "Net Amount": amt.get("NetValue"),
                             "Currency": amt.get("Currency"),
+                            # Per-tax-rate breakdown ([{Code, Value}]) so invoices can
+                            # split VAT 7% from Provincial Tax 1% instead of lumping
+                            # them into one blended rate.
+                            "Tax Values": amt.get("TaxValues") or [],
                         })
 
                     if not current_cursor or not item_chunk:
@@ -791,7 +795,8 @@ class SyncService:
                 for it in cached.get("Order Items") or []:
                     gross = it.get("Amount") or 0
                     net = it.get("Net Amount") or 0
-                    rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net})
+                    rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net,
+                                 "tax_values": it.get("Tax Values") or []})
             else:
                 bill_res = await mews_client.post(
                     "/api/connector/v1/bills/getAll",
@@ -837,6 +842,7 @@ class SyncService:
                         "gross": gross,
                         "net": net,
                         "tax": gross - net,
+                        "tax_values": amt.get("TaxValues") or [],
                     })
 
             pay_res = await mews_client.post(
@@ -866,14 +872,41 @@ class SyncService:
             raise e
 
     @staticmethod
+    def _split_item_taxes(row: dict) -> tuple:
+        """
+        Returns (vat, other_tax) for one order-item row. Thai invoices must show
+        VAT at its statutory 7% - MEWS items on room revenue also carry a 1%
+        Provincial Tax, and lumping both into "VAT" yields a bogus blended rate
+        (e.g. 7.64%). Prefers the item's MEWS TaxValues breakdown; older
+        bills_sync rows predate "Tax Values", so those fall back to assuming the
+        portion above 7% of net is the provincial tax.
+        """
+        net = row.get("net") or 0
+        tax = row.get("tax") or 0
+        tax_values = row.get("tax_values") or []
+        if tax_values and net:
+            # A tax entry well below the 7% band (e.g. 1% provincial) is "other";
+            # vat is the remainder so the pair always reconciles with gross - net.
+            other = sum((tv.get("Value") or 0) for tv in tax_values
+                        if ((tv.get("Value") or 0) / net) < 0.055)
+            return tax - other, other
+        if net and (tax / net) > 0.075:
+            vat = net * 0.07
+            return vat, tax - vat
+        return tax, 0.0
+
+    @staticmethod
     def _compute_invoice_amounts(rows: list, payments: list) -> dict:
         """
         Shared by get_bill_invoice (single) and get_bill_invoices_batch (batch):
         turns raw order-item rows + payment records into the invoice's computed
-        fields (5-row line items with >5 bundled into "Other charges", VAT
-        breakdown, Thai baht-text, and a best-effort payment-method match).
+        fields (5-row line items with >5 bundled into "Other charges", VAT 7% /
+        Provincial Tax 1% breakdown, Thai baht-text, and a best-effort
+        payment-method match).
         """
         rows = list(rows)
+        for r in rows:
+            r["vat_part"], r["other_part"] = SyncService._split_item_taxes(r)
         if len(rows) > 5:
             head, tail = rows[:4], rows[4:]
             rows = head + [{
@@ -881,17 +914,29 @@ class SyncService:
                 "gross": sum(r["gross"] for r in tail),
                 "net": sum(r["net"] for r in tail),
                 "tax": sum(r["tax"] for r in tail),
+                "vat_part": sum(r["vat_part"] for r in tail),
+                "other_part": sum(r["other_part"] for r in tail),
             }]
 
-        sub_total = sum(r["net"] for r in rows)
-        vat_total = sum(r["tax"] for r in rows)
-        net_amount = sub_total + vat_total
-        vat_rate_pct = round((vat_total / sub_total * 100), 2) if sub_total else 0
+        sub_total = round(sum(r["net"] for r in rows), 2)
+        total_tax = sum(r["tax"] for r in rows)
+        provincial_tax = round(sum(r["other_part"] for r in rows), 2)
+        # Total first, then VAT as the remainder, so rounding can never leave
+        # SubTotal + VAT + Provincial != Total on the printed invoice.
+        net_amount = round(sub_total + total_tax, 2)
+        vat_total = round(net_amount - sub_total - provincial_tax, 2)
+        # Thai statutory VAT - fixed label, not back-computed from the amounts.
+        vat_rate_pct = 7
 
         line_items = []
         for i in range(5):
             if i < len(rows):
-                line_items.append({"no": i + 1, "description": rows[i]["name"], "amount": round(rows[i]["gross"], 2)})
+                # Mirror MEWS's per-item tax sub-line: items carrying provincial
+                # tax say so in the description (amount column stays gross).
+                desc = rows[i]["name"]
+                if rows[i]["other_part"] > 0.005:
+                    desc = f"{desc} (Provincial Tax 1%: {rows[i]['other_part']:,.2f})"
+                line_items.append({"no": i + 1, "description": desc, "amount": round(rows[i]["gross"], 2)})
             else:
                 line_items.append({"no": "", "description": "", "amount": ""})
 
@@ -917,10 +962,12 @@ class SyncService:
 
         return {
             "line_items": line_items,
-            "sub_total": round(sub_total, 2),
+            "sub_total": sub_total,
             "vat_rate_pct": vat_rate_pct,
-            "vat": round(vat_total, 2),
-            "net_amount": round(net_amount, 2),
+            "vat": vat_total,
+            "provincial_tax_rate_pct": 1,
+            "provincial_tax": provincial_tax,
+            "net_amount": net_amount,
             "baht_text": bahttext(net_amount),
             "payment_method": method,
             "bank_transfer_ref": bank_transfer_ref,
@@ -960,7 +1007,8 @@ class SyncService:
                         for it in decrypted.get("Order Items") or []:
                             gross = it.get("Amount") or 0
                             net = it.get("Net Amount") or 0
-                            rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net})
+                            rows.append({"name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net,
+                                         "tax_values": it.get("Tax Values") or []})
                         headers[r["mews_id"]] = {
                             "owner_name": decrypted.get("Owner Name") or "",
                             "address_lines": decrypted.get("Address Lines") or [],
@@ -1017,6 +1065,7 @@ class SyncService:
                                 "gross": gross,
                                 "net": net,
                                 "tax": gross - net,
+                                "tax_values": amt.get("TaxValues") or [],
                             })
                         if not current_cursor or not chunk:
                             break

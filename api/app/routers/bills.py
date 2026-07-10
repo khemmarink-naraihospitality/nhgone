@@ -57,9 +57,12 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
       <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No4>></td><td style="border:1px solid #000;padding:4px;"><<Description4>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP4>></td></tr>
       <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No5>></td><td style="border:1px solid #000;padding:4px;"><<Description5>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP5>></td></tr>
       <tr>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">บาท<br/>Baht</td>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3"><<BahtTextE>></td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="4">บาท<br/>Baht</td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="4"><<BahtTextE>></td>
         <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span><<SubTotal>></span></div></td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Provincial Tax (<<PTC>>)</span><span><<PT>></span></div></td>
       </tr>
       <tr>
         <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (<<VATC>>)</span><span><<VAT>></span></div></td>
@@ -133,9 +136,12 @@ DEFAULT_HTML_TEMPLATE = """<div style="border:1px solid #000;padding:24px;font-s
       <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No4>></td><td style="border:1px solid #000;padding:4px;"><<Description4>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP4>></td></tr>
       <tr><td style="border:1px solid #000;padding:4px;text-align:center;"><<No5>></td><td style="border:1px solid #000;padding:4px;"><<Description5>></td><td style="border:1px solid #000;padding:4px;text-align:right;"><<AmountP5>></td></tr>
       <tr>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3">บาท<br/>Baht</td>
-        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="3"><<BahtTextE>></td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="4">บาท<br/>Baht</td>
+        <td style="border:1px solid #000;padding:4px;vertical-align:top;" rowspan="4"><<BahtTextE>></td>
         <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>จำนวนเงิน Net Amount</span><span><<SubTotal>></span></div></td>
+      </tr>
+      <tr>
+        <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>Provincial Tax (<<PTC>>)</span><span><<PT>></span></div></td>
       </tr>
       <tr>
         <td style="border:1px solid #000;padding:0;"><div style="display:flex;justify-content:space-between;padding:0 4px;"><span>VAT (<<VATC>>)</span><span><<VAT>></span></div></td>
