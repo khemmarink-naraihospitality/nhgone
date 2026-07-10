@@ -79,7 +79,9 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 
 `src/components/Navigation.tsx` wraps every page. It checks Supabase Auth and verifies the user has a row in the `profiles` table. The `/` route is the only public page.
 
-New signups (mainly first-time Google OAuth logins) are auto-provisioned by a Postgres trigger on `auth.users` (`on_auth_user_created` → `handle_new_user()`, managed directly in Supabase SQL Editor, not a tracked migration) as `role='Users'`, `status='pending'`, with `full_name` defaulting to the email's capitalized local-part unless Google supplied a real name. A `pending` profile sees a "Waiting for Approval" screen instead of the app shell/menus. A Super Admin approves via Admin > Users, picking a real role — this calls `POST /admin/users/{id}/approve`, which sets `status='Active'`. A still-missing profile (trigger somehow didn't fire) falls back to `POST /admin/self-register` (same fixed `role='Users'/status='pending'` defaults) before the old sign-out-as-unauthorized path. Admin-created invites (`POST /admin/users`) are unaffected — that endpoint's own upsert overwrites the trigger's defaults with the real role and `status='Active'` immediately after creating the auth user.
+New signups (mainly first-time Google OAuth logins) are auto-provisioned by a Postgres trigger on `auth.users` (`on_auth_user_created` → `handle_new_user()`, managed directly in Supabase SQL Editor, not a tracked migration) as `role='User'`, `status='Pending'`, with `full_name` defaulting to the email's capitalized local-part unless Google supplied a real name. A `Pending` profile sees a "Waiting for Approval" screen instead of the app shell/menus. A Super Admin approves via Admin > Users, picking a real role — this calls `POST /admin/users/{id}/approve`, which sets `status='Active'`. A still-missing profile (trigger somehow didn't fire) falls back to `POST /admin/self-register` (same fixed `role='User'/status='Pending'` defaults) before the old sign-out-as-unauthorized path. Admin-created invites (`POST /admin/users`) are unaffected — that endpoint's own upsert overwrites the trigger's defaults with the real role and `status='Active'` immediately after creating the auth user.
+
+Which sidebar menus each role can see (Dashboard/Data Mart/Bills/RR3/Log Import/Admin) is controlled by the `role_permissions` table (one row per role, one boolean column per menu), edited via Admin > Users > Role Settings tab. `Navigation.tsx` and `UserHeader.tsx`'s Admin Console link both read this table for the signed-in user's role; Super Admin is hardcoded to always pass regardless of the table. A missing/unloaded row falls back to the old hardcoded rule (Finance = Bills only, everyone else = full menu) so a bad row can never zero out a user's menu entirely.
 
 ### Key Supabase tables
 
@@ -89,7 +91,8 @@ New signups (mainly first-time Google OAuth logins) are auto-provisioned by a Po
 | `members_sync` | Encrypted member snapshots; `mews_id` is the unique key |
 | `payments` | Payment records; `mews_id` is the unique key |
 | `property_api_settings` | Per-property MEWS tokens (encrypted) + sync schedule |
-| `profiles` | Authorized users; required for login. `status`: `pending` (awaiting Super Admin approval) → `Active` |
+| `profiles` | Authorized users; required for login. `status`: `Pending` (awaiting Super Admin approval) → `Active` |
+| `role_permissions` | Role × sidebar-menu access grid (one row per role), edited at Admin > Users > Role Settings |
 | `sync_logs` | Per-sync result log |
 | `sync_locks` | DB-level mutex to prevent concurrent syncs |
 | `smtp_settings` | Single global SMTP config (encrypted password) for system emails, e.g. welcome emails on user creation |
