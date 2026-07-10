@@ -77,7 +77,9 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 
 ### Auth guard
 
-`src/components/Navigation.tsx` wraps every page. It checks Supabase Auth and verifies the user has a row in the `profiles` table. Users without a profile are immediately signed out. The `/` route is the only public page.
+`src/components/Navigation.tsx` wraps every page. It checks Supabase Auth and verifies the user has a row in the `profiles` table. The `/` route is the only public page.
+
+New signups (mainly first-time Google OAuth logins) are auto-provisioned by a Postgres trigger on `auth.users` (`on_auth_user_created` → `handle_new_user()`, managed directly in Supabase SQL Editor, not a tracked migration) as `role='Users'`, `status='pending'`, with `full_name` defaulting to the email's capitalized local-part unless Google supplied a real name. A `pending` profile sees a "Waiting for Approval" screen instead of the app shell/menus. A Super Admin approves via Admin > Users, picking a real role — this calls `POST /admin/users/{id}/approve`, which sets `status='Active'`. A still-missing profile (trigger somehow didn't fire) falls back to `POST /admin/self-register` (same fixed `role='Users'/status='pending'` defaults) before the old sign-out-as-unauthorized path. Admin-created invites (`POST /admin/users`) are unaffected — that endpoint's own upsert overwrites the trigger's defaults with the real role and `status='Active'` immediately after creating the auth user.
 
 ### Key Supabase tables
 
@@ -87,7 +89,7 @@ MEWS API  →  FastAPI SyncService  →  Supabase (PostgreSQL)  →  Next.js fro
 | `members_sync` | Encrypted member snapshots; `mews_id` is the unique key |
 | `payments` | Payment records; `mews_id` is the unique key |
 | `property_api_settings` | Per-property MEWS tokens (encrypted) + sync schedule |
-| `profiles` | Authorized users; required for login |
+| `profiles` | Authorized users; required for login. `status`: `pending` (awaiting Super Admin approval) → `Active` |
 | `sync_logs` | Per-sync result log |
 | `sync_locks` | DB-level mutex to prevent concurrent syncs |
 | `smtp_settings` | Single global SMTP config (encrypted password) for system emails, e.g. welcome emails on user creation |
