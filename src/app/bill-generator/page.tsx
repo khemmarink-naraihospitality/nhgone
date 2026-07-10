@@ -216,20 +216,23 @@ export default function BillGeneratorPage() {
   return (
     <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="Bill Generator" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it.">
-          <div className="flex border border-[#152A00]/20 overflow-hidden">
-            <button
-              onClick={() => setDataSource("live")}
-              className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
-            >
-              MEWS
-            </button>
-            <button
-              onClick={() => setDataSource("database")}
-              className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
-            >
-              Data Mart
-            </button>
+        <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; Data Mart mode reads the faster, previously-imported cache.">
+          <div className="flex flex-col gap-2">
+            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Mode</label>
+            <div className="flex border border-[#152A00]/20 overflow-hidden">
+              <button
+                onClick={() => setDataSource("live")}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+              >
+                MEWS
+              </button>
+              <button
+                onClick={() => setDataSource("database")}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+              >
+                Data Mart
+              </button>
+            </div>
           </div>
         </PageHeader>
 
