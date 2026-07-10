@@ -275,7 +275,7 @@ export default function BillGeneratorPage() {
                 className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
               />
             </div>
-            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px] md:ml-auto">
+            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px]">
               {loading ? "Loading..." : "Fetch Bills"}
             </button>
           </div>
