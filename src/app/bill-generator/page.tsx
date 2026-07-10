@@ -44,6 +44,7 @@ export default function BillGeneratorPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [page, setPage] = useState(0);
+  const [billNumberFilter, setBillNumberFilter] = useState("");
 
   const DEFAULT_PROPERTY = "Lub d Koh Tao Tanote Bay";
   const [startDate, setStartDate] = useState("2025-01-01");
@@ -143,8 +144,11 @@ export default function BillGeneratorPage() {
   const filteredBills = useMemo(() => {
     // Defensively drop any row without a real mews_id so a bad/missing id can
     // never end up selectable and sent to MEWS as a malformed BillIds filter.
-    return bills.filter((b) => !!b.mews_id);
-  }, [bills]);
+    const withId = bills.filter((b) => !!b.mews_id);
+    const query = billNumberFilter.trim().toLowerCase();
+    if (!query) return withId;
+    return withId.filter((b) => (b.Number || "").toLowerCase().includes(query));
+  }, [bills, billNumberFilter]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -261,6 +265,19 @@ export default function BillGeneratorPage() {
             <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px]">
               {loading ? "Loading..." : "Fetch Bills"}
             </button>
+            <div className="flex flex-col gap-2 w-full md:w-56">
+              <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Bill Number</label>
+              <input
+                type="text"
+                value={billNumberFilter}
+                onChange={(e) => {
+                  setBillNumberFilter(e.target.value);
+                  setPage(0);
+                }}
+                placeholder="Search bill number..."
+                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <button
