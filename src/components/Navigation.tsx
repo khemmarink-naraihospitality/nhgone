@@ -6,12 +6,46 @@ import { usePathname, useRouter } from "next/navigation";
 import UserHeader from "./UserHeader";
 import { supabase } from "@/lib/supabase";
 
+function PendingApprovalScreen({ email }: { email: string }) {
+  const router = useRouter();
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#FFEFD2] p-4 font-sans text-[#152A00]">
+      <div className="relative w-full max-w-sm bg-white border border-[#152A00]/10 rounded-sm shadow-[20px_20px_60px_rgba(21,42,0,0.05)] p-8 md:p-10 text-center">
+        <div className="mx-auto mb-6 w-14 h-14 rounded-full bg-[#AAA024]/10 flex items-center justify-center">
+          <svg className="w-7 h-7 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-black font-display mb-2 tracking-tight">Waiting for Approval</h1>
+        <p className="text-[10px] font-bold tracked-caps text-[#152A00]/50 mb-6">รอการอนุมัติจากผู้ดูแลระบบ</p>
+        <p className="text-sm text-[#152A00]/70 leading-relaxed mb-1">
+          Your account (<span className="font-bold">{email}</span>) has been created and is pending approval from a Super Admin.
+        </p>
+        <p className="text-xs text-[#152A00]/50 leading-relaxed mb-8">
+          บัญชีของคุณถูกสร้างแล้ว กรุณารอ Super Admin อนุมัติสิทธิ์การใช้งานก่อนเข้าสู่ระบบ
+        </p>
+        <button
+          onClick={handleSignOut}
+          className="w-full py-3 border border-[#152A00] rounded-sm text-[11px] font-bold tracked-caps text-[#152A00] hover:bg-[#152A00] hover:text-[#FFEFD2] transition-all"
+        >
+          SIGN OUT
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/";
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -31,20 +65,32 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       // We check by ID and fallback to Email to be absolute
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("id, email, role")
+        .select("id, email, role, status")
         .eq("id", user.id)
         .single();
 
       let finalProfile = profile;
 
-      // Secondary check by email if ID check didn't return data (just in case of sync issues)
+      // Secondary check by email if ID check didn't return data (just in case of sync issues,
+      // or on first Google OAuth login where profile was pre-registered with a different UUID)
       if (!finalProfile && user.email) {
         const { data: emailProfile } = await supabase
           .from("profiles")
-          .select("id, email, role")
+          .select("id, email, role, status")
           .eq("email", user.email)
           .single();
         finalProfile = emailProfile;
+
+        // First-time Google login: profile exists by email but was pre-registered with a
+        // different UUID. Update profile.id to match the real Google auth user UUID so
+        // subsequent logins are found by ID directly.
+        if (finalProfile && finalProfile.id !== user.id) {
+          await supabase
+            .from("profiles")
+            .update({ id: user.id })
+            .eq("email", user.email);
+          finalProfile = { ...finalProfile, id: user.id };
+        }
       }
 
       if (error && error.code !== 'PGRST116' && !finalProfile) {
@@ -52,6 +98,31 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       }
 
       if (!finalProfile) {
+        // First-time login (Google or email/password) with no pre-registered
+        // invite - auto-provision a pending profile instead of kicking them
+        // out immediately, so a Super Admin can approve them from Admin >
+        // Users (with a real role) rather than having to pre-register every
+        // email in advance.
+        try {
+          const res = await fetch("/api/admin/self-register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: user.id,
+              email: user.email,
+              full_name: user.user_metadata?.full_name || user.user_metadata?.name || "",
+            }),
+          });
+          const result = await res.json();
+          if (result.status === "success") {
+            setPendingEmail(user.email || "");
+            setIsAuthorized(true);
+            return;
+          }
+        } catch (err) {
+          console.error("Self-registration failed:", err);
+        }
+        // Self-registration failed - fall back to the original unauthorized flow.
         if (!isLoginPage) {
           console.warn("Unauthorized access attempt. User email:", user.email, "User ID:", user.id);
           await supabase.auth.signOut();
@@ -63,8 +134,14 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           await supabase.auth.signOut();
           setIsAuthorized(true);
         }
+      } else if (finalProfile.status === "pending") {
+        // Approved but not yet reviewed - show the waiting screen instead of
+        // the normal app shell/menus (see PendingApprovalScreen above).
+        setPendingEmail(finalProfile.email || user.email || "");
+        setIsAuthorized(true);
       } else {
         // Authorized!
+        setPendingEmail(null);
         setUserRole(finalProfile.role || null);
         if (isLoginPage && pathname === "/") {
           router.push("/dashboard");
@@ -78,6 +155,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'SIGNED_OUT') {
         setIsAuthorized(false);
+        setPendingEmail(null);
         router.push("/");
       } else if (event === 'SIGNED_IN') {
         checkAuth();
@@ -101,6 +179,12 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // If not authorized and not on login page, don't show anything (redirect will happen)
   if (!isAuthorized && !isLoginPage) {
     return null;
+  }
+
+  // Pending approval takes priority over isLoginPage so a pending user landing
+  // back on "/" sees the waiting screen instead of the login form again.
+  if (pendingEmail) {
+    return <PendingApprovalScreen email={pendingEmail} />;
   }
 
   if (isLoginPage) {

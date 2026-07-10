@@ -1,3 +1,4 @@
+import secrets
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
@@ -9,9 +10,16 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 class UserCreateRequest(BaseModel):
     email: str
-    password: str
     role: str = "User"
     full_name: str = ""
+
+class SelfRegisterRequest(BaseModel):
+    id: str
+    email: str
+    full_name: str = ""
+
+class ApproveUserRequest(BaseModel):
+    role: str
 
 class SyncScheduleUpdate(BaseModel):
     sync_hour: int
@@ -38,12 +46,18 @@ class SmtpTestRequest(BaseModel):
 
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
-    # ... (existing code stays the same)
+    """
+    Pre-register a user by email + role. A random password is generated internally
+    so the account exists in Supabase Auth — the user is expected to sign in via
+    Google OAuth (which Supabase will link to this account by email).
+    """
     try:
         admin_supabase = get_supabase_client()
+        # Generate a strong random password — the user will never see or use this
+        random_password = secrets.token_urlsafe(32)
         auth_res = admin_supabase.auth.admin.create_user({
             "email": request.email,
-            "password": request.password,
+            "password": random_password,
             "email_confirm": True,
             "user_metadata": {
                 "full_name": request.full_name,
@@ -64,18 +78,67 @@ async def create_user(request: UserCreateRequest):
         email_sent = False
         email_error = None
         try:
-            email_service.send_welcome_email(request.email, request.password, request.full_name)
+            # Send welcome email without credentials — user should use Google login
+            email_service.send_welcome_email(request.email, None, request.full_name)
             email_sent = True
         except Exception as e:
             email_error = str(e)
 
         return {
             "status": "success",
-            "message": f"User {request.email} created successfully",
+            "message": f"User {request.email} pre-registered successfully",
             "user_id": user_id,
             "email_sent": email_sent,
             "email_error": email_error,
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/self-register")
+async def self_register(request: SelfRegisterRequest):
+    """
+    Auto-provisions a pending profile the first time someone logs in (Google or
+    email/password) with no existing profiles row, instead of Navigation.tsx's
+    old behavior of immediately kicking them out as unauthorized. They land on
+    a "waiting for approval" screen until a Super Admin approves them via
+    approve_user below. Role/status are fixed here ("Users"/"pending")
+    regardless of what's posted - only the Approve action can grant a real
+    role or Active status.
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("profiles").select("id").eq("id", request.id).limit(1).execute()
+        if existing.data:
+            return {"status": "success", "message": "Profile already exists"}
+        admin_supabase.table("profiles").insert({
+            "id": request.id,
+            "email": request.email,
+            "full_name": request.full_name,
+            "role": "Users",
+            "status": "pending",
+        }).execute()
+        return {"status": "success", "message": "Pending profile created"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/users/{user_id}/approve")
+async def approve_user(user_id: str, request: ApproveUserRequest):
+    """
+    Super Admin approval step for a pending self-registered user: sets their
+    real role and flips status to Active, which unlocks the normal app (see
+    Navigation.tsx's pending-status gate).
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        res = admin_supabase.table("profiles").update({
+            "role": request.role,
+            "status": "Active",
+        }).eq("id", user_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"status": "success", "message": "User approved"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
