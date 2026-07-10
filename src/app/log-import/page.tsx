@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -64,8 +64,22 @@ export default function LogImportPage() {
     setCurrentPage(1); // Reset to first page when filter changes
   }, [filterProperty]);
 
-  const totalPages = Math.ceil(logs.length / itemsPerPage);
-  const paginatedLogs = logs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  // Table display order: failed/error rows bubble to the top regardless of
+  // age, then most-recent-first within each status group. The summary cards
+  // below (Last Activity etc.) intentionally keep reading from the raw
+  // `logs` array (already timestamp-desc from the backend), not this sorted
+  // view, since "Last Activity" should reflect the truly latest event.
+  const sortedLogs = useMemo(() => {
+    return [...logs].sort((a, b) => {
+      const aIsIssue = a.status === "success" ? 1 : 0;
+      const bIsIssue = b.status === "success" ? 1 : 0;
+      if (aIsIssue !== bIsIssue) return aIsIssue - bIsIssue;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    });
+  }, [logs]);
+
+  const totalPages = Math.ceil(sortedLogs.length / itemsPerPage);
+  const paginatedLogs = sortedLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const formatDate = (dateStr: string) => {
     try {
