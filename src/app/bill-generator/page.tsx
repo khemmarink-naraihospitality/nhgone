@@ -262,9 +262,6 @@ export default function BillGeneratorPage() {
                 className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
               />
             </div>
-            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px]">
-              {loading ? "Loading..." : "Fetch Bills"}
-            </button>
             <div className="flex flex-col gap-2 w-full md:w-56">
               <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Bill Number</label>
               <input
@@ -278,6 +275,9 @@ export default function BillGeneratorPage() {
                 className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
               />
             </div>
+            <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px] md:ml-auto">
+              {loading ? "Loading..." : "Fetch Bills"}
+            </button>
           </div>
           <div className="flex items-center gap-2">
             <button
