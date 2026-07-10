@@ -130,7 +130,7 @@ export default function LogImportPage() {
                 onChange={(e) => setFilterProperty(e.target.value)} 
                 className="w-full bg-transparent py-3 px-1 text-[13px] font-medium text-[#152A00] outline-none appearance-none cursor-pointer"
               >
-                <option value="All">View All Portfolio Activity</option>
+                <option value="All">All Property</option>
                 {properties.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
             </div>
