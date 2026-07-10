@@ -13,6 +13,7 @@ export default function UserHeader() {
   const router = useRouter();
 
   const [profile, setProfile] = useState<any>(null);
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
 
   useEffect(() => {
     // Initial theme check
@@ -38,6 +39,21 @@ export default function UserHeader() {
           return;
         }
         setProfile(data);
+
+        // Super Admin always sees the Admin Console link regardless of the
+        // Role Settings grid (locked in the UI - see admin/users Role
+        // Settings tab). Other roles depend on their role_permissions.admin
+        // flag, driven by the same grid.
+        if (data.role === "Super Admin" || data.role === "super_admin") {
+          setCanAccessAdmin(true);
+        } else if (data.role) {
+          const { data: permRow } = await supabase
+            .from("role_permissions")
+            .select("admin")
+            .eq("role", data.role)
+            .single();
+          setCanAccessAdmin(!!permRow?.admin);
+        }
       }
     };
     getUser();
@@ -71,11 +87,6 @@ export default function UserHeader() {
     await supabase.auth.signOut();
     router.push("/");
   };
-
-  // Check Super Admin ONLY from Database role
-  const isSuperAdmin = 
-    profile?.role === "Super Admin" || 
-    profile?.role === "super_admin";
 
   return (
     <div className="z-50 font-sans">
@@ -124,7 +135,7 @@ export default function UserHeader() {
             </div>
 
             <div className="p-2">
-                {isSuperAdmin && (
+                {canAccessAdmin && (
                   <Link
                     href="/admin"
                     onClick={() => setIsOpen(false)}

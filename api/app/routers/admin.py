@@ -101,9 +101,9 @@ async def self_register(request: SelfRegisterRequest):
     email/password) with no existing profiles row, instead of Navigation.tsx's
     old behavior of immediately kicking them out as unauthorized. They land on
     a "waiting for approval" screen until a Super Admin approves them via
-    approve_user below. Role/status are fixed here ("Users"/"pending")
-    regardless of what's posted - only the Approve action can grant a real
-    role or Active status.
+    approve_user below. Role/status are fixed here ("User"/"Pending")
+    regardless of what's posted - only the Approve action can grant Active
+    status (or change the role away from the Role Settings grid's default).
     """
     try:
         admin_supabase = get_supabase_client()
@@ -114,8 +114,8 @@ async def self_register(request: SelfRegisterRequest):
             "id": request.id,
             "email": request.email,
             "full_name": request.full_name,
-            "role": "Users",
-            "status": "pending",
+            "role": "User",
+            "status": "Pending",
         }).execute()
         return {"status": "success", "message": "Pending profile created"}
     except Exception as e:

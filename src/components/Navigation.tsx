@@ -6,6 +6,15 @@ import { usePathname, useRouter } from "next/navigation";
 import UserHeader from "./UserHeader";
 import { supabase } from "@/lib/supabase";
 
+interface MenuPermissions {
+  dashboard: boolean;
+  data_mart: boolean;
+  bills: boolean;
+  rr3: boolean;
+  log_import: boolean;
+  admin: boolean;
+}
+
 function PendingApprovalScreen({ email }: { email: string }) {
   const router = useRouter();
   const handleSignOut = async () => {
@@ -46,6 +55,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [menuPermissions, setMenuPermissions] = useState<MenuPermissions | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -134,7 +144,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           await supabase.auth.signOut();
           setIsAuthorized(true);
         }
-      } else if (finalProfile.status === "pending") {
+      } else if (finalProfile.status === "Pending") {
         // Approved but not yet reviewed - show the waiting screen instead of
         // the normal app shell/menus (see PendingApprovalScreen above).
         setPendingEmail(finalProfile.email || user.email || "");
@@ -143,6 +153,16 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         // Authorized!
         setPendingEmail(null);
         setUserRole(finalProfile.role || null);
+        if (finalProfile.role) {
+          const { data: permRow } = await supabase
+            .from("role_permissions")
+            .select("dashboard, data_mart, bills, rr3, log_import, admin")
+            .eq("role", finalProfile.role)
+            .single();
+          setMenuPermissions(permRow || null);
+        } else {
+          setMenuPermissions(null);
+        }
         if (isLoginPage && pathname === "/") {
           router.push("/dashboard");
         }
@@ -156,6 +176,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       if (event === 'SIGNED_OUT') {
         setIsAuthorized(false);
         setPendingEmail(null);
+        setMenuPermissions(null);
         router.push("/");
       } else if (event === 'SIGNED_IN') {
         checkAuth();
@@ -191,6 +212,22 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     return <>{children}</>;
   }
 
+  // Falls back to the pre-Role-Settings hardcoded rule (Finance = Bills only,
+  // everyone else = full menu) whenever menuPermissions hasn't loaded yet or
+  // the role has no row in role_permissions - so a missing/misconfigured row
+  // can never hide every link and strand a user with an empty sidebar.
+  const isFinanceRole = userRole?.toLowerCase() === "finance";
+  const perms: MenuPermissions = menuPermissions || {
+    dashboard: !isFinanceRole,
+    data_mart: !isFinanceRole,
+    bills: true,
+    rr3: !isFinanceRole,
+    log_import: !isFinanceRole,
+    admin: false,
+  };
+  const showTopDivider = perms.dashboard && (perms.data_mart || perms.bills || perms.rr3);
+  const showBottomDivider = (perms.data_mart || perms.bills || perms.rr3) && perms.log_import;
+
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
       <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
@@ -217,17 +254,25 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               <Link href="/admin/templates" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
               <Link href="/admin/logs" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
             </>
-          ) : userRole?.toLowerCase() === "finance" ? (
-            <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
           ) : (
             <>
-              <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-              <div className="h-px bg-white/5 my-4 mx-4"></div>
-              <Link href="/data-mart" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
-              <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
-              <Link href="/rr3" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
-              <div className="h-px bg-white/5 my-4 mx-4"></div>
-              <Link href="/log-import" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
+              {perms.dashboard && (
+                <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              )}
+              {showTopDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
+              {perms.data_mart && (
+                <Link href="/data-mart" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
+              )}
+              {perms.bills && (
+                <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
+              )}
+              {perms.rr3 && (
+                <Link href="/rr3" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
+              )}
+              {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
+              {perms.log_import && (
+                <Link href="/log-import" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
+              )}
             </>
           )}
         </nav>

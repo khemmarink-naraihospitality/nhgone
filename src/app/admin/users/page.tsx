@@ -9,7 +9,7 @@ interface UserProfile {
   full_name: string;
   email: string;
   role: string;
-  status: "Active" | "Inactive" | "pending";
+  status: "Active" | "Inactive" | "Pending";
   last_login: string;
   joined_at: string;
   created_at?: string;
@@ -17,10 +17,36 @@ interface UserProfile {
 
 const APPROVE_ROLE_OPTIONS = ["User", "Finance", "Super Admin"];
 
+interface RolePermissionRow {
+  role: string;
+  dashboard: boolean;
+  data_mart: boolean;
+  bills: boolean;
+  rr3: boolean;
+  log_import: boolean;
+  admin: boolean;
+}
+
+const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role">; label: string }[] = [
+  { key: "dashboard", label: "Dashboard" },
+  { key: "data_mart", label: "Data Mart" },
+  { key: "bills", label: "Bills" },
+  { key: "rr3", label: "RR3" },
+  { key: "log_import", label: "Log Import" },
+  { key: "admin", label: "Admin" },
+];
+
+// Fixed set, matching the Role dropdowns used elsewhere on this page (Create/
+// Edit/Approve) - Super Admin is always locked to full access in the grid.
+const GRID_ROLES = ["User", "Finance", "Super Admin"];
+
 export default function AdminUsersPage() {
+  const [activeTab, setActiveTab] = useState<"users" | "roles">("users");
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [rolePermissions, setRolePermissions] = useState<RolePermissionRow[]>([]);
+  const [loadingRoles, setLoadingRoles] = useState(true);
 
 
   const fetchUsers = async () => {
@@ -41,6 +67,48 @@ export default function AdminUsersPage() {
     setLoading(false);
   };
 
+  const fetchRolePermissions = async () => {
+    setLoadingRoles(true);
+    const { data, error } = await supabase
+      .from("role_permissions")
+      .select("*");
+
+    if (error) {
+      console.error("Failed to fetch role_permissions:", error.message);
+    } else {
+      // Always render all GRID_ROLES in a fixed order, falling back to
+      // full-access defaults for any role missing a row (e.g. table just
+      // created and not yet seeded) rather than silently omitting it.
+      const byRole = new Map((data as RolePermissionRow[]).map((r) => [r.role, r]));
+      setRolePermissions(
+        GRID_ROLES.map((role) => byRole.get(role) || {
+          role, dashboard: true, data_mart: true, bills: true, rr3: true, log_import: true, admin: role === "Super Admin",
+        })
+      );
+    }
+    setLoadingRoles(false);
+  };
+
+  const handleTogglePermission = async (role: string, key: keyof Omit<RolePermissionRow, "role">) => {
+    if (role === "Super Admin") return; // locked - always full access
+    const current = rolePermissions.find((r) => r.role === role);
+    if (!current) return;
+    const nextValue = !current[key];
+
+    // Optimistic update
+    setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, [key]: nextValue } : r)));
+
+    const { error } = await supabase
+      .from("role_permissions")
+      .upsert({ ...current, [key]: nextValue }, { onConflict: "role" });
+
+    if (error) {
+      console.error("Failed to update role_permissions:", error.message);
+      alert("Error saving permission: " + error.message);
+      setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, [key]: current[key] } : r)));
+    }
+  };
+
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", role: "User", full_name: "" });
@@ -51,6 +119,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     fetchUsers();
+    fetchRolePermissions();
   }, []);
 
   const handleCreateUser = async () => {
@@ -154,19 +223,39 @@ export default function AdminUsersPage() {
 
   return (
     <div className="p-6 bg-white min-h-screen text-slate-900 font-sans relative">
-      <PageHeader 
-        title="User Management" 
+      <PageHeader
+        title="User Management"
         description="Welcome back, Managing system as Super_admin."
       >
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="px-6 py-2.5 bg-[#AAA024] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all flex items-center gap-2"
-        >
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
-          Create New User
-        </button>
+        <div className="flex items-center gap-4">
+          <div className="flex border border-slate-200 rounded-xl overflow-hidden">
+            <button
+              onClick={() => setActiveTab("users")}
+              className={`px-6 py-2.5 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === "users" ? "bg-[#AAA024] text-white" : "text-slate-400 hover:text-slate-700"}`}
+            >
+              Users
+            </button>
+            <button
+              onClick={() => setActiveTab("roles")}
+              className={`px-6 py-2.5 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === "roles" ? "bg-[#AAA024] text-white" : "text-slate-400 hover:text-slate-700"}`}
+            >
+              Role Settings
+            </button>
+          </div>
+          {activeTab === "users" && (
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="px-6 py-2.5 bg-[#AAA024] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" /></svg>
+              Create New User
+            </button>
+          )}
+        </div>
       </PageHeader>
-      
+
+      {activeTab === "users" && (
+      <>
       {/* Search & Toolbar */}
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between border-b border-slate-100">
@@ -209,7 +298,7 @@ export default function AdminUsersPage() {
               {loading ? (
                 <tr><td colSpan={7} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : filteredUsers.map((user) => (
-                <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors group ${user.status === 'pending' ? 'bg-amber-50/50' : ''}`}>
+                <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors group ${user.status === 'Pending' ? 'bg-amber-50/50' : ''}`}>
                   <td className="px-6 py-5 text-sm font-bold text-slate-700">{user.full_name}</td>
                   <td className="px-6 py-5 text-sm text-[#AAA024] font-medium">{user.email}</td>
                   <td className="px-6 py-5">
@@ -223,9 +312,9 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-5">
                      <div className="flex items-center gap-1.5">
-                       <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : user.status === 'pending' ? 'bg-amber-500' : 'bg-slate-300'}`}></div>
-                       <span className={`${user.status === 'Active' ? 'text-emerald-600' : user.status === 'pending' ? 'text-amber-600' : 'text-slate-500'} text-[11px] font-bold`}>
-                         {user.status === 'pending' ? 'Waiting for approve' : user.status}
+                       <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : user.status === 'Pending' ? 'bg-amber-500' : 'bg-slate-300'}`}></div>
+                       <span className={`${user.status === 'Active' ? 'text-emerald-600' : user.status === 'Pending' ? 'text-amber-600' : 'text-slate-500'} text-[11px] font-bold`}>
+                         {user.status === 'Pending' ? 'Waiting for approve' : user.status}
                        </span>
                      </div>
                   </td>
@@ -236,7 +325,7 @@ export default function AdminUsersPage() {
                     {new Date(user.created_at || user.joined_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-5 text-center relative overflow-visible group/actions">
-                     {user.status === 'pending' && (
+                     {user.status === 'Pending' && (
                        <button
                          onClick={() => { setApprovingUser(user); setApproveRole("User"); }}
                          className="px-4 py-1.5 mr-2 bg-[#AAA024] text-white rounded-lg text-xs font-bold hover:bg-[#8f871e] transition-all"
@@ -272,6 +361,60 @@ export default function AdminUsersPage() {
           </table>
         </div>
       </div>
+      </>
+      )}
+
+      {activeTab === "roles" && (
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+          <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+            <h3 className="text-sm font-bold text-slate-700">Role × Menu Access</h3>
+            <p className="text-xs text-slate-500 mt-1">Controls which sidebar menu items each role can see. Super Admin always has full access and can&apos;t be edited here.</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
+                  {MENU_ITEMS.map((item) => (
+                    <th key={item.key} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {loadingRoles ? (
+                  <tr><td colSpan={MENU_ITEMS.length + 1} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                ) : rolePermissions.map((row) => {
+                  const isLocked = row.role === "Super Admin";
+                  return (
+                    <tr key={row.role} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-5">
+                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
+                          row.role === 'Super Admin'
+                          ? 'bg-[#AAA024]/10 text-[#AAA024] border-[#AAA024]/20'
+                          : 'bg-slate-100 text-slate-600 border-slate-200'
+                        }`}>
+                          {row.role}
+                        </span>
+                      </td>
+                      {MENU_ITEMS.map((item) => (
+                        <td key={item.key} className="px-6 py-5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isLocked ? true : row[item.key]}
+                            disabled={isLocked}
+                            onChange={() => handleTogglePermission(row.role, item.key)}
+                            className={`w-4 h-4 accent-[#AAA024] ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {/* Edit Modal */}
       {editingUser && (
