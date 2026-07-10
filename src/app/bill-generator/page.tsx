@@ -11,9 +11,9 @@ interface Bill {
   State: string;
   "Owner Name": string;
   "Issued At": string;
-  "Due At": string;
-  "Paid At": string;
-  Notes: string;
+  "Net Amount": number;
+  VAT: number;
+  "Total Amount": number;
 }
 
 const fmtDate = (v: string) => {
@@ -23,6 +23,9 @@ const fmtDate = (v: string) => {
   const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return `${String(d.getDate()).padStart(2, "0")}-${months[d.getMonth()]}-${d.getFullYear()}`;
 };
+
+const fmtAmount = (v: number) =>
+  typeof v === "number" ? v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "-";
 
 const MAX_BATCH_PRINT = 100;
 const MAX_BATCH_PDF = 10; // each opens its own tab; browsers cap popups per click well below MAX_BATCH_PRINT
@@ -312,7 +315,7 @@ export default function BillGeneratorPage() {
                       className="accent-[#152A00]"
                     />
                   </th>
-                  {["Number", "Type", "State", "Owner Name", "Issued At", "Due At", "Paid At", "Notes"].map((col) => (
+                  {["Number", "Type", "State", "Owner Name", "Issued At", "Net Amount", "VAT", "Total Amount"].map((col) => (
                     <th key={col} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
                       {col}
                     </th>
@@ -345,9 +348,9 @@ export default function BillGeneratorPage() {
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.State || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b["Owner Name"] || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{fmtDate(b["Issued At"])}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{fmtDate(b["Due At"])}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{fmtDate(b["Paid At"])}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap max-w-[200px] overflow-hidden text-ellipsis">{b.Notes || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right">{fmtAmount(b["Net Amount"])}</td>
+                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right">{fmtAmount(b.VAT)}</td>
+                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right font-bold">{fmtAmount(b["Total Amount"])}</td>
                       <td className="p-2 px-3">
                         <div className="flex gap-2">
                           <button

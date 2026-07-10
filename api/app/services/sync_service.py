@@ -605,61 +605,6 @@ class SyncService:
             "tax_id": tax_id,
         }
 
-    async def get_mapped_bills(self, property_name: str, start_date: str = None, end_date: str = None):
-        """
-        Fetch real Bill (invoice/receipt) headers with Cursor pagination, chunked into
-        <=3-month IssuedUtc windows. Does NOT include line items (see get_bill_invoice
-        for the full itemized detail used when printing a single bill).
-        """
-        try:
-            if not start_date or not end_date:
-                bkk_tz = ZoneInfo("Asia/Bangkok")
-                now_bkk = datetime.now(bkk_tz)
-                yesterday_bkk = now_bkk - timedelta(days=1)
-                if not start_date:
-                    start_dt = yesterday_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
-                    start_date = start_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                if not end_date:
-                    end_dt = yesterday_bkk.replace(hour=23, minute=59, second=59, microsecond=999999)
-                    end_date = end_dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-            all_bills = []
-            for window_start, window_end in self._split_date_windows(start_date, end_date):
-                current_cursor = None
-                while True:
-                    payload = {
-                        "IssuedUtc": {"StartUtc": window_start, "EndUtc": window_end},
-                        "Limitation": {"Count": 1000}
-                    }
-                    if current_cursor:
-                        payload["Limitation"]["Cursor"] = current_cursor
-
-                    response = await mews_client.post("/api/connector/v1/bills/getAll", payload, property_name=property_name)
-                    chunk = response.get("Bills", [])
-                    current_cursor = response.get("Cursor")
-                    all_bills.extend(chunk)
-
-                    if not current_cursor or not chunk:
-                        break
-
-            mapped = []
-            for b in all_bills:
-                mapped.append({
-                    "mews_id": b.get("Id"),
-                    "Number": b.get("Number"),
-                    "Type": b.get("Type"),
-                    "State": b.get("State"),
-                    "Owner Name": self._extract_owner_name(b.get("OwnerData")),
-                    "Issued At": b.get("IssuedUtc"),
-                    "Due At": b.get("DueUtc"),
-                    "Paid At": b.get("PaidUtc"),
-                    "Notes": b.get("Notes"),
-                })
-            return mapped
-        except Exception as e:
-            logger.error(f"Error mapping bills for {property_name}: {str(e)}")
-            raise e
-
     async def get_mapped_bills_with_items(self, property_name: str, start_date: str = None, end_date: str = None):
         """
         Full Bill + Order Item archive for the Data Mart (unlike get_mapped_bills,
@@ -973,6 +918,33 @@ class SyncService:
             "bank_transfer_ref": bank_transfer_ref,
             "bank_transfer_date": bank_transfer_date,
             "cheque": cheque,
+        }
+
+    @staticmethod
+    def compute_bill_totals(order_items: list) -> dict:
+        """
+        Net/VAT/Total for the Bill Generator list view (a lightweight summary,
+        not the full itemized invoice) - reuses _compute_invoice_amounts' same
+        VAT-7%/Provincial-Tax-1% split so these numbers always agree with what
+        print-bill would show for the same bill. "Net Amount" is the pre-tax
+        subtotal and "Total Amount" is the grand total, matching the labels
+        _compute_invoice_amounts itself uses for sub_total/net_amount (a naming
+        holdover from the Thai invoice template, where "Net Amount" labels the
+        subtotal row and the token <<NetAmount>> is actually the grand total).
+        """
+        rows = []
+        for it in order_items or []:
+            gross = it.get("Amount") or 0
+            net = it.get("Net Amount") or 0
+            rows.append({
+                "name": it.get("Name") or "Item", "gross": gross, "net": net, "tax": gross - net,
+                "tax_values": it.get("Tax Values") or [],
+            })
+        computed = SyncService._compute_invoice_amounts(rows, [])
+        return {
+            "Net Amount": computed["sub_total"],
+            "VAT": computed["vat"],
+            "Total Amount": computed["net_amount"],
         }
 
     async def get_bill_invoices_batch(self, property_name: str, bill_ids: list) -> dict:

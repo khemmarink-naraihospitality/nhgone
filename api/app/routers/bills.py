@@ -200,11 +200,17 @@ async def get_live_bills(
     property_name: Optional[str] = Query(None)
 ):
     try:
-        data = await sync_service.get_mapped_bills(
+        # get_mapped_bills_with_items (not header-only) so Net Amount/VAT/Total
+        # Amount can be computed here too - same order-items call the Data
+        # Mart import already needs, so this list view costs the same as
+        # sync-manual for the same range, not the previous header-only speed.
+        data = await sync_service.get_mapped_bills_with_items(
             property_name=property_name,
             start_date=start_date,
             end_date=end_date
         )
+        for item in data:
+            item.update(sync_service.compute_bill_totals(item.get("Order Items")))
         return {"status": "success", "data": data}
     except HTTPException:
         raise
@@ -217,9 +223,8 @@ async def sync_manual_bills(payload: dict = Body(...)):
     Backfills bills_sync with full Bill + Order Item data for a property/date
     range. Unlike the other sections' sync-manual endpoints, this does NOT take
     already-fetched frontend data - the payload only carries the property/date
-    range, and this re-fetches via get_mapped_bills_with_items directly, since
-    the live list view (get_mapped_bills) deliberately omits order items to
-    stay fast, but the Data Mart archive needs them.
+    range, and this re-fetches via get_mapped_bills_with_items directly (the
+    same function /live now also uses).
     """
     try:
         property_name = payload.get("property")
@@ -316,6 +321,7 @@ async def get_managed_bills(
             item = encryption_service.decrypt_data(r["data"])
             item["Import Date"] = r["synced_at"]
             item["report_date"] = r.get("report_date")
+            item.update(sync_service.compute_bill_totals(item.get("Order Items")))
             data.append(item)
 
         return {"status": "success", "data": data}
