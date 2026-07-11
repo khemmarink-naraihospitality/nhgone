@@ -18,6 +18,11 @@ interface Rr3Card {
   NationalityName: string;
   IdentityCardNumber: string;
   PassportNumber: string;
+  AlienBook: string;
+  Occupation: string;
+  AddressDetails: string;
+  Telephone: string;
+  Email: string;
 }
 
 const MAX_BATCH_PRINT = 100;
@@ -39,6 +44,7 @@ export default function Rr3Page() {
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Rr3Card; direction: "asc" | "desc" } | null>(null);
+  const [detailCard, setDetailCard] = useState<Rr3Card | null>(null);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -227,7 +233,6 @@ export default function Rr3Page() {
                   {([
                     ["ReservationsNumber", "Reservation No."],
                     ["FirstName", "First Name"],
-                    ["LastName", "Last Name"],
                     ["RoomNumber", "Room"],
                     ["NationalityName", "Nationality"],
                     ["IdentityCardNumber", "Thai ID"],
@@ -247,11 +252,11 @@ export default function Rr3Page() {
               <tbody className="divide-y divide-[#152A00]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={11} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
+                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
                   </tr>
                 ) : sortedCards.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
+                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
                   </tr>
                 ) : (
                   sortedCards.map((c) => (
@@ -266,7 +271,6 @@ export default function Rr3Page() {
                       </td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.ReservationsNumber || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.FirstName || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.LastName || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.RoomNumber || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.NationalityName || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap font-mono">{maskId(c.IdentityCardNumber)}</td>
@@ -274,18 +278,75 @@ export default function Rr3Page() {
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckIn} {c.CheckInTime}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckOut} {c.CheckOutTime}</td>
                       <td className="p-2 px-3">
-                        <button
-                          onClick={() => handlePrintOne(c)}
-                          className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
-                        >
-                          Print
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setDetailCard(c)}
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
+                          >
+                            Detail
+                          </button>
+                          <button
+                            onClick={() => handlePrintOne(c)}
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                          >
+                            Print
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
                 )}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {detailCard && (
+          <div
+            className="fixed inset-0 bg-[#152A00]/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            onClick={() => setDetailCard(null)}
+          >
+            <div
+              className="bg-[#fffaf0] border border-[#152A00]/14 rounded-sm w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-6 border-b border-[#152A00]/10 flex justify-between items-center bg-[#152A00]/5 shrink-0">
+                <h2 className="text-2xl font-display text-[#152A00]">Guest Detail</h2>
+                <button onClick={() => setDetailCard(null)} className="text-[#152A00]/40 hover:text-[#152A00] transition-colors">
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="p-6 space-y-1 overflow-y-auto">
+                {[
+                  ["Reservation No.", detailCard.ReservationsNumber],
+                  ["Full Name", `${detailCard.FirstName} ${detailCard.LastName}`.trim()],
+                  ["Room", detailCard.RoomNumber],
+                  ["Nationality", detailCard.NationalityName],
+                  ["Thai ID", detailCard.IdentityCardNumber],
+                  ["Passport", detailCard.PassportNumber],
+                  ["Alien Book", detailCard.AlienBook],
+                  ["Occupation", detailCard.Occupation],
+                  ["Address", detailCard.AddressDetails],
+                  ["Telephone", detailCard.Telephone],
+                  ["Email", detailCard.Email],
+                  ["Check-in", `${detailCard.CheckIn} ${detailCard.CheckInTime}`.trim()],
+                  ["Check-out", `${detailCard.CheckOut} ${detailCard.CheckOutTime}`.trim()],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex justify-between gap-4 py-2 border-b border-[#152A00]/5 last:border-0">
+                    <span className="text-[9px] font-bold text-[#152A00]/50 uppercase tracked-caps shrink-0">{label}</span>
+                    <span className="text-[13px] text-[#152A00] text-right break-words">{value || "-"}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="p-6 pt-4 shrink-0">
+                <button
+                  onClick={() => setDetailCard(null)}
+                  className="w-full py-3 border border-[#152A00] text-[11px] font-bold tracked-caps text-[#152A00] hover:bg-[#152A00] hover:text-[#FFEFD2] transition-all"
+                >
+                  CLOSE
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
