@@ -252,16 +252,16 @@ export default function AdminUsersPage() {
         description="Welcome back, Managing system as Super_admin."
       >
         <div className="flex items-center gap-4">
-          <div className="flex border border-slate-200 rounded-xl overflow-hidden">
+          <div className="flex items-end gap-1 border-b border-slate-200">
             <button
               onClick={() => setActiveTab("users")}
-              className={`px-6 py-2.5 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === "users" ? "bg-[#AAA024] text-white" : "text-slate-400 hover:text-slate-700"}`}
+              className={`px-5 py-2.5 -mb-px text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${activeTab === "users" ? "border-[#AAA024] text-[#AAA024]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
             >
               Users
             </button>
             <button
               onClick={() => setActiveTab("roles")}
-              className={`px-6 py-2.5 text-xs font-bold uppercase tracking-wider transition-all ${activeTab === "roles" ? "bg-[#AAA024] text-white" : "text-slate-400 hover:text-slate-700"}`}
+              className={`px-5 py-2.5 -mb-px text-xs font-bold uppercase tracking-wider border-b-2 transition-all ${activeTab === "roles" ? "border-[#AAA024] text-[#AAA024]" : "border-transparent text-slate-400 hover:text-slate-700"}`}
             >
               Role Settings
             </button>
