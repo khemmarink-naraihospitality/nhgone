@@ -48,6 +48,10 @@ export default function BillGeneratorPage() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [page, setPage] = useState(0);
   const [billNumberFilter, setBillNumberFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("All");
+  const [stateFilter, setStateFilter] = useState("All");
+  const [ownerNameFilter, setOwnerNameFilter] = useState("");
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Bill; direction: "asc" | "desc" } | null>(null);
 
   const DEFAULT_PROPERTY = "Lub d Koh Tao Tanote Bay";
   const [startDate, setStartDate] = useState("2025-01-01");
@@ -144,14 +148,61 @@ export default function BillGeneratorPage() {
     }
   };
 
+  // Unique values seen in the current fetch, for the Type/State header
+  // filter dropdowns - computed from `bills` (not the already-filtered list)
+  // so picking one option never hides the others.
+  const typeOptions = useMemo(() => Array.from(new Set(bills.map((b) => b.Type).filter(Boolean))).sort(), [bills]);
+  const stateOptions = useMemo(() => Array.from(new Set(bills.map((b) => b.State).filter(Boolean))).sort(), [bills]);
+
+  const handleSort = (key: keyof Bill) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null; // third click on the same column clears the sort
+    });
+    setPage(0);
+  };
+
+  const sortArrow = (key: keyof Bill) => {
+    if (sortConfig?.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
   const filteredBills = useMemo(() => {
     // Defensively drop any row without a real mews_id so a bad/missing id can
     // never end up selectable and sent to MEWS as a malformed BillIds filter.
-    const withId = bills.filter((b) => !!b.mews_id);
-    const query = billNumberFilter.trim().toLowerCase();
-    if (!query) return withId;
-    return withId.filter((b) => (b.Number || "").toLowerCase().includes(query));
-  }, [bills, billNumberFilter]);
+    let result = bills.filter((b) => !!b.mews_id);
+
+    const numberQuery = billNumberFilter.trim().toLowerCase();
+    if (numberQuery) result = result.filter((b) => (b.Number || "").toLowerCase().includes(numberQuery));
+
+    if (typeFilter !== "All") result = result.filter((b) => b.Type === typeFilter);
+    if (stateFilter !== "All") result = result.filter((b) => b.State === stateFilter);
+
+    const ownerQuery = ownerNameFilter.trim().toLowerCase();
+    if (ownerQuery) result = result.filter((b) => (b["Owner Name"] || "").toLowerCase().includes(ownerQuery));
+
+    if (sortConfig) {
+      const { key, direction } = sortConfig;
+      const dir = direction === "asc" ? 1 : -1;
+      result = [...result].sort((a, b) => {
+        if (key === "Issued At") {
+          return (new Date(a["Issued At"]).getTime() - new Date(b["Issued At"]).getTime()) * dir;
+        }
+        if (key === "Net Amount" || key === "VAT" || key === "Total Amount") {
+          return ((a[key] as number || 0) - (b[key] as number || 0)) * dir;
+        }
+        if (key === "Number") {
+          const an = parseInt(a.Number, 10);
+          const bn = parseInt(b.Number, 10);
+          if (!isNaN(an) && !isNaN(bn)) return (an - bn) * dir;
+        }
+        return String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * dir;
+      });
+    }
+
+    return result;
+  }, [bills, billNumberFilter, typeFilter, stateFilter, ownerNameFilter, sortConfig]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -318,11 +369,75 @@ export default function BillGeneratorPage() {
                       className="accent-[#152A00]"
                     />
                   </th>
-                  {["Number", "Type", "State", "Owner Name", "Issued At", "Net Amount", "VAT", "Total Amount"].map((col) => (
-                    <th key={col} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                      {col}
-                    </th>
-                  ))}
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Number")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                      Number <span>{sortArrow("Number")}</span>
+                    </button>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => handleSort("Type")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                        Type <span>{sortArrow("Type")}</span>
+                      </button>
+                      <select
+                        value={typeFilter}
+                        onChange={(e) => { setTypeFilter(e.target.value); setPage(0); }}
+                        className="w-full bg-white border border-[#152A00]/14 text-[10px] normal-case font-normal text-[#152A00] px-1 py-0.5 outline-none"
+                      >
+                        <option value="All">All</option>
+                        {typeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => handleSort("State")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                        State <span>{sortArrow("State")}</span>
+                      </button>
+                      <select
+                        value={stateFilter}
+                        onChange={(e) => { setStateFilter(e.target.value); setPage(0); }}
+                        className="w-full bg-white border border-[#152A00]/14 text-[10px] normal-case font-normal text-[#152A00] px-1 py-0.5 outline-none"
+                      >
+                        <option value="All">All</option>
+                        {stateOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <div className="flex flex-col gap-1">
+                      <button onClick={() => handleSort("Owner Name")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                        Owner Name <span>{sortArrow("Owner Name")}</span>
+                      </button>
+                      <input
+                        type="text"
+                        value={ownerNameFilter}
+                        onChange={(e) => { setOwnerNameFilter(e.target.value); setPage(0); }}
+                        placeholder="Search..."
+                        className="w-full bg-white border border-[#152A00]/14 text-[10px] normal-case font-normal text-[#152A00] px-1 py-0.5 outline-none"
+                      />
+                    </div>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Issued At")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                      Issued At <span>{sortArrow("Issued At")}</span>
+                    </button>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Net Amount")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                      Net Amount <span>{sortArrow("Net Amount")}</span>
+                    </button>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("VAT")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                      VAT <span>{sortArrow("VAT")}</span>
+                    </button>
+                  </th>
+                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Total Amount")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                      Total Amount <span>{sortArrow("Total Amount")}</span>
+                    </button>
+                  </th>
                   <th className="p-2 px-3 border-b border-[#152A00]/10"></th>
                 </tr>
               </thead>
