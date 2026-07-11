@@ -16,9 +16,20 @@ interface Rr3Card {
   CheckOut: string;
   CheckOutTime: string;
   NationalityName: string;
+  IdentityCardNumber: string;
+  PassportNumber: string;
 }
 
 const MAX_BATCH_PRINT = 100;
+
+// Privacy: only the first 3 characters of a Thai ID/passport number are ever
+// shown in this list view - the rest is masked. Full numbers are only ever
+// rendered on the printed RR3 card itself, not this on-screen table.
+const maskId = (v: string) => {
+  if (!v) return "-";
+  if (v.length <= 3) return v;
+  return v.slice(0, 3) + "x".repeat(v.length - 3);
+};
 
 export default function Rr3Page() {
   const [properties, setProperties] = useState<string[]>([]);
@@ -219,6 +230,8 @@ export default function Rr3Page() {
                     ["LastName", "Last Name"],
                     ["RoomNumber", "Room"],
                     ["NationalityName", "Nationality"],
+                    ["IdentityCardNumber", "Thai ID"],
+                    ["PassportNumber", "Passport"],
                     ["CheckIn", "Check-in"],
                     ["CheckOut", "Check-out"],
                   ] as [keyof Rr3Card, string][]).map(([key, label]) => (
@@ -234,11 +247,11 @@ export default function Rr3Page() {
               <tbody className="divide-y divide-[#152A00]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
+                    <td colSpan={11} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
                   </tr>
                 ) : sortedCards.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
+                    <td colSpan={11} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
                   </tr>
                 ) : (
                   sortedCards.map((c) => (
@@ -256,6 +269,8 @@ export default function Rr3Page() {
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.LastName || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.RoomNumber || "-"}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.NationalityName || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap font-mono">{maskId(c.IdentityCardNumber)}</td>
+                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap font-mono">{maskId(c.PassportNumber)}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckIn} {c.CheckInTime}</td>
                       <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckOut} {c.CheckOutTime}</td>
                       <td className="p-2 px-3">
