@@ -43,6 +43,7 @@ export default function AdminUsersPage() {
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [newRoleName, setNewRoleName] = useState("");
   const [addingRole, setAddingRole] = useState(false);
+  const [roleSearchQuery, setRoleSearchQuery] = useState("");
 
 
   const fetchUsers = async () => {
@@ -241,8 +242,12 @@ export default function AdminUsersPage() {
   };
 
   const filteredUsers = users.filter(u =>
-    u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const filteredRolePermissions = rolePermissions.filter(r =>
+    r.role.toLowerCase().includes(roleSearchQuery.toLowerCase())
   );
 
   return (
@@ -385,28 +390,35 @@ export default function AdminUsersPage() {
 
       {activeTab === "roles" && (
         <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
-          <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-bold text-slate-700">Role × Menu Access</h3>
-              <p className="text-xs text-slate-500 mt-1">Controls which sidebar menu items each role can see. Super Admin always has full access and can&apos;t be edited here.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="text"
-                value={newRoleName}
-                onChange={(e) => setNewRoleName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") handleAddRole(); }}
-                placeholder="New role name..."
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 w-48"
-              />
-              <button
-                onClick={handleAddRole}
-                disabled={addingRole || !newRoleName.trim()}
-                className="px-4 py-2 bg-[#AAA024] text-white rounded-xl text-xs font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                {addingRole ? "Adding..." : "+ Create Role"}
-              </button>
-            </div>
+          <p className="text-xs text-slate-500 px-4 pt-4">Controls which sidebar menu items each role can see. Super Admin always has full access and can&apos;t be edited here.</p>
+          <div className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between border-b border-slate-100">
+             <div className="relative w-full md:w-96">
+                <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  type="text"
+                  placeholder="Search roles..."
+                  className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/10 transition-all font-medium text-slate-900"
+                  value={roleSearchQuery}
+                  onChange={(e) => setRoleSearchQuery(e.target.value)}
+                />
+             </div>
+             <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newRoleName}
+                  onChange={(e) => setNewRoleName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleAddRole(); }}
+                  placeholder="New role name..."
+                  className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 w-48"
+                />
+                <button
+                  onClick={handleAddRole}
+                  disabled={addingRole || !newRoleName.trim()}
+                  className="px-4 py-2 bg-[#AAA024] text-white rounded-xl text-xs font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  {addingRole ? "Adding..." : "+ Create Role"}
+                </button>
+             </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
@@ -421,7 +433,9 @@ export default function AdminUsersPage() {
               <tbody className="divide-y divide-slate-100">
                 {loadingRoles ? (
                   <tr><td colSpan={MENU_ITEMS.length + 1} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
-                ) : rolePermissions.map((row) => {
+                ) : filteredRolePermissions.length === 0 ? (
+                  <tr><td colSpan={MENU_ITEMS.length + 1} className="py-20 text-center text-slate-400 text-sm">No roles match &quot;{roleSearchQuery}&quot;.</td></tr>
+                ) : filteredRolePermissions.map((row) => {
                   const isLocked = row.role === "Super Admin";
                   return (
                     <tr key={row.role} className="hover:bg-slate-50/50 transition-colors">
