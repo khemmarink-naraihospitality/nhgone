@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -27,6 +27,7 @@ export default function Rr3Page() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof Rr3Card; direction: "asc" | "desc" } | null>(null);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -93,12 +94,37 @@ export default function Rr3Page() {
     window.open(`/print-rr3?${params.toString()}`, "_blank");
   };
 
+  const handleSort = (key: keyof Rr3Card) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null; // third click on the same column clears the sort
+    });
+  };
+
+  const sortArrow = (key: keyof Rr3Card) => {
+    if (sortConfig?.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
+  const sortedCards = useMemo(() => {
+    if (!sortConfig) return cards;
+    const { key, direction } = sortConfig;
+    const dir = direction === "asc" ? 1 : -1;
+    return [...cards].sort((a, b) => {
+      if (key === "CheckIn" || key === "CheckOut") {
+        return (new Date(a[key]).getTime() - new Date(b[key]).getTime()) * dir;
+      }
+      return String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * dir;
+    });
+  }, [cards, sortConfig]);
+
   const toggleSelectRow = (id: string) => {
     setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
   };
 
   const toggleSelectAll = () => {
-    const visibleIds = cards.map((c) => c.CardId);
+    const visibleIds = sortedCards.map((c) => c.CardId);
     const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.includes(id));
     setSelectedIds(allSelected ? [] : visibleIds);
   };
@@ -182,14 +208,24 @@ export default function Rr3Page() {
                   <th className="p-2 px-3 border-b border-[#152A00]/10">
                     <input
                       type="checkbox"
-                      checked={cards.length > 0 && cards.every((c) => selectedIds.includes(c.CardId))}
+                      checked={sortedCards.length > 0 && sortedCards.every((c) => selectedIds.includes(c.CardId))}
                       onChange={toggleSelectAll}
                       className="accent-[#152A00]"
                     />
                   </th>
-                  {["Reservation No.", "First Name", "Last Name", "Room", "Nationality", "Check-in", "Check-out"].map((col) => (
-                    <th key={col} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                      {col}
+                  {([
+                    ["ReservationsNumber", "Reservation No."],
+                    ["FirstName", "First Name"],
+                    ["LastName", "Last Name"],
+                    ["RoomNumber", "Room"],
+                    ["NationalityName", "Nationality"],
+                    ["CheckIn", "Check-in"],
+                    ["CheckOut", "Check-out"],
+                  ] as [keyof Rr3Card, string][]).map(([key, label]) => (
+                    <th key={key} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
+                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                        {label} <span>{sortArrow(key)}</span>
+                      </button>
                     </th>
                   ))}
                   <th className="p-2 px-3 border-b border-[#152A00]/10"></th>
@@ -200,12 +236,12 @@ export default function Rr3Page() {
                   <tr>
                     <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
                   </tr>
-                ) : cards.length === 0 ? (
+                ) : sortedCards.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
                   </tr>
                 ) : (
-                  cards.map((c) => (
+                  sortedCards.map((c) => (
                     <tr key={c.CardId} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(c.CardId) ? "bg-[#152A00]/5" : ""}`}>
                       <td className="p-2 px-3">
                         <input

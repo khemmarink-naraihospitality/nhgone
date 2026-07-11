@@ -48,7 +48,6 @@ export default function BillGeneratorPage() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [page, setPage] = useState(0);
   const [billNumberFilter, setBillNumberFilter] = useState("");
-  const [ownerNameFilter, setOwnerNameFilter] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof Bill; direction: "asc" | "desc" } | null>(null);
 
   const DEFAULT_PROPERTY = "Lub d Koh Tao Tanote Bay";
@@ -168,9 +167,6 @@ export default function BillGeneratorPage() {
     const numberQuery = billNumberFilter.trim().toLowerCase();
     if (numberQuery) result = result.filter((b) => (b.Number || "").toLowerCase().includes(numberQuery));
 
-    const ownerQuery = ownerNameFilter.trim().toLowerCase();
-    if (ownerQuery) result = result.filter((b) => (b["Owner Name"] || "").toLowerCase().includes(ownerQuery));
-
     if (sortConfig) {
       const { key, direction } = sortConfig;
       const dir = direction === "asc" ? 1 : -1;
@@ -191,7 +187,7 @@ export default function BillGeneratorPage() {
     }
 
     return result;
-  }, [bills, billNumberFilter, ownerNameFilter, sortConfig]);
+  }, [bills, billNumberFilter, sortConfig]);
 
   const totalPages = Math.max(1, Math.ceil(filteredBills.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages - 1);
@@ -374,18 +370,9 @@ export default function BillGeneratorPage() {
                     </button>
                   </th>
                   <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <div className="flex flex-col gap-1">
-                      <button onClick={() => handleSort("Owner Name")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
-                        Owner Name <span>{sortArrow("Owner Name")}</span>
-                      </button>
-                      <input
-                        type="text"
-                        value={ownerNameFilter}
-                        onChange={(e) => { setOwnerNameFilter(e.target.value); setPage(0); }}
-                        placeholder="Search..."
-                        className="w-full bg-white border border-[#152A00]/14 text-[10px] normal-case font-normal text-[#152A00] px-1 py-0.5 outline-none"
-                      />
-                    </div>
+                    <button onClick={() => handleSort("Owner Name")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                      Owner Name <span>{sortArrow("Owner Name")}</span>
+                    </button>
                   </th>
                   <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
                     <button onClick={() => handleSort("Issued At")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
