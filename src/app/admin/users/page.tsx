@@ -45,6 +45,11 @@ export default function AdminUsersPage() {
   const [addingRole, setAddingRole] = useState(false);
   const [roleSearchQuery, setRoleSearchQuery] = useState("");
   const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
+  const [renamingRole, setRenamingRole] = useState<RolePermissionRow | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [deletingRole, setDeletingRole] = useState<RolePermissionRow | null>(null);
+  const [deletingRoleBusy, setDeletingRoleBusy] = useState(false);
 
 
   const fetchUsers = async () => {
@@ -133,6 +138,68 @@ export default function AdminUsersPage() {
       console.error("Failed to update role_permissions:", error.message);
       alert("Error saving permission: " + error.message);
       setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, [key]: current[key] } : r)));
+    }
+  };
+
+  const handleRenameRole = async () => {
+    if (!renamingRole) return;
+    const newName = renameValue.trim();
+    if (!newName) return;
+    if (newName === renamingRole.role) {
+      setRenamingRole(null);
+      return;
+    }
+    if (rolePermissions.some((r) => r.role.toLowerCase() === newName.toLowerCase())) {
+      alert(`Role "${newName}" already exists`);
+      return;
+    }
+    setRenaming(true);
+    try {
+      // role is the primary key on role_permissions - update it in place, then
+      // cascade the rename to every profiles row still carrying the old name
+      // so those users' access keeps resolving correctly under the new label.
+      const { error: permError } = await supabase
+        .from("role_permissions")
+        .update({ role: newName })
+        .eq("role", renamingRole.role);
+      if (permError) {
+        alert("Error renaming role: " + permError.message);
+        return;
+      }
+      const { error: usersError } = await supabase
+        .from("profiles")
+        .update({ role: newName })
+        .eq("role", renamingRole.role);
+      if (usersError) {
+        alert(`Role renamed, but failed to update assigned users: ${usersError.message}`);
+      }
+      setRenamingRole(null);
+      fetchRolePermissions();
+      fetchUsers();
+    } finally {
+      setRenaming(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    if (!deletingRole) return;
+    const assignedCount = users.filter((u) => u.role === deletingRole.role).length;
+    if (assignedCount > 0) {
+      alert(`Cannot delete "${deletingRole.role}" - ${assignedCount} user(s) are still assigned to this role. Reassign them first.`);
+      setDeletingRole(null);
+      return;
+    }
+    setDeletingRoleBusy(true);
+    try {
+      const { error } = await supabase.from("role_permissions").delete().eq("role", deletingRole.role);
+      if (error) {
+        alert("Error deleting role: " + error.message);
+      } else {
+        setDeletingRole(null);
+        fetchRolePermissions();
+      }
+    } finally {
+      setDeletingRoleBusy(false);
     }
   };
 
@@ -431,13 +498,14 @@ export default function AdminUsersPage() {
                   {MENU_ITEMS.map((item) => (
                     <th key={item.key} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
                   ))}
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingRoles ? (
-                  <tr><td colSpan={MENU_ITEMS.length + 1} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                  <tr><td colSpan={MENU_ITEMS.length + 2} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
                 ) : filteredRolePermissions.length === 0 ? (
-                  <tr><td colSpan={MENU_ITEMS.length + 1} className="py-20 text-center text-slate-400 text-sm">No roles match &quot;{roleSearchQuery}&quot;.</td></tr>
+                  <tr><td colSpan={MENU_ITEMS.length + 2} className="py-20 text-center text-slate-400 text-sm">No roles match &quot;{roleSearchQuery}&quot;.</td></tr>
                 ) : filteredRolePermissions.map((row) => {
                   const isLocked = row.role === "Super Admin";
                   return (
@@ -462,6 +530,33 @@ export default function AdminUsersPage() {
                           />
                         </td>
                       ))}
+                      <td className="px-6 py-5 text-center relative overflow-visible group/actions">
+                        {isLocked ? (
+                          <span className="text-slate-300 text-xs">—</span>
+                        ) : (
+                          <>
+                            <button className="text-slate-300 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100">
+                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                            </button>
+                            <div className="absolute right-0 top-12 w-40 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] hidden group-hover/actions:block animate-in fade-in zoom-in-95 duration-100 p-1.5">
+                              <button
+                                onClick={() => { setRenamingRole(row); setRenameValue(row.role); }}
+                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                              >
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                Rename
+                              </button>
+                              <button
+                                onClick={() => setDeletingRole(row)}
+                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                              >
+                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                Delete
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -652,6 +747,83 @@ export default function AdminUsersPage() {
                     </button>
                     <button
                       onClick={() => { setShowCreateRoleModal(false); setNewRoleName(""); }}
+                      className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Rename Role Modal */}
+      {renamingRole && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                 <h2 className="text-xl font-bold text-slate-800">Rename Role</h2>
+                 <button onClick={() => setRenamingRole(null)} className="text-slate-400 hover:text-slate-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                 </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                 <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Role Name</label>
+                    <input
+                      type="text"
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") handleRenameRole(); }}
+                      autoFocus
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                    />
+                    <p className="text-xs text-slate-400 px-1 pt-1">Users currently assigned &quot;{renamingRole.role}&quot; will be updated to the new name automatically.</p>
+                 </div>
+
+                 <div className="pt-4 flex gap-3">
+                    <button
+                      onClick={handleRenameRole}
+                      disabled={renaming || !renameValue.trim()}
+                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
+                    >
+                      {renaming ? "Renaming..." : "Rename Role"}
+                    </button>
+                    <button
+                      onClick={() => setRenamingRole(null)}
+                      className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Delete Role Confirmation Modal */}
+      {deletingRole && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200">
+              <div className="p-6">
+                 <div className="w-12 h-12 rounded-full bg-[#AAA024]/10 flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                 </div>
+                 <h2 className="text-xl font-bold text-slate-800 mb-2">Delete Role</h2>
+                 <p className="text-sm text-slate-500 mb-6">
+                   Are you sure you want to delete <span className="font-bold text-slate-700">{deletingRole.role}</span>? This action cannot be undone. Roles still assigned to users can&apos;t be deleted.
+                 </p>
+                 <div className="flex gap-3">
+                    <button
+                      onClick={handleDeleteRole}
+                      disabled={deletingRoleBusy}
+                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
+                    >
+                      {deletingRoleBusy ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      onClick={() => setDeletingRole(null)}
                       className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
                     >
                       Cancel
