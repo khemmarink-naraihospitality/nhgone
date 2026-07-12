@@ -59,7 +59,10 @@ export default function ApiSettingsPage() {
     }
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
+      // env var points at a stale API deployment lacking newer endpoints/
+      // behavior (see admin/users' identical fix).
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}/admin/sync/properties`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -83,7 +86,10 @@ export default function ApiSettingsPage() {
     if (!editForm) return;
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
+      // env var points at a stale API deployment lacking newer endpoints/
+      // behavior (see admin/users' identical fix).
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}/admin/sync/properties/${editForm.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -110,7 +116,10 @@ export default function ApiSettingsPage() {
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this property?")) return;
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
+      // env var points at a stale API deployment lacking newer endpoints/
+      // behavior (see admin/users' identical fix).
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}/admin/sync/properties/${id}`, {
         method: "DELETE"
       });

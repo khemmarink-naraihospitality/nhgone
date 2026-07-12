@@ -31,7 +31,10 @@ export default function SMTPPage() {
   const [testEmail, setTestEmail] = useState("");
   const [testing, setTesting] = useState(false);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+  // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env
+  // var points at a stale API deployment lacking newer endpoints/behavior
+  // (see admin/users' identical fix).
+  const apiUrl = "/api";
 
   const fetchSettings = async () => {
     setLoading(true);

@@ -17,8 +17,10 @@ export default function ManagedPaymentsPage() {
   const fetchManaged = async () => {
     setLoading(true);
     try {
-      // Note: We'd need a backend route for /payments/managed as well
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "/api";
+      // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
+      // env var points at a stale API deployment lacking newer endpoints/
+      // behavior (see admin/users' identical fix).
+      const apiUrl = "/api";
       const response = await fetch(`${apiUrl}/payments/managed`);
       const result = await response.json();
       if (result.status === "success") {
