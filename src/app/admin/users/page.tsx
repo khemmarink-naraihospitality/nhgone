@@ -137,6 +137,8 @@ export default function AdminUsersPage() {
   };
 
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", role: "User", full_name: "" });
   const [creating, setCreating] = useState(false);
@@ -205,19 +207,21 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleDelete = async (userId: string) => {
-    if (!confirm("Are you sure you want to delete this account? This action cannot be undone.")) return;
-
+  const handleDelete = async () => {
+    if (!deletingUser) return;
+    setDeleting(true);
     const { error } = await supabase
       .from("profiles")
       .delete()
-      .eq("id", userId);
+      .eq("id", deletingUser.id);
 
     if (error) {
       alert("Error deleting user: " + error.message);
     } else {
-      setUsers(users.filter(u => u.id !== userId));
+      setUsers(users.filter(u => u.id !== deletingUser.id));
+      setDeletingUser(null);
     }
+    setDeleting(false);
   };
 
   const handleApprove = async () => {
@@ -373,7 +377,7 @@ export default function AdminUsersPage() {
                           Edit Profile
                         </button>
                         <button 
-                          onClick={() => handleDelete(user.id)}
+                          onClick={() => setDeletingUser(user)}
                           className="w-full text-left px-3 py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors flex items-center gap-2"
                         >
                           <svg className="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
@@ -523,6 +527,38 @@ export default function AdminUsersPage() {
                     </button>
                     <button 
                       onClick={() => setEditingUser(null)}
+                      className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deletingUser && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200">
+              <div className="p-6">
+                 <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                    <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                 </div>
+                 <h2 className="text-xl font-bold text-slate-800 mb-2">Delete Account</h2>
+                 <p className="text-sm text-slate-500 mb-6">
+                   Are you sure you want to delete <span className="font-bold text-slate-700">{deletingUser.email}</span>? This action cannot be undone.
+                 </p>
+                 <div className="flex gap-3">
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="flex-1 bg-red-600 text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-red-600/20 hover:bg-red-700 transition-all disabled:opacity-50"
+                    >
+                      {deleting ? "Deleting..." : "Delete"}
+                    </button>
+                    <button
+                      onClick={() => setDeletingUser(null)}
                       className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
                     >
                       Cancel
