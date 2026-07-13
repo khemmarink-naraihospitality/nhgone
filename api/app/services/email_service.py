@@ -70,13 +70,12 @@ class EmailService:
 
     def send_rejection_email(self, to_email: str, full_name: str = ""):
         greeting = full_name or to_email
-        subject = "การเข้าใช้งาน NHGOne ของคุณไม่ได้รับอนุญาต / Your NHGOne access was not authorized"
+        subject = "Your NHGOne access was not authorized / การเข้าใช้งาน NHGOne ของคุณไม่ได้รับอนุญาต"
         html_body = f"""
         <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #152A00;">
           <h2 style="color: #152A00;">NHGOne</h2>
-          <p>สวัสดีคุณ {greeting},</p>
-          <p>บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
           <p>Hi {greeting},<br/>Your account has not been authorized to access NHGOne. If you believe this is a mistake, please contact your system administrator.</p>
+          <p>สวัสดีคุณ {greeting},<br/>บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
           <p style="color: #999; font-size: 12px; margin-top: 24px;">Narai Hospitality Group — NHGOne</p>
         </div>
         """
@@ -84,6 +83,8 @@ class EmailService:
             f"Hi {greeting},\n\n"
             f"Your account has not been authorized to access NHGOne. "
             f"If you believe this is a mistake, please contact your system administrator.\n\n"
+            f"สวัสดีคุณ {greeting},\n"
+            f"บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
         self.send_email(to_email, subject, html_body, text_body)
