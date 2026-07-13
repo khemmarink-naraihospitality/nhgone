@@ -142,6 +142,38 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.delete("/users/{user_id}")
+async def delete_user(user_id: str):
+    """
+    Removes a user's profile (Pending or Active) and emails them that access
+    was not authorized. Only the profiles row is deleted, not the underlying
+    Supabase Auth user — if they sign in again, self_register above will
+    re-create a fresh Pending profile so they can be reviewed again.
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("profiles").select("email, full_name").eq("id", user_id).limit(1).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        email = existing.data[0]["email"]
+        full_name = existing.data[0].get("full_name") or ""
+
+        admin_supabase.table("profiles").delete().eq("id", user_id).execute()
+
+        email_sent = False
+        email_error = None
+        try:
+            email_service.send_rejection_email(email, full_name)
+            email_sent = True
+        except Exception as e:
+            email_error = str(e)
+
+        return {"status": "success", "message": "User deleted", "email_sent": email_sent, "email_error": email_error}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.get("/sync/properties")
 async def get_sync_properties():
     """

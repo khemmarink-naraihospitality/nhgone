@@ -285,16 +285,17 @@ export default function AdminUsersPage() {
   const handleDelete = async () => {
     if (!deletingUser) return;
     setDeleting(true);
-    const { error } = await supabase
-      .from("profiles")
-      .delete()
-      .eq("id", deletingUser.id);
-
-    if (error) {
-      alert("Error deleting user: " + error.message);
-    } else {
-      setUsers(users.filter(u => u.id !== deletingUser.id));
-      setDeletingUser(null);
+    try {
+      const res = await fetch(`/api/admin/users/${deletingUser.id}`, { method: "DELETE" });
+      const result = await res.json();
+      if (result.status === "success") {
+        setUsers(users.filter(u => u.id !== deletingUser.id));
+        setDeletingUser(null);
+      } else {
+        alert("Error deleting user: " + (result.detail || result.message));
+      }
+    } catch (err: any) {
+      alert("Failed to connect to backend");
     }
     setDeleting(false);
   };
