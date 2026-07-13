@@ -212,11 +212,19 @@ export default function AdminUsersPage() {
   const [approvingUser, setApprovingUser] = useState<UserProfile | null>(null);
   const [approveRole, setApproveRole] = useState("User");
   const [approving, setApproving] = useState(false);
+  const [openUserMenuId, setOpenUserMenuId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchUsers();
     fetchRolePermissions();
   }, []);
+
+  useEffect(() => {
+    if (!openUserMenuId) return;
+    const closeMenu = () => setOpenUserMenuId(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [openUserMenuId]);
 
   const handleCreateUser = async () => {
     if (!newUser.email) {
@@ -421,36 +429,45 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-5 text-xs text-slate-500 font-medium">
                     {new Date(user.created_at || user.joined_at).toLocaleDateString()}
                   </td>
-                  <td className="px-6 py-5 text-center relative overflow-visible group/actions">
-                     {user.status === 'Pending' && (
-                       <button
-                         onClick={() => { setApprovingUser(user); setApproveRole("User"); }}
-                         className="px-4 py-1.5 mr-2 bg-[#AAA024] text-white rounded-lg text-xs font-bold hover:bg-[#8f871e] transition-all"
-                       >
-                         Approve
-                       </button>
-                     )}
-                     <button className="text-slate-300 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100">
+                  <td className="px-6 py-5 text-center relative overflow-visible">
+                     <button
+                       onClick={(e) => { e.stopPropagation(); setOpenUserMenuId(openUserMenuId === user.id ? null : user.id); }}
+                       className="text-slate-300 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100"
+                     >
                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                      </button>
 
                      {/* Action Dropdown Menu */}
-                     <div className="absolute right-0 top-12 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] hidden group-hover/actions:block animate-in fade-in zoom-in-95 duration-100 p-1.5">
-                        <button 
-                          onClick={() => setEditingUser(user)}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                          Edit Profile
-                        </button>
-                        <button
-                          onClick={() => setDeletingUser(user)}
-                          className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
-                        >
-                          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                          Delete Account
-                        </button>
-                     </div>
+                     {openUserMenuId === user.id && (
+                       <div
+                         onClick={(e) => e.stopPropagation()}
+                         className="absolute right-0 top-12 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100 p-1.5"
+                       >
+                          {user.status === 'Pending' && (
+                            <button
+                              onClick={() => { setApprovingUser(user); setApproveRole("User"); setOpenUserMenuId(null); }}
+                              className="w-full text-left px-3 py-2 text-xs font-bold text-[#AAA024] hover:bg-[#AAA024]/10 rounded-xl transition-colors flex items-center gap-2"
+                            >
+                              <svg className="w-4 h-4 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                              Approve
+                            </button>
+                          )}
+                          <button
+                            onClick={() => { setEditingUser(user); setOpenUserMenuId(null); }}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            Edit Profile
+                          </button>
+                          <button
+                            onClick={() => { setDeletingUser(user); setOpenUserMenuId(null); }}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                            Delete Account
+                          </button>
+                       </div>
+                     )}
                   </td>
                 </tr>
               ))}
