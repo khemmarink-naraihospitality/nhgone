@@ -1,6 +1,23 @@
 import { NextRequest } from "next/server";
 import { chromium } from "playwright-core";
 import { Invoice, renderInvoiceTemplate, INVOICE_PRINT_CSS } from "@/lib/invoiceTemplate";
+import { NOTO_SANS_THAI_BASE64 } from "@/lib/fonts/notoSansThaiBase64";
+
+// The on-screen preview renders fine because the user's own browser falls
+// back to whatever Thai system font their OS has (Tahoma, Leelawadee UI,
+// etc.) when the template's declared 'IBM Plex Sans' has no Thai glyphs.
+// @sparticuz/chromium's minimal Lambda binary has no such fallback - Thai
+// text silently renders as nothing (not even tofu boxes) without this.
+// Embedded as a compiled-in base64 string (not a separate file path) so it
+// can't fall prey to the same output-file-tracing gap playwright-core hit.
+const THAI_FONT_FACE_CSS = `
+@font-face {
+  font-family: 'IBM Plex Sans';
+  src: url(data:font/ttf;base64,${NOTO_SANS_THAI_BASE64}) format('truetype');
+  unicode-range: U+0E00-0E7F;
+  font-weight: 100 900;
+}
+`;
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -63,6 +80,7 @@ export async function GET(req: NextRequest) {
 <head>
 <meta charset="utf-8">
 <style>
+  ${THAI_FONT_FACE_CSS}
   body { margin: 0; }
   ${INVOICE_PRINT_CSS}
   .wrap { display: flex; flex-direction: column; gap: 32px; }
@@ -77,6 +95,7 @@ export async function GET(req: NextRequest) {
     try {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: "networkidle" });
+      await page.evaluate(() => document.fonts.ready);
       const pdfBuffer = await page.pdf({ printBackground: true, preferCSSPageSize: true });
 
       const filename = invoices.length > 1 ? `bills-${invoices.length}.pdf` : `bill-${invoices[0].number || invoices[0].mews_id}.pdf`;
