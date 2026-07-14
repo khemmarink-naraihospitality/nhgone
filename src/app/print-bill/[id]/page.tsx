@@ -2,99 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-
-interface LineItem {
-  no: number | "";
-  description: string;
-  amount: number | "";
-}
-
-interface Invoice {
-  mews_id: string;
-  number: string;
-  type: string;
-  state: string;
-  issued_at: string;
-  due_at: string;
-  owner_name: string;
-  address_lines: string[];
-  post_code: string;
-  tax_id: string;
-  line_items: LineItem[];
-  sub_total: number;
-  vat_rate_pct: number;
-  vat: number;
-  provincial_tax_rate_pct: number;
-  provincial_tax: number;
-  net_amount: number;
-  baht_text: string;
-  payment_method: { cash: boolean; card: boolean; bank_transfer: boolean; cheque: boolean };
-  bank_transfer_ref: string;
-  bank_transfer_date: string;
-  cheque: { bank_name: string; branch: string; number: string; date: string };
-}
-
-const fmtAmount = (v: number | "") => (v === "" ? "" : v.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-
-const fmtDate = (v: string) => {
-  if (!v) return "";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return v;
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
-};
-
-const escapeHtml = (s: string) =>
-  String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-// Substitutes <<Token>> placeholders in an admin-edited HTML template with
-// this bill's real data. Company name/address/tax id are NOT tokens - they're
-// static text the admin types directly into their property's own template.
-function renderInvoiceTemplate(template: string, inv: Invoice): string {
-  const box = (checked: boolean) => (checked ? "☑" : "☐");
-  const addr = inv.address_lines || [];
-  const tokens: Record<string, string> = {
-    InvoiceNoF: inv.number || "",
-    DateF: fmtDate(inv.issued_at),
-    OwnerName: inv.owner_name || "",
-    AddressLine1: addr[0] || "",
-    AddressLine2: addr[1] || "",
-    AddressLine3: addr[2] || "",
-    AddressLine4: addr[3] || "",
-    AddressLine5: addr[4] || "",
-    PostCode: inv.post_code || "",
-    TAXID: inv.tax_id || "",
-    BahtTextE: inv.baht_text || "",
-    SubTotal: fmtAmount(inv.sub_total),
-    VATC: `${inv.vat_rate_pct}%`,
-    VAT: fmtAmount(inv.vat),
-    PTC: `${inv.provincial_tax_rate_pct ?? 1}%`,
-    PT: fmtAmount(inv.provincial_tax ?? 0),
-    NetAmount: fmtAmount(inv.net_amount),
-    CH: box(inv.payment_method.cash),
-    CD: box(inv.payment_method.card),
-    BT: box(inv.payment_method.bank_transfer),
-    CK: box(inv.payment_method.cheque),
-    BankTransferDateF: fmtDate(inv.bank_transfer_date),
-    BankTransferRef: inv.bank_transfer_ref || "",
-    BankName: inv.cheque.bank_name || "",
-    Branch: inv.cheque.branch || "",
-    CNo: inv.cheque.number || "",
-    CDateF: fmtDate(inv.cheque.date),
-  };
-  for (let i = 0; i < 5; i++) {
-    const li = inv.line_items[i];
-    tokens[`No${i + 1}`] = li && li.no !== "" ? String(li.no) : "";
-    tokens[`Description${i + 1}`] = li ? li.description : "";
-    tokens[`AmountP${i + 1}`] = li && li.amount !== "" ? fmtAmount(li.amount) : "";
-  }
-
-  let result = template;
-  for (const [key, value] of Object.entries(tokens)) {
-    result = result.split(`<<${key}>>`).join(escapeHtml(value));
-  }
-  return result;
-}
+import { Invoice, renderInvoiceTemplate, INVOICE_PRINT_CSS } from "@/lib/invoiceTemplate";
 
 function PermissionErrorBanner({ error }: { error: string }) {
   return (
@@ -141,6 +49,32 @@ export default function PrintBillPage() {
   const [loading, setLoading] = useState(true);
   const [template, setTemplate] = useState<string | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      const params = new URLSearchParams({ ids: billIds.join(","), property });
+      const res = await fetch(`/api/print-bill/pdf?${params.toString()}`);
+      if (!res.ok) {
+        const result = await res.json().catch(() => null);
+        throw new Error(result?.error || `Failed to generate PDF (${res.status})`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = invoices.length > 1 ? `bills-${invoices.length}.pdf` : `bill-${invoices[0]?.number || billIds[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || "Failed to generate PDF");
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   useEffect(() => {
     const fetchInvoices = async () => {
@@ -223,29 +157,10 @@ export default function PrintBillPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4">
-      <style>{`
-        @page {
-          size: A4;
-          margin: 10mm;
-        }
-        @media print {
-          .invoice-page {
-            page-break-after: always;
-            break-after: page;
-          }
-          .invoice-page:last-child {
-            page-break-after: auto;
-            break-after: auto;
-          }
-          .invoice-page > div {
-            page-break-inside: avoid;
-            break-inside: avoid;
-          }
-        }
-      `}</style>
+      <style>{INVOICE_PRINT_CSS}</style>
       <div className="no-print flex flex-col items-center gap-3 mb-6">
-        <button onClick={() => window.print()} className="btn-brand btn-primary">
-          Print / Save as PDF {invoices.length > 1 ? `(${invoices.length} bills)` : ""}
+        <button onClick={handleDownloadPdf} disabled={downloading} className="btn-brand btn-primary disabled:opacity-70">
+          {downloading ? "Generating PDF..." : `Download PDF ${invoices.length > 1 ? `(${invoices.length} bills)` : ""}`}
         </button>
         {failed.length > 0 && (
           <div className="max-w-lg text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-sm p-3">
