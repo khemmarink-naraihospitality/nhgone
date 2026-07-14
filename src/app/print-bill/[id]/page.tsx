@@ -159,9 +159,14 @@ export default function PrintBillPage() {
     <div className="min-h-screen bg-slate-100 py-8 px-4">
       <style>{INVOICE_PRINT_CSS}</style>
       <div className="no-print flex flex-col items-center gap-3 mb-6">
-        <button onClick={handleDownloadPdf} disabled={downloading} className="btn-brand btn-primary disabled:opacity-70">
-          {downloading ? "Generating PDF..." : `Download PDF ${invoices.length > 1 ? `(${invoices.length} bills)` : ""}`}
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={handleDownloadPdf} disabled={downloading} className="btn-brand btn-primary disabled:opacity-70">
+            {downloading ? "Generating PDF..." : `Download PDF ${invoices.length > 1 ? `(${invoices.length} bills)` : ""}`}
+          </button>
+          <button onClick={() => window.print()} className="btn-brand btn-secondary">
+            Print
+          </button>
+        </div>
         {failed.length > 0 && (
           <div className="max-w-lg text-xs text-amber-800 bg-amber-50 border border-amber-300 rounded-sm p-3">
             <div className="font-bold mb-1">
