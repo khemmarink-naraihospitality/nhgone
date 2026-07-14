@@ -223,6 +223,26 @@ export default function PrintBillPage() {
 
   return (
     <div className="min-h-screen bg-slate-100 py-8 px-4">
+      <style>{`
+        @page {
+          size: A4;
+          margin: 10mm;
+        }
+        @media print {
+          .invoice-page {
+            page-break-after: always;
+            break-after: page;
+          }
+          .invoice-page:last-child {
+            page-break-after: auto;
+            break-after: auto;
+          }
+          .invoice-page > div {
+            page-break-inside: avoid;
+            break-inside: avoid;
+          }
+        }
+      `}</style>
       <div className="no-print flex flex-col items-center gap-3 mb-6">
         <button onClick={() => window.print()} className="btn-brand btn-primary">
           Print / Save as PDF {invoices.length > 1 ? `(${invoices.length} bills)` : ""}
@@ -241,10 +261,10 @@ export default function PrintBillPage() {
         )}
       </div>
       <div className="max-w-3xl mx-auto flex flex-col gap-8">
-        {invoices.map((inv, idx) => (
+        {invoices.map((inv) => (
           <div
             key={inv.mews_id}
-            style={idx < invoices.length - 1 ? { pageBreakAfter: "always" } : undefined}
+            className="invoice-page"
             dangerouslySetInnerHTML={{ __html: renderInvoiceTemplate(template, inv) }}
           />
         ))}
