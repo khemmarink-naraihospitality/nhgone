@@ -134,7 +134,12 @@ h1, h2, h3, .h-display {
 }
 
 @media print {
+  body { background: #fff !important; }
   aside { display: none !important; }
-  main { overflow: visible !important; height: auto !important; }
+  /* main is the shell's outer flex column, but the element that actually
+     scrolls (and whose scrollbar gets rasterized onto every printed page)
+     is its inner overflow-y-auto wrapper - both must go overflow:visible. */
+  main, main > div { overflow: visible !important; height: auto !important; }
+  *::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
   .no-print { display: none !important; }
 }
