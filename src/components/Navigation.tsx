@@ -11,6 +11,7 @@ interface MenuPermissions {
   data_mart: boolean;
   bills: boolean;
   rr3: boolean;
+  st_files: boolean;
   log_import: boolean;
   admin: boolean;
 }
@@ -159,12 +160,17 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         setPendingEmail(null);
         setUserRole(finalProfile.role || null);
         if (finalProfile.role) {
+          // select("*") instead of an explicit column list: if a newly added
+          // menu column (e.g. st_files) hasn't been created in the DB yet, an
+          // explicit list would make the whole query fail and silently throw
+          // every role back to the hardcoded fallback below - with "*" the
+          // missing column is just undefined (falsy -> that one link hidden).
           const { data: permRow } = await supabase
             .from("role_permissions")
-            .select("dashboard, data_mart, bills, rr3, log_import, admin")
+            .select("*")
             .eq("role", finalProfile.role)
             .single();
-          setMenuPermissions(permRow || null);
+          setMenuPermissions((permRow as MenuPermissions | null) || null);
         } else {
           setMenuPermissions(null);
         }
@@ -255,11 +261,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     data_mart: !isFinanceRole,
     bills: true,
     rr3: !isFinanceRole,
+    st_files: !isFinanceRole,
     log_import: !isFinanceRole,
     admin: false,
   };
-  const showTopDivider = perms.dashboard && (perms.data_mart || perms.bills || perms.rr3);
-  const showBottomDivider = (perms.data_mart || perms.bills || perms.rr3) && perms.log_import;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files;
+  const showTopDivider = perms.dashboard && midSection;
+  const showBottomDivider = midSection && perms.log_import;
 
   return (
     <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
@@ -301,6 +309,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               )}
               {perms.rr3 && (
                 <Link href="/rr3" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
+              )}
+              {perms.st_files && (
+                <Link href="/st-files" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>ST Files</Link>
               )}
               {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
               {perms.log_import && (

@@ -1263,4 +1263,246 @@ class SyncService:
             logger.error(f"Error building RR3 cards for {property_name}: {str(e)}")
             raise e
 
+    # ST Files report only counts these category types, matching the source
+    # Google Sheet's "Space types: Room, Bed" parameter (verified: Chinatown's
+    # Room+Bed categories sum to exactly the sheet's 176 total; Dorm-as-a-whole
+    # and Apartment categories are what the sheet excludes).
+    _ST_FILES_SPACE_TYPES = ("Room", "Bed")
+
+    async def get_st_files_report(self, property_name: str, date: str):
+        """
+        Builds the daily "ST Files" occupancy/availability report for one
+        property + one Bangkok calendar date, replicating the user's manual
+        Google Sheet (tabs: Spaces / Occupied / House uses / Out of order /
+        Availability / Customers / Arrivals / Departures).
+
+        `date` is YYYY-MM-DD interpreted as an Asia/Bangkok calendar day.
+        All MEWS aggregate numbers come per resource category; the category
+        list itself requires the Resource Categories permission on the
+        property's Connector token (403s cleanly if MEWS hasn't enabled it).
+        """
+        bkk = ZoneInfo("Asia/Bangkok")
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=bkk)
+        day_start_utc = day.astimezone(timezone.utc)
+        day_end_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+        start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        # 1. Resolve the bookable (accommodation) service
+        services_res = await mews_client.post(
+            "/api/connector/v1/services/getAll",
+            {"Limitation": {"Count": 100}},
+            property_name=property_name,
+        )
+        stay = next(
+            (s for s in services_res.get("Services", [])
+             if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
+            None,
+        )
+        if not stay:
+            raise Exception(f"No bookable (accommodation) service found for {property_name}")
+        service_id = stay["Id"]
+
+        # 2. Categories (names/short codes/types) - requires ServiceIds filter
+        cats_res = await mews_client.post(
+            "/api/connector/v1/resourceCategories/getAll",
+            {"ServiceIds": [service_id], "Limitation": {"Count": 200}},
+            property_name=property_name,
+        )
+        categories = {}
+        for c in cats_res.get("ResourceCategories", []):
+            if not c.get("IsActive", True):
+                continue
+            names = c.get("Names") or {}
+            shorts = c.get("ShortNames") or {}
+            categories[c["Id"]] = {
+                "category_id": c["Id"],
+                "short_name": shorts.get("en-US") or shorts.get("en-GB") or next(iter(shorts.values()), ""),
+                "name": names.get("en-US") or names.get("en-GB") or next(iter(names.values()), ""),
+                "type": c.get("Type", ""),
+                "capacity": c.get("Capacity"),
+                "ordering": c.get("Ordering", 0),
+                "in_report": c.get("Type") in self._ST_FILES_SPACE_TYPES,
+            }
+
+        def category_rows(count_by_cat_id):
+            rows = []
+            for cat_id, cat in categories.items():
+                if not cat["in_report"]:
+                    continue
+                rows.append({
+                    "short_name": cat["short_name"],
+                    "name": cat["name"],
+                    "type": cat["type"],
+                    "count": count_by_cat_id.get(cat_id, 0),
+                    "_ordering": cat["ordering"],
+                })
+            rows.sort(key=lambda r: r.pop("_ordering"))
+            return rows
+
+        # 3. Availability metrics for the day (2024-01-22 version): occupied /
+        #    house use / out of order / active per category
+        avail_res = await mews_client.post(
+            "/api/connector/v1/services/getAvailability/2024-01-22",
+            {
+                "ServiceId": service_id,
+                "FirstTimeUnitStartUtc": start_iso,
+                "LastTimeUnitStartUtc": start_iso,
+                "Metrics": ["Occupied", "HouseUse", "OutOfOrderBlocks", "ActiveResources"],
+            },
+            property_name=property_name,
+        )
+        metric = {"Occupied": {}, "HouseUse": {}, "OutOfOrderBlocks": {}, "ActiveResources": {}}
+        for entry in avail_res.get("ResourceCategoryAvailabilities", []):
+            for m in metric:
+                values = (entry.get("Metrics") or {}).get(m) or [0]
+                metric[m][entry["ResourceCategoryId"]] = values[0]
+
+        # 4. Availability (free-to-sell) from the legacy endpoint - MEWS's own
+        #    precomputed number, safer than deriving it from raw metrics
+        legacy_res = await mews_client.post(
+            "/api/connector/v1/services/getAvailability",
+            {
+                "ServiceId": service_id,
+                "FirstTimeUnitStartUtc": start_iso,
+                "LastTimeUnitStartUtc": start_iso,
+            },
+            property_name=property_name,
+        )
+        availability_by_cat = {}
+        for entry in legacy_res.get("CategoryAvailabilities", []):
+            values = entry.get("Availabilities") or [0]
+            availability_by_cat[entry.get("CategoryId")] = values[0]
+
+        # 5. Resource blocks colliding with the day (named OOO/House-use rows)
+        blocks_res = await mews_client.post(
+            "/api/connector/v1/resourceBlocks/getAll",
+            {"CollidingUtc": {"StartUtc": start_iso, "EndUtc": end_iso}, "Limitation": {"Count": 500}},
+            property_name=property_name,
+        )
+        blocks = [b for b in blocks_res.get("ResourceBlocks", []) if b.get("IsActive", True)]
+
+        # 6. Reservations colliding with the day + their customers/resources
+        #    (same un-versioned Extent-join call get_rr3_cards uses)
+        resv_res = await mews_client.post(
+            "/api/connector/v1/reservations/getAll",
+            {
+                "StartUtc": start_iso,
+                "EndUtc": end_iso,
+                "Extent": {"Reservations": True, "Customers": True, "Resources": True},
+            },
+            property_name=property_name,
+        )
+        reservations = resv_res.get("Reservations", [])
+        customers_map = {c["Id"]: c for c in resv_res.get("Customers", []) if c.get("Id")}
+        resources_map = {r["Id"]: r for r in resv_res.get("Resources", []) if r.get("Id")}
+
+        # Room names for block rows come from the same Resources extent; any
+        # blocked room without a reservation that day won't be in the map, so
+        # fall back to one resources/getAll only if a block's room is unknown.
+        block_resource_ids = {b.get("AssignedResourceId") for b in blocks if b.get("AssignedResourceId")}
+        if block_resource_ids - set(resources_map.keys()):
+            all_res = await mews_client.post(
+                "/api/connector/v1/resources/getAll",
+                {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
+                property_name=property_name,
+            )
+            for r in all_res.get("Resources", []):
+                if r.get("Id"):
+                    resources_map.setdefault(r["Id"], r)
+
+        def block_rows(block_type):
+            rows = []
+            for b in blocks:
+                if b.get("Type") != block_type:
+                    continue
+                room = resources_map.get(b.get("AssignedResourceId"), {})
+                rows.append({
+                    "room": room.get("Name", ""),
+                    "name": b.get("Name", ""),
+                    "notes": b.get("Notes") or "",
+                    "start_utc": b.get("StartUtc", ""),
+                    "end_utc": b.get("EndUtc", ""),
+                })
+            rows.sort(key=lambda r: r["room"])
+            return rows
+
+        def in_window(ts):
+            if not ts:
+                return False
+            try:
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                return False
+            return day_start_utc <= t < day_end_utc
+
+        active_states = {"Confirmed", "Started", "Processed", "Optional"}
+
+        def reservation_row(res):
+            customer = customers_map.get(res.get("CustomerId"), {})
+            room = resources_map.get(res.get("AssignedResourceId"), {})
+            cat = categories.get(res.get("RequestedCategoryId"), {})
+            return {
+                "number": res.get("Number", ""),
+                "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
+                "nationality": customer.get("NationalityCode", ""),
+                "room": room.get("Name", ""),
+                "category": cat.get("short_name") or cat.get("name", ""),
+                "check_in": res.get("StartUtc", ""),
+                "check_out": res.get("EndUtc", ""),
+                "state": res.get("State", ""),
+                "adults": res.get("AdultCount", 0),
+                "children": res.get("ChildCount", 0),
+            }
+
+        arrivals, departures = [], []
+        day_customer_ids = set()
+        for res in reservations:
+            if res.get("State") not in active_states:
+                continue
+            if in_window(res.get("StartUtc")):
+                arrivals.append(reservation_row(res))
+            if in_window(res.get("EndUtc")):
+                departures.append(reservation_row(res))
+            for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
+                if cid:
+                    day_customer_ids.add(cid)
+
+        customers = []
+        for cid in day_customer_ids:
+            c = customers_map.get(cid)
+            if not c:
+                continue
+            customers.append({
+                "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+                "nationality": c.get("NationalityCode", ""),
+                "email": c.get("Email", ""),
+                "phone": c.get("Phone", ""),
+            })
+        customers.sort(key=lambda c: c["name"])
+        arrivals.sort(key=lambda r: r["room"] or "zzz")
+        departures.sort(key=lambda r: r["room"] or "zzz")
+
+        spaces = category_rows(metric["ActiveResources"])
+        report = {
+            "parameters": {
+                "property": property_name,
+                "service": stay.get("Name", ""),
+                "date": date,
+                "space_types": list(self._ST_FILES_SPACE_TYPES),
+                "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+            "spaces": spaces,
+            "occupied": category_rows(metric["Occupied"]),
+            "house_use": category_rows(metric["HouseUse"]),
+            "house_use_blocks": block_rows("InternalUse"),
+            "out_of_order": category_rows(metric["OutOfOrderBlocks"]),
+            "out_of_order_blocks": block_rows("OutOfOrder"),
+            "availability": category_rows(availability_by_cat),
+            "customers": customers,
+            "arrivals": arrivals,
+            "departures": departures,
+        }
+        return report
+
 sync_service = SyncService()

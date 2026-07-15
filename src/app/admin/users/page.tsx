@@ -21,6 +21,7 @@ interface RolePermissionRow {
   data_mart: boolean;
   bills: boolean;
   rr3: boolean;
+  st_files: boolean;
   log_import: boolean;
   admin: boolean;
 }
@@ -30,6 +31,7 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role">; label: string }[
   { key: "data_mart", label: "Data Mart" },
   { key: "bills", label: "Bills" },
   { key: "rr3", label: "RR3" },
+  { key: "st_files", label: "ST Files" },
   { key: "log_import", label: "Log Import" },
   { key: "admin", label: "Admin" },
 ];
@@ -106,7 +108,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, log_import: false, admin: false,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, log_import: false, admin: false,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {
