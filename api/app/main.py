@@ -7,6 +7,7 @@ from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
+import os
 import traceback
 from datetime import datetime, timedelta, timezone
 
@@ -206,16 +207,22 @@ _TARGET_TABLE_SYNC_FN = {
     "Bills": (_sync_bills, "sync_bills"),
 }
 
-async def daily_auto_sync(force_all: bool = False):
+async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False):
     """
     Automated job to fetch and store Mews reservations.
-    Now dynamically checks which properties are scheduled for the current minute.
+    Locally (persistent process, ticked every minute by the APScheduler set up
+    in start_scheduler) this matches a property's sync_hour AND sync_minute
+    exactly, so testing "sync in 2 minutes" works as expected. On Vercel
+    (match_hour_only=True, passed by the /sync/auto route below) minute-level
+    precision isn't achievable or meaningful - the Cron entry in vercel.json
+    only fires once an hour and isn't guaranteed to land exactly on :00 (in
+    practice it's landed as late as :01-:02), so matching is by hour alone.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     current_hour = now.hour
     current_minute = now.minute
 
-    print(f"[{now.isoformat()}] Checking for scheduled syncs at {current_hour:02d}:{current_minute:02d} (force_all={force_all})...")
+    print(f"[{now.isoformat()}] Checking for scheduled syncs at {current_hour:02d}:{current_minute:02d} (force_all={force_all}, match_hour_only={match_hour_only})...")
 
     if not sync_service.supabase:
         print(f"[{now.isoformat()}] [ERROR] Supabase client not initialized. Skipping automated sync.")
@@ -232,12 +239,9 @@ async def daily_auto_sync(force_all: bool = False):
             .eq("sync_enabled", True)
 
         if not force_all:
-            # If current minute is 0, we might be hitting the Vercel hourly cron.
-            # In that case, we should sync ALL properties scheduled for this hour to be safe.
-            if current_minute == 0:
+            if match_hour_only:
                 query = query.eq("sync_hour", current_hour)
             else:
-                # Otherwise, stay precise (for local/frequent scheduler)
                 query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
 
         props_res = query.execute()
@@ -370,11 +374,24 @@ async def retry_failed_syncs():
 
 @app.on_event("startup")
 async def start_scheduler():
+    # Vercel sets this env var in every serverless invocation - previously
+    # this check was missing, so this "local dev only" per-minute scheduler
+    # was ALSO starting fresh on every Vercel cold start (any request, not
+    # just /sync/auto), each instance immediately ticking for whatever
+    # arbitrary wall-clock minute the cold start happened to land on. That's
+    # why auto-sync was unreliable in production: daily_auto_sync's minute-
+    # exact matching almost never matched a property's sync_minute unless a
+    # cold start happened to land exactly on :00, in which case it also
+    # raced/duplicated with the real Vercel Cron hitting /sync/auto below.
+    if os.environ.get("VERCEL"):
+        print("Running on Vercel - skipping local per-minute scheduler (Vercel Cron -> /sync/auto is the production trigger).")
+        return
+
     if not sync_service.supabase:
         print("[CRITICAL] Cannot start scheduler: Supabase credentials missing or invalid.")
         return
 
-    # Run the check job every minute (Note: This only works in local development)
+    # Run the check job every minute (local development only, guarded above)
     scheduler.add_job(daily_auto_sync, 'cron', second=0)
     # Same per-minute cadence; retry_failed_syncs self-gates to only do work
     # when the Bangkok hour is 9, so this just gives it a chance to fire.
@@ -387,10 +404,12 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     """
     Endpoint to trigger the automated sync job.
     Designed to be called by Vercel Cron or GitHub Actions.
-    If force=False (default), it respects the sync_hour/sync_minute in the database.
+    If force=False (default), it respects the sync_hour/sync_minute in the database
+    (match_hour_only=True since Vercel's cron only fires once an hour and isn't
+    guaranteed to land exactly on :00 - see daily_auto_sync's docstring).
     Runs in the background so the response returns immediately.
     """
-    background_tasks.add_task(daily_auto_sync, force_all=force)
+    background_tasks.add_task(daily_auto_sync, force_all=force, match_hour_only=True)
     # Vercel's hourly cron is this endpoint's only production trigger, so the
     # 09:00 retry check piggybacks here too (see retry_failed_syncs' own
     # hour==9 guard) instead of needing a second vercel.json cron entry.
