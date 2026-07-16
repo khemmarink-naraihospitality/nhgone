@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { format } from "date-fns";
@@ -18,6 +18,35 @@ interface SyncLog {
 export default function ActivityLogPage() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(true);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof SyncLog; direction: "asc" | "desc" } | null>(null);
+
+  const handleSort = (key: keyof SyncLog) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null; // third click on the same column clears the sort
+    });
+  };
+
+  const sortArrow = (key: keyof SyncLog) => {
+    if (sortConfig?.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
+
+  const sortedLogs = useMemo(() => {
+    if (!sortConfig) return logs;
+    const { key, direction } = sortConfig;
+    const dir = direction === "asc" ? 1 : -1;
+    return [...logs].sort((a, b) => {
+      if (key === "created_at") {
+        return (new Date(a[key]).getTime() - new Date(b[key]).getTime()) * dir;
+      }
+      if (key === "records_synced") {
+        return ((a[key] ?? 0) - (b[key] ?? 0)) * dir;
+      }
+      return String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * dir;
+    });
+  }, [logs, sortConfig]);
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -77,16 +106,27 @@ export default function ActivityLogPage() {
             <table className="w-full text-left text-sm text-slate-600">
               <thead className="bg-slate-50/80 text-xs uppercase font-bold text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th className="px-6 py-4">Timestamp</th>
-                  <th className="px-6 py-4">Property</th>
-                  <th className="px-6 py-4">Data Set</th>
-                  <th className="px-6 py-4">Status</th>
-                  <th className="px-6 py-4 text-right">Records Imported</th>
-                  <th className="px-6 py-4">Message</th>
+                  {([
+                    ["created_at", "Timestamp"],
+                    ["property", "Property"],
+                    ["target_table", "Data Set"],
+                    ["status", "Status"],
+                    ["records_synced", "Records Imported"],
+                    ["message", "Message"],
+                  ] as [keyof SyncLog, string][]).map(([key, label]) => (
+                    <th key={key} className={`px-6 py-4 ${key === "records_synced" ? "text-right" : ""}`}>
+                      <button
+                        onClick={() => handleSort(key)}
+                        className={`flex items-center gap-1 hover:text-slate-700 transition-colors ${key === "records_synced" ? "ml-auto" : ""}`}
+                      >
+                        {label} <span>{sortArrow(key)}</span>
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {loading && logs.length === 0 ? (
+                {loading && sortedLogs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
                       <svg className="w-8 h-8 animate-spin mx-auto mb-3" fill="none" viewBox="0 0 24 24">
@@ -96,14 +136,14 @@ export default function ActivityLogPage() {
                       Loading activity logs...
                     </td>
                   </tr>
-                ) : logs.length === 0 ? (
+                ) : sortedLogs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-slate-500 bg-slate-50/50">
                       No activity logs recorded yet. Automated sync runs daily at 02:00 AM.
                     </td>
                   </tr>
                 ) : (
-                  logs.map((log) => (
+                  sortedLogs.map((log) => (
                     <tr key={log.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-6 py-4 whitespace-nowrap font-medium text-slate-900">
                         {format(new Date(log.created_at), "dd MMM yyyy, HH:mm:ss")}
