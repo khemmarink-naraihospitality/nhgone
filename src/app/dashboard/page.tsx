@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
+import { supabase } from "@/lib/supabase";
 
 interface Stats {
   reservations: number;
@@ -10,9 +11,41 @@ interface Stats {
   payments: number;
 }
 
+// Map of property_api_settings sync flags -> the target_table value the
+// daily auto sync writes to sync_logs for that data set (see daily_auto_sync
+// in api/app/main.py). A property's "expected" set for the traffic light is
+// only the tables it actually has enabled.
+const SYNC_FLAG_TABLES: [flag: string, table: string][] = [
+  ["sync_reservations", "Reservations"],
+  ["sync_members", "Customers"],
+  ["sync_payments", "Payments"],
+  ["sync_resources", "Resources"],
+  ["sync_bills", "Bills"],
+];
+
+type LightLevel = "green" | "amber" | "red" | "off";
+
+interface PropertyImportStatus {
+  property: string;
+  enabled: boolean;
+  expected: string[];
+  synced: string[];
+  level: LightLevel;
+}
+
+// Start of the current Asia/Bangkok calendar day, as a UTC ISO string -
+// "today" for the import status means the Bangkok day, matching how the
+// sync scheduler itself thinks about days.
+function startOfBangkokTodayIso(): string {
+  const bkk = new Date(Date.now() + 7 * 3600_000);
+  const startUtcMs = Date.UTC(bkk.getUTCFullYear(), bkk.getUTCMonth(), bkk.getUTCDate()) - 7 * 3600_000;
+  return new Date(startUtcMs).toISOString();
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [importStatus, setImportStatus] = useState<PropertyImportStatus[]>([]);
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -32,6 +65,51 @@ export default function Dashboard() {
     fetchStats();
   }, []);
 
+  useEffect(() => {
+    const fetchImportStatus = async () => {
+      try {
+        const [propsRes, logsRes] = await Promise.all([
+          supabase
+            .from("property_api_settings")
+            .select("property_name, sync_enabled, sync_reservations, sync_members, sync_payments, sync_resources, sync_bills")
+            .order("property_name"),
+          supabase
+            .from("sync_logs")
+            .select("property, target_table, status")
+            .gte("created_at", startOfBangkokTodayIso())
+            .limit(1000),
+        ]);
+        if (!propsRes.data) return;
+
+        // Any successful import today counts, regardless of sync_type -
+        // auto, manual or retry all mean the data actually arrived.
+        const syncedByProperty = new Map<string, Set<string>>();
+        for (const log of logsRes.data || []) {
+          if (log.status !== "success" || !log.property) continue;
+          if (!syncedByProperty.has(log.property)) syncedByProperty.set(log.property, new Set());
+          syncedByProperty.get(log.property)!.add(log.target_table);
+        }
+
+        const statuses: PropertyImportStatus[] = propsRes.data.map((p: any) => {
+          const enabled = p.sync_enabled !== false;
+          const expected = SYNC_FLAG_TABLES.filter(([flag]) => p[flag] !== false).map(([, table]) => table);
+          const syncedSet = syncedByProperty.get(p.property_name) || new Set<string>();
+          const synced = expected.filter((t) => syncedSet.has(t));
+          let level: LightLevel;
+          if (!enabled) level = "off";
+          else if (expected.length > 0 && synced.length === expected.length) level = "green";
+          else if (synced.length === 0) level = "red";
+          else level = "amber";
+          return { property: p.property_name, enabled, expected, synced, level };
+        });
+        setImportStatus(statuses);
+      } catch (err: any) {
+        console.warn("Could not fetch import status:", err.message);
+      }
+    };
+    fetchImportStatus();
+  }, []);
+
   return (
     <div className="flex-1 p-4 md:p-6 bg-[#FFEFD2] text-[#152A00] font-sans transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
@@ -47,6 +125,37 @@ export default function Dashboard() {
           <StatCard title="Registered Members" value={stats?.members ?? 0} label="Chinatown" href="/data-mart" />
           <StatCard title="Payments Processed" value={stats?.payments ?? 0} label="Synced" href="/data-mart" />
         </div>
+
+        {importStatus.length > 0 && (
+          <section className="bg-[#fffaf0] border border-[#152A00]/14 p-6 mb-6">
+            <div className="flex items-baseline justify-between mb-6">
+              <h2 className="text-[10px] font-bold text-[#152A00]/60 tracked-caps">Import Status — Today</h2>
+              <div className="flex items-center gap-4 text-[9px] font-bold tracked-caps text-[#152A00]/50">
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> All tables</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Partial</span>
+                <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500"></span> None</span>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#152A00]/10 border border-[#152A00]/10">
+              {importStatus.map((s) => (
+                <Link key={s.property} href="/log-import" className="bg-[#fffaf0] hover:bg-white transition-colors p-4 flex items-center gap-4 group">
+                  <TrafficLight level={s.level} />
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-bold text-[#152A00] leading-snug">{s.property}</div>
+                    <div className="text-[10px] font-bold tracked-caps mt-1 text-[#152A00]/50">
+                      {s.enabled ? `${s.synced.length}/${s.expected.length} tables` : "Sync disabled"}
+                    </div>
+                    {s.enabled && s.level === "amber" && (
+                      <div className="text-[10px] text-[#A76400] mt-0.5 leading-snug">
+                        Missing: {s.expected.filter((t) => !s.synced.includes(t)).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         <section className="bg-[#fffaf0] border border-[#152A00]/14 p-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
@@ -70,6 +179,33 @@ export default function Dashboard() {
           </div>
         </section>
       </div>
+    </div>
+  );
+}
+
+// A little vertical intersection-style traffic light: dark housing, three
+// lamps (red / amber / green), only the lamp matching the current level is
+// lit - the rest stay dim. level "off" (sync disabled) dims all three.
+function TrafficLight({ level }: { level: LightLevel }) {
+  const lamp = (colour: "red" | "amber" | "green") => {
+    const active = level === colour;
+    const activeCls = {
+      red: "bg-red-500 shadow-[0_0_8px_2px_rgba(239,68,68,0.8)]",
+      amber: "bg-amber-400 shadow-[0_0_8px_2px_rgba(251,191,36,0.8)]",
+      green: "bg-emerald-500 shadow-[0_0_8px_2px_rgba(16,185,129,0.8)]",
+    }[colour];
+    const dimCls = {
+      red: "bg-red-900/60",
+      amber: "bg-amber-900/60",
+      green: "bg-emerald-900/60",
+    }[colour];
+    return <div className={`w-4 h-4 rounded-full transition-all ${active ? activeCls : dimCls}`}></div>;
+  };
+  return (
+    <div className="shrink-0 bg-[#2b2b2b] border border-black/40 rounded-md p-1.5 flex flex-col items-center gap-1.5 shadow-inner">
+      {lamp("red")}
+      {lamp("amber")}
+      {lamp("green")}
     </div>
   );
 }
