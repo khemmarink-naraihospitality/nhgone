@@ -1505,4 +1505,230 @@ class SyncService:
         }
         return report
 
+    async def get_bcp_snapshot(self, property_name: str):
+        """
+        Builds the hourly BCP (Business Continuity Plan) snapshot for one
+        property: everything the front desk needs on paper if MEWS goes down -
+        today's (Asia/Bangkok) arrivals (+ product order items + notes),
+        departures, in-house guests with customer-profile notes, today's
+        payments, and every room's housekeeping state with its occupant.
+
+        Reservation-level notes come from serviceOrderNotes/getAll, which not
+        every Connector token has enabled - that part degrades gracefully to
+        empty notes rather than failing the snapshot.
+        """
+        bkk = ZoneInfo("Asia/Bangkok")
+        now_bkk = datetime.now(bkk)
+        day = now_bkk.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_start_utc = day.astimezone(timezone.utc)
+        day_end_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+        start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        resv_res = await mews_client.post(
+            "/api/connector/v1/reservations/getAll",
+            {
+                "StartUtc": start_iso,
+                "EndUtc": end_iso,
+                "Extent": {"Reservations": True, "Customers": True, "Resources": True},
+            },
+            property_name=property_name,
+        )
+        reservations = [r for r in resv_res.get("Reservations", []) if r.get("State") != "Canceled"]
+        customers_map = {c["Id"]: c for c in resv_res.get("Customers", []) if c.get("Id")}
+        resources_map = {r["Id"]: r for r in resv_res.get("Resources", []) if r.get("Id")}
+
+        def in_window(ts):
+            if not ts:
+                return False
+            try:
+                t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                return False
+            return day_start_utc <= t < day_end_utc
+
+        arrival_rs = [r for r in reservations if in_window(r.get("StartUtc"))]
+        departure_rs = [r for r in reservations if in_window(r.get("EndUtc"))]
+        inhouse_rs = [r for r in reservations if r.get("State") == "Started" and not in_window(r.get("EndUtc"))]
+
+        # Product order items for today's arrivals (breakfast add-ons etc.)
+        items_by_reservation: dict = {}
+        arrival_ids = [r["Id"] for r in arrival_rs]
+        for i in range(0, len(arrival_ids), 100):
+            chunk = arrival_ids[i:i + 100]
+            try:
+                oi_res = await mews_client.post(
+                    "/api/connector/v1/orderItems/getAll",
+                    {"ServiceOrderIds": chunk, "Limitation": {"Count": 1000}},
+                    property_name=property_name,
+                )
+                for item in oi_res.get("OrderItems", []):
+                    if item.get("Type") != "ProductOrder" or item.get("AccountingState") == "Canceled":
+                        continue
+                    label = item.get("BillingName") or item.get("Name") or "Product"
+                    count = item.get("UnitCount") or 1
+                    items_by_reservation.setdefault(item.get("ServiceOrderId"), []).append(
+                        f"{count}x {label}" if count != 1 else label
+                    )
+            except Exception as e:
+                logger.warning(f"BCP order items fetch failed for {property_name}: {e}")
+
+        # Reservation-level notes (separate endpoint; permission-dependent)
+        notes_by_reservation: dict = {}
+        all_res_ids = [r["Id"] for r in reservations]
+        for i in range(0, len(all_res_ids), 100):
+            chunk = all_res_ids[i:i + 100]
+            try:
+                notes_res = await mews_client.post(
+                    "/api/connector/v1/serviceOrderNotes/getAll",
+                    {"ServiceOrderIds": chunk, "Limitation": {"Count": 1000}},
+                    property_name=property_name,
+                )
+                for note in notes_res.get("ServiceOrderNotes", []):
+                    text = (note.get("Text") or "").strip()
+                    if text:
+                        notes_by_reservation.setdefault(note.get("ServiceOrderId"), []).append(text)
+            except Exception:
+                break  # endpoint not enabled for this token - skip quietly
+
+        def reservation_row(res):
+            customer = customers_map.get(res.get("CustomerId"), {})
+            room = resources_map.get(res.get("AssignedResourceId"), {})
+            return {
+                "number": res.get("Number", ""),
+                "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
+                "nationality": customer.get("NationalityCode", ""),
+                "email": customer.get("Email", ""),
+                "phone": customer.get("Phone", ""),
+                "room": room.get("Name", ""),
+                "check_in": res.get("StartUtc", ""),
+                "check_out": res.get("EndUtc", ""),
+                "state": res.get("State", ""),
+                "adults": res.get("AdultCount", 0),
+                "children": res.get("ChildCount", 0),
+                "products": items_by_reservation.get(res.get("Id"), []),
+                "notes": " | ".join(notes_by_reservation.get(res.get("Id"), [])),
+            }
+
+        def sort_key(row):
+            return row["room"] or "zzz"
+
+        arrivals = sorted((reservation_row(r) for r in arrival_rs), key=sort_key)
+        departures = sorted((reservation_row(r) for r in departure_rs), key=sort_key)
+        in_house = sorted((reservation_row(r) for r in inhouse_rs), key=sort_key)
+
+        # Customer profiles for everyone attached to today's reservations,
+        # tagged by how they relate to today (arrival/departure/in-house).
+        def guest_ids(res_list):
+            ids = set()
+            for r in res_list:
+                for cid in [r.get("CustomerId")] + (r.get("CompanionIds") or []):
+                    if cid:
+                        ids.add(cid)
+            return ids
+
+        arrival_guests = guest_ids(arrival_rs)
+        departure_guests = guest_ids(departure_rs)
+        inhouse_guests = guest_ids(inhouse_rs)
+        customers = []
+        for cid in arrival_guests | departure_guests | inhouse_guests:
+            c = customers_map.get(cid)
+            if not c:
+                continue
+            tags = []
+            if cid in arrival_guests:
+                tags.append("Arrival")
+            if cid in inhouse_guests:
+                tags.append("In-house")
+            if cid in departure_guests:
+                tags.append("Departure")
+            customers.append({
+                "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+                "tags": tags,
+                "nationality": c.get("NationalityCode", ""),
+                "email": c.get("Email", ""),
+                "phone": c.get("Phone", ""),
+                "notes": (c.get("Notes") or "").strip(),
+            })
+        customers.sort(key=lambda c: c["name"])
+
+        # Today's payments
+        payments = []
+        try:
+            pay_res = await mews_client.post(
+                "/api/connector/v1/payments/getAll",
+                {"CreatedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}, "Limitation": {"Count": 1000}},
+                property_name=property_name,
+            )
+            res_number_by_id = {r["Id"]: r.get("Number", "") for r in reservations}
+            for p in pay_res.get("Payments", []):
+                amount = p.get("Amount") or {}
+                customer = customers_map.get(p.get("AccountId"), {})
+                payments.append({
+                    "created": p.get("CreatedUtc", ""),
+                    "type": p.get("Type", ""),
+                    "state": p.get("State", ""),
+                    "amount": amount.get("GrossValue", 0),
+                    "currency": amount.get("Currency", ""),
+                    "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
+                    "reservation": res_number_by_id.get(p.get("ReservationId"), ""),
+                    "notes": (p.get("Notes") or "").strip(),
+                })
+            payments.sort(key=lambda x: x["created"], reverse=True)
+        except Exception as e:
+            logger.warning(f"BCP payments fetch failed for {property_name}: {e}")
+
+        # Room status board (housekeeping view): every active resource, its HK
+        # state, plus who's in it / arriving / leaving today.
+        all_rooms_res = await mews_client.post(
+            "/api/connector/v1/resources/getAll",
+            {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
+            property_name=property_name,
+        )
+        occupant_by_room, arriving_by_room, departing_by_room = {}, {}, {}
+        for row in in_house:
+            if row["room"]:
+                occupant_by_room[row["room"]] = row["guest"]
+        for row in arrivals:
+            if row["room"]:
+                arriving_by_room[row["room"]] = row["guest"]
+        for row in departures:
+            if row["room"]:
+                departing_by_room.setdefault(row["room"], row["guest"])
+        rooms = []
+        for r in all_rooms_res.get("Resources", []):
+            if not r.get("IsActive", True):
+                continue
+            data_val = (r.get("Data") or {}).get("Value") or {}
+            name = r.get("Name", "")
+            rooms.append({
+                "room": name,
+                "floor": data_val.get("FloorNumber", ""),
+                "state": r.get("State", ""),
+                "occupant": occupant_by_room.get(name, ""),
+                "arriving": arriving_by_room.get(name, ""),
+                "departing": departing_by_room.get(name, ""),
+            })
+        rooms.sort(key=lambda x: (str(x["floor"]), x["room"]))
+
+        return {
+            "property": property_name,
+            "date": day.strftime("%Y-%m-%d"),
+            "captured_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "counts": {
+                "arrivals": len(arrivals),
+                "departures": len(departures),
+                "in_house": len(in_house),
+                "customers": len(customers),
+                "payments": len(payments),
+                "rooms": len(rooms),
+            },
+            "arrivals": arrivals,
+            "departures": departures,
+            "in_house": in_house,
+            "customers": customers,
+            "payments": payments,
+            "rooms": rooms,
+        }
+
 sync_service = SyncService()

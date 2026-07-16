@@ -2,7 +2,7 @@ from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
-from app.routers import reservations, members, payments, admin, bills, resources, rr3, st_files
+from app.routers import reservations, members, payments, admin, bills, resources, rr3, st_files, bcp
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -32,6 +32,7 @@ app.include_router(bills.router)
 app.include_router(resources.router)
 app.include_router(rr3.router)
 app.include_router(st_files.router)
+app.include_router(bcp.router)
 
 # Shared by daily_auto_sync and retry_failed_syncs (below) - avoids Supabase's
 # ~60s statement timeout on bulk writes by chunking, with a retry-at-half-size
@@ -396,6 +397,9 @@ async def start_scheduler():
     # Same per-minute cadence; retry_failed_syncs self-gates to only do work
     # when the Bangkok hour is 9, so this just gives it a chance to fire.
     scheduler.add_job(retry_failed_syncs, 'cron', second=0)
+    # BCP snapshots hourly at :05 (in production this rides the Vercel Cron
+    # via /sync/auto below instead).
+    scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute=5)
     scheduler.start()
     print("Scheduler initialized (Local environment only).")
 
@@ -414,6 +418,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # 09:00 retry check piggybacks here too (see retry_failed_syncs' own
     # hour==9 guard) instead of needing a second vercel.json cron entry.
     background_tasks.add_task(retry_failed_syncs)
+    # BCP hourly snapshots ride the same cron - every property, every hour.
+    background_tasks.add_task(bcp.capture_all_bcp_snapshots)
     return {"status": "accepted", "message": f"Sync job started in background (force={force})"}
 
 @app.get("/health")

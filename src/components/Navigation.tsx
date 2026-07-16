@@ -12,6 +12,7 @@ interface MenuPermissions {
   bills: boolean;
   rr3: boolean;
   st_files: boolean;
+  bcp: boolean;
   log_import: boolean;
   admin: boolean;
 }
@@ -262,10 +263,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     bills: true,
     rr3: !isFinanceRole,
     st_files: !isFinanceRole,
+    bcp: !isFinanceRole,
     log_import: !isFinanceRole,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.bcp;
   const showTopDivider = perms.dashboard && midSection;
   const showBottomDivider = midSection && perms.log_import;
 
@@ -312,6 +314,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               )}
               {perms.st_files && (
                 <Link href="/st-files" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>ST Files</Link>
+              )}
+              {perms.bcp && (
+                <Link href="/bcp" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
               )}
               {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
               {perms.log_import && (
