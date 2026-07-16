@@ -161,6 +161,9 @@ export default function ActivityLogPage() {
                             "Reservations": { label: "RESERVATIONS", cls: "bg-indigo-50 text-indigo-600 border-indigo-100" },
                             "Customers":    { label: "CUSTOMERS",    cls: "bg-violet-50 text-violet-600 border-violet-100" },
                             "Payments":     { label: "PAYMENTS",     cls: "bg-amber-50 text-amber-600 border-amber-100" },
+                            "Bills":        { label: "BILLS",        cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+                            "Resources":    { label: "RESOURCES",    cls: "bg-sky-50 text-sky-600 border-sky-100" },
+                            "ST Files":     { label: "ST FILES",     cls: "bg-rose-50 text-rose-600 border-rose-100" },
                             "All":          { label: "ALL DATA",     cls: "bg-slate-100 text-slate-600 border-slate-200" },
                           };
                           const { label, cls } = map[t] ?? { label: t.toUpperCase(), cls: "bg-slate-100 text-slate-500 border-slate-200" };

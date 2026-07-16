@@ -14,6 +14,19 @@ interface SyncLog {
   target_table: string;
 }
 
+// Same domain -> colour mapping as Activity Log (src/app/admin/logs/page.tsx),
+// kept in sync so the two log views read consistently.
+const TABLE_BADGE: Record<string, string> = {
+  Reservations: "bg-indigo-50 text-indigo-600 border-indigo-100",
+  Customers: "bg-violet-50 text-violet-600 border-violet-100",
+  Payments: "bg-amber-50 text-amber-600 border-amber-100",
+  Bills: "bg-emerald-50 text-emerald-600 border-emerald-100",
+  Resources: "bg-sky-50 text-sky-600 border-sky-100",
+  "ST Files": "bg-rose-50 text-rose-600 border-rose-100",
+  All: "bg-slate-100 text-slate-600 border-slate-200",
+};
+const tableBadgeClass = (table: string) => TABLE_BADGE[table] || "bg-slate-100 text-slate-600 border-slate-200";
+
 export default function LogImportPage() {
   const [logs, setLogs] = useState<SyncLog[]>([]);
   const [loading, setLoading] = useState(false);
@@ -21,7 +34,22 @@ export default function LogImportPage() {
   const [filterProperty, setFilterProperty] = useState("All");
   const [properties, setProperties] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState<{ key: keyof SyncLog; direction: "asc" | "desc" } | null>(null);
   const itemsPerPage = 20;
+
+  const handleSort = (key: keyof SyncLog) => {
+    setSortConfig((prev) => {
+      if (!prev || prev.key !== key) return { key, direction: "asc" };
+      if (prev.direction === "asc") return { key, direction: "desc" };
+      return null; // third click clears back to the default (error-priority) sort
+    });
+    setCurrentPage(1);
+  };
+
+  const sortArrow = (key: keyof SyncLog) => {
+    if (sortConfig?.key !== key) return "↕";
+    return sortConfig.direction === "asc" ? "↑" : "↓";
+  };
 
   const fetchProperties = async () => {
     const { data: props } = await supabase.from("property_api_settings").select("property_name").order("property_name");
@@ -73,6 +101,23 @@ export default function LogImportPage() {
   // view, since "Last Activity" should reflect the truly latest event.
   const sortedLogs = useMemo(() => {
     if (logs.length === 0) return [];
+
+    // Clicking a header takes over sorting entirely; clearing it (3rd click)
+    // falls back to the default error-priority view below.
+    if (sortConfig) {
+      const { key, direction } = sortConfig;
+      const dir = direction === "asc" ? 1 : -1;
+      return [...logs].sort((a, b) => {
+        if (key === "created_at") {
+          return (new Date(a[key]).getTime() - new Date(b[key]).getTime()) * dir;
+        }
+        if (key === "records_synced") {
+          return ((a[key] ?? 0) - (b[key] ?? 0)) * dir;
+        }
+        return String(a[key] ?? "").localeCompare(String(b[key] ?? "")) * dir;
+      });
+    }
+
     const latestDay = new Date(logs[0].created_at).toDateString();
     return [...logs].sort((a, b) => {
       const aOnLatestDay = new Date(a.created_at).toDateString() === latestDay;
@@ -84,7 +129,7 @@ export default function LogImportPage() {
       }
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
-  }, [logs]);
+  }, [logs, sortConfig]);
 
   const totalPages = Math.ceil(sortedLogs.length / itemsPerPage);
   const paginatedLogs = sortedLogs.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -179,12 +224,20 @@ export default function LogImportPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-[#152A00]/5 border-b border-[#152A00]/10">
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">TIMESTAMP</th>
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">PROPERTY</th>
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">TABLE / DOMAIN</th>
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">STATUS</th>
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">RECORDS</th>
-                  <th className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">MESSAGE</th>
+                  {([
+                    ["created_at", "TIMESTAMP"],
+                    ["property", "PROPERTY"],
+                    ["target_table", "TABLE / DOMAIN"],
+                    ["status", "STATUS"],
+                    ["records_synced", "RECORDS"],
+                    ["message", "MESSAGE"],
+                  ] as [keyof SyncLog, string][]).map(([key, label]) => (
+                    <th key={key} className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">
+                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                        {label} <span>{sortArrow(key)}</span>
+                      </button>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#152A00]/5">
@@ -208,7 +261,7 @@ export default function LogImportPage() {
                       </td>
                       <td className="px-6 py-4 text-[#152A00]/80 text-[13px]">{log.property || "Global"}</td>
                       <td className="px-6 py-4">
-                        <span className="bg-[#152A00]/5 px-2 py-1 text-[10px] font-bold text-[#152A00] tracked-caps uppercase">{log.target_table || "General"}</span>
+                        <span className={`inline-block px-2 py-1 text-[10px] font-bold tracked-caps uppercase border rounded ${tableBadgeClass(log.target_table || "All")}`}>{log.target_table || "General"}</span>
                       </td>
                       <td className="px-6 py-4">
                         <span className={`text-[10px] font-bold tracked-caps uppercase ${
