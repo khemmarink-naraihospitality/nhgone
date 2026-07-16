@@ -48,6 +48,9 @@
   --text-primary: var(--galangal);
   --border-brand: rgba(255, 239, 210, 0.1);
   --paper: #0a1400;
+  /* Native widgets (date pickers, select dropdowns, scrollbars) follow the
+     theme instead of staying light. */
+  color-scheme: dark;
 }
 
 body {

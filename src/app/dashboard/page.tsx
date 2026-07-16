@@ -111,7 +111,7 @@ export default function Dashboard() {
   }, []);
 
   return (
-    <div className="flex-1 p-4 md:p-6 bg-[#FFEFD2] text-[#152A00] font-sans transition-colors duration-300">
+    <div className="flex-1 p-4 md:p-6 bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans transition-colors duration-300">
       <div className="max-w-7xl mx-auto">
         <div className="mb-4">
           <PageHeader 
@@ -120,29 +120,29 @@ export default function Dashboard() {
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-1px bg-[#152A00]/10 border border-[#152A00]/10 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-1px bg-[var(--text-primary)]/10 border border-[var(--text-primary)]/10 mb-6">
           <StatCard title="Total Reservations" value={stats?.reservations ?? 0} label="Database" href="/data-mart" />
           <StatCard title="Registered Members" value={stats?.members ?? 0} label="Chinatown" href="/data-mart" />
           <StatCard title="Payments Processed" value={stats?.payments ?? 0} label="Synced" href="/data-mart" />
         </div>
 
         {importStatus.length > 0 && (
-          <section className="bg-[#fffaf0] border border-[#152A00]/14 p-6 mb-6">
+          <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 mb-6">
             <div className="flex items-baseline justify-between mb-6">
-              <h2 className="text-[10px] font-bold text-[#152A00]/60 tracked-caps">Import Status — Today</h2>
-              <div className="flex items-center gap-4 text-[9px] font-bold tracked-caps text-[#152A00]/50">
+              <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 tracked-caps">Import Status — Today</h2>
+              <div className="flex items-center gap-4 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/50">
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> All tables</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Partial</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-red-500"></span> None</span>
               </div>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#152A00]/10 border border-[#152A00]/10">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--text-primary)]/10 border border-[var(--text-primary)]/10">
               {importStatus.map((s) => (
-                <Link key={s.property} href="/log-import" className="bg-[#fffaf0] hover:bg-white transition-colors p-4 flex items-center gap-4 group">
+                <Link key={s.property} href="/log-import" className="bg-[var(--paper)] hover:bg-[var(--text-primary)]/5 transition-colors p-4 flex items-center gap-4 group">
                   <TrafficLight level={s.level} />
                   <div className="min-w-0">
-                    <div className="text-[12px] font-bold text-[#152A00] leading-snug">{s.property}</div>
-                    <div className="text-[10px] font-bold tracked-caps mt-1 text-[#152A00]/50">
+                    <div className="text-[12px] font-bold text-[var(--text-primary)] leading-snug">{s.property}</div>
+                    <div className="text-[10px] font-bold tracked-caps mt-1 text-[var(--text-primary)]/50">
                       {s.enabled ? `${s.synced.length}/${s.expected.length} tables` : "Sync disabled"}
                     </div>
                     {s.enabled && s.level === "amber" && (
@@ -157,23 +157,23 @@ export default function Dashboard() {
           </section>
         )}
 
-        <section className="bg-[#fffaf0] border border-[#152A00]/14 p-6 relative overflow-hidden">
+        <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
           
-          <h2 className="text-[10px] font-bold text-[#152A00]/60 mb-6 tracked-caps">Operational Health</h2>
+          <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Operational Health</h2>
           
           <div className="flex items-center gap-4 mb-6">
             <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
             <span className="text-emerald-700 font-bold text-[13px] tracked-caps">FastAPI Backend: Synchronized</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[#152A00]/10 pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[var(--text-primary)]/10 pt-6">
              <div>
-                <h3 className="font-display text-2xl mb-4 text-[#152A00]">Strategic integration</h3>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Strategic integration</h3>
                 <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Secure server-side token injection with POST-only pattern. No MEWS credentials are exposed to the browser, ensuring absolute security for the Narai portfolio.</p>
              </div>
              <div>
-                <h3 className="font-display text-2xl mb-4 text-[#152A00]">Synchronization pattern</h3>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Synchronization pattern</h3>
                 <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Local-first management layer in Supabase with RLS. Preserves enriched data while staying synced with PMS, building a lasting digital legacy.</p>
              </div>
           </div>
@@ -212,11 +212,11 @@ function TrafficLight({ level }: { level: LightLevel }) {
 
 function StatCard({ title, value, label, href }: { title: string, value: number, label: string, href: string }) {
   return (
-    <Link href={href} className="bg-[#fffaf0] p-4 flex flex-col gap-0 transition-colors hover:bg-white group relative">
-      <div className="text-[9px] font-bold text-[#152A00]/50 tracked-caps">{label}</div>
-      <h3 className="font-display text-xl text-[#152A00] mb-2">{title}</h3>
-      <div className="text-4xl font-display text-[#152A00] leading-none tracking-tighter">{value}</div>
-      <div className="mt-3 text-[10px] font-bold tracked-caps text-[#152A00]/40 group-hover:text-[#152A00] transition-colors flex items-center gap-2">
+    <Link href={href} className="bg-[var(--paper)] p-4 flex flex-col gap-0 transition-colors hover:bg-[var(--text-primary)]/5 group relative">
+      <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">{label}</div>
+      <h3 className="font-display text-xl text-[var(--text-primary)] mb-2">{title}</h3>
+      <div className="text-4xl font-display text-[var(--text-primary)] leading-none tracking-tighter">{value}</div>
+      <div className="mt-3 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 group-hover:text-[var(--text-primary)] transition-colors flex items-center gap-2">
         Manage <span className="text-[14px]">→</span>
       </div>
     </Link>

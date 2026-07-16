@@ -161,17 +161,17 @@ export default function Rr3Page() {
   };
 
   return (
-    <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
+    <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <PageHeader title="RR3" description="ร.ร.๓ - Thai Hotel Act lodger registration cards, generated from MEWS check-ins for a date range." />
 
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
             <select
               value={selectedProperty}
               onChange={(e) => setSelectedProperty(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none"
+              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
             >
               {properties.map((p) => (
                 <option key={p} value={p}>{p}</option>
@@ -179,21 +179,21 @@ export default function Rr3Page() {
             </select>
           </div>
           <div className="flex flex-col gap-2 w-full md:w-48">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Start Date</label>
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Start Date</label>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
             />
           </div>
           <div className="flex flex-col gap-2 w-full md:w-48">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">End Date</label>
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">End Date</label>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
             />
           </div>
           <button onClick={fetchCards} disabled={loading} className="btn-brand btn-primary h-[46px]">
@@ -209,25 +209,25 @@ export default function Rr3Page() {
           <button
             onClick={handlePrintSelected}
             disabled={selectedIds.length === 0}
-            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
           >
             Print Selected ({selectedIds.length})
           </button>
         </div>
 
         {error ? (
-          <div className="p-4 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+          <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         ) : (
-          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
+          <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
-                <tr className="bg-[#152A00]/5">
-                  <th className="p-2 px-3 border-b border-[#152A00]/10">
+                <tr className="bg-[var(--text-primary)]/5">
+                  <th className="p-2 px-3 border-b border-[var(--text-primary)]/10">
                     <input
                       type="checkbox"
                       checked={sortedCards.length > 0 && sortedCards.every((c) => selectedIds.includes(c.CardId))}
                       onChange={toggleSelectAll}
-                      className="accent-[#152A00]"
+                      className="accent-[var(--text-primary)]"
                     />
                   </th>
                   {([
@@ -240,48 +240,48 @@ export default function Rr3Page() {
                     ["CheckIn", "Check-in"],
                     ["CheckOut", "Check-out"],
                   ] as [keyof Rr3Card, string][]).map(([key, label]) => (
-                    <th key={key} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                    <th key={key} className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                         {label} <span>{sortArrow(key)}</span>
                       </button>
                     </th>
                   ))}
-                  <th className="p-2 px-3 border-b border-[#152A00]/10"></th>
+                  <th className="p-2 px-3 border-b border-[var(--text-primary)]/10"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#152A00]/5">
+              <tbody className="divide-y divide-[var(--text-primary)]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving guests...</td>
+                    <td colSpan={10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">Retrieving guests...</td>
                   </tr>
                 ) : sortedCards.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No guests found in this range.</td>
+                    <td colSpan={10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No guests found in this range.</td>
                   </tr>
                 ) : (
                   sortedCards.map((c) => (
-                    <tr key={c.CardId} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(c.CardId) ? "bg-[#152A00]/5" : ""}`}>
+                    <tr key={c.CardId} className={`hover:bg-[var(--text-primary)]/3 transition-colors ${selectedIds.includes(c.CardId) ? "bg-[var(--text-primary)]/5" : ""}`}>
                       <td className="p-2 px-3">
                         <input
                           type="checkbox"
                           checked={selectedIds.includes(c.CardId)}
                           onChange={() => toggleSelectRow(c.CardId)}
-                          className="accent-[#152A00]"
+                          className="accent-[var(--text-primary)]"
                         />
                       </td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.ReservationsNumber || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.FirstName || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.RoomNumber || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.NationalityName || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap font-mono">{maskId(c.IdentityCardNumber)}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap font-mono">{maskId(c.PassportNumber)}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckIn} {c.CheckInTime}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{c.CheckOut} {c.CheckOutTime}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.ReservationsNumber || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.FirstName || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.RoomNumber || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.NationalityName || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap font-mono">{maskId(c.IdentityCardNumber)}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap font-mono">{maskId(c.PassportNumber)}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.CheckIn} {c.CheckInTime}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{c.CheckOut} {c.CheckOutTime}</td>
                       <td className="p-2 px-3">
                         <div className="flex gap-2">
                           <button
                             onClick={() => setDetailCard(c)}
-                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
                             Detail
                           </button>
@@ -303,16 +303,16 @@ export default function Rr3Page() {
 
         {detailCard && (
           <div
-            className="fixed inset-0 bg-[#152A00]/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+            className="fixed inset-0 bg-[var(--text-primary)]/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
             onClick={() => setDetailCard(null)}
           >
             <div
-              className="bg-[#fffaf0] border border-[#152A00]/14 rounded-sm w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
+              className="bg-[var(--paper)] border border-[var(--text-primary)]/14 rounded-sm w-full max-w-lg shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="p-6 border-b border-[#152A00]/10 flex justify-between items-center bg-[#152A00]/5 shrink-0">
-                <h2 className="text-2xl font-display text-[#152A00]">Guest Detail</h2>
-                <button onClick={() => setDetailCard(null)} className="text-[#152A00]/40 hover:text-[#152A00] transition-colors">
+              <div className="p-6 border-b border-[var(--text-primary)]/10 flex justify-between items-center bg-[var(--text-primary)]/5 shrink-0">
+                <h2 className="text-2xl font-display text-[var(--text-primary)]">Guest Detail</h2>
+                <button onClick={() => setDetailCard(null)} className="text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors">
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -332,16 +332,16 @@ export default function Rr3Page() {
                   ["Check-in", `${detailCard.CheckIn} ${detailCard.CheckInTime}`.trim()],
                   ["Check-out", `${detailCard.CheckOut} ${detailCard.CheckOutTime}`.trim()],
                 ].map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4 py-2 border-b border-[#152A00]/5 last:border-0">
-                    <span className="text-[9px] font-bold text-[#152A00]/50 uppercase tracked-caps shrink-0">{label}</span>
-                    <span className="text-[13px] text-[#152A00] text-right break-words">{value || "-"}</span>
+                  <div key={label} className="flex justify-between gap-4 py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                    <span className="text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracked-caps shrink-0">{label}</span>
+                    <span className="text-[13px] text-[var(--text-primary)] text-right break-words">{value || "-"}</span>
                   </div>
                 ))}
               </div>
               <div className="p-6 pt-4 shrink-0">
                 <button
                   onClick={() => setDetailCard(null)}
-                  className="w-full py-3 border border-[#152A00] text-[11px] font-bold tracked-caps text-[#152A00] hover:bg-[#152A00] hover:text-[#FFEFD2] transition-all"
+                  className="w-full py-3 border border-[var(--text-primary)] text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[#152A00] hover:text-[#FFEFD2] transition-all"
                 >
                   CLOSE
                 </button>

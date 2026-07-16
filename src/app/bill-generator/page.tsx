@@ -250,21 +250,21 @@ export default function BillGeneratorPage() {
   };
 
   return (
-    <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
+    <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; Data Mart mode reads from our own database (faster, already imported).">
           <div className="flex flex-col gap-2">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Mode</label>
-            <div className="flex border border-[#152A00]/20 overflow-hidden">
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Mode</label>
+            <div className="flex border border-[var(--text-primary)]/20 overflow-hidden">
               <button
                 onClick={() => setDataSource("live")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 MEWS
               </button>
               <button
                 onClick={() => setDataSource("database")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 Data Mart
               </button>
@@ -275,11 +275,11 @@ export default function BillGeneratorPage() {
         <div className="flex flex-col gap-4 mt-8 mb-4">
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
             <div className="flex flex-col gap-2 w-full md:w-80">
-              <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
               <select
                 value={selectedProperty}
                 onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
               >
                 {properties.map((p) => (
                   <option key={p} value={p}>{p}</option>
@@ -287,25 +287,25 @@ export default function BillGeneratorPage() {
               </select>
             </div>
             <div className="flex flex-col gap-2 w-full md:w-48">
-              <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Start Date</label>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Start Date</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
               />
             </div>
             <div className="flex flex-col gap-2 w-full md:w-48">
-              <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">End Date</label>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">End Date</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
               />
             </div>
             <div className="flex flex-col gap-2 w-full md:w-56">
-              <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Bill Number</label>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Bill Number</label>
               <input
                 type="text"
                 value={billNumberFilter}
@@ -314,7 +314,7 @@ export default function BillGeneratorPage() {
                   setPage(0);
                 }}
                 placeholder="Search bill number..."
-                className="w-full h-[42px] bg-white border border-[#152A00]/14 px-4 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+                className="w-full h-[42px] bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
               />
             </div>
             <button onClick={fetchBills} disabled={loading} className="btn-brand btn-primary h-[42px]">
@@ -332,7 +332,7 @@ export default function BillGeneratorPage() {
             <button
               onClick={handleGetMewsPdfSelected}
               disabled={selectedIds.length === 0}
-              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[42px] disabled:opacity-30 disabled:cursor-not-allowed"
+              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[42px] disabled:opacity-30 disabled:cursor-not-allowed"
             >
               MEWS Bill Selected ({selectedIds.length})
             </button>
@@ -340,91 +340,91 @@ export default function BillGeneratorPage() {
         </div>
 
         {error ? (
-          <div className="p-4 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+          <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         ) : (
-          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
+          <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
-                <tr className="bg-[#152A00]/5">
-                  <th className="p-2 px-3 border-b border-[#152A00]/10">
+                <tr className="bg-[var(--text-primary)]/5">
+                  <th className="p-2 px-3 border-b border-[var(--text-primary)]/10">
                     <input
                       type="checkbox"
                       checked={pagedBills.length > 0 && pagedBills.every((b) => selectedIds.includes(b.mews_id))}
                       onChange={toggleSelectAll}
-                      className="accent-[#152A00]"
+                      className="accent-[var(--text-primary)]"
                     />
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Number")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Number")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                       Number <span>{sortArrow("Number")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Type")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Type")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                       Type <span>{sortArrow("Type")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("State")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("State")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                       State <span>{sortArrow("State")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Owner Name")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Owner Name")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                       Owner Name <span>{sortArrow("Owner Name")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Issued At")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Issued At")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                       Issued At <span>{sortArrow("Issued At")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Net Amount")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Net Amount")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto">
                       Net Amount <span>{sortArrow("Net Amount")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("VAT")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("VAT")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto">
                       VAT <span>{sortArrow("VAT")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap">
-                    <button onClick={() => handleSort("Total Amount")} className="flex items-center gap-1 hover:text-[#152A00] transition-colors ml-auto">
+                  <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">
+                    <button onClick={() => handleSort("Total Amount")} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors ml-auto">
                       Total Amount <span>{sortArrow("Total Amount")}</span>
                     </button>
                   </th>
-                  <th className="p-2 px-3 border-b border-[#152A00]/10"></th>
+                  <th className="p-2 px-3 border-b border-[var(--text-primary)]/10"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#152A00]/5">
+              <tbody className="divide-y divide-[var(--text-primary)]/5">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">Retrieving bills...</td>
+                    <td colSpan={10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">Retrieving bills...</td>
                   </tr>
                 ) : filteredBills.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No bills found in this range.</td>
+                    <td colSpan={10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No bills found in this range.</td>
                   </tr>
                 ) : (
                   pagedBills.map((b) => (
-                    <tr key={b.mews_id} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(b.mews_id) ? "bg-[#152A00]/5" : ""}`}>
+                    <tr key={b.mews_id} className={`hover:bg-[var(--text-primary)]/3 transition-colors ${selectedIds.includes(b.mews_id) ? "bg-[var(--text-primary)]/5" : ""}`}>
                       <td className="p-2 px-3">
                         <input
                           type="checkbox"
                           checked={selectedIds.includes(b.mews_id)}
                           onChange={() => toggleSelectRow(b.mews_id)}
-                          className="accent-[#152A00]"
+                          className="accent-[var(--text-primary)]"
                         />
                       </td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.Number || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.Type || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b.State || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{b["Owner Name"] || "-"}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap">{fmtDate(b["Issued At"])}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right">{fmtAmount(b["Net Amount"])}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right">{fmtAmount(b.VAT)}</td>
-                      <td className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap text-right font-bold">{fmtAmount(b["Total Amount"])}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{b.Number || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{b.Type || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{b.State || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{b["Owner Name"] || "-"}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">{fmtDate(b["Issued At"])}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap text-right">{fmtAmount(b["Net Amount"])}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap text-right">{fmtAmount(b.VAT)}</td>
+                      <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap text-right font-bold">{fmtAmount(b["Total Amount"])}</td>
                       <td className="p-2 px-3">
                         <div className="flex gap-2">
                           <button
@@ -435,7 +435,7 @@ export default function BillGeneratorPage() {
                           </button>
                           <button
                             onClick={() => handleGetMewsPdf(b)}
-                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap"
+                            className="px-3 py-1 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
                             MEWS Bill
                           </button>
@@ -451,22 +451,22 @@ export default function BillGeneratorPage() {
 
         {!error && filteredBills.length > 0 && (
           <div className="flex items-center justify-between mb-8 -mt-4">
-            <span className="text-[11px] text-[#152A00]/50">
+            <span className="text-[11px] text-[var(--text-primary)]/50">
               Showing {currentPage * PAGE_SIZE + 1}-{Math.min((currentPage + 1) * PAGE_SIZE, filteredBills.length)} of {filteredBills.length} bills
             </span>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={currentPage === 0}
-                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Prev
               </button>
-              <span className="text-[11px] text-[#152A00]/60 whitespace-nowrap">Page {currentPage + 1} of {totalPages}</span>
+              <span className="text-[11px] text-[var(--text-primary)]/60 whitespace-nowrap">Page {currentPage + 1} of {totalPages}</span>
               <button
                 onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
                 disabled={currentPage >= totalPages - 1}
-                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
               >
                 Next
               </button>

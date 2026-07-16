@@ -82,8 +82,8 @@ const fmtDateTime = (v: string) => {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 };
 
-const thCls = "p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 whitespace-nowrap";
-const tdCls = "p-2 px-3 text-[13px] text-[#152A00] whitespace-nowrap";
+const thCls = "p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap";
+const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap";
 
 export default function StFilesPage() {
   const [properties, setProperties] = useState<string[]>([]);
@@ -160,23 +160,23 @@ export default function StFilesPage() {
   const categoryTable = (rows: CategoryRow[], countLabel: string) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
-        <tr className="bg-[#152A00]/5">
+        <tr className="bg-[var(--text-primary)]/5">
           <th className={thCls}>Space Category</th>
           <th className={thCls}>Room Type</th>
           <th className={thCls}>Name</th>
           <th className={`${thCls} text-right`}>{countLabel}</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-[#152A00]/5">
+      <tbody className="divide-y divide-[var(--text-primary)]/5">
         {rows.map((r) => (
-          <tr key={r.short_name + r.name} className="hover:bg-[#152A00]/[0.02]">
+          <tr key={r.short_name + r.name} className="hover:bg-[var(--text-primary)]/[0.02]">
             <td className={`${tdCls} font-bold`}>{r.short_name || "-"}</td>
             <td className={tdCls}>{r.type}</td>
             <td className={tdCls}>{r.name}</td>
             <td className={`${tdCls} text-right font-bold`}>{r.count}</td>
           </tr>
         ))}
-        <tr className="bg-[#152A00]/5">
+        <tr className="bg-[var(--text-primary)]/5">
           <td className={`${tdCls} font-bold`} colSpan={3}>Total</td>
           <td className={`${tdCls} text-right font-bold`}>{rows.reduce((s, r) => s + r.count, 0)}</td>
         </tr>
@@ -186,13 +186,13 @@ export default function StFilesPage() {
 
   const blocksTable = (rows: BlockRow[], title: string) => (
     <div className="mt-6">
-      <div className="text-[10px] font-bold text-[#152A00]/50 tracked-caps mb-2 px-1">{title} ({rows.length})</div>
+      <div className="text-[10px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2 px-1">{title} ({rows.length})</div>
       {rows.length === 0 ? (
-        <div className="p-4 text-[13px] text-[#152A00]/40 italic border border-dashed border-[#152A00]/14">None for this date.</div>
+        <div className="p-4 text-[13px] text-[var(--text-primary)]/40 italic border border-dashed border-[var(--text-primary)]/14">None for this date.</div>
       ) : (
         <table className="w-full text-left border-collapse min-w-max">
           <thead>
-            <tr className="bg-[#152A00]/5">
+            <tr className="bg-[var(--text-primary)]/5">
               <th className={thCls}>Room</th>
               <th className={thCls}>Name</th>
               <th className={thCls}>Notes</th>
@@ -200,12 +200,12 @@ export default function StFilesPage() {
               <th className={thCls}>To</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-[#152A00]/5">
+          <tbody className="divide-y divide-[var(--text-primary)]/5">
             {rows.map((b, i) => (
               <tr key={i}>
                 <td className={`${tdCls} font-bold`}>{b.room || "-"}</td>
                 <td className={tdCls}>{b.name}</td>
-                <td className="p-2 px-3 text-[13px] text-[#152A00]">{b.notes || "-"}</td>
+                <td className="p-2 px-3 text-[13px] text-[var(--text-primary)]">{b.notes || "-"}</td>
                 <td className={tdCls}>{fmtDateTime(b.start_utc)}</td>
                 <td className={tdCls}>{fmtDateTime(b.end_utc)}</td>
               </tr>
@@ -219,7 +219,7 @@ export default function StFilesPage() {
   const reservationTable = (rows: ReservationRow[]) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
-        <tr className="bg-[#152A00]/5">
+        <tr className="bg-[var(--text-primary)]/5">
           <th className={thCls}>Reservation No.</th>
           <th className={thCls}>Guest</th>
           <th className={thCls}>Nationality</th>
@@ -231,11 +231,11 @@ export default function StFilesPage() {
           <th className={`${thCls} text-right`}>Guests</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-[#152A00]/5">
+      <tbody className="divide-y divide-[var(--text-primary)]/5">
         {rows.length === 0 ? (
-          <tr><td colSpan={9} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">None for this date.</td></tr>
+          <tr><td colSpan={9} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
         ) : rows.map((r, i) => (
-          <tr key={r.number + i} className="hover:bg-[#152A00]/[0.02]">
+          <tr key={r.number + i} className="hover:bg-[var(--text-primary)]/[0.02]">
             <td className={`${tdCls} font-bold`}>{r.number}</td>
             <td className={tdCls}>{r.guest || "-"}</td>
             <td className={tdCls}>{r.nationality || "-"}</td>
@@ -254,18 +254,18 @@ export default function StFilesPage() {
   const customerTable = (rows: CustomerRow[]) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
-        <tr className="bg-[#152A00]/5">
+        <tr className="bg-[var(--text-primary)]/5">
           <th className={thCls}>Name</th>
           <th className={thCls}>Nationality</th>
           <th className={thCls}>Email</th>
           <th className={thCls}>Phone</th>
         </tr>
       </thead>
-      <tbody className="divide-y divide-[#152A00]/5">
+      <tbody className="divide-y divide-[var(--text-primary)]/5">
         {rows.length === 0 ? (
-          <tr><td colSpan={4} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">None for this date.</td></tr>
+          <tr><td colSpan={4} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
         ) : rows.map((c, i) => (
-          <tr key={c.name + i} className="hover:bg-[#152A00]/[0.02]">
+          <tr key={c.name + i} className="hover:bg-[var(--text-primary)]/[0.02]">
             <td className={`${tdCls} font-bold`}>{c.name || "-"}</td>
             <td className={tdCls}>{c.nationality || "-"}</td>
             <td className={tdCls}>{c.email || "-"}</td>
@@ -321,21 +321,21 @@ export default function StFilesPage() {
   };
 
   return (
-    <div className="flex-1 p-8 bg-[#FFEFD2] font-sans h-full overflow-auto">
+    <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <PageHeader title="ST Files" description="Daily occupancy report per property - spaces, occupied, house use, out of order, availability, plus that day's customers, arrivals and departures, straight from MEWS.">
           <div className="flex flex-col items-end gap-1">
-            <span className="text-[9px] font-bold text-[#152A00]/50 tracked-caps">Mode</span>
-            <div className="flex border border-[#152A00]/14 bg-white">
+            <span className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Mode</span>
+            <div className="flex border border-[var(--text-primary)]/14 bg-[var(--paper)]">
               <button
                 onClick={() => setDataSource("live")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 Live API
               </button>
               <button
                 onClick={() => setDataSource("database")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 Database
               </button>
@@ -345,11 +345,11 @@ export default function StFilesPage() {
 
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
             <select
               value={selectedProperty}
               onChange={(e) => setSelectedProperty(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none"
+              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
             >
               {properties.map((p) => (
                 <option key={p} value={p}>{p}</option>
@@ -357,12 +357,12 @@ export default function StFilesPage() {
             </select>
           </div>
           <div className="flex flex-col gap-2 w-full md:w-48">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Date</label>
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Date</label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none"
+              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
             />
           </div>
           <button onClick={fetchReport} disabled={loading} className="btn-brand btn-primary h-[46px]">
@@ -371,26 +371,26 @@ export default function StFilesPage() {
           <button
             onClick={handleImport}
             disabled={importing || !selectedProperty}
-            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-white border border-[#152A00] text-[#152A00] hover:bg-[#152A00]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
           >
             {importing ? "Importing..." : "Import To Data Mart"}
           </button>
         </div>
 
         {error && (
-          <div className="p-4 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+          <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         )}
 
         {report && (
           <>
-            <div className="flex items-center gap-4 text-[11px] text-[#152A00]/60 mb-4 px-1">
+            <div className="flex items-center gap-4 text-[11px] text-[var(--text-primary)]/60 mb-4 px-1">
               <span><b>{report.parameters.property}</b></span>
               <span>{report.parameters.date}</span>
               <span>Space types: {report.parameters.space_types.join(", ")}</span>
               {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
             </div>
 
-            <div className="flex flex-wrap border-b border-[#152A00]/14 mb-6">
+            <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
               {TABS.map((t) => {
                 const count = tabCount(t.key);
                 return (
@@ -399,8 +399,8 @@ export default function StFilesPage() {
                     onClick={() => setActiveTab(t.key)}
                     className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all ${
                       activeTab === t.key
-                        ? "border-[#152A00] text-[#152A00]"
-                        : "border-transparent text-[#152A00]/40 hover:text-[#152A00]"
+                        ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                        : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
                     }`}
                   >
                     {t.label}{count !== null ? ` (${count})` : ""}
@@ -409,14 +409,14 @@ export default function StFilesPage() {
               })}
             </div>
 
-            <div className="bg-[#fffaf0] border border-[#152A00]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
+            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
               {renderTab()}
             </div>
           </>
         )}
 
         {!report && !error && !loading && (
-          <div className="p-16 text-center text-[#152A00]/30 font-display text-2xl italic border border-dashed border-[#152A00]/14 bg-white/40">
+          <div className="p-16 text-center text-[var(--text-primary)]/30 font-display text-2xl italic border border-dashed border-[var(--text-primary)]/14 bg-[var(--paper)]/40">
             Pick a property and date, then Fetch Report.
           </div>
         )}

@@ -157,45 +157,45 @@ export default function LogImportPage() {
   const lastSync = logs.length > 0 ? formatDate(logs[0].created_at) : "No sync yet";
 
   return (
-    <div className="flex flex-col min-h-screen bg-[#FFEFD2] text-[#152A00]">
+    <div className="flex flex-col min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <div className="p-12 max-w-7xl mx-auto w-full flex flex-col gap-10">
         <PageHeader title="Log Import" description="History of automated portfolio synchronization and data health." />
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[#152A00]/10 border border-[#152A00]/10">
-          <div className="bg-[#fffaf0] p-6">
-            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">LAST ACTIVITY</p>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--text-primary)]/10 border border-[var(--text-primary)]/10">
+          <div className="bg-[var(--paper)] p-6">
+            <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-3 uppercase">LAST ACTIVITY</p>
             <p className="text-sm font-bold truncate">{lastSync}</p>
           </div>
-          <div className="bg-[#fffaf0] p-6 text-center md:text-left">
-            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">SUCCESS RATE</p>
+          <div className="bg-[var(--paper)] p-6 text-center md:text-left">
+            <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-3 uppercase">SUCCESS RATE</p>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-display">{totalSuccess}</span>
               <span className="text-[10px] font-bold opacity-30">BATCHES</span>
             </div>
           </div>
-          <div className="bg-[#fffaf0] p-6 text-center md:text-left">
-            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">TOTAL ERRORS</p>
+          <div className="bg-[var(--paper)] p-6 text-center md:text-left">
+            <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-3 uppercase">TOTAL ERRORS</p>
             <div className="flex items-baseline gap-2">
-              <span className={`text-3xl font-display ${totalError > 0 ? "text-[#A76400]" : "text-[#152A00]"}`}>{totalError}</span>
+              <span className={`text-3xl font-display ${totalError > 0 ? "text-[#A76400]" : "text-[var(--text-primary)]"}`}>{totalError}</span>
               <span className="text-[10px] font-bold opacity-30">EVENTS</span>
             </div>
           </div>
-          <div className="bg-[#fffaf0] p-6 text-center md:text-right">
-            <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-3 uppercase">RECORDS SYNCED</p>
-            <p className="text-3xl font-display text-[#152A00]">{totalRecords.toLocaleString()}</p>
+          <div className="bg-[var(--paper)] p-6 text-center md:text-right">
+            <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-3 uppercase">RECORDS SYNCED</p>
+            <p className="text-3xl font-display text-[var(--text-primary)]">{totalRecords.toLocaleString()}</p>
           </div>
         </div>
 
         {/* Filter & Actions */}
-        <div className="flex flex-wrap items-end justify-between gap-8 py-6 border-y border-[#152A00]/10">
+        <div className="flex flex-wrap items-end justify-between gap-8 py-6 border-y border-[var(--text-primary)]/10">
           <div className="flex flex-col gap-3 min-w-[300px]">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase ml-1">Entity / Property Filter</label>
-            <div className="relative border-b-2 border-[#152A00]/20 focus-within:border-[#152A00] transition-colors">
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps uppercase ml-1">Entity / Property Filter</label>
+            <div className="relative border-b-2 border-[var(--text-primary)]/20 focus-within:border-[var(--text-primary)] transition-colors">
               <select 
                 value={filterProperty} 
                 onChange={(e) => setFilterProperty(e.target.value)} 
-                className="w-full bg-transparent py-3 px-1 text-[13px] font-medium text-[#152A00] outline-none appearance-none cursor-pointer"
+                className="w-full bg-transparent py-3 px-1 text-[13px] font-medium text-[var(--text-primary)] outline-none appearance-none cursor-pointer"
               >
                 <option value="All">All Property</option>
                 {properties.map(p => <option key={p} value={p}>{p}</option>)}
@@ -213,17 +213,17 @@ export default function LogImportPage() {
 
         {/* Error State */}
         {error && (
-          <div className="p-6 bg-white border border-[#A76400]/20 text-[#A76400] text-sm">
+          <div className="p-6 bg-[var(--paper)] border border-[#A76400]/20 text-[#A76400] text-sm">
             {error}
           </div>
         )}
 
         {/* Log Table Container */}
-        <div className="bg-[#fffaf0] border border-[#152A00]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-hidden">
+        <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="bg-[#152A00]/5 border-b border-[#152A00]/10">
+                <tr className="bg-[var(--text-primary)]/5 border-b border-[var(--text-primary)]/10">
                   {([
                     ["created_at", "TIMESTAMP"],
                     ["property", "PROPERTY"],
@@ -232,34 +232,34 @@ export default function LogImportPage() {
                     ["records_synced", "RECORDS"],
                     ["message", "MESSAGE"],
                   ] as [keyof SyncLog, string][]).map(([key, label]) => (
-                    <th key={key} className="px-6 py-5 text-[9px] font-bold text-[#152A00]/50 tracked-caps uppercase">
-                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[#152A00] transition-colors">
+                    <th key={key} className="px-6 py-5 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps uppercase">
+                      <button onClick={() => handleSort(key)} className="flex items-center gap-1 hover:text-[var(--text-primary)] transition-colors">
                         {label} <span>{sortArrow(key)}</span>
                       </button>
                     </th>
                   ))}
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#152A00]/5">
+              <tbody className="divide-y divide-[var(--text-primary)]/5">
                 {loading && logs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-32 italic text-[#152A00]/30 font-display text-xl">
+                    <td colSpan={6} className="text-center py-32 italic text-[var(--text-primary)]/30 font-display text-xl">
                       Retrieving audit history...
                     </td>
                   </tr>
                 ) : logs.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="text-center py-32 italic text-[#152A00]/30 font-display text-xl">
+                    <td colSpan={6} className="text-center py-32 italic text-[var(--text-primary)]/30 font-display text-xl">
                       No activity transitions recorded.
                     </td>
                   </tr>
                 ) : (
                   paginatedLogs.map((log, idx) => (
-                    <tr key={log.id || idx} className="hover:bg-[#152A00]/3 transition-colors">
+                    <tr key={log.id || idx} className="hover:bg-[var(--text-primary)]/3 transition-colors">
                       <td className="px-6 py-4">
-                        <span className="text-[13px] font-bold text-[#152A00]">{formatDate(log.created_at)}</span>
+                        <span className="text-[13px] font-bold text-[var(--text-primary)]">{formatDate(log.created_at)}</span>
                       </td>
-                      <td className="px-6 py-4 text-[#152A00]/80 text-[13px]">{log.property || "Global"}</td>
+                      <td className="px-6 py-4 text-[var(--text-primary)]/80 text-[13px]">{log.property || "Global"}</td>
                       <td className="px-6 py-4">
                         <span className={`inline-block px-2 py-1 text-[10px] font-bold tracked-caps uppercase border rounded ${tableBadgeClass(log.target_table || "All")}`}>{log.target_table || "General"}</span>
                       </td>
@@ -270,8 +270,8 @@ export default function LogImportPage() {
                           {log.status === "success" ? "✓ SUCCESS" : "× FAILED"}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-[#152A00] font-bold text-[13px]">{log.records_synced || 0}</td>
-                      <td className="px-6 py-4 text-[#152A00]/60 text-[12px] max-w-md truncate">{log.message || "—"}</td>
+                      <td className="px-6 py-4 text-[var(--text-primary)] font-bold text-[13px]">{log.records_synced || 0}</td>
+                      <td className="px-6 py-4 text-[var(--text-primary)]/60 text-[12px] max-w-md truncate">{log.message || "—"}</td>
                     </tr>
                   ))
                 )}
@@ -281,15 +281,15 @@ export default function LogImportPage() {
 
           {/* Pagination Controls */}
           {totalPages > 1 && (
-            <div className="p-10 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-6">
-              <div className="text-[10px] font-bold tracked-caps text-[#152A00]/40 uppercase">
+            <div className="p-10 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 flex flex-col md:flex-row justify-between items-center gap-6">
+              <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 uppercase">
                 SHOWING {Math.min(itemsPerPage, paginatedLogs.length)} OF {logs.length} TOTAL AUDIT LOGS — PAGE {currentPage} OF {totalPages}
               </div>
               <div className="flex gap-2">
                 <button 
                   onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                   disabled={currentPage === 1}
-                  className="px-6 py-2 border border-[#152A00]/10 text-[10px] font-bold tracked-caps hover:bg-[#152A00]/5 disabled:opacity-20 transition-all uppercase"
+                  className="px-6 py-2 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all uppercase"
                 >
                   PREVIOUS
                 </button>
@@ -301,7 +301,7 @@ export default function LogImportPage() {
                       className={`w-9 h-9 text-[10px] font-bold transition-all ${
                         currentPage === i + 1 
                           ? "bg-[#152A00] text-[#FFEFD2]" 
-                          : "border border-[#152A00]/10 text-[#152A00] hover:bg-[#152A00]/5"
+                          : "border border-[var(--text-primary)]/10 text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5"
                       }`}
                     >
                       {i + 1}
@@ -311,7 +311,7 @@ export default function LogImportPage() {
                 <button 
                   onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                   disabled={currentPage === totalPages}
-                  className="px-6 py-2 border border-[#152A00]/10 text-[10px] font-bold tracked-caps hover:bg-[#152A00]/5 disabled:opacity-20 transition-all uppercase"
+                  className="px-6 py-2 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all uppercase"
                 >
                   NEXT
                 </button>

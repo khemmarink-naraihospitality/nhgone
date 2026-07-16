@@ -17,21 +17,21 @@ export default function ImportChart({ data, title = "Import Stats", description 
   const padding = 20;
 
   const content = (
-    <div className="w-full bg-[#fffaf0] border border-[#152A00]/14 p-10 mt-10">
+    <div className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 p-10 mt-10">
       <div className="flex items-center justify-between mb-12">
         <div>
-          <h3 className="font-display text-2xl text-[#152A00] leading-none">{title}</h3>
-          <p className="text-[10px] text-[#152A00]/50 mt-2 tracked-caps uppercase">{description}</p>
+          <h3 className="font-display text-2xl text-[var(--text-primary)] leading-none">{title}</h3>
+          <p className="text-[10px] text-[var(--text-primary)]/50 mt-2 tracked-caps uppercase">{description}</p>
         </div>
-        <div className="flex items-center gap-2 px-3 py-1 bg-[#152A00]/5 border border-[#152A00]/10">
+        <div className="flex items-center gap-2 px-3 py-1 bg-[var(--text-primary)]/5 border border-[var(--text-primary)]/10">
           <div className="w-1.5 h-1.5 rounded-full bg-[#152A00]"></div>
-          <span className="text-[9px] font-bold text-[#152A00] tracked-caps uppercase">System Sync</span>
+          <span className="text-[9px] font-bold text-[var(--text-primary)] tracked-caps uppercase">System Sync</span>
         </div>
       </div>
 
       {!data || data.length === 0 ? (
-        <div className="h-[240px] flex items-center justify-center border-t border-[#152A00]/5">
-          <p className="text-[#152A00]/40 font-display text-xl italic italic opacity-50 font-medium">No record history available.</p>
+        <div className="h-[240px] flex items-center justify-center border-t border-[var(--text-primary)]/5">
+          <p className="text-[var(--text-primary)]/40 font-display text-xl italic italic opacity-50 font-medium">No record history available.</p>
         </div>
       ) : (
         <div className="relative w-full overflow-x-auto pb-4">
@@ -50,7 +50,7 @@ export default function ImportChart({ data, title = "Import Stats", description 
                   </div>
 
                   {/* Bar */}
-                  <div className="w-full relative flex flex-col justify-end items-center h-[160px] bg-[#152A00]/5">
+                  <div className="w-full relative flex flex-col justify-end items-center h-[160px] bg-[var(--text-primary)]/5">
                      <div 
                        className="w-full bg-[#152A00] transition-all duration-700 ease-out flex items-start justify-center pt-2 group-hover:bg-[#A76400]"
                        style={{ height: `${heightPercentage}%` }}
@@ -62,7 +62,7 @@ export default function ImportChart({ data, title = "Import Stats", description 
                   </div>
 
                   {/* Label */}
-                  <div className="text-[10px] font-bold text-[#152A00]/40 text-center tracked-caps transition-colors whitespace-nowrap group-hover:text-[#152A00]">
+                  <div className="text-[10px] font-bold text-[var(--text-primary)]/40 text-center tracked-caps transition-colors whitespace-nowrap group-hover:text-[var(--text-primary)]">
                     {item.date}
                   </div>
                 </div>

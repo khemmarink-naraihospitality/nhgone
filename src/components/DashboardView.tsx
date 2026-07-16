@@ -447,20 +447,20 @@ export default function DashboardView({
   }, [selectedProperty, dataSource, activeSection]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#FFEFD2] text-[#152A00] p-4 md:p-6">
+    <div className="flex-1 flex flex-col bg-[var(--bg-primary)] text-[var(--text-primary)] p-4 md:p-6">
       <div className="max-w-7xl mx-auto w-full">
         <PageHeader title={title} description={subtitle}>
           {allowToggleDataSource && (
-            <div className="flex border border-[#152A00]/20 overflow-hidden">
+            <div className="flex border border-[var(--text-primary)]/20 overflow-hidden">
               <button
                 onClick={() => setDataSource("live")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 MEWS
               </button>
               <button
                 onClick={() => setDataSource("saved")}
-                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "saved" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00]/40 hover:text-[#152A00]"}`}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "saved" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
                 Data Mart
               </button>
@@ -470,30 +470,30 @@ export default function DashboardView({
           
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-4 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Select Property</label>
-            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[#152A00] focus:border-[#152A00] outline-none">
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
+            <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none">
               {properties.map(p => <option key={p} value={p}>{p}</option>)}
             </select>
           </div>
           <div className="flex flex-col gap-2 w-full md:w-56">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">Start Date</label>
-            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Start Date</label>
+            <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none" />
           </div>
           <div className="flex flex-col gap-2 w-full md:w-56">
-            <label className="text-[9px] font-bold text-[#152A00]/50 tracked-caps ml-1">End Date</label>
-            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-1.5 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">End Date</label>
+            <input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none" />
           </div>
           <button onClick={fetchData} disabled={loading} className="btn-brand btn-primary h-[46px]">Sync Data</button>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[#fffaf0] p-4 border border-[#152A00]/14 border-b-0">
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[var(--paper)] p-4 border border-[var(--text-primary)]/14 border-b-0">
           {showSectionTabs && (
-            <div className="flex gap-8 border-b border-[#152A00]/10">
+            <div className="flex gap-8 border-b border-[var(--text-primary)]/10">
               {(["reservations", "members", "payments", "bills", "resources"] as Section[]).map((s) => (
                 <button 
                   key={s} 
                   onClick={() => setActiveSection(s)} 
-                  className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 ${activeSection === s ? "border-[#152A00] text-[#152A00]" : "border-transparent text-[#152A00]/30 hover:text-[#152A00]"}`}
+                  className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 ${activeSection === s ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]"}`}
                 >
                   {s}
                 </button>
@@ -502,7 +502,7 @@ export default function DashboardView({
           )}
           <div className="flex flex-1 items-center justify-end gap-6">
             <div className="relative max-w-xs w-full">
-              <input type="text" placeholder="Filter records..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-white border border-[#152A00]/14 px-4 py-2 text-[13px] text-[#152A00] focus:border-[#152A00] outline-none" />
+              <input type="text" placeholder="Filter records..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none" />
             </div>
             <div className="flex gap-3">
               {showCheckboxes && selectedIds.length > 0 && (
@@ -523,28 +523,28 @@ export default function DashboardView({
         </div>
 
         {error ? (
-          <div className="p-4 bg-white border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+          <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         ) : loading ? (
-          <div className="flex flex-col items-center justify-center py-16 bg-[#fffaf0] border border-[#152A00]/14">
-            <div className="animate-spin h-8 w-8 border-2 border-[#152A00]/10 border-t-[#152A00]"></div>
+          <div className="flex flex-col items-center justify-center py-16 bg-[var(--paper)] border border-[var(--text-primary)]/14">
+            <div className="animate-spin h-8 w-8 border-2 border-[var(--text-primary)]/10 border-t-[#152A00]"></div>
             <p className="mt-4 text-[10px] tracked-caps opacity-40 font-bold">Retrieving portfolio data...</p>
           </div>
         ) : (
-          <div className="bg-[#fffaf0] border border-[#152A00]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)]">
-            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-2 bg-[#152A00]/5">
+          <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 flex flex-col mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)]">
+            <div ref={topScrollRef} onScroll={handleTopScroll} className="overflow-x-auto overflow-y-hidden h-2 bg-[var(--text-primary)]/5">
               <div style={{ width: tableContainerRef.current?.scrollWidth || 'auto', height: '1px' }}></div>
             </div>
             <div ref={tableContainerRef} onScroll={handleTableScroll} className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-max">
                 <thead>
-                  <tr className="bg-[#152A00]/5">
+                  <tr className="bg-[var(--text-primary)]/5">
                     {showCheckboxes && (
-                      <th className="p-2 px-3 border-b border-[#152A00]/10">
-                        <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} className="accent-[#152A00]" />
+                      <th className="p-2 px-3 border-b border-[var(--text-primary)]/10">
+                        <input type="checkbox" checked={selectedIds.length === filteredAndSortedData.length && filteredAndSortedData.length > 0} onChange={toggleSelectAll} className="accent-[var(--text-primary)]" />
                       </th>
                     )}
                     {allKeys.map((col) => (
-                      <th key={col} onClick={() => requestSort(col)} className="p-2 px-3 text-[9px] font-bold text-[#152A00]/50 uppercase tracking-[0.12em] border-b border-[#152A00]/10 cursor-pointer hover:bg-[#152A00]/5 whitespace-nowrap transition-colors">
+                      <th key={col} onClick={() => requestSort(col)} className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 cursor-pointer hover:bg-[var(--text-primary)]/5 whitespace-nowrap transition-colors">
                         <div className="flex items-center gap-2">
                           {col.replace(/([A-Z])/g, ' $1').trim()}
                           <span className="text-[8px] opacity-40">{sortConfig?.key === col ? (sortConfig.direction === 'asc' ? "↑" : "↓") : "•"}</span>
@@ -553,18 +553,18 @@ export default function DashboardView({
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#152A00]/5">
+                <tbody className="divide-y divide-[var(--text-primary)]/5">
                   {filteredAndSortedData.length === 0 ? (
-                    <tr><td colSpan={100} className="p-10 text-center text-[#152A00]/30 font-display text-2xl italic">No entries found in this range.</td></tr>
+                    <tr><td colSpan={100} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No entries found in this range.</td></tr>
                   ) : (
                     paginatedData.map((item, idx) => (
-                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-[#152A00]/3 transition-colors ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-[#152A00]/5' : ''}`}>
+                      <tr key={item.Identifier || item.mews_id || idx} className={`hover:bg-[var(--text-primary)]/3 transition-colors ${selectedIds.includes(item.Identifier || item.mews_id) ? 'bg-[var(--text-primary)]/5' : ''}`}>
                         {showCheckboxes && (
                           <td className="p-2 px-3">
-                            <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} className="accent-[#152A00]" />
+                            <input type="checkbox" checked={selectedIds.includes(item.Identifier || item.mews_id)} onChange={() => toggleSelectRow(item.Identifier || item.mews_id)} className="accent-[var(--text-primary)]" />
                           </td>
                         )}
-                        {allKeys.map((key) => <td key={key} className="p-2 px-3 text-[12px] text-[#152A00]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
+                        {allKeys.map((key) => <td key={key} className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap overflow-hidden max-w-[300px] text-ellipsis">{renderValue(key, item[key])}</td>)}
                       </tr>
                     ))
                   )}
@@ -572,24 +572,24 @@ export default function DashboardView({
               </table>
             </div>
             {filteredAndSortedData.length > 0 && (
-              <div className="p-4 bg-white border-t border-[#152A00]/10 flex flex-col md:flex-row justify-between items-center gap-4">
-                <div className="flex items-center gap-6 text-[10px] font-bold tracked-caps text-[#152A00]/40">
+              <div className="p-4 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 flex flex-col md:flex-row justify-between items-center gap-4">
+                <div className="flex items-center gap-6 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
                   <div className="flex items-center gap-2">
                     <span>PAGE SIZE</span>
-                    <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="bg-transparent border border-[#152A00]/10 px-2 py-1 outline-none text-[#152A00]">
+                    <select value={rowsPerPage} onChange={(e) => setRowsPerPage(Number(e.target.value))} className="bg-transparent border border-[var(--text-primary)]/10 px-2 py-1 outline-none text-[var(--text-primary)]">
                       {[20, 50, 100, 200, 500].map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                   </div>
                   <span>{(currentPage-1)*rowsPerPage + 1} – {Math.min(currentPage*rowsPerPage, filteredAndSortedData.length)} OF {filteredAndSortedData.length} RECORDS</span>
                 </div>
                 <div className="flex gap-2">
-                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[#152A00]/10 disabled:opacity-20 hover:bg-[#152A00]/5 transition-colors">PREVIOUS</button>
+                  <button disabled={currentPage === 1} onClick={() => setCurrentPage(p => p - 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/10 disabled:opacity-20 hover:bg-[var(--text-primary)]/5 transition-colors">PREVIOUS</button>
                   <div className="flex gap-1">
                     {[...Array(Math.min(5, totalPages))].map((_, i) => (
-                      <button key={i} onClick={() => setCurrentPage(i+1)} className={`w-8 h-8 text-[10px] font-bold transition-all ${currentPage === i+1 ? "bg-[#152A00] text-[#FFEFD2]" : "text-[#152A00] hover:bg-[#152A00]/5 border border-[#152A00]/10"}`}>{i+1}</button>
+                      <button key={i} onClick={() => setCurrentPage(i+1)} className={`w-8 h-8 text-[10px] font-bold transition-all ${currentPage === i+1 ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 border border-[var(--text-primary)]/10"}`}>{i+1}</button>
                     ))}
                   </div>
-                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[#152A00]/10 disabled:opacity-20 hover:bg-[#152A00]/5 transition-colors">NEXT</button>
+                  <button disabled={currentPage === totalPages} onClick={() => setCurrentPage(p => p + 1)} className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/10 disabled:opacity-20 hover:bg-[var(--text-primary)]/5 transition-colors">NEXT</button>
                 </div>
               </div>
             )}
@@ -597,20 +597,20 @@ export default function DashboardView({
         )}
 
         {showSyncModal && syncStatus && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#152A00]/40 backdrop-blur-sm">
-            <div className="bg-white border border-[#152A00]/14 p-12 shadow-[40px_40px_100px_rgba(21,42,0,0.1)] max-w-md w-full text-center relative overflow-hidden">
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[var(--text-primary)]/40 backdrop-blur-sm">
+            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-12 shadow-[40px_40px_100px_rgba(21,42,0,0.1)] max-w-md w-full text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-[#152A00]"></div>
-              <h3 className="font-display text-3xl text-[#152A00] mb-2 text-left">Synchronization Complete</h3>
-              <p className="text-[#152A00]/60 text-sm mb-10 text-left">Portfolio data has been successfully imported to the management layer.</p>
+              <h3 className="font-display text-3xl text-[var(--text-primary)] mb-2 text-left">Synchronization Complete</h3>
+              <p className="text-[var(--text-primary)]/60 text-sm mb-10 text-left">Portfolio data has been successfully imported to the management layer.</p>
               
-              <div className="grid grid-cols-2 gap-1px bg-[#152A00]/10 border border-[#152A00]/10 my-8">
-                <div className="bg-[#fffaf0] p-6 text-left">
-                  <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-2">NEW ENTRIES</p>
-                  <p className="text-4xl font-display text-[#152A00]">{syncStatus.inserted}</p>
+              <div className="grid grid-cols-2 gap-1px bg-[var(--text-primary)]/10 border border-[var(--text-primary)]/10 my-8">
+                <div className="bg-[var(--paper)] p-6 text-left">
+                  <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">NEW ENTRIES</p>
+                  <p className="text-4xl font-display text-[var(--text-primary)]">{syncStatus.inserted}</p>
                 </div>
-                <div className="bg-[#fffaf0] p-6 text-left">
-                  <p className="text-[9px] font-bold text-[#152A00]/50 tracked-caps mb-2">DUPLICATES</p>
-                  <p className="text-4xl font-display text-[#152A00]/40">{syncStatus.skipped}</p>
+                <div className="bg-[var(--paper)] p-6 text-left">
+                  <p className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">DUPLICATES</p>
+                  <p className="text-4xl font-display text-[var(--text-primary)]/40">{syncStatus.skipped}</p>
                 </div>
               </div>
               
