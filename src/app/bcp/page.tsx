@@ -114,6 +114,7 @@ export default function BcpPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("arrivals");
+  const [showReadme, setShowReadme] = useState(false);
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -382,6 +383,61 @@ export default function BcpPage() {
       <div className="max-w-7xl mx-auto">
         <div className="no-print">
         <PageHeader title="BCP" description="Mews Business Continuity Plan - hourly snapshots of today's arrivals, departures, in-house guests, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
+        <button
+          onClick={() => setShowReadme(true)}
+          className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+          Read Me
+        </button>
+
+        {showReadme && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowReadme(false)}>
+            <div
+              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
+                <div className="font-display text-2xl">BCP คืออะไร / วิธีใช้งาน</div>
+                <button onClick={() => setShowReadme(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                <div>
+                  <div className="font-bold mb-1">BCP (Business Continuity Plan) คืออะไร</div>
+                  <p>ระบบสำรองข้อมูลหน้าฟร้อนท์สำหรับกรณี <b>MEWS ล่ม</b> — ระบบจะเก็บสำเนาข้อมูลของ &quot;วันนี้&quot; จาก MEWS <b>อัตโนมัติทุก 1 ชั่วโมง</b> (เก็บย้อนหลัง 48 ชั่วโมงล่าสุดต่อโรงแรม) ได้แก่ แขกเข้าวันนี้ (Arrivals พร้อมรายการสินค้า/โน้ต), แขกออกวันนี้ (Departures), แขกที่พักอยู่ (In-House), โปรไฟล์ลูกค้าพร้อมโน้ต, รายการชำระเงินวันนี้ (Payments) และสถานะห้องแม่บ้านทุกห้อง (Room Status)</p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">การใช้งานปกติ (MEWS ยังใช้ได้)</div>
+                  <p>ไม่ต้องทำอะไร — ระบบเก็บ snapshot ให้เองทุกชั่วโมง หากต้องการสำเนาล่าสุดเดี๋ยวนั้น กดปุ่ม <b>Capture Now</b> ได้เลย และเลือกดูสำเนาย้อนหลังได้จากช่อง <b>Snapshot</b></p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">เมื่อ MEWS ล่ม ให้ทำตามนี้</div>
+                  <ol className="list-decimal list-inside flex flex-col gap-1">
+                    <li>เปิดหน้านี้ เลือกโรงแรม แล้วเลือก <b>snapshot ล่าสุด</b> (ดูเวลา &quot;Data as of&quot; ประกอบ — ถ้าเก่ากว่า 2 ชม. ระบบจะเตือนสีส้ม)</li>
+                    <li>ใช้แท็บ <b>Arrivals</b> เช็คแขกที่จะเข้าวันนี้: ถ่ายรูปพาสปอร์ต / สแกนเอกสารเก็บเข้าคอมไว้ก่อน แล้วลงทะเบียนผ่านกระดาษ / PDF บน iPad แทน</li>
+                    <li>ใช้แท็บ <b>Room Status</b> ประสานแม่บ้านว่าให้แขกเข้าห้องไหนตามประเภทห้อง — กดปุ่ม <b>Print Housekeeping Sheet</b> พิมพ์ใบงานแจกแม่บ้าน (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
+                    <li>การเงิน: ชาร์จ Payment ไว้ก่อนได้ แต่<b>ยังตัดจ่ายไม่ได้</b>จนกว่า MEWS จะกลับมา — ใช้แท็บ <b>Payments</b> เทียบรายการที่เข้าแล้ววันนี้</li>
+                    <li><b>จดบันทึกทุกรายการ</b>ที่ทำระหว่าง MEWS ล่ม (เช็คอิน/เช็คเอาท์/ย้ายห้อง/ชาร์จเงิน) ลงกระดาษหรือไฟล์ Activity report ของสาขา</li>
+                    <li>เมื่อ MEWS กลับมาใช้ได้: นำบันทึกทั้งหมดไปคีย์ย้อนเข้า MEWS ให้ครบ (สาขาที่มี AdriaScan ใช้สแกนเอกสารเข้า MEWS ได้เลย)</li>
+                  </ol>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">ข้อควรรู้</div>
+                  <ul className="list-disc list-inside flex flex-col gap-1">
+                    <li>ข้อมูลในหน้านี้เป็น &quot;สำเนา ณ เวลาที่เก็บ&quot; ไม่ใช่ข้อมูลสด — ป้าย <b>LIVE</b> สีเขียวจะขึ้นเฉพาะตอนที่ระบบดึงสดจาก MEWS ได้ (แปลว่า MEWS ยังไม่ล่ม)</li>
+                    <li>Vouch kiosk เช็คอินผ่าน MEWS — ถ้า MEWS ล่ม ให้ถือว่า kiosk ใช้ไม่ได้ไปด้วย</li>
+                    <li>หาก MEWS ล่มนานข้ามชั่วโมง snapshot จะไม่อัปเดตเพิ่ม (เก็บไม่ได้เพราะต้นทางล่ม) — ใช้อันล่าสุดที่มีเป็นหลัก</li>
+                  </ul>
+                </div>
+                <div className="pt-2 border-t border-[var(--text-primary)]/10 flex justify-end">
+                  <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">ปิด</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
