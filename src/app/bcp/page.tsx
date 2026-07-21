@@ -514,7 +514,7 @@ export default function BcpPage() {
                   style={{ gridTemplateColumns: `160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
                 >
                   {/* Header row */}
-                  <div className="sticky top-0 left-0 z-20 bg-[var(--text-primary)]/5 border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 1, gridRow: 1 }}>
+                  <div className="sticky top-0 left-0 z-20 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 1, gridRow: 1 }}>
                     Room
                   </div>
                   {windowDays.map((d, i) => {
@@ -522,7 +522,7 @@ export default function BcpPage() {
                     return (
                       <div
                         key={i}
-                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[var(--text-primary)]/5 text-[var(--text-primary)]/70"}`}
+                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[var(--paper)] text-[var(--text-primary)]/70"}`}
                         style={{ gridColumn: i + 2, gridRow: 1 }}
                       >
                         {d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} {d.getUTCDate()}
