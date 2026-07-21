@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 
 interface CategoryRow {
@@ -104,9 +105,10 @@ export default function StFilesPage() {
 
   useEffect(() => {
     const fetchProperties = async () => {
-      const { data } = await supabase.from("property_api_settings").select("property_name").order("property_name");
-      if (data && data.length > 0) {
-        const names = data.map((p) => p.property_name);
+      // Property-restricted roles (Admin > Users > Role, "Property" column)
+      // only ever get their own property back here - not every property.
+      const { properties: names } = await getAllowedProperties();
+      if (names.length > 0) {
         setProperties(names);
         setSelectedProperty(names[0]);
       }
