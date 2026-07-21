@@ -25,10 +25,10 @@ interface RolePermissionRow {
   bcp: boolean;
   log_import: boolean;
   admin: boolean;
-  restricted_property: string | null;
+  restricted_properties: string[] | null;
 }
 
-const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_property">; label: string }[] = [
+const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_properties">; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "data_mart", label: "Data Mart" },
   { key: "bills", label: "Bills" },
@@ -56,6 +56,7 @@ export default function AdminUsersPage() {
   const [deletingRole, setDeletingRole] = useState<RolePermissionRow | null>(null);
   const [deletingRoleBusy, setDeletingRoleBusy] = useState(false);
   const [properties, setProperties] = useState<string[]>([]);
+  const [openPropertyMenu, setOpenPropertyMenu] = useState<string | null>(null);
 
 
   const fetchUsers = async () => {
@@ -112,7 +113,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, log_import: false, admin: false, restricted_property: null,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, log_import: false, admin: false, restricted_properties: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {
@@ -147,23 +148,39 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleSetRestrictedProperty = async (role: string, propertyName: string) => {
-    if (role === "Super Admin") return; // locked - always unrestricted
+  const saveRestrictedProperties = async (role: string, nextValue: string[] | null) => {
     const current = rolePermissions.find((r) => r.role === role);
     if (!current) return;
-    const nextValue = propertyName || null; // "" from the "All Properties" option means unrestricted
+    const previous = current.restricted_properties;
 
-    setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_property: nextValue } : r)));
+    // Optimistic update
+    setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_properties: nextValue } : r)));
 
     const { error } = await supabase
       .from("role_permissions")
-      .upsert({ ...current, restricted_property: nextValue }, { onConflict: "role" });
+      .upsert({ ...current, restricted_properties: nextValue }, { onConflict: "role" });
 
     if (error) {
-      console.error("Failed to update restricted_property:", error.message);
+      console.error("Failed to update restricted_properties:", error.message);
       alert("Error saving property restriction: " + error.message);
-      setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_property: current.restricted_property } : r)));
+      setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_properties: previous } : r)));
     }
+  };
+
+  const handleTogglePropertyRestriction = (role: string, propertyName: string) => {
+    if (role === "Super Admin") return; // locked - always unrestricted
+    const current = rolePermissions.find((r) => r.role === role);
+    if (!current) return;
+    const existing = current.restricted_properties || [];
+    const nextList = existing.includes(propertyName)
+      ? existing.filter((p) => p !== propertyName)
+      : [...existing, propertyName];
+    saveRestrictedProperties(role, nextList.length > 0 ? nextList : null);
+  };
+
+  const handleClearPropertyRestriction = (role: string) => {
+    if (role === "Super Admin") return;
+    saveRestrictedProperties(role, null);
   };
 
   const handleRenameRole = async () => {
@@ -253,6 +270,13 @@ export default function AdminUsersPage() {
     document.addEventListener("click", closeMenu);
     return () => document.removeEventListener("click", closeMenu);
   }, [openUserMenuId]);
+
+  useEffect(() => {
+    if (!openPropertyMenu) return;
+    const closeMenu = () => setOpenPropertyMenu(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [openPropertyMenu]);
 
   const handleCreateUser = async () => {
     if (!newUser.email) {
@@ -577,18 +601,53 @@ export default function AdminUsersPage() {
                           />
                         </td>
                       ))}
-                      <td className="px-6 py-5">
-                        <select
-                          value={isLocked ? "" : row.restricted_property || ""}
-                          disabled={isLocked}
-                          onChange={(e) => handleSetRestrictedProperty(row.role, e.target.value)}
-                          className={`bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-[#AAA024]/20 ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
-                        >
-                          <option value="">All Properties</option>
-                          {properties.map((p) => (
-                            <option key={p} value={p}>{p}</option>
-                          ))}
-                        </select>
+                      <td className="px-6 py-5 relative overflow-visible">
+                        {(() => {
+                          const selected = row.restricted_properties || [];
+                          const summary =
+                            selected.length === 0 ? "All Properties" :
+                            selected.length === 1 ? selected[0] :
+                            `${selected.length} Properties`;
+                          return (
+                            <div className="relative inline-block">
+                              <button
+                                type="button"
+                                disabled={isLocked}
+                                onClick={(e) => { e.stopPropagation(); setOpenPropertyMenu(openPropertyMenu === row.role ? null : row.role); }}
+                                className={`flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 outline-none min-w-[160px] justify-between ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-100"}`}
+                              >
+                                <span className="truncate">{summary}</span>
+                                <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                              </button>
+                              {!isLocked && openPropertyMenu === row.role && (
+                                <div
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="absolute left-0 top-9 w-56 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] p-2 animate-in fade-in zoom-in-95 duration-100"
+                                >
+                                  <button
+                                    onClick={() => handleClearPropertyRestriction(row.role)}
+                                    className="w-full text-left px-3 py-2 text-xs font-bold text-[#AAA024] hover:bg-[#AAA024]/10 rounded-xl transition-colors mb-1"
+                                  >
+                                    All Properties (clear)
+                                  </button>
+                                  <div className="max-h-56 overflow-y-auto">
+                                    {properties.map((p) => (
+                                      <label key={p} className="flex items-center gap-2 px-3 py-2 text-xs text-slate-600 hover:bg-slate-50 rounded-xl cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          checked={selected.includes(p)}
+                                          onChange={() => handleTogglePropertyRestriction(row.role, p)}
+                                          className="w-3.5 h-3.5 accent-[#AAA024] cursor-pointer"
+                                        />
+                                        <span className="truncate">{p}</span>
+                                      </label>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-5 text-center relative overflow-visible group/actions">
                         {isLocked ? (

@@ -4,9 +4,9 @@ import { supabase } from "@/lib/supabase";
  * Resolves which properties the signed-in user is allowed to see in a
  * "Select Property" dropdown, and whether that list is locked down.
  *
- * Super Admin (or any role with no restricted_property set on
+ * Super Admin (or any role with no restricted_properties set on
  * role_permissions - the default, unrestricted case) sees every property.
- * A role with restricted_property set only ever sees that one property -
+ * A role with restricted_properties set only ever sees that subset -
  * used for property-level staff (e.g. "Lub d Bangkok Siam Front Office")
  * who should never be able to pick another hotel's data out of the dropdown.
  */
@@ -25,12 +25,12 @@ export async function getAllowedProperties(): Promise<{ properties: string[]; re
 
   const { data: permRow } = await supabase
     .from("role_permissions")
-    .select("restricted_property")
+    .select("restricted_properties")
     .eq("role", role)
     .single();
 
-  const restrictedProperty = permRow?.restricted_property;
-  if (!restrictedProperty) return all();
+  const restrictedProperties: string[] = permRow?.restricted_properties || [];
+  if (restrictedProperties.length === 0) return all();
 
-  return { properties: [restrictedProperty], restricted: true };
+  return { properties: restrictedProperties, restricted: true };
 }
