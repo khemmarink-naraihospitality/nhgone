@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -45,22 +45,18 @@ interface RoomRow {
   room: string;
   floor: string;
   state: string;
-  occupant: string;
-  arriving: string;
-  departing: string;
 }
 
 interface BcpSnapshot {
   property: string;
   date: string;
   captured_utc: string;
+  window?: { start: string; end: string };
   counts: Record<string, number>;
-  arrivals: ReservationRow[];
-  departures: ReservationRow[];
-  in_house: ReservationRow[];
+  rooms: RoomRow[];
+  reservations?: ReservationRow[];
   customers: CustomerRow[];
   payments: PaymentRow[];
-  rooms: RoomRow[];
 }
 
 interface SnapshotMeta {
@@ -68,16 +64,9 @@ interface SnapshotMeta {
   captured_at: string;
 }
 
-const TABS = [
-  { key: "arrivals", label: "Arrivals" },
-  { key: "departures", label: "Departures" },
-  { key: "in_house", label: "In-House" },
-  { key: "customers", label: "Customers" },
-  { key: "payments", label: "Payments" },
-  { key: "rooms", label: "Room Status" },
-] as const;
+type MainTab = "timeline" | "payments";
 
-type TabKey = (typeof TABS)[number]["key"];
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const fmtDateTime = (v: string) => {
   if (!v) return "-";
@@ -86,23 +75,30 @@ const fmtDateTime = (v: string) => {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 };
 
-const fmtTime = (v: string) => {
-  if (!v) return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return v;
-  return d.toLocaleString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+// MEWS timestamps are UTC instants for a Bangkok-local check-in/out moment.
+// Shifting by the fixed +7h offset and reading the UTC calendar fields back
+// off gives the Bangkok calendar day without needing full Intl/timezone
+// machinery - same trick used for the Dashboard's traffic lights.
+const toBangkokDay = (isoUtc: string): Date => {
+  const shifted = new Date(new Date(isoUtc).getTime() + 7 * 3600_000);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
+};
+const fmtYMD = (d: Date) => d.toISOString().slice(0, 10);
+const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
+
+const ROOM_DOT_CLS: Record<string, string> = {
+  Clean: "bg-sky-500",
+  Inspected: "bg-emerald-500",
+  Dirty: "bg-amber-500",
+  OutOfService: "bg-slate-400",
+  OutOfOrder: "bg-red-500",
 };
 
-const ROOM_STATE_CLS: Record<string, string> = {
-  Clean: "bg-sky-50 text-sky-700 border-sky-200",
-  Inspected: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  Dirty: "bg-amber-50 text-amber-700 border-amber-200",
-  OutOfService: "bg-slate-100 text-slate-600 border-slate-300",
-  OutOfOrder: "bg-red-50 text-red-700 border-red-200",
+const STATE_BADGE_CLS: Record<string, string> = {
+  Confirmed: "bg-slate-100 text-slate-600 border-slate-300",
+  Started: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Processed: "bg-slate-100 text-slate-500 border-slate-200",
 };
-
-const thCls = "p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap";
-const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top";
 
 export default function BcpPage() {
   const [properties, setProperties] = useState<string[]>([]);
@@ -114,8 +110,9 @@ export default function BcpPage() {
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("arrivals");
+  const [mainTab, setMainTab] = useState<MainTab>("timeline");
   const [showReadme, setShowReadme] = useState(false);
+  const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -144,6 +141,7 @@ export default function BcpPage() {
   const loadSnapshot = async (property: string, snapshotId: string | null) => {
     setLoading(true);
     setError(null);
+    setSelectedReservation(null);
     try {
       let res: Response;
       if (snapshotId) {
@@ -211,94 +209,106 @@ export default function BcpPage() {
 
   const ageMinutes = snapshot ? Math.round((Date.now() - new Date(snapshot.captured_utc).getTime()) / 60000) : 0;
   const stale = ageMinutes > 120;
+  // Snapshots captured before this Timeline rewrite lack window/reservations
+  // entirely - guard rather than crash; they age out within 48h (prune job).
+  const isLegacyShape = !!snapshot && (!snapshot.window || !snapshot.reservations);
 
-  const reservationTable = (rows: ReservationRow[], showProducts: boolean) => (
-    <table className="w-full text-left border-collapse min-w-max">
-      <thead>
-        <tr className="bg-[var(--text-primary)]/5">
-          <th className={thCls}>Res No.</th>
-          <th className={thCls}>Guest</th>
-          <th className={thCls}>Nat.</th>
-          <th className={thCls}>Email</th>
-          <th className={thCls}>Room</th>
-          <th className={thCls}>Check-in</th>
-          <th className={thCls}>Check-out</th>
-          <th className={thCls}>State</th>
-          <th className={`${thCls} text-right`}>Guests</th>
-          {showProducts && <th className={thCls}>Product Items</th>}
-          <th className={thCls}>Notes</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[var(--text-primary)]/5">
-        {rows.length === 0 ? (
-          <tr><td colSpan={showProducts ? 11 : 10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
-        ) : rows.map((r, i) => (
-          <tr key={r.number + i} className="hover:bg-[var(--text-primary)]/[0.02]">
-            <td className={`${tdCls} font-bold`}>{r.number}</td>
-            <td className={tdCls}>{r.guest || "-"}</td>
-            <td className={tdCls}>{r.nationality || "-"}</td>
-            <td className={tdCls}>{r.email || "-"}</td>
-            <td className={`${tdCls} font-bold`}>{r.room || "-"}</td>
-            <td className={tdCls}>{fmtDateTime(r.check_in)}</td>
-            <td className={tdCls}>{fmtDateTime(r.check_out)}</td>
-            <td className={tdCls}>{r.state}</td>
-            <td className={`${tdCls} text-right`}>{r.adults + r.children}</td>
-            {showProducts && (
-              <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 max-w-[280px]">
-                {r.products.length > 0 ? r.products.join(", ") : "-"}
-              </td>
-            )}
-            <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 max-w-[280px]">{r.notes || "-"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  const windowDays = useMemo(() => {
+    if (!snapshot?.window) return [];
+    const start = new Date(snapshot.window.start + "T00:00:00Z");
+    const end = new Date(snapshot.window.end + "T00:00:00Z");
+    const n = daysBetween(start, end) + 1;
+    return Array.from({ length: n }, (_, i) => new Date(start.getTime() + i * DAY_MS));
+  }, [snapshot?.window]);
 
-  const customerTable = (rows: CustomerRow[]) => (
-    <table className="w-full text-left border-collapse min-w-max">
-      <thead>
-        <tr className="bg-[var(--text-primary)]/5">
-          <th className={thCls}>Name</th>
-          <th className={thCls}>Status</th>
-          <th className={thCls}>Nat.</th>
-          <th className={thCls}>Email</th>
-          <th className={thCls}>Phone</th>
-          <th className={thCls}>Profile Notes</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[var(--text-primary)]/5">
-        {rows.length === 0 ? (
-          <tr><td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
-        ) : rows.map((c, i) => (
-          <tr key={c.name + i} className="hover:bg-[var(--text-primary)]/[0.02]">
-            <td className={`${tdCls} font-bold`}>{c.name || "-"}</td>
-            <td className={tdCls}>
-              {c.tags.map((t) => (
-                <span key={t} className="inline-block mr-1 px-2 py-0.5 text-[10px] font-bold border rounded bg-[var(--text-primary)]/5 border-[var(--text-primary)]/10">{t}</span>
-              ))}
-            </td>
-            <td className={tdCls}>{c.nationality || "-"}</td>
-            <td className={tdCls}>{c.email || "-"}</td>
-            <td className={tdCls}>{c.phone || "-"}</td>
-            <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 max-w-[320px]">{c.notes || "-"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
+  const roomIndexByName = useMemo(() => {
+    const m = new Map<string, number>();
+    (snapshot?.rooms || []).forEach((r, i) => m.set(r.room, i));
+    return m;
+  }, [snapshot?.rooms]);
+
+  // Each reservation positioned as a grid bar: column = nights within the
+  // visible window, clipped at both edges for stays that start before or
+  // end after it. Checkout day itself isn't occupied, so the bar ends at
+  // the start of that column, not inside it.
+  const bars = useMemo(() => {
+    if (!snapshot?.reservations || windowDays.length === 0) return [];
+    const windowStart = windowDays[0];
+    const totalDays = windowDays.length;
+    return snapshot.reservations
+      .map((res) => {
+        const roomIdx = roomIndexByName.get(res.room);
+        if (roomIdx === undefined) return null;
+        const inDay = toBangkokDay(res.check_in);
+        const outDay = toBangkokDay(res.check_out);
+        let startIdx = daysBetween(windowStart, inDay);
+        let endIdx = daysBetween(windowStart, outDay);
+        if (endIdx <= startIdx) endIdx = startIdx + 1;
+        const clippedStart = Math.max(0, startIdx);
+        const clippedEnd = Math.min(totalDays, endIdx);
+        if (clippedEnd <= clippedStart) return null;
+        return { res, roomIdx, colStart: clippedStart + 2, colSpan: clippedEnd - clippedStart };
+      })
+      .filter((b): b is NonNullable<typeof b> => b !== null);
+  }, [snapshot?.reservations, windowDays, roomIndexByName]);
+
+  const todayStats = useMemo(() => {
+    if (!snapshot?.reservations) return { arrivals: 0, departures: 0, inHouse: 0 };
+    const today = snapshot.date;
+    let arrivals = 0, departures = 0, inHouse = 0;
+    for (const r of snapshot.reservations) {
+      const inDay = fmtYMD(toBangkokDay(r.check_in));
+      const outDay = fmtYMD(toBangkokDay(r.check_out));
+      if (inDay === today) arrivals++;
+      if (outDay === today) departures++;
+      if (r.state === "Started" && outDay !== today) inHouse++;
+    }
+    return { arrivals, departures, inHouse };
+  }, [snapshot?.reservations, snapshot?.date]);
+
+  // Today's occupant/arriving/departing per room, for the printable sheet -
+  // derived from the timeline reservations instead of separate server fields.
+  const housekeepingRows = useMemo(() => {
+    if (!snapshot) return [];
+    const today = snapshot.date;
+    const occupant = new Map<string, string>();
+    const arriving = new Map<string, string>();
+    const departing = new Map<string, string>();
+    for (const r of snapshot.reservations || []) {
+      if (!r.room) continue;
+      const inDay = fmtYMD(toBangkokDay(r.check_in));
+      const outDay = fmtYMD(toBangkokDay(r.check_out));
+      if (r.state === "Started" && outDay !== today) occupant.set(r.room, r.guest);
+      if (inDay === today) arriving.set(r.room, r.guest);
+      if (outDay === today) departing.set(r.room, r.guest);
+    }
+    return snapshot.rooms.map((room) => ({
+      ...room,
+      occupant: occupant.get(room.room) || "",
+      arriving: arriving.get(room.room) || "",
+      departing: departing.get(room.room) || "",
+    }));
+  }, [snapshot]);
+
+  const guestProfileNotes = useMemo(() => {
+    if (!selectedReservation || !snapshot) return "";
+    const match = snapshot.customers.find(
+      (c) => (selectedReservation.email && c.email === selectedReservation.email) || c.name === selectedReservation.guest
+    );
+    return match?.notes || "";
+  }, [selectedReservation, snapshot]);
 
   const paymentTable = (rows: PaymentRow[]) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
         <tr className="bg-[var(--text-primary)]/5">
-          <th className={thCls}>Time</th>
-          <th className={thCls}>Guest</th>
-          <th className={thCls}>Res No.</th>
-          <th className={thCls}>Type</th>
-          <th className={thCls}>State</th>
-          <th className={`${thCls} text-right`}>Amount</th>
-          <th className={thCls}>Notes</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Time</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Guest</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Res No.</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Type</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">State</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap text-right">Amount</th>
+          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Notes</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-[var(--text-primary)]/5">
@@ -306,12 +316,12 @@ export default function BcpPage() {
           <tr><td colSpan={7} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
         ) : rows.map((p, i) => (
           <tr key={p.created + i} className="hover:bg-[var(--text-primary)]/[0.02]">
-            <td className={tdCls}>{fmtDateTime(p.created)}</td>
-            <td className={tdCls}>{p.guest || "-"}</td>
-            <td className={tdCls}>{p.reservation || "-"}</td>
-            <td className={tdCls}>{p.type}</td>
-            <td className={tdCls}>{p.state}</td>
-            <td className={`${tdCls} text-right font-bold`}>{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{fmtDateTime(p.created)}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.guest || "-"}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.reservation || "-"}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.type}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.state}</td>
+            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top text-right font-bold">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}</td>
             <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 max-w-[240px]">{p.notes || "-"}</td>
           </tr>
         ))}
@@ -319,72 +329,11 @@ export default function BcpPage() {
     </table>
   );
 
-  const roomTable = (rows: RoomRow[]) => (
-    <>
-      <div className="no-print flex justify-end mb-3">
-        <button onClick={() => window.print()} className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity">
-          Print Housekeeping Sheet
-        </button>
-      </div>
-      <div className="hidden print:block mb-4 text-black">
-        <div className="text-lg font-bold">Housekeeping Room Status — {snapshot?.property}</div>
-        <div className="text-sm">Data as of: {fmtDateTime(snapshot?.captured_utc || "")} (Asia/Bangkok) — Sign: ____________________</div>
-      </div>
-      <table className="w-full text-left border-collapse min-w-max">
-        <thead>
-          <tr className="bg-[var(--text-primary)]/5">
-            <th className={thCls}>Floor</th>
-            <th className={thCls}>Room</th>
-            <th className={thCls}>HK Status</th>
-            <th className={thCls}>Occupant (In-house)</th>
-            <th className={thCls}>Arriving Today</th>
-            <th className={thCls}>Departing Today</th>
-            <th className={`${thCls} print:table-cell`}>Cleaned ✓</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--text-primary)]/5">
-          {rows.map((r, i) => (
-            <tr key={r.room + i} className="hover:bg-[var(--text-primary)]/[0.02]">
-              <td className={tdCls}>{r.floor || "-"}</td>
-              <td className={`${tdCls} font-bold`}>{r.room}</td>
-              <td className={tdCls}>
-                <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_CLS[r.state] || "bg-slate-100 text-slate-600 border-slate-200"}`}>
-                  {r.state}
-                </span>
-              </td>
-              <td className={tdCls}>{r.occupant || "-"}</td>
-              <td className={tdCls}>{r.arriving || "-"}</td>
-              <td className={tdCls}>{r.departing || "-"}</td>
-              <td className={tdCls}>☐</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </>
-  );
-
-  const renderTab = () => {
-    if (!snapshot) return null;
-    switch (activeTab) {
-      case "arrivals": return reservationTable(snapshot.arrivals, true);
-      case "departures": return reservationTable(snapshot.departures, false);
-      case "in_house": return reservationTable(snapshot.in_house, false);
-      case "customers": return customerTable(snapshot.customers);
-      case "payments": return paymentTable(snapshot.payments);
-      case "rooms": return roomTable(snapshot.rooms);
-    }
-  };
-
-  const tabCount = (key: TabKey): number | null => {
-    if (!snapshot) return null;
-    return snapshot.counts[key] ?? null;
-  };
-
   return (
     <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <div className="no-print">
-        <PageHeader title="BCP" description="Mews Business Continuity Plan - hourly snapshots of today's arrivals, departures, in-house guests, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
+        <PageHeader title="BCP" description="Mews Business Continuity Plan - hourly snapshots of a 10-day reservation timeline, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
         <button
           onClick={() => setShowReadme(true)}
           className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors"
@@ -408,7 +357,7 @@ export default function BcpPage() {
               <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
                 <div>
                   <div className="font-bold mb-1">BCP (Business Continuity Plan) คืออะไร</div>
-                  <p>ระบบสำรองข้อมูลหน้าฟร้อนท์สำหรับกรณี <b>MEWS ล่ม</b> — ระบบจะเก็บสำเนาข้อมูลของ &quot;วันนี้&quot; จาก MEWS <b>อัตโนมัติทุก 1 ชั่วโมง</b> (เก็บย้อนหลัง 48 ชั่วโมงล่าสุดต่อโรงแรม) ได้แก่ แขกเข้าวันนี้ (Arrivals พร้อมรายการสินค้า/โน้ต), แขกออกวันนี้ (Departures), แขกที่พักอยู่ (In-House), โปรไฟล์ลูกค้าพร้อมโน้ต, รายการชำระเงินวันนี้ (Payments) และสถานะห้องแม่บ้านทุกห้อง (Room Status)</p>
+                  <p>ระบบสำรองข้อมูลหน้าฟร้อนท์สำหรับกรณี <b>MEWS ล่ม</b> — ระบบจะเก็บสำเนา timeline การจอง 10 วัน (ย้อนหลัง 3 วัน + ล่วงหน้า 7 วัน) จาก MEWS <b>อัตโนมัติทุก 1 ชั่วโมง</b> (เก็บย้อนหลัง 48 ชั่วโมงล่าสุดต่อโรงแรม) พร้อมสถานะห้องแม่บ้านและรายการชำระเงินวันนี้</p>
                 </div>
                 <div>
                   <div className="font-bold mb-1">การใช้งานปกติ (MEWS ยังใช้ได้)</div>
@@ -418,8 +367,8 @@ export default function BcpPage() {
                   <div className="font-bold mb-1">เมื่อ MEWS ล่ม ให้ทำตามนี้</div>
                   <ol className="list-decimal list-inside flex flex-col gap-1">
                     <li>เปิดหน้านี้ เลือกโรงแรม แล้วเลือก <b>snapshot ล่าสุด</b> (ดูเวลา &quot;Data as of&quot; ประกอบ — ถ้าเก่ากว่า 2 ชม. ระบบจะเตือนสีส้ม)</li>
-                    <li>ใช้แท็บ <b>Arrivals</b> เช็คแขกที่จะเข้าวันนี้: ถ่ายรูปพาสปอร์ต / สแกนเอกสารเก็บเข้าคอมไว้ก่อน แล้วลงทะเบียนผ่านกระดาษ / PDF บน iPad แทน</li>
-                    <li>ใช้แท็บ <b>Room Status</b> ประสานแม่บ้านว่าให้แขกเข้าห้องไหนตามประเภทห้อง — กดปุ่ม <b>Print Housekeeping Sheet</b> พิมพ์ใบงานแจกแม่บ้าน (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
+                    <li>ดูตาราง <b>Timeline</b> เหมือนหน้า MEWS ปกติ — คลิกที่แถบการจองเพื่อดูรายละเอียดแขก/โน้ต: ถ่ายรูปพาสปอร์ต / สแกนเอกสารเก็บเข้าคอมไว้ก่อน แล้วลงทะเบียนผ่านกระดาษ / PDF บน iPad แทน</li>
+                    <li>ดูจุดสีหน้าเลขห้องเพื่อประสานแม่บ้านว่าให้แขกเข้าห้องไหน — กดปุ่ม <b>Print Housekeeping Sheet</b> พิมพ์ใบงานแจกแม่บ้าน (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
                     <li>การเงิน: ชาร์จ Payment ไว้ก่อนได้ แต่<b>ยังตัดจ่ายไม่ได้</b>จนกว่า MEWS จะกลับมา — ใช้แท็บ <b>Payments</b> เทียบรายการที่เข้าแล้ววันนี้</li>
                     <li><b>จดบันทึกทุกรายการ</b>ที่ทำระหว่าง MEWS ล่ม (เช็คอิน/เช็คเอาท์/ย้ายห้อง/ชาร์จเงิน) ลงกระดาษหรือไฟล์ Activity report ของสาขา</li>
                     <li>เมื่อ MEWS กลับมาใช้ได้: นำบันทึกทั้งหมดไปคีย์ย้อนเข้า MEWS ให้ครบ (สาขาที่มี AdriaScan ใช้สแกนเอกสารเข้า MEWS ได้เลย)</li>
@@ -483,6 +432,10 @@ export default function BcpPage() {
 
         {loading ? (
           <div className="p-16 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">Loading snapshot...</div>
+        ) : isLegacyShape ? (
+          <div className="p-16 text-center text-[var(--text-primary)]/40 font-display text-xl italic border border-dashed border-[var(--text-primary)]/14">
+            This snapshot predates the Timeline view — please Capture Now, or pick a newer one.
+          </div>
         ) : snapshot && (
           <>
             <div className={`no-print flex flex-wrap items-center gap-3 text-[11px] mb-4 px-4 py-3 border ${
@@ -500,29 +453,186 @@ export default function BcpPage() {
               {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
             </div>
 
-            <div className="no-print flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
-              {TABS.map((t) => {
-                const count = tabCount(t.key);
-                return (
+            <div className="no-print flex flex-wrap items-center justify-between gap-4 mb-4">
+              <div className="flex border-b border-[var(--text-primary)]/14">
+                {(["timeline", "payments"] as MainTab[]).map((t) => (
                   <button
-                    key={t.key}
-                    onClick={() => setActiveTab(t.key)}
-                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all ${
-                      activeTab === t.key
+                    key={t}
+                    onClick={() => setMainTab(t)}
+                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all capitalize ${
+                      mainTab === t
                         ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                         : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
                     }`}
                   >
-                    {t.label}{count !== null ? ` (${count})` : ""}
+                    {t === "timeline" ? `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})` : `Payments (${snapshot.counts.payments})`}
                   </button>
-                );
-              })}
+                ))}
+              </div>
+              {mainTab === "timeline" && (
+                <div className="flex items-center gap-4 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60">
+                  <span>Arrivals today: {todayStats.arrivals}</span>
+                  <span>Departures today: {todayStats.departures}</span>
+                  <span>In-house today: {todayStats.inHouse}</span>
+                  <button onClick={() => window.print()} className="px-4 py-2 bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity">
+                    Print Housekeeping Sheet
+                  </button>
+                </div>
+              )}
             </div>
 
-            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-4 print:border-0 print:shadow-none print:bg-white">
-              {renderTab()}
+            {mainTab === "timeline" ? (
+              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
+                <div
+                  className="grid relative"
+                  style={{ gridTemplateColumns: `160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
+                >
+                  {/* Header row */}
+                  <div className="sticky top-0 left-0 z-20 bg-[var(--text-primary)]/5 border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 1, gridRow: 1 }}>
+                    Room
+                  </div>
+                  {windowDays.map((d, i) => {
+                    const isToday = fmtYMD(d) === snapshot.date;
+                    return (
+                      <div
+                        key={i}
+                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[var(--text-primary)]/5 text-[var(--text-primary)]/70"}`}
+                        style={{ gridColumn: i + 2, gridRow: 1 }}
+                      >
+                        {d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} {d.getUTCDate()}
+                      </div>
+                    );
+                  })}
+
+                  {/* Room label column + gridline strips */}
+                  {snapshot.rooms.map((room, i) => (
+                    <div
+                      key={room.room + i}
+                      className="sticky left-0 z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap"
+                      style={{ gridColumn: 1, gridRow: i + 2 }}
+                    >
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
+                      {room.room}
+                    </div>
+                  ))}
+                  {snapshot.rooms.map((_, i) => (
+                    <div
+                      key={"strip" + i}
+                      className="border-b border-[var(--text-primary)]/10"
+                      style={{
+                        gridColumn: `2 / span ${windowDays.length}`,
+                        gridRow: i + 2,
+                        backgroundImage: `repeating-linear-gradient(to right, transparent, transparent calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length}))`,
+                      }}
+                    ></div>
+                  ))}
+
+                  {/* Reservation bars */}
+                  {bars.map(({ res, roomIdx, colStart, colSpan }, i) => {
+                    const started = res.state === "Started";
+                    const cls = STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed;
+                    return (
+                      <button
+                        key={res.number + i}
+                        onClick={() => setSelectedReservation(res)}
+                        className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
+                        style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
+                        title={`${res.guest} — ${res.state}`}
+                      >
+                        {res.guest || "(no name)"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-4">
+                {paymentTable(snapshot.payments)}
+              </div>
+            )}
+
+            {/* Print-only housekeeping sheet - not the on-screen Timeline grid,
+                which doesn't paginate; a plain table prints reliably instead. */}
+            <div className="hidden print:block">
+              <div className="mb-4 text-black">
+                <div className="text-lg font-bold">Housekeeping Room Status — {snapshot.property}</div>
+                <div className="text-sm">Data as of: {fmtDateTime(snapshot.captured_utc)} (Asia/Bangkok) — Sign: ____________________</div>
+              </div>
+              <table className="w-full text-left border-collapse min-w-max">
+                <thead>
+                  <tr>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Floor</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Room</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">HK Status</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Occupant</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Arriving Today</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Departing Today</th>
+                    <th className="p-2 px-3 text-[9px] font-bold uppercase tracking-[0.12em] border-b">Cleaned ✓</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {housekeepingRows.map((r, i) => (
+                    <tr key={r.room + i}>
+                      <td className="p-2 px-3 text-[13px]">{r.floor || "-"}</td>
+                      <td className="p-2 px-3 text-[13px] font-bold">{r.room}</td>
+                      <td className="p-2 px-3 text-[13px]">{r.state}</td>
+                      <td className="p-2 px-3 text-[13px]">{r.occupant || "-"}</td>
+                      <td className="p-2 px-3 text-[13px]">{r.arriving || "-"}</td>
+                      <td className="p-2 px-3 text-[13px]">{r.departing || "-"}</td>
+                      <td className="p-2 px-3 text-[13px]">☐</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </>
+        )}
+
+        {/* Reservation detail panel - read-only: no Manage/Smart-tip, this is
+            a stale snapshot for use when MEWS itself is unreachable. */}
+        {selectedReservation && (
+          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedReservation(null)}>
+            <div
+              className="bg-[var(--paper)] text-[var(--text-primary)] border-l border-[var(--text-primary)]/14 w-full max-w-md h-full overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
+                <div className="font-display text-2xl truncate">{selectedReservation.guest || "(no name)"}</div>
+                <button onClick={() => setSelectedReservation(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
+                    {selectedReservation.state}
+                  </span>
+                  <span className="text-[var(--text-primary)]/50">Res. {selectedReservation.number}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Room</div><div className="font-bold">{selectedReservation.room || "-"}</div></div>
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Guests</div><div>{selectedReservation.adults + selectedReservation.children}</div></div>
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Check-in</div><div>{fmtDateTime(selectedReservation.check_in)}</div></div>
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Check-out</div><div>{fmtDateTime(selectedReservation.check_out)}</div></div>
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Nationality</div><div>{selectedReservation.nationality || "-"}</div></div>
+                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Phone</div><div>{selectedReservation.phone || "-"}</div></div>
+                </div>
+                <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Email</div><div>{selectedReservation.email || "-"}</div></div>
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Product Items</div>
+                  <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
+                </div>
+                <div className="pt-3 border-t border-[var(--text-primary)]/10">
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Reservation Notes</div>
+                  <div>{selectedReservation.notes || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
+                  <div>{guestProfileNotes || "-"}</div>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

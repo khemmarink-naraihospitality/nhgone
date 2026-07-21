@@ -1505,13 +1505,19 @@ class SyncService:
         }
         return report
 
+    # BCP timeline window: how far back/forward from "today" the reservations
+    # grid covers. Wide enough to show most stays without blowing up hourly
+    # capture time or the encrypted snapshot's payload size.
+    _BCP_WINDOW_DAYS_BACK = 3
+    _BCP_WINDOW_DAYS_FORWARD = 7
+
     async def get_bcp_snapshot(self, property_name: str):
         """
         Builds the hourly BCP (Business Continuity Plan) snapshot for one
-        property: everything the front desk needs on paper if MEWS goes down -
-        today's (Asia/Bangkok) arrivals (+ product order items + notes),
-        departures, in-house guests with customer-profile notes, today's
-        payments, and every room's housekeeping state with its occupant.
+        property: a MEWS-style reservation timeline (rooms x dates, today -3
+        to today +7) for the front desk to keep working from on paper if MEWS
+        goes down, plus today's (Asia/Bangkok) customer profiles (tagged
+        Arrival/In-house/Departure) and payments.
 
         Reservation-level notes come from serviceOrderNotes/getAll, which not
         every Connector token has enabled - that part degrades gracefully to
@@ -1525,11 +1531,16 @@ class SyncService:
         start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        window_start = day - timedelta(days=self._BCP_WINDOW_DAYS_BACK)
+        window_end = day + timedelta(days=self._BCP_WINDOW_DAYS_FORWARD + 1)  # +1: exclusive end
+        window_start_iso = window_start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        window_end_iso = window_end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
         resv_res = await mews_client.post(
             "/api/connector/v1/reservations/getAll",
             {
-                "StartUtc": start_iso,
-                "EndUtc": end_iso,
+                "StartUtc": window_start_iso,
+                "EndUtc": window_end_iso,
                 "Extent": {"Reservations": True, "Customers": True, "Resources": True},
             },
             property_name=property_name,
@@ -1547,15 +1558,20 @@ class SyncService:
                 return False
             return day_start_utc <= t < day_end_utc
 
+        # Today-specific subsets - used only for the customer Arrival/In-house/
+        # Departure tags below, not for the timeline itself (which shows the
+        # whole window).
         arrival_rs = [r for r in reservations if in_window(r.get("StartUtc"))]
         departure_rs = [r for r in reservations if in_window(r.get("EndUtc"))]
         inhouse_rs = [r for r in reservations if r.get("State") == "Started" and not in_window(r.get("EndUtc"))]
 
-        # Product order items for today's arrivals (breakfast add-ons etc.)
+        # Product order items for every reservation in the window (breakfast
+        # add-ons etc.) - any bar on the timeline can be clicked, not just
+        # today's arrivals, so every reservation needs this fetched.
         items_by_reservation: dict = {}
-        arrival_ids = [r["Id"] for r in arrival_rs]
-        for i in range(0, len(arrival_ids), 100):
-            chunk = arrival_ids[i:i + 100]
+        all_res_ids = [r["Id"] for r in reservations]
+        for i in range(0, len(all_res_ids), 100):
+            chunk = all_res_ids[i:i + 100]
             try:
                 oi_res = await mews_client.post(
                     "/api/connector/v1/orderItems/getAll",
@@ -1575,7 +1591,6 @@ class SyncService:
 
         # Reservation-level notes (separate endpoint; permission-dependent)
         notes_by_reservation: dict = {}
-        all_res_ids = [r["Id"] for r in reservations]
         for i in range(0, len(all_res_ids), 100):
             chunk = all_res_ids[i:i + 100]
             try:
@@ -1613,9 +1628,9 @@ class SyncService:
         def sort_key(row):
             return row["room"] or "zzz"
 
-        arrivals = sorted((reservation_row(r) for r in arrival_rs), key=sort_key)
-        departures = sorted((reservation_row(r) for r in departure_rs), key=sort_key)
-        in_house = sorted((reservation_row(r) for r in inhouse_rs), key=sort_key)
+        # The whole window's reservations, flat - this is what the frontend's
+        # Timeline positions as bars across room rows x date columns.
+        timeline_reservations = sorted((reservation_row(r) for r in reservations), key=sort_key)
 
         # Customer profiles for everyone attached to today's reservations,
         # tagged by how they relate to today (arrival/departure/in-house).
@@ -1678,36 +1693,24 @@ class SyncService:
         except Exception as e:
             logger.warning(f"BCP payments fetch failed for {property_name}: {e}")
 
-        # Room status board (housekeeping view): every active resource, its HK
-        # state, plus who's in it / arriving / leaving today.
+        # Room list (the Timeline's Y-axis): every active resource + today's
+        # housekeeping state. Who's in/arriving/departing each room is now
+        # derived client-side from `reservations` (the whole window), not
+        # computed here - the timeline bars already show that.
         all_rooms_res = await mews_client.post(
             "/api/connector/v1/resources/getAll",
             {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
             property_name=property_name,
         )
-        occupant_by_room, arriving_by_room, departing_by_room = {}, {}, {}
-        for row in in_house:
-            if row["room"]:
-                occupant_by_room[row["room"]] = row["guest"]
-        for row in arrivals:
-            if row["room"]:
-                arriving_by_room[row["room"]] = row["guest"]
-        for row in departures:
-            if row["room"]:
-                departing_by_room.setdefault(row["room"], row["guest"])
         rooms = []
         for r in all_rooms_res.get("Resources", []):
             if not r.get("IsActive", True):
                 continue
             data_val = (r.get("Data") or {}).get("Value") or {}
-            name = r.get("Name", "")
             rooms.append({
-                "room": name,
+                "room": r.get("Name", ""),
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
-                "occupant": occupant_by_room.get(name, ""),
-                "arriving": arriving_by_room.get(name, ""),
-                "departing": departing_by_room.get(name, ""),
             })
         rooms.sort(key=lambda x: (str(x["floor"]), x["room"]))
 
@@ -1715,20 +1718,19 @@ class SyncService:
             "property": property_name,
             "date": day.strftime("%Y-%m-%d"),
             "captured_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "window": {
+                "start": window_start.strftime("%Y-%m-%d"),
+                "end": (window_end - timedelta(days=1)).strftime("%Y-%m-%d"),  # last inclusive day
+            },
             "counts": {
-                "arrivals": len(arrivals),
-                "departures": len(departures),
-                "in_house": len(in_house),
                 "customers": len(customers),
                 "payments": len(payments),
                 "rooms": len(rooms),
             },
-            "arrivals": arrivals,
-            "departures": departures,
-            "in_house": in_house,
+            "rooms": rooms,
+            "reservations": timeline_reservations,
             "customers": customers,
             "payments": payments,
-            "rooms": rooms,
         }
 
 sync_service = SyncService()
