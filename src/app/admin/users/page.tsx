@@ -25,9 +25,10 @@ interface RolePermissionRow {
   bcp: boolean;
   log_import: boolean;
   admin: boolean;
+  restricted_property: string | null;
 }
 
-const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role">; label: string }[] = [
+const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_property">; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
   { key: "data_mart", label: "Data Mart" },
   { key: "bills", label: "Bills" },
@@ -54,6 +55,7 @@ export default function AdminUsersPage() {
   const [renaming, setRenaming] = useState(false);
   const [deletingRole, setDeletingRole] = useState<RolePermissionRow | null>(null);
   const [deletingRoleBusy, setDeletingRoleBusy] = useState(false);
+  const [properties, setProperties] = useState<string[]>([]);
 
 
   const fetchUsers = async () => {
@@ -110,7 +112,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, log_import: false, admin: false,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, log_import: false, admin: false, restricted_property: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {
@@ -125,7 +127,7 @@ export default function AdminUsersPage() {
     }
   };
 
-  const handleTogglePermission = async (role: string, key: keyof Omit<RolePermissionRow, "role">) => {
+  const handleTogglePermission = async (role: string, key: keyof Omit<RolePermissionRow, "role" | "restricted_property">) => {
     if (role === "Super Admin") return; // locked - always full access
     const current = rolePermissions.find((r) => r.role === role);
     if (!current) return;
@@ -142,6 +144,25 @@ export default function AdminUsersPage() {
       console.error("Failed to update role_permissions:", error.message);
       alert("Error saving permission: " + error.message);
       setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, [key]: current[key] } : r)));
+    }
+  };
+
+  const handleSetRestrictedProperty = async (role: string, propertyName: string) => {
+    if (role === "Super Admin") return; // locked - always unrestricted
+    const current = rolePermissions.find((r) => r.role === role);
+    if (!current) return;
+    const nextValue = propertyName || null; // "" from the "All Properties" option means unrestricted
+
+    setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_property: nextValue } : r)));
+
+    const { error } = await supabase
+      .from("role_permissions")
+      .upsert({ ...current, restricted_property: nextValue }, { onConflict: "role" });
+
+    if (error) {
+      console.error("Failed to update restricted_property:", error.message);
+      alert("Error saving property restriction: " + error.message);
+      setRolePermissions((prev) => prev.map((r) => (r.role === role ? { ...r, restricted_property: current.restricted_property } : r)));
     }
   };
 
@@ -221,6 +242,9 @@ export default function AdminUsersPage() {
   useEffect(() => {
     fetchUsers();
     fetchRolePermissions();
+    supabase.from("property_api_settings").select("property_name").order("property_name").then(({ data }) => {
+      if (data) setProperties(data.map((p) => p.property_name));
+    });
   }, []);
 
   useEffect(() => {
@@ -520,14 +544,15 @@ export default function AdminUsersPage() {
                   {MENU_ITEMS.map((item) => (
                     <th key={item.key} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
                   ))}
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property</th>
                   <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingRoles ? (
-                  <tr><td colSpan={MENU_ITEMS.length + 2} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                  <tr><td colSpan={MENU_ITEMS.length + 3} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
                 ) : filteredRolePermissions.length === 0 ? (
-                  <tr><td colSpan={MENU_ITEMS.length + 2} className="py-20 text-center text-slate-400 text-sm">No roles match &quot;{roleSearchQuery}&quot;.</td></tr>
+                  <tr><td colSpan={MENU_ITEMS.length + 3} className="py-20 text-center text-slate-400 text-sm">No roles match &quot;{roleSearchQuery}&quot;.</td></tr>
                 ) : filteredRolePermissions.map((row) => {
                   const isLocked = row.role === "Super Admin";
                   return (
@@ -552,6 +577,19 @@ export default function AdminUsersPage() {
                           />
                         </td>
                       ))}
+                      <td className="px-6 py-5">
+                        <select
+                          value={isLocked ? "" : row.restricted_property || ""}
+                          disabled={isLocked}
+                          onChange={(e) => handleSetRestrictedProperty(row.role, e.target.value)}
+                          className={`bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-slate-700 outline-none focus:ring-2 focus:ring-[#AAA024]/20 ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                        >
+                          <option value="">All Properties</option>
+                          {properties.map((p) => (
+                            <option key={p} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-6 py-5 text-center relative overflow-visible group/actions">
                         {isLocked ? (
                           <span className="text-slate-300 text-xs">—</span>
