@@ -1606,9 +1606,75 @@ class SyncService:
             except Exception:
                 break  # endpoint not enabled for this token - skip quietly
 
+        # Extra lookups for the "Manage" detail view (group name, requested
+        # category, rate, company/travel agency) - IDs deduplicated across
+        # the whole widened window so this stays a handful of calls per
+        # property/hour, not one per reservation. Note: the Reservation
+        # object's field is `GroupId` (confirmed against a live response),
+        # not `ReservationGroupId` as get_mapped_reservations assumes -
+        # that's a separate pre-existing bug in that method, left alone here
+        # since it's out of scope for this change.
+        group_ids = list({r.get("GroupId") for r in reservations if r.get("GroupId")})
+        category_ids = list({r.get("RequestedCategoryId") for r in reservations if r.get("RequestedCategoryId")})
+        rate_ids = list({r.get("RateId") for r in reservations if r.get("RateId")})
+        company_ids = {r.get("CompanyId") for r in reservations if r.get("CompanyId")}
+        ta_ids = {r.get("TravelAgencyId") for r in reservations if r.get("TravelAgencyId")}
+        all_company_ids = list(company_ids | ta_ids)
+
+        async def fetch_entity(endpoint, payload_key, ids, response_key):
+            if not ids:
+                return {}
+            try:
+                res = await mews_client.post(endpoint, {payload_key: ids[:200]}, property_name=property_name)
+                return {item["Id"]: item for item in res.get(response_key, [])}
+            except Exception as e:
+                logger.warning(f"BCP {response_key} lookup failed for {property_name}: {e}")
+                return {}
+
+        groups_dict, rates_dict, companies_dict = await asyncio.gather(
+            fetch_entity("/api/connector/v1/reservationGroups/getAll", "ReservationGroupIds", group_ids, "ReservationGroups"),
+            fetch_entity("/api/connector/v1/rates/getAll", "RateIds", rate_ids, "Rates"),
+            fetch_entity("/api/connector/v1/companies/getAll", "CompanyIds", all_company_ids, "Companies"),
+        )
+
+        # Requested-category names need a ServiceIds filter, not
+        # ResourceCategoryIds (same MEWS quirk get_st_files_report already
+        # works around) - resolve the bookable service first, then map id ->
+        # localized name. Degrades to empty names if either call fails.
+        categories_dict: dict = {}
+        if category_ids:
+            try:
+                services_res = await mews_client.post(
+                    "/api/connector/v1/services/getAll",
+                    {"Limitation": {"Count": 100}},
+                    property_name=property_name,
+                )
+                stay_service = next(
+                    (s for s in services_res.get("Services", [])
+                     if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
+                    None,
+                )
+                if stay_service:
+                    cats_res = await mews_client.post(
+                        "/api/connector/v1/resourceCategories/getAll",
+                        {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
+                        property_name=property_name,
+                    )
+                    for c in cats_res.get("ResourceCategories", []):
+                        names = c.get("Names") or {}
+                        categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
+            except Exception as e:
+                logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
+
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
             room = resources_map.get(res.get("AssignedResourceId"), {})
+            group = groups_dict.get(res.get("GroupId"), {})
+            category_name = categories_dict.get(res.get("RequestedCategoryId"), "")
+            rate = rates_dict.get(res.get("RateId"), {})
+            company = companies_dict.get(res.get("CompanyId"), {})
+            travel_agency = companies_dict.get(res.get("TravelAgencyId"), {})
+            amount = res.get("RequestedPaymentAmount") or {}
             return {
                 "number": res.get("Number", ""),
                 "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
@@ -1623,6 +1689,15 @@ class SyncService:
                 "children": res.get("ChildCount", 0),
                 "products": items_by_reservation.get(res.get("Id"), []),
                 "notes": " | ".join(notes_by_reservation.get(res.get("Id"), [])),
+                "group_name": group.get("Name", ""),
+                "category": category_name,
+                "rate": rate.get("Name", ""),
+                "company": company.get("Name", ""),
+                "travel_agency": travel_agency.get("Name", ""),
+                "total_amount": amount.get("Value") if isinstance(amount, dict) else None,
+                "currency": amount.get("Currency", "") if isinstance(amount, dict) else "",
+                "origin": res.get("Origin", ""),
+                "purpose": res.get("Purpose", ""),
             }
 
         def sort_key(row):

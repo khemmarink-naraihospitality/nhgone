@@ -19,6 +19,15 @@ interface ReservationRow {
   children: number;
   products: string[];
   notes: string;
+  group_name?: string;
+  category?: string;
+  rate?: string;
+  company?: string;
+  travel_agency?: string;
+  total_amount?: number | null;
+  currency?: string;
+  origin?: string;
+  purpose?: string;
 }
 
 interface CustomerRow {
@@ -113,6 +122,7 @@ export default function BcpPage() {
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
+  const [showManage, setShowManage] = useState(false);
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -142,6 +152,7 @@ export default function BcpPage() {
     setLoading(true);
     setError(null);
     setSelectedReservation(null);
+    setShowManage(false);
     try {
       let res: Response;
       if (snapshotId) {
@@ -297,6 +308,21 @@ export default function BcpPage() {
     );
     return match?.notes || "";
   }, [selectedReservation, snapshot]);
+
+  // For the "Manage" detail view: the assigned room's today HK status
+  // (joined from the room list) and the stay length, both absent from
+  // ReservationRow itself.
+  const selectedRoomInfo = useMemo(() => {
+    if (!selectedReservation || !snapshot) return null;
+    return snapshot.rooms.find((r) => r.room === selectedReservation.room) || null;
+  }, [selectedReservation, snapshot]);
+
+  const selectedNights = useMemo(() => {
+    if (!selectedReservation) return 0;
+    const inDay = toBangkokDay(selectedReservation.check_in);
+    const outDay = toBangkokDay(selectedReservation.check_out);
+    return Math.max(1, daysBetween(inDay, outDay));
+  }, [selectedReservation]);
 
   const paymentTable = (rows: PaymentRow[]) => (
     <table className="w-full text-left border-collapse min-w-max">
@@ -534,7 +560,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => setSelectedReservation(res)}
+                        onClick={() => { setSelectedReservation(res); setShowManage(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}`}
@@ -588,17 +614,19 @@ export default function BcpPage() {
           </>
         )}
 
-        {/* Reservation detail panel - read-only: no Manage/Smart-tip, this is
-            a stale snapshot for use when MEWS itself is unreachable. */}
+        {/* Reservation detail panel. "Manage" opens a fuller read-only detail
+            view (below) - there's no live MEWS connection to action anything
+            from here, this is a stale snapshot for use when MEWS itself is
+            unreachable. */}
         {selectedReservation && (
-          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedReservation(null)}>
+          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => { setSelectedReservation(null); setShowManage(false); }}>
             <div
               className="bg-[var(--paper)] text-[var(--text-primary)] border-l border-[var(--text-primary)]/14 w-full max-w-md h-full overflow-y-auto shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
                 <div className="font-display text-2xl truncate">{selectedReservation.guest || "(no name)"}</div>
-                <button onClick={() => setSelectedReservation(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+                <button onClick={() => { setSelectedReservation(null); setShowManage(false); }} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -629,6 +657,123 @@ export default function BcpPage() {
                 <div>
                   <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
                   <div>{guestProfileNotes || "-"}</div>
+                </div>
+              </div>
+              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
+                <button
+                  onClick={() => setShowManage(true)}
+                  className="w-full py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
+                >
+                  Manage
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* "Manage" full detail view - mirrors MEWS's own reservation Status
+            page (Customers / Spaces / detailed key-value list). Still
+            read-only: no Billing/Payments/Unlock/kiosk actions and no
+            Cancellation form, since there is nothing live to action from a
+            stale snapshot and canceled reservations are excluded from the
+            snapshot query in the first place. */}
+        {selectedReservation && showManage && (
+          <div className="no-print fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onClick={() => setShowManage(false)}>
+            <div
+              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 w-full max-w-2xl rounded-xl shadow-2xl my-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
+                <div>
+                  <div className="font-display text-xl truncate">{selectedReservation.group_name || selectedReservation.guest || "(no name)"}</div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50">Res. {selectedReservation.number}</div>
+                </div>
+                <button onClick={() => setShowManage(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                </button>
+              </div>
+
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-6">
+                {/* Customers */}
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Customers</div>
+                  <div className="flex items-center justify-between border border-[var(--text-primary)]/10 rounded-lg px-4 py-3">
+                    <div>
+                      <div className="font-bold">{selectedReservation.guest || "(no name)"}</div>
+                      <div className="text-[11px] text-[var(--text-primary)]/50">{selectedReservation.email || "-"} · {selectedReservation.phone || "-"}</div>
+                    </div>
+                    <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
+                      {selectedReservation.state}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Spaces */}
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Spaces</div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">
+                    {fmtDateTime(selectedReservation.check_in)} - {fmtDateTime(selectedReservation.check_out)}
+                  </div>
+                  <div className="flex items-center justify-between border border-[var(--text-primary)]/10 rounded-lg px-4 py-3">
+                    <div className="font-bold">{selectedReservation.room || "-"}</div>
+                    {selectedRoomInfo && (
+                      <span className="inline-flex items-center gap-1.5 text-[11px]">
+                        <span className={`w-2 h-2 rounded-full ${ROOM_DOT_CLS[selectedRoomInfo.state] || "bg-slate-400"}`} />
+                        {selectedRoomInfo.state}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Reservation detail key-value list */}
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Reservation</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-[var(--text-primary)]/10 pt-3">
+                    <div className="text-[var(--text-primary)]/50">Service</div><div className="text-right">Stay (Accommodation)</div>
+                    <div className="text-[var(--text-primary)]/50">Confirmation number</div><div className="text-right">{selectedReservation.number || "-"}</div>
+                    {selectedReservation.group_name && (<><div className="text-[var(--text-primary)]/50">Group name</div><div className="text-right">{selectedReservation.group_name}</div></>)}
+                    <div className="text-[var(--text-primary)]/50">Status</div><div className="text-right">{selectedReservation.state}</div>
+                    <div className="text-[var(--text-primary)]/50">Arrival</div><div className="text-right">{fmtDateTime(selectedReservation.check_in)}</div>
+                    <div className="text-[var(--text-primary)]/50">Departure</div><div className="text-right">{fmtDateTime(selectedReservation.check_out)}</div>
+                    <div className="text-[var(--text-primary)]/50">Nights</div><div className="text-right">{selectedNights}</div>
+                    {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
+                    <div className="text-[var(--text-primary)]/50">Companions</div><div className="text-right">{selectedReservation.adults} × Adults{selectedReservation.children > 0 ? `, ${selectedReservation.children} × Children` : ""}</div>
+                    {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
+                    <div className="text-[var(--text-primary)]/50">Assigned space</div>
+                    <div className="text-right">
+                      {selectedReservation.room || "-"}
+                      {selectedRoomInfo && <span className="ml-1.5 text-[10px] text-[var(--text-primary)]/50">({selectedRoomInfo.state})</span>}
+                    </div>
+                    {selectedReservation.rate && (<><div className="text-[var(--text-primary)]/50">Rate</div><div className="text-right">{selectedReservation.rate}</div></>)}
+                    {selectedReservation.company && (<><div className="text-[var(--text-primary)]/50">Company</div><div className="text-right">{selectedReservation.company}</div></>)}
+                    {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right">{selectedReservation.travel_agency}</div></>)}
+                    {typeof selectedReservation.total_amount === "number" && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Avg. rate (nightly)</div>
+                        <div className="text-right">{(selectedReservation.total_amount / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        <div className="text-[var(--text-primary)]/50">Total amount</div>
+                        <div className="text-right font-bold">{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Products</div>
+                  <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
+                </div>
+
+                <div className="pt-3 border-t border-[var(--text-primary)]/10">
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Reservation Notes</div>
+                  <div>{selectedReservation.notes || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
+                  <div>{guestProfileNotes || "-"}</div>
+                </div>
+
+                <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
+                  Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this reservation from here.
                 </div>
               </div>
             </div>
