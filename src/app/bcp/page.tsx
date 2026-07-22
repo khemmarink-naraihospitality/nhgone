@@ -693,6 +693,7 @@ export default function BcpPage() {
                     <div
                       key={room.room + i}
                       ref={(el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
+                      title={room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`}
                       className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
