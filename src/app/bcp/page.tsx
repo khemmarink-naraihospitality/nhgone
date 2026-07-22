@@ -29,10 +29,15 @@ interface ReservationRow {
   rate_lines?: { label: string; amount: number }[];
   item_lines?: { label: string; amount: number }[];
   total_amount?: number | null;
+  total_amount_gross?: number;
   to_be_paid?: number;
   currency?: string;
+  service?: string;
+  segment?: string;
   origin?: string;
+  reservation_source?: string;
   purpose?: string;
+  created_utc?: string;
 }
 
 interface CustomerRow {
@@ -1025,17 +1030,26 @@ export default function BcpPage() {
                             <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                           </div>
                         ))}
-                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold">
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold bg-amber-100 text-amber-900">
                           <div>Total amount</div>
                           <div>{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
                         </div>
                         <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
                           <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Details</div>
-                          <div className="grid grid-cols-2 gap-y-1">
+                          <div className="grid grid-cols-2 gap-y-1.5">
                             <div className="text-[var(--text-primary)]/50">Avg. rate (nightly)</div>
                             <div className="text-right">{((selectedReservation.rate_amount ?? 0) / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                             <div className="text-[var(--text-primary)]/50">Avg. price with products (nightly)</div>
                             <div className="text-right">{(selectedReservation.total_amount / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            {selectedReservation.service && (<><div className="text-[var(--text-primary)]/50">Service</div><div className="text-right">{selectedReservation.service}</div></>)}
+                            {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right underline decoration-1 underline-offset-2">{selectedReservation.travel_agency}</div></>)}
+                            {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
+                            {selectedReservation.segment && (<><div className="text-[var(--text-primary)]/50">Segment</div><div className="text-right">{selectedReservation.segment}</div></>)}
+                            {selectedReservation.origin && (<><div className="text-[var(--text-primary)]/50">Origin</div><div className="text-right">{selectedReservation.origin}</div></>)}
+                            {selectedReservation.reservation_source && (<><div className="text-[var(--text-primary)]/50">Reservation source</div><div className="text-right">{selectedReservation.reservation_source}</div></>)}
+                            {typeof selectedReservation.total_amount_gross === "number" && (<><div className="text-[var(--text-primary)]/50">Total amount (Gross)</div><div className="text-right">{selectedReservation.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></>)}
+                            {selectedReservation.group_name && (<><div className="text-[var(--text-primary)]/50">Group name</div><div className="text-right">{selectedReservation.group_name}</div></>)}
+                            {selectedReservation.created_utc && (<><div className="text-[var(--text-primary)]/50">Created</div><div className="text-right">{fmtDateTime(selectedReservation.created_utc)}</div></>)}
                           </div>
                         </div>
                       </div>
@@ -1046,13 +1060,11 @@ export default function BcpPage() {
                       <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
                     </div>
 
-                    {(selectedReservation.nationality || selectedReservation.category || selectedReservation.purpose || selectedReservation.company || selectedReservation.travel_agency) && (
+                    {(selectedReservation.nationality || selectedReservation.category || selectedReservation.company) && (
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-3 border-t border-[var(--text-primary)]/10">
                         {selectedReservation.nationality && (<><div className="text-[var(--text-primary)]/50">Nationality</div><div className="text-right">{selectedReservation.nationality}</div></>)}
                         {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
-                        {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
                         {selectedReservation.company && (<><div className="text-[var(--text-primary)]/50">Company</div><div className="text-right">{selectedReservation.company}</div></>)}
-                        {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right">{selectedReservation.travel_agency}</div></>)}
                       </div>
                     )}
                   </>

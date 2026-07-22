@@ -1,6 +1,7 @@
 from supabase import create_client, Client
 from app.config import settings
 import logging
+import re
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 import asyncio
@@ -1581,6 +1582,7 @@ class SyncService:
         items_amount_by_reservation: dict = {}
         rate_lines_by_reservation: dict = {}
         item_lines_by_reservation: dict = {}
+        gross_amount_by_reservation: dict = {}
         currency_by_reservation: dict = {}
         all_res_ids = [r["Id"] for r in reservations]
         for i in range(0, len(all_res_ids), 100):
@@ -1596,10 +1598,17 @@ class SyncService:
                         continue
                     order_id = item.get("ServiceOrderId")
                     item_type = item.get("Type")
-                    net = ((item.get("Amount") or {}).get("NetValue")) or 0
-                    currency = (item.get("Amount") or {}).get("Currency")
+                    item_amount = item.get("Amount") or {}
+                    net = item_amount.get("NetValue") or 0
+                    currency = item_amount.get("Currency")
                     if currency:
                         currency_by_reservation.setdefault(order_id, currency)
+                    # Gross sum mirrors the same Rate+Items type set as the net
+                    # total below (excludes "Additional"-revenue-type items),
+                    # so Total amount and Total amount (Gross) describe the
+                    # same underlying charges, just tax-exclusive vs inclusive.
+                    if item_type in ("SpaceOrder", "NightRebate", "ProductOrder", "ProductOrderRebate"):
+                        gross_amount_by_reservation[order_id] = gross_amount_by_reservation.get(order_id, 0) + (item_amount.get("GrossValue") or 0)
                     if item_type in ("SpaceOrder", "NightRebate"):
                         rate_amount_by_reservation[order_id] = rate_amount_by_reservation.get(order_id, 0) + net
                         start_utc = item.get("StartUtc")
@@ -1659,6 +1668,7 @@ class SyncService:
         company_ids = {r.get("CompanyId") for r in reservations if r.get("CompanyId")}
         ta_ids = {r.get("TravelAgencyId") for r in reservations if r.get("TravelAgencyId")}
         all_company_ids = list(company_ids | ta_ids)
+        segment_ids = list({r.get("BusinessSegmentId") for r in reservations if r.get("BusinessSegmentId")})
 
         async def fetch_entity(endpoint, payload_key, ids, response_key):
             if not ids:
@@ -1670,10 +1680,11 @@ class SyncService:
                 logger.warning(f"BCP {response_key} lookup failed for {property_name}: {e}")
                 return {}
 
-        groups_dict, rates_dict, companies_dict = await asyncio.gather(
+        groups_dict, rates_dict, companies_dict, segments_dict = await asyncio.gather(
             fetch_entity("/api/connector/v1/reservationGroups/getAll", "ReservationGroupIds", group_ids, "ReservationGroups"),
             fetch_entity("/api/connector/v1/rates/getAll", "RateIds", rate_ids, "Rates"),
             fetch_entity("/api/connector/v1/companies/getAll", "CompanyIds", all_company_ids, "Companies"),
+            fetch_entity("/api/connector/v1/businessSegments/getAll", "BusinessSegmentIds", segment_ids, "BusinessSegments"),
         )
 
         # Resource categories (+ per-room assignment) - needed for both the
@@ -1687,6 +1698,7 @@ class SyncService:
         categories_dict: dict = {}      # category_id -> localized name
         category_short_names: dict = {}  # category_id -> short code (e.g. "TNK"), may be empty
         resource_category_id: dict = {}  # resource_id -> category_id
+        stay_service_name: str = ""
         try:
             services_res = await mews_client.post(
                 "/api/connector/v1/services/getAll",
@@ -1699,6 +1711,7 @@ class SyncService:
                 None,
             )
             if stay_service:
+                stay_service_name = stay_service.get("Name", "")
                 cats_res = await mews_client.post(
                     "/api/connector/v1/resourceCategories/getAll",
                     {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
@@ -1723,6 +1736,37 @@ class SyncService:
         except Exception as e:
             logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
 
+        # MEWS's Reservation.Origin is a combined string like "CommanderInPerson"
+        # (Origin enum + CommanderOrigin sub-enum concatenated - confirmed
+        # against a live response, not split into two fields as the public
+        # docs describe). Reconstructs both MEWS's own full label ("Mews
+        # Operations In person") and the shorter "Reservation source" MEWS
+        # shows separately (just the sub-detail, "In person") from the
+        # documented enum value lists.
+        _ORIGIN_PREFIX_LABELS = {
+            "Distributor": "Booking Engine",
+            "ChannelManager": "Channel Manager",
+            "Commander": "Mews Operations",
+            "Import": "Import",
+            "Connector": "Connector API",
+            "Navigator": "Guest Services",
+        }
+
+        def format_origin(raw: str):
+            if not raw:
+                return "", ""
+            for prefix, label in _ORIGIN_PREFIX_LABELS.items():
+                if raw.startswith(prefix):
+                    suffix = raw[len(prefix):]
+                    if not suffix:
+                        return label, ""
+                    words = re.findall(r"[A-Z][a-z]*", suffix)
+                    if not words:
+                        return label, suffix
+                    source = words[0] + ("" if len(words) == 1 else " " + " ".join(w.lower() for w in words[1:]))
+                    return f"{label} {source}", source
+            return raw, raw
+
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
             room = resources_map.get(res.get("AssignedResourceId"), {})
@@ -1731,10 +1775,12 @@ class SyncService:
             rate = rates_dict.get(res.get("RateId"), {})
             company = companies_dict.get(res.get("CompanyId"), {})
             travel_agency = companies_dict.get(res.get("TravelAgencyId"), {})
+            segment = segments_dict.get(res.get("BusinessSegmentId"), {})
             res_id = res.get("Id")
             requested_amount = res.get("RequestedPaymentAmount") or {}
             rate_amount = rate_amount_by_reservation.get(res_id, 0)
             items_amount = items_amount_by_reservation.get(res_id, 0)
+            origin_label, reservation_source = format_origin(res.get("Origin", ""))
             return {
                 "number": res.get("Number", ""),
                 "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
@@ -1759,14 +1805,19 @@ class SyncService:
                 "rate_lines": rate_lines_by_reservation.get(res_id, []),
                 "item_lines": item_lines_by_reservation.get(res_id, []),
                 "total_amount": rate_amount + items_amount,
+                "total_amount_gross": gross_amount_by_reservation.get(res_id, 0),
                 # RequestedPaymentAmount is what MEWS's own "To be paid" reflects
                 # (a specific payment request, not a running balance) - confirmed
                 # against a live reservation with no requested amount, whose
                 # "To be paid" reads 0 despite a nonzero accrued total above.
                 "to_be_paid": requested_amount.get("Value") or 0,
                 "currency": currency_by_reservation.get(res_id, ""),
-                "origin": res.get("Origin", ""),
+                "service": stay_service_name,
+                "segment": segment.get("Name", ""),
+                "origin": origin_label,
+                "reservation_source": reservation_source,
                 "purpose": res.get("Purpose", ""),
+                "created_utc": res.get("CreatedUtc", ""),
             }
 
         def sort_key(row):
