@@ -240,10 +240,10 @@ export default function BcpPage() {
   }, [snapshot?.rooms]);
 
   // Vertical category-group labels for the room column (e.g. "The Duo |
-  // King"), matching MEWS's own Timeline grouping. Rooms already arrive
-  // pre-sorted by category from the backend, so a contiguous same-category
-  // run is just one group - blank categories (no assignment on that
-  // resource) are skipped rather than drawn as an empty label.
+  // King"). Rooms already arrive pre-sorted alphabetically (A-Z) by
+  // category from the backend, so a contiguous same-category run is just
+  // one group - blank categories (no assignment on that resource) are
+  // skipped rather than drawn as an empty label.
   const roomCategoryGroups = useMemo(() => {
     const rooms = snapshot?.rooms || [];
     const groups: { category: string; startIdx: number; count: number }[] = [];

@@ -1638,14 +1638,13 @@ class SyncService:
 
         # Resource categories (+ per-room assignment) - needed for both the
         # reservation detail's "Requested category" and, unconditionally, for
-        # grouping the Timeline's room rows exactly like MEWS's own grid
-        # (e.g. "The Duo | King" spanning every room of that type, whether or
-        # not it currently has a reservation in this window). Same ServiceIds
-        # quirk get_st_files_report already works around - resolve the
-        # bookable service first. Degrades to empty/ungrouped if any call
-        # fails or the token lacks the Resource Categories permission.
+        # grouping the Timeline's room rows (e.g. "The Duo | King" spanning
+        # every room of that type, whether or not it currently has a
+        # reservation in this window). Same ServiceIds quirk
+        # get_st_files_report already works around - resolve the bookable
+        # service first. Degrades to empty/ungrouped if any call fails or the
+        # token lacks the Resource Categories permission.
         categories_dict: dict = {}      # category_id -> localized name
-        category_ordering: dict = {}    # category_id -> MEWS's own display Ordering
         resource_category_id: dict = {}  # resource_id -> category_id
         try:
             services_res = await mews_client.post(
@@ -1667,7 +1666,6 @@ class SyncService:
                 for c in cats_res.get("ResourceCategories", []):
                     names = c.get("Names") or {}
                     categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
-                    category_ordering[c["Id"]] = c.get("Ordering", 0)
 
                 all_cat_ids = list(categories_dict.keys())
                 if all_cat_ids:
@@ -1787,11 +1785,11 @@ class SyncService:
         # Room list (the Timeline's Y-axis): every active resource + today's
         # housekeeping state. Who's in/arriving/departing each room is now
         # derived client-side from `reservations` (the whole window), not
-        # computed here - the timeline bars already show that. Grouped and
-        # ordered by resource category (e.g. "The Duo | King") to match
-        # MEWS's own Timeline grid, falling back to an ungrouped tail (empty
-        # category, sorted last) for any resource without a category
-        # assignment.
+        # computed here - the timeline bars already show that. Grouped by
+        # resource category (e.g. "The Duo | King"), categories ordered
+        # alphabetically A-Z rather than MEWS's own internal Ordering field;
+        # any resource without a category assignment falls into an
+        # ungrouped, unlabeled tail sorted last.
         all_rooms_res = await mews_client.post(
             "/api/connector/v1/resources/getAll",
             {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
@@ -1808,11 +1806,8 @@ class SyncService:
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
                 "category": categories_dict.get(cat_id, ""),
-                "_cat_order": category_ordering.get(cat_id, 9999),
             })
-        rooms.sort(key=lambda x: (x["_cat_order"], x["category"] or "zzz", x["room"]))
-        for r in rooms:
-            del r["_cat_order"]
+        rooms.sort(key=lambda x: (1 if not x["category"] else 0, x["category"], x["room"]))
 
         return {
             "property": property_name,
