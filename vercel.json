@@ -9,6 +9,10 @@
     {
       "path": "/api/sync/auto",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/bcp/auto-capture",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {

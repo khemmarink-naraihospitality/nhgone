@@ -1,15 +1,17 @@
 import json
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Body
 
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 
 router = APIRouter(prefix="/bcp", tags=["BCP"])
 
-# Hourly snapshots kept per property; older ones are pruned on every capture.
-SNAPSHOTS_KEPT = 48
+# Snapshots kept per property, pruned on every capture. Captures run every 5
+# minutes, so 576 = 48 hours of history (unchanged from the original hourly-
+# capture design's 48-snapshot/48-hour window).
+SNAPSHOTS_KEPT = 576
 
 
 @router.get("/live")
@@ -51,9 +53,16 @@ async def capture_snapshot(property_name: str) -> str:
 
 
 async def capture_all_bcp_snapshots():
-    """Hourly job: capture a snapshot for every sync-enabled property.
-    Successes are silent (a row per property per hour would drown the
-    Activity Log); failures are logged there so they surface."""
+    """Every-5-minutes job: capture a snapshot for every sync-enabled
+    property. Successes are silent (a row per property per cycle would
+    drown the Activity Log); failures are logged there so they surface.
+
+    Locks per property via the same sync_locks mechanism daily_auto_sync
+    uses (acquire/release_sync_lock), so an overrunning capture - or a
+    concurrent full data sync for that property - can't overlap with the
+    next 5-minute tick; that property is just skipped this cycle and
+    retried on the next one.
+    """
     try:
         props = sync_service.supabase.table("property_api_settings") \
             .select("id, property_name").eq("sync_enabled", True).execute()
@@ -61,6 +70,17 @@ async def capture_all_bcp_snapshots():
         print(f"BCP capture: failed to list properties: {e}")
         return
     for p in props.data or []:
+        prop_id = p.get("id")
+        try:
+            lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                "target_property_id": prop_id,
+                "timeout_mins": 4,
+            }).execute().data
+            if not lock_acquired:
+                continue  # a sync or another capture is already in flight for this property
+        except Exception as lock_err:
+            print(f"BCP capture: lock error for {p['property_name']}: {lock_err}")
+            continue
         try:
             await capture_snapshot(p["property_name"])
         except Exception as e:
@@ -68,7 +88,7 @@ async def capture_all_bcp_snapshots():
             try:
                 sync_service.supabase.table("sync_logs").insert({
                     "property": p["property_name"],
-                    "property_id": p.get("id"),
+                    "property_id": prop_id,
                     "status": "error",
                     "message": f"BCP snapshot failed: {str(e)[:300]}",
                     "records_synced": 0,
@@ -77,6 +97,20 @@ async def capture_all_bcp_snapshots():
                 }).execute()
             except Exception:
                 pass
+        finally:
+            try:
+                sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+            except Exception:
+                pass
+
+
+@router.get("/auto-capture")
+async def trigger_auto_capture(background_tasks: BackgroundTasks):
+    """Dedicated Vercel Cron entry point (every 5 minutes) for BCP snapshots -
+    separate from /sync/auto so this can run on its own fast cadence without
+    dragging the main data sync and retry-failed-syncs jobs along with it."""
+    background_tasks.add_task(capture_all_bcp_snapshots)
+    return {"status": "accepted"}
 
 
 @router.post("/capture")
