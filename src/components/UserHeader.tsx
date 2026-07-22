@@ -9,7 +9,7 @@ export default function UserHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [theme, setTheme] = useState("dark");
+  const [theme, setTheme] = useState("light");
   const router = useRouter();
 
   const [profile, setProfile] = useState<any>(null);
@@ -17,7 +17,7 @@ export default function UserHeader() {
 
   useEffect(() => {
     // Initial theme check
-    const savedTheme = localStorage.getItem("theme") || "dark";
+    const savedTheme = localStorage.getItem("theme") || "light";
     setTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
     
