@@ -643,13 +643,24 @@ export default function BcpPage() {
                     Room
                   </div>
                   {windowDays.map((d, i) => {
-                    const isToday = fmtYMD(d) === snapshot.date;
                     const dateStr = fmtYMD(d);
+                    const isToday = dateStr === snapshot.date;
+                    // Focused-but-not-today still needs its own visible cue -
+                    // on wide screens the whole 10-day window already fits on
+                    // screen, so a nav click has nothing to scroll to; this
+                    // highlight is what actually shows the click did something.
+                    const isFocused = !isToday && dateStr === focusedDate;
                     return (
                       <div
                         key={i}
                         ref={(el) => { if (el) dayColRefs.current.set(dateStr, el); else dayColRefs.current.delete(dateStr); }}
-                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] text-[var(--text-primary)]/70"}`}
+                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${
+                          isToday
+                            ? "bg-amber-100 text-amber-900"
+                            : isFocused
+                            ? "bg-[var(--text-primary)]/20 text-[var(--text-primary)]"
+                            : "bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] text-[var(--text-primary)]/70"
+                        }`}
                         style={{ gridColumn: i + 3, gridRow: 1 }}
                       >
                         {d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} {d.getUTCDate()}
