@@ -1602,7 +1602,12 @@ class SyncService:
                 for note in notes_res.get("ServiceOrderNotes", []):
                     text = (note.get("Text") or "").strip()
                     if text:
-                        notes_by_reservation.setdefault(note.get("ServiceOrderId"), []).append(text)
+                        # The field is OrderId, not ServiceOrderId despite the
+                        # endpoint's own name - confirmed against a live
+                        # response. Getting this wrong silently drops every
+                        # note (they all bucket under the None key and never
+                        # match a real reservation Id).
+                        notes_by_reservation.setdefault(note.get("OrderId"), []).append(text)
             except Exception:
                 break  # endpoint not enabled for this token - skip quietly
 
