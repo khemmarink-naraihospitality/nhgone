@@ -1506,18 +1506,18 @@ class SyncService:
         return report
 
     # BCP timeline window: how far back/forward from "today" the reservations
-    # grid covers. Wide enough to show most stays without blowing up hourly
-    # capture time or the encrypted snapshot's payload size.
-    _BCP_WINDOW_DAYS_BACK = 3
+    # grid covers. Wide enough to show most stays without blowing up capture
+    # time or the encrypted snapshot's payload size.
+    _BCP_WINDOW_DAYS_BACK = 7
     _BCP_WINDOW_DAYS_FORWARD = 7
 
     async def get_bcp_snapshot(self, property_name: str):
         """
-        Builds the hourly BCP (Business Continuity Plan) snapshot for one
-        property: a MEWS-style reservation timeline (rooms x dates, today -3
-        to today +7) for the front desk to keep working from on paper if MEWS
-        goes down, plus today's (Asia/Bangkok) customer profiles (tagged
-        Arrival/In-house/Departure) and payments.
+        Builds the BCP (Business Continuity Plan) snapshot for one property,
+        captured every 5 minutes: a MEWS-style reservation timeline (rooms x
+        dates, today -7 to today +7) for the front desk to keep working from
+        on paper if MEWS goes down, plus today's (Asia/Bangkok) customer
+        profiles (tagged Arrival/In-house/Departure) and payments.
 
         Reservation-level notes come from serviceOrderNotes/getAll, which not
         every Connector token has enabled - that part degrades gracefully to

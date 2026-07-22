@@ -463,7 +463,7 @@ export default function BcpPage() {
     <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <div className="no-print">
-        <PageHeader title="BCP" description="Mews Business Continuity Plan - hourly snapshots of a 10-day reservation timeline, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
+        <PageHeader title="BCP" description="Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
         <button
           onClick={() => setShowReadme(true)}
           className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors"
@@ -487,11 +487,11 @@ export default function BcpPage() {
               <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
                 <div>
                   <div className="font-bold mb-1">BCP (Business Continuity Plan) คืออะไร</div>
-                  <p>ระบบสำรองข้อมูลหน้าฟร้อนท์สำหรับกรณี <b>MEWS ล่ม</b> — ระบบจะเก็บสำเนา timeline การจอง 10 วัน (ย้อนหลัง 3 วัน + ล่วงหน้า 7 วัน) จาก MEWS <b>อัตโนมัติทุก 1 ชั่วโมง</b> (เก็บย้อนหลัง 48 ชั่วโมงล่าสุดต่อโรงแรม) พร้อมสถานะห้องแม่บ้านและรายการชำระเงินวันนี้</p>
+                  <p>ระบบสำรองข้อมูลหน้าฟร้อนท์สำหรับกรณี <b>MEWS ล่ม</b> — ระบบจะเก็บสำเนา timeline การจอง 15 วัน (ย้อนหลัง 7 วัน + ล่วงหน้า 7 วัน) จาก MEWS <b>อัตโนมัติทุก 5 นาที</b> (เก็บย้อนหลัง 48 ชั่วโมงล่าสุดต่อโรงแรม) พร้อมสถานะห้องแม่บ้านและรายการชำระเงินวันนี้</p>
                 </div>
                 <div>
                   <div className="font-bold mb-1">การใช้งานปกติ (MEWS ยังใช้ได้)</div>
-                  <p>ไม่ต้องทำอะไร — ระบบเก็บ snapshot ให้เองทุกชั่วโมง หากต้องการสำเนาล่าสุดเดี๋ยวนั้น กดปุ่ม <b>Capture Now</b> ได้เลย และเลือกดูสำเนาย้อนหลังได้จากช่อง <b>Snapshot</b></p>
+                  <p>ไม่ต้องทำอะไร — ระบบเก็บ snapshot ให้เองทุก 5 นาที หากต้องการสำเนาล่าสุดเดี๋ยวนั้น กดปุ่ม <b>Capture Now</b> ได้เลย และเลือกดูสำเนาย้อนหลังได้จากช่อง <b>Snapshot</b></p>
                 </div>
                 <div>
                   <div className="font-bold mb-1">เมื่อ MEWS ล่ม ให้ทำตามนี้</div>
@@ -646,7 +646,7 @@ export default function BcpPage() {
                     const dateStr = fmtYMD(d);
                     const isToday = dateStr === snapshot.date;
                     // Focused-but-not-today still needs its own visible cue -
-                    // on wide screens the whole 10-day window already fits on
+                    // on wide enough screens the whole window already fits on
                     // screen, so a nav click has nothing to scroll to; this
                     // highlight is what actually shows the click did something.
                     const isFocused = !isToday && dateStr === focusedDate;
