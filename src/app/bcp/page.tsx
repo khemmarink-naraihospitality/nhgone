@@ -26,6 +26,8 @@ interface ReservationRow {
   travel_agency?: string;
   rate_amount?: number;
   items_amount?: number;
+  rate_lines?: { label: string; amount: number }[];
+  item_lines?: { label: string; amount: number }[];
   total_amount?: number | null;
   to_be_paid?: number;
   currency?: string;
@@ -165,6 +167,8 @@ export default function BcpPage() {
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
+  const [rateLinesOpen, setRateLinesOpen] = useState(false);
+  const [itemLinesOpen, setItemLinesOpen] = useState(false);
   const [showGuestProfile, setShowGuestProfile] = useState(false);
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
@@ -760,7 +764,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); }}
+                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}`}
@@ -955,35 +959,72 @@ export default function BcpPage() {
                         <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
                         <div>{guestProfileNotes || "-"}</div>
                       </div>
+                      {/* "To be paid" lives in the Guests box (not the billing
+                          box below) and is highlighted, matching the reference -
+                          it's MEWS's own explicitly-requested-payment amount,
+                          not a running balance, so it can read 0 against a
+                          nonzero Total amount below. */}
+                      {typeof selectedReservation.total_amount === "number" && (
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold bg-amber-100 text-amber-900">
+                          <div>To be paid</div>
+                          <div>{(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Box 3: billing breakdown - Rate/Items amounts come from
                         order items (RequestedPaymentAmount on the reservation
                         itself is never populated in this property's data,
-                        confirmed live); "To be paid" mirrors MEWS's own
-                        explicitly-requested-payment amount, not a running
-                        balance, so it can legitimately read 0 against a
-                        nonzero Total amount. */}
+                        confirmed live). Rate/Items are expandable to their
+                        individual line items, matching MEWS's own chevron. */}
                     {typeof selectedReservation.total_amount === "number" && (
                       <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
-                        <div className="px-4 py-3 flex items-center justify-between font-bold">
-                          <div>To be paid</div>
-                          <div>{(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
-                        </div>
-                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
-                          <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Rate</div>
+                        <button
+                          onClick={() => setRateLinesOpen((v) => !v)}
+                          disabled={!selectedReservation.rate_lines?.length}
+                          className="w-full px-4 py-3 flex flex-col text-left disabled:cursor-default"
+                        >
                           <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">
+                              Rate
+                              {!!selectedReservation.rate_lines?.length && (
+                                <svg className={`w-3 h-3 transition-transform ${rateLinesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                              )}
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
                             <div>1× {selectedReservation.rate || "-"}</div>
                             <div>{(selectedReservation.rate_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                           </div>
-                        </div>
-                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
-                          <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Items</div>
-                          <div className="flex items-center justify-between">
+                        </button>
+                        {rateLinesOpen && selectedReservation.rate_lines?.map((line, i) => (
+                          <div key={i} className="px-4 pb-2 flex items-center justify-between text-[var(--text-primary)]/70">
+                            <div>{line.label}</div>
+                            <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        ))}
+                        <button
+                          onClick={() => setItemLinesOpen((v) => !v)}
+                          disabled={!selectedReservation.item_lines?.length}
+                          className="w-full px-4 py-3 border-t border-[var(--text-primary)]/10 flex flex-col text-left disabled:cursor-default"
+                        >
+                          <div className="flex items-center gap-1.5 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">
+                            Items
+                            {!!selectedReservation.item_lines?.length && (
+                              <svg className={`w-3 h-3 transition-transform ${itemLinesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-1">
                             <div>Products</div>
                             <div>{(selectedReservation.items_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
                           </div>
-                        </div>
+                        </button>
+                        {itemLinesOpen && selectedReservation.item_lines?.map((line, i) => (
+                          <div key={i} className="px-4 pb-2 flex items-center justify-between text-[var(--text-primary)]/70">
+                            <div>{line.label}</div>
+                            <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        ))}
                         <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold">
                           <div>Total amount</div>
                           <div>{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>

@@ -1574,9 +1574,13 @@ class SyncService:
         # UI derives these from order items too (RequestedPaymentAmount on
         # the reservation itself is never populated in this property's data,
         # confirmed live), bucketed by the item's Type since NightRebate/
-        # ProductOrderRebate need to net against their own category.
+        # ProductOrderRebate need to net against their own category. Each
+        # bucket also keeps its individual line items (date+amount for Rate,
+        # name+amount for Items) for the panel's expand-to-see-detail rows.
         rate_amount_by_reservation: dict = {}
         items_amount_by_reservation: dict = {}
+        rate_lines_by_reservation: dict = {}
+        item_lines_by_reservation: dict = {}
         currency_by_reservation: dict = {}
         all_res_ids = [r["Id"] for r in reservations]
         for i in range(0, len(all_res_ids), 100):
@@ -1598,8 +1602,17 @@ class SyncService:
                         currency_by_reservation.setdefault(order_id, currency)
                     if item_type in ("SpaceOrder", "NightRebate"):
                         rate_amount_by_reservation[order_id] = rate_amount_by_reservation.get(order_id, 0) + net
+                        start_utc = item.get("StartUtc")
+                        if start_utc:
+                            night_label = datetime.fromisoformat(start_utc.replace("Z", "+00:00")) \
+                                .astimezone(ZoneInfo("Asia/Bangkok")).strftime("%d/%m")
+                        else:
+                            night_label = item.get("BillingName") or "Night"
+                        rate_lines_by_reservation.setdefault(order_id, []).append({"label": night_label, "amount": net})
                     elif item_type in ("ProductOrder", "ProductOrderRebate"):
                         items_amount_by_reservation[order_id] = items_amount_by_reservation.get(order_id, 0) + net
+                        product_label = item.get("BillingName") or item.get("Name") or "Product"
+                        item_lines_by_reservation.setdefault(order_id, []).append({"label": product_label, "amount": net})
 
                     if item_type != "ProductOrder":
                         continue
@@ -1743,6 +1756,8 @@ class SyncService:
                 "travel_agency": travel_agency.get("Name", ""),
                 "rate_amount": rate_amount,
                 "items_amount": items_amount,
+                "rate_lines": rate_lines_by_reservation.get(res_id, []),
+                "item_lines": item_lines_by_reservation.get(res_id, []),
                 "total_amount": rate_amount + items_amount,
                 # RequestedPaymentAmount is what MEWS's own "To be paid" reflects
                 # (a specific payment request, not a running balance) - confirmed
