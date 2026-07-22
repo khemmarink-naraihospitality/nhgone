@@ -160,7 +160,6 @@ export default function BcpPage() {
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
-  const [showManage, setShowManage] = useState(false);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
 
@@ -203,7 +202,6 @@ export default function BcpPage() {
     setLoading(true);
     setError(null);
     setSelectedReservation(null);
-    setShowManage(false);
     try {
       let res: Response;
       if (snapshotId) {
@@ -758,7 +756,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setShowManage(false); }}
+                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}`}
@@ -812,78 +810,23 @@ export default function BcpPage() {
           </>
         )}
 
-        {/* Reservation detail panel. "Manage" opens a fuller read-only detail
-            view (below) - there's no live MEWS connection to action anything
-            from here, this is a stale snapshot for use when MEWS itself is
-            unreachable. */}
+        {/* Reservation detail panel - mirrors MEWS's own reservation popup
+            directly (Reservation/Group tabs, boxed stay+room+notes and guest
+            sections, colored status/housekeeping badges). Read-only: no
+            Billing/Payments/Unlock/kiosk actions and no Cancellation form,
+            since there is nothing live to action from a stale snapshot and
+            canceled reservations are excluded from the snapshot query in the
+            first place - the "Manage" button is disabled for the same
+            reason, kept only because MEWS's own equivalent screen shows one. */}
         {selectedReservation && (
-          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => { setSelectedReservation(null); setShowManage(false); }}>
+          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedReservation(null)}>
             <div
               className="bg-[var(--paper)] text-[var(--text-primary)] border-l border-[var(--text-primary)]/14 w-full max-w-md h-full overflow-y-auto shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
                 <div className="font-display text-2xl truncate">{selectedReservation.guest || "(no name)"}</div>
-                <button onClick={() => { setSelectedReservation(null); setShowManage(false); }} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
-              </div>
-              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
-                <div className="flex items-center gap-2">
-                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
-                    {selectedReservation.state}
-                  </span>
-                  <span className="text-[var(--text-primary)]/50">Res. {selectedReservation.number}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Room</div><div className="font-bold">{selectedReservation.room || "-"}</div></div>
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Guests</div><div>{selectedReservation.adults + selectedReservation.children}</div></div>
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Check-in</div><div>{fmtDateTime(selectedReservation.check_in)}</div></div>
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Check-out</div><div>{fmtDateTime(selectedReservation.check_out)}</div></div>
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Nationality</div><div>{selectedReservation.nationality || "-"}</div></div>
-                  <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Phone</div><div>{selectedReservation.phone || "-"}</div></div>
-                </div>
-                <div><div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Email</div><div>{selectedReservation.email || "-"}</div></div>
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Product Items</div>
-                  <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
-                </div>
-                <div className="pt-3 border-t border-[var(--text-primary)]/10">
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Reservation Notes</div>
-                  <div>{selectedReservation.notes || "-"}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
-                  <div>{guestProfileNotes || "-"}</div>
-                </div>
-              </div>
-              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
-                <button
-                  onClick={() => { setShowManage(true); setManageTab("reservation"); setManageNotesOpen(false); }}
-                  className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
-                >
-                  Manage
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* "Manage" full detail view - mirrors MEWS's own reservation Status
-            popup (Reservation/Group tabs, boxed stay+room+notes and guest
-            sections). Still read-only: no Billing/Payments/Unlock/kiosk
-            actions and no Cancellation form, since there is nothing live to
-            action from a stale snapshot and canceled reservations are
-            excluded from the snapshot query in the first place. */}
-        {selectedReservation && showManage && (
-          <div className="no-print fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onClick={() => setShowManage(false)}>
-            <div
-              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 w-full max-w-2xl rounded-xl shadow-2xl my-4"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
-                <div className="font-display text-xl truncate">{selectedReservation.guest || "(no name)"}</div>
-                <button onClick={() => setShowManage(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+                <button onClick={() => setSelectedReservation(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
@@ -986,8 +929,9 @@ export default function BcpPage() {
                       <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
                     </div>
 
-                    {(selectedReservation.category || selectedReservation.purpose || selectedReservation.rate || selectedReservation.company || selectedReservation.travel_agency) && (
+                    {(selectedReservation.nationality || selectedReservation.category || selectedReservation.purpose || selectedReservation.rate || selectedReservation.company || selectedReservation.travel_agency) && (
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-3 border-t border-[var(--text-primary)]/10">
+                        {selectedReservation.nationality && (<><div className="text-[var(--text-primary)]/50">Nationality</div><div className="text-right">{selectedReservation.nationality}</div></>)}
                         {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
                         {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
                         {selectedReservation.rate && (<><div className="text-[var(--text-primary)]/50">Rate</div><div className="text-right">{selectedReservation.rate}</div></>)}
@@ -1013,6 +957,15 @@ export default function BcpPage() {
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
                   Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this reservation from here.
                 </div>
+              </div>
+              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
+                <button
+                  disabled
+                  title="No live connection to MEWS to manage this reservation from here"
+                  className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold opacity-50 cursor-not-allowed"
+                >
+                  Manage
+                </button>
               </div>
             </div>
           </div>
