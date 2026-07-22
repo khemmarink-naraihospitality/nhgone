@@ -55,6 +55,7 @@ interface RoomRow {
   floor: string;
   state: string;
   category?: string;
+  category_short?: string;
 }
 
 interface BcpSnapshot {
@@ -257,14 +258,18 @@ export default function BcpPage() {
   // skipped rather than drawn as an empty label.
   const roomCategoryGroups = useMemo(() => {
     const rooms = snapshot?.rooms || [];
-    const groups: { category: string; startIdx: number; count: number }[] = [];
+    const groups: { category: string; shortLabel: string; startIdx: number; count: number }[] = [];
     rooms.forEach((r, i) => {
       const cat = r.category || "";
       const last = groups[groups.length - 1];
       if (last && last.category === cat) {
         last.count++;
       } else {
-        groups.push({ category: cat, startIdx: i, count: 1 });
+        // The full category name is often too long to read comfortably in
+        // this narrow vertical strip (e.g. "1 BED IN OUR TRIBE HIDEOUT
+        // (8-SHARED-BEDS)") - use MEWS's own short code there instead,
+        // falling back to the full name for categories with none configured.
+        groups.push({ category: cat, shortLabel: r.category_short || cat, startIdx: i, count: 1 });
       }
     });
     return groups.filter((g) => g.category);
@@ -653,10 +658,13 @@ export default function BcpPage() {
                   })}
 
                   {/* Room-category group labels (e.g. "The Duo | King"),
-                      matching MEWS's own vertical grouping strip */}
+                      matching MEWS's own vertical grouping strip. Uses the
+                      short code (title = full name, on hover) since long
+                      category names don't fit legibly in this narrow strip. */}
                   {roomCategoryGroups.map((g, i) => (
                     <div
                       key={"cat" + i}
+                      title={g.category}
                       className="sticky left-0 z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 flex items-center justify-center overflow-hidden"
                       style={{ gridColumn: 1, gridRow: `${g.startIdx + 2} / span ${g.count}` }}
                     >
@@ -664,7 +672,7 @@ export default function BcpPage() {
                         className="text-[10px] font-bold text-[var(--text-primary)]/60 whitespace-nowrap"
                         style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                       >
-                        {g.category}
+                        {g.shortLabel}
                       </span>
                     </div>
                   ))}

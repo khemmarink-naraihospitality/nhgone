@@ -1645,6 +1645,7 @@ class SyncService:
         # service first. Degrades to empty/ungrouped if any call fails or the
         # token lacks the Resource Categories permission.
         categories_dict: dict = {}      # category_id -> localized name
+        category_short_names: dict = {}  # category_id -> short code (e.g. "TNK"), may be empty
         resource_category_id: dict = {}  # resource_id -> category_id
         try:
             services_res = await mews_client.post(
@@ -1665,7 +1666,9 @@ class SyncService:
                 )
                 for c in cats_res.get("ResourceCategories", []):
                     names = c.get("Names") or {}
+                    shorts = c.get("ShortNames") or {}
                     categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
+                    category_short_names[c["Id"]] = shorts.get("en-US") or shorts.get("en-GB") or next(iter(shorts.values()), "")
 
                 all_cat_ids = list(categories_dict.keys())
                 if all_cat_ids:
@@ -1806,6 +1809,7 @@ class SyncService:
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
                 "category": categories_dict.get(cat_id, ""),
+                "category_short": category_short_names.get(cat_id, ""),
             })
         rooms.sort(key=lambda x: (1 if not x["category"] else 0, x["category"], x["room"]))
 
