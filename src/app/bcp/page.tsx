@@ -95,6 +95,22 @@ const toBangkokDay = (isoUtc: string): Date => {
   return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()));
 };
 const fmtYMD = (d: Date) => d.toISOString().slice(0, 10);
+// Same +7h shift as toBangkokDay, but keeping the time-of-day instead of
+// zeroing it - for the Manage view's "Wed 12:28" style check-in/out times.
+const toBangkokDateTime = (isoUtc: string): Date => new Date(new Date(isoUtc).getTime() + 7 * 3600_000);
+const fmtDateOnly = (isoUtc: string) => {
+  const d = toBangkokDay(isoUtc);
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${String(d.getUTCMonth() + 1).padStart(2, "0")}/${d.getUTCFullYear()}`;
+};
+const fmtWeekdayTime = (isoUtc: string) => {
+  const d = toBangkokDateTime(isoUtc);
+  const weekday = d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+  return `${weekday} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+};
+const guestInitials = (name: string) => {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  return parts.length ? parts.slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "?";
+};
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
 
 const ROOM_DOT_CLS: Record<string, string> = {
@@ -105,10 +121,30 @@ const ROOM_DOT_CLS: Record<string, string> = {
   OutOfOrder: "bg-red-500",
 };
 
+// Same housekeeping states as ROOM_DOT_CLS, styled as a solid pill instead of
+// a dot - used in the Manage view's room row (matches MEWS's own colored
+// "Dirty"/"Clean" badge there).
+const ROOM_STATE_BADGE_CLS: Record<string, string> = {
+  Clean: "bg-sky-50 text-sky-700 border-sky-200",
+  Inspected: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  Dirty: "bg-amber-50 text-amber-800 border-amber-200",
+  OutOfService: "bg-slate-100 text-slate-600 border-slate-300",
+  OutOfOrder: "bg-red-50 text-red-700 border-red-200",
+};
+
 const STATE_BADGE_CLS: Record<string, string> = {
   Confirmed: "bg-slate-100 text-slate-600 border-slate-300",
   Started: "bg-emerald-50 text-emerald-700 border-emerald-200",
   Processed: "bg-slate-100 text-slate-500 border-slate-200",
+};
+
+// MEWS's own reservation-status wording (its Timeline bars/badges elsewhere
+// in this file keep the raw state name - this is only for the Manage view,
+// to match the reference screenshot's "Checked in" / "Checked out" labels).
+const STATE_DISPLAY_LABEL: Record<string, string> = {
+  Confirmed: "Confirmed",
+  Started: "Checked in",
+  Processed: "Checked out",
 };
 
 export default function BcpPage() {
@@ -125,6 +161,8 @@ export default function BcpPage() {
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [showManage, setShowManage] = useState(false);
+  const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
+  const [manageNotesOpen, setManageNotesOpen] = useState(false);
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -821,7 +859,7 @@ export default function BcpPage() {
               </div>
               <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
                 <button
-                  onClick={() => setShowManage(true)}
+                  onClick={() => { setShowManage(true); setManageTab("reservation"); setManageNotesOpen(false); }}
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
                   Manage
@@ -832,11 +870,11 @@ export default function BcpPage() {
         )}
 
         {/* "Manage" full detail view - mirrors MEWS's own reservation Status
-            page (Customers / Spaces / detailed key-value list). Still
-            read-only: no Billing/Payments/Unlock/kiosk actions and no
-            Cancellation form, since there is nothing live to action from a
-            stale snapshot and canceled reservations are excluded from the
-            snapshot query in the first place. */}
+            popup (Reservation/Group tabs, boxed stay+room+notes and guest
+            sections). Still read-only: no Billing/Payments/Unlock/kiosk
+            actions and no Cancellation form, since there is nothing live to
+            action from a stale snapshot and canceled reservations are
+            excluded from the snapshot query in the first place. */}
         {selectedReservation && showManage && (
           <div className="no-print fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8" onClick={() => setShowManage(false)}>
             <div
@@ -844,93 +882,133 @@ export default function BcpPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
-                <div>
-                  <div className="font-display text-xl truncate">{selectedReservation.group_name || selectedReservation.guest || "(no name)"}</div>
-                  <div className="text-[11px] text-[var(--text-primary)]/50">Res. {selectedReservation.number}</div>
-                </div>
+                <div className="font-display text-xl truncate">{selectedReservation.guest || "(no name)"}</div>
                 <button onClick={() => setShowManage(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                 </button>
               </div>
 
-              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-6">
-                {/* Customers */}
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Customers</div>
-                  <div className="flex items-center justify-between border border-[var(--text-primary)]/10 rounded-lg px-4 py-3">
+              <div className="px-6 flex gap-5 border-b border-[var(--text-primary)]/10">
+                {(["reservation", "group"] as const).map((t) => (
+                  <button
+                    key={t}
+                    onClick={() => setManageTab(t)}
+                    className={`py-3 text-[13px] font-bold capitalize border-b-2 -mb-px transition-all ${
+                      manageTab === t
+                        ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                        : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                    }`}
+                  >
+                    {t}
+                  </button>
+                ))}
+              </div>
+
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                {manageTab === "reservation" ? (
+                  <>
+                    {/* Box 1: stay dates, room + HK status, collapsible notes */}
+                    <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
+                      <div className="px-4 py-3 flex items-center justify-between">
+                        <div>
+                          <div className="font-bold">{fmtDateOnly(selectedReservation.check_in)} - {fmtDateOnly(selectedReservation.check_out)}</div>
+                          <div className="text-[11px] text-[var(--text-primary)]/50 mt-0.5">
+                            {selectedNights} Night{selectedNights !== 1 ? "s" : ""}, {fmtWeekdayTime(selectedReservation.check_in)} - {fmtWeekdayTime(selectedReservation.check_out)}
+                          </div>
+                          <div className="text-[11px] text-[var(--text-primary)]/50 mt-0.5">{selectedReservation.number}</div>
+                        </div>
+                        <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
+                          {STATE_DISPLAY_LABEL[selectedReservation.state] || selectedReservation.state}
+                        </span>
+                      </div>
+
+                      <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between">
+                        <div className="font-bold">
+                          {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room || "-"}
+                        </div>
+                        {selectedRoomInfo && (
+                          <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoomInfo.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                            {selectedRoomInfo.state}
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        onClick={() => setManageNotesOpen((v) => !v)}
+                        disabled={!selectedReservation.notes}
+                        className="w-full px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between text-left disabled:cursor-default"
+                      >
+                        <span className="flex items-center gap-2">
+                          Notes
+                          <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold">
+                            {selectedReservation.notes ? 1 : 0}
+                          </span>
+                        </span>
+                        {selectedReservation.notes && (
+                          <svg className={`w-4 h-4 text-[var(--text-primary)]/50 transition-transform ${manageNotesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                        )}
+                      </button>
+                      {manageNotesOpen && selectedReservation.notes && (
+                        <div className="px-4 pb-3 text-[var(--text-primary)]/70">{selectedReservation.notes}</div>
+                      )}
+                    </div>
+
+                    {/* Box 2: guests */}
+                    <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
+                      <div className="px-4 py-3 flex items-center justify-between">
+                        <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Guests</div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50">
+                          {selectedReservation.adults} × Adults{selectedReservation.children > 0 ? `, ${selectedReservation.children} × Children` : ""}
+                        </div>
+                      </div>
+                      <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                            {guestInitials(selectedReservation.guest || "?")}
+                          </div>
+                          <div>
+                            <div className="font-bold">{selectedReservation.guest || "(no name)"}</div>
+                            <div className="text-[10px] text-[var(--text-primary)]/50">Owner · {selectedReservation.email || "-"} · {selectedReservation.phone || "-"}</div>
+                          </div>
+                        </div>
+                        {typeof selectedReservation.total_amount === "number" && (
+                          <div className="shrink-0">{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        )}
+                      </div>
+                      <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
+                        <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
+                        <div>{guestProfileNotes || "-"}</div>
+                      </div>
+                    </div>
+
                     <div>
-                      <div className="font-bold">{selectedReservation.guest || "(no name)"}</div>
-                      <div className="text-[11px] text-[var(--text-primary)]/50">{selectedReservation.email || "-"} · {selectedReservation.phone || "-"}</div>
+                      <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Products</div>
+                      <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
                     </div>
-                    <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
-                      {selectedReservation.state}
-                    </span>
-                  </div>
-                </div>
 
-                {/* Spaces */}
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Spaces</div>
-                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">
-                    {fmtDateTime(selectedReservation.check_in)} - {fmtDateTime(selectedReservation.check_out)}
-                  </div>
-                  <div className="flex items-center justify-between border border-[var(--text-primary)]/10 rounded-lg px-4 py-3">
-                    <div className="font-bold">{selectedReservation.room || "-"}</div>
-                    {selectedRoomInfo && (
-                      <span className="inline-flex items-center gap-1.5 text-[11px]">
-                        <span className={`w-2 h-2 rounded-full ${ROOM_DOT_CLS[selectedRoomInfo.state] || "bg-slate-400"}`} />
-                        {selectedRoomInfo.state}
-                      </span>
+                    {(selectedReservation.category || selectedReservation.purpose || selectedReservation.rate || selectedReservation.company || selectedReservation.travel_agency) && (
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-3 border-t border-[var(--text-primary)]/10">
+                        {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
+                        {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
+                        {selectedReservation.rate && (<><div className="text-[var(--text-primary)]/50">Rate</div><div className="text-right">{selectedReservation.rate}</div></>)}
+                        {selectedReservation.company && (<><div className="text-[var(--text-primary)]/50">Company</div><div className="text-right">{selectedReservation.company}</div></>)}
+                        {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right">{selectedReservation.travel_agency}</div></>)}
+                      </div>
                     )}
-                  </div>
-                </div>
-
-                {/* Reservation detail key-value list */}
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Reservation</div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 border-t border-[var(--text-primary)]/10 pt-3">
-                    <div className="text-[var(--text-primary)]/50">Service</div><div className="text-right">Stay (Accommodation)</div>
-                    <div className="text-[var(--text-primary)]/50">Confirmation number</div><div className="text-right">{selectedReservation.number || "-"}</div>
-                    {selectedReservation.group_name && (<><div className="text-[var(--text-primary)]/50">Group name</div><div className="text-right">{selectedReservation.group_name}</div></>)}
-                    <div className="text-[var(--text-primary)]/50">Status</div><div className="text-right">{selectedReservation.state}</div>
-                    <div className="text-[var(--text-primary)]/50">Arrival</div><div className="text-right">{fmtDateTime(selectedReservation.check_in)}</div>
-                    <div className="text-[var(--text-primary)]/50">Departure</div><div className="text-right">{fmtDateTime(selectedReservation.check_out)}</div>
-                    <div className="text-[var(--text-primary)]/50">Nights</div><div className="text-right">{selectedNights}</div>
-                    {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
-                    <div className="text-[var(--text-primary)]/50">Companions</div><div className="text-right">{selectedReservation.adults} × Adults{selectedReservation.children > 0 ? `, ${selectedReservation.children} × Children` : ""}</div>
-                    {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
-                    <div className="text-[var(--text-primary)]/50">Assigned space</div>
-                    <div className="text-right">
-                      {selectedReservation.room || "-"}
-                      {selectedRoomInfo && <span className="ml-1.5 text-[10px] text-[var(--text-primary)]/50">({selectedRoomInfo.state})</span>}
-                    </div>
-                    {selectedReservation.rate && (<><div className="text-[var(--text-primary)]/50">Rate</div><div className="text-right">{selectedReservation.rate}</div></>)}
-                    {selectedReservation.company && (<><div className="text-[var(--text-primary)]/50">Company</div><div className="text-right">{selectedReservation.company}</div></>)}
-                    {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right">{selectedReservation.travel_agency}</div></>)}
-                    {typeof selectedReservation.total_amount === "number" && (
+                  </>
+                ) : (
+                  <div className="border border-[var(--text-primary)]/14 rounded-lg px-4 py-3">
+                    {selectedReservation.group_name ? (
                       <>
-                        <div className="text-[var(--text-primary)]/50">Avg. rate (nightly)</div>
-                        <div className="text-right">{(selectedReservation.total_amount / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
-                        <div className="text-[var(--text-primary)]/50">Total amount</div>
-                        <div className="text-right font-bold">{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Group name</div>
+                        <div className="font-bold">{selectedReservation.group_name}</div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mt-2">Other reservations in this group aren&apos;t available in this snapshot.</div>
                       </>
+                    ) : (
+                      <div className="text-[var(--text-primary)]/50">This reservation isn&apos;t part of a group.</div>
                     )}
                   </div>
-                </div>
-
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Products</div>
-                  <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
-                </div>
-
-                <div className="pt-3 border-t border-[var(--text-primary)]/10">
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Reservation Notes</div>
-                  <div>{selectedReservation.notes || "-"}</div>
-                </div>
-                <div>
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
-                  <div>{guestProfileNotes || "-"}</div>
-                </div>
+                )}
 
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
                   Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this reservation from here.
