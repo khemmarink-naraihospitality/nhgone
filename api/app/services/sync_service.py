@@ -1615,7 +1615,6 @@ class SyncService:
         # that's a separate pre-existing bug in that method, left alone here
         # since it's out of scope for this change.
         group_ids = list({r.get("GroupId") for r in reservations if r.get("GroupId")})
-        category_ids = list({r.get("RequestedCategoryId") for r in reservations if r.get("RequestedCategoryId")})
         rate_ids = list({r.get("RateId") for r in reservations if r.get("RateId")})
         company_ids = {r.get("CompanyId") for r in reservations if r.get("CompanyId")}
         ta_ids = {r.get("TravelAgencyId") for r in reservations if r.get("TravelAgencyId")}
@@ -1637,34 +1636,51 @@ class SyncService:
             fetch_entity("/api/connector/v1/companies/getAll", "CompanyIds", all_company_ids, "Companies"),
         )
 
-        # Requested-category names need a ServiceIds filter, not
-        # ResourceCategoryIds (same MEWS quirk get_st_files_report already
-        # works around) - resolve the bookable service first, then map id ->
-        # localized name. Degrades to empty names if either call fails.
-        categories_dict: dict = {}
-        if category_ids:
-            try:
-                services_res = await mews_client.post(
-                    "/api/connector/v1/services/getAll",
-                    {"Limitation": {"Count": 100}},
+        # Resource categories (+ per-room assignment) - needed for both the
+        # reservation detail's "Requested category" and, unconditionally, for
+        # grouping the Timeline's room rows exactly like MEWS's own grid
+        # (e.g. "The Duo | King" spanning every room of that type, whether or
+        # not it currently has a reservation in this window). Same ServiceIds
+        # quirk get_st_files_report already works around - resolve the
+        # bookable service first. Degrades to empty/ungrouped if any call
+        # fails or the token lacks the Resource Categories permission.
+        categories_dict: dict = {}      # category_id -> localized name
+        category_ordering: dict = {}    # category_id -> MEWS's own display Ordering
+        resource_category_id: dict = {}  # resource_id -> category_id
+        try:
+            services_res = await mews_client.post(
+                "/api/connector/v1/services/getAll",
+                {"Limitation": {"Count": 100}},
+                property_name=property_name,
+            )
+            stay_service = next(
+                (s for s in services_res.get("Services", [])
+                 if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
+                None,
+            )
+            if stay_service:
+                cats_res = await mews_client.post(
+                    "/api/connector/v1/resourceCategories/getAll",
+                    {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
                     property_name=property_name,
                 )
-                stay_service = next(
-                    (s for s in services_res.get("Services", [])
-                     if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
-                    None,
-                )
-                if stay_service:
-                    cats_res = await mews_client.post(
-                        "/api/connector/v1/resourceCategories/getAll",
-                        {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
+                for c in cats_res.get("ResourceCategories", []):
+                    names = c.get("Names") or {}
+                    categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
+                    category_ordering[c["Id"]] = c.get("Ordering", 0)
+
+                all_cat_ids = list(categories_dict.keys())
+                if all_cat_ids:
+                    assign_res = await mews_client.post(
+                        "/api/connector/v1/resourceCategoryAssignments/getAll",
+                        {"ResourceCategoryIds": all_cat_ids, "Limitation": {"Count": 1000}},
                         property_name=property_name,
                     )
-                    for c in cats_res.get("ResourceCategories", []):
-                        names = c.get("Names") or {}
-                        categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
-            except Exception as e:
-                logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
+                    for a in assign_res.get("ResourceCategoryAssignments", []):
+                        if a.get("IsActive", True):
+                            resource_category_id[a["ResourceId"]] = a["CategoryId"]
+        except Exception as e:
+            logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
 
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
@@ -1771,7 +1787,11 @@ class SyncService:
         # Room list (the Timeline's Y-axis): every active resource + today's
         # housekeeping state. Who's in/arriving/departing each room is now
         # derived client-side from `reservations` (the whole window), not
-        # computed here - the timeline bars already show that.
+        # computed here - the timeline bars already show that. Grouped and
+        # ordered by resource category (e.g. "The Duo | King") to match
+        # MEWS's own Timeline grid, falling back to an ungrouped tail (empty
+        # category, sorted last) for any resource without a category
+        # assignment.
         all_rooms_res = await mews_client.post(
             "/api/connector/v1/resources/getAll",
             {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
@@ -1782,12 +1802,17 @@ class SyncService:
             if not r.get("IsActive", True):
                 continue
             data_val = (r.get("Data") or {}).get("Value") or {}
+            cat_id = resource_category_id.get(r["Id"])
             rooms.append({
                 "room": r.get("Name", ""),
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
+                "category": categories_dict.get(cat_id, ""),
+                "_cat_order": category_ordering.get(cat_id, 9999),
             })
-        rooms.sort(key=lambda x: (str(x["floor"]), x["room"]))
+        rooms.sort(key=lambda x: (x["_cat_order"], x["category"] or "zzz", x["room"]))
+        for r in rooms:
+            del r["_cat_order"]
 
         return {
             "property": property_name,

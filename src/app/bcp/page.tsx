@@ -54,6 +54,7 @@ interface RoomRow {
   room: string;
   floor: string;
   state: string;
+  category?: string;
 }
 
 interface BcpSnapshot {
@@ -238,6 +239,26 @@ export default function BcpPage() {
     return m;
   }, [snapshot?.rooms]);
 
+  // Vertical category-group labels for the room column (e.g. "The Duo |
+  // King"), matching MEWS's own Timeline grouping. Rooms already arrive
+  // pre-sorted by category from the backend, so a contiguous same-category
+  // run is just one group - blank categories (no assignment on that
+  // resource) are skipped rather than drawn as an empty label.
+  const roomCategoryGroups = useMemo(() => {
+    const rooms = snapshot?.rooms || [];
+    const groups: { category: string; startIdx: number; count: number }[] = [];
+    rooms.forEach((r, i) => {
+      const cat = r.category || "";
+      const last = groups[groups.length - 1];
+      if (last && last.category === cat) {
+        last.count++;
+      } else {
+        groups.push({ category: cat, startIdx: i, count: 1 });
+      }
+    });
+    return groups.filter((g) => g.category);
+  }, [snapshot?.rooms]);
+
   // Each reservation positioned as a grid bar: column = nights within the
   // visible window, clipped at both edges for stays that start before or
   // end after it. Checkout day itself isn't occupied, so the bar ends at
@@ -258,7 +279,7 @@ export default function BcpPage() {
         const clippedStart = Math.max(0, startIdx);
         const clippedEnd = Math.min(totalDays, endIdx);
         if (clippedEnd <= clippedStart) return null;
-        return { res, roomIdx, colStart: clippedStart + 2, colSpan: clippedEnd - clippedStart };
+        return { res, roomIdx, colStart: clippedStart + 3, colSpan: clippedEnd - clippedStart };
       })
       .filter((b): b is NonNullable<typeof b> => b !== null);
   }, [snapshot?.reservations, windowDays, roomIndexByName]);
@@ -511,10 +532,11 @@ export default function BcpPage() {
               <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
-                  style={{ gridTemplateColumns: `160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
+                  style={{ gridTemplateColumns: `28px 160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
                 >
                   {/* Header row */}
-                  <div className="sticky top-0 left-0 z-20 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 1, gridRow: 1 }}>
+                  <div className="sticky top-0 left-0 z-30 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10" style={{ gridColumn: 1, gridRow: 1 }}></div>
+                  <div className="sticky top-0 left-[28px] z-20 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 2, gridRow: 1 }}>
                     Room
                   </div>
                   {windowDays.map((d, i) => {
@@ -522,20 +544,37 @@ export default function BcpPage() {
                     return (
                       <div
                         key={i}
-                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[var(--paper)] text-[var(--text-primary)]/70"}`}
-                        style={{ gridColumn: i + 2, gridRow: 1 }}
+                        className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] text-[var(--text-primary)]/70"}`}
+                        style={{ gridColumn: i + 3, gridRow: 1 }}
                       >
                         {d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} {d.getUTCDate()}
                       </div>
                     );
                   })}
 
+                  {/* Room-category group labels (e.g. "The Duo | King"),
+                      matching MEWS's own vertical grouping strip */}
+                  {roomCategoryGroups.map((g, i) => (
+                    <div
+                      key={"cat" + i}
+                      className="sticky left-0 z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 flex items-center justify-center overflow-hidden"
+                      style={{ gridColumn: 1, gridRow: `${g.startIdx + 2} / span ${g.count}` }}
+                    >
+                      <span
+                        className="text-[10px] font-bold text-[var(--text-primary)]/60 whitespace-nowrap"
+                        style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                      >
+                        {g.category}
+                      </span>
+                    </div>
+                  ))}
+
                   {/* Room label column + gridline strips */}
                   {snapshot.rooms.map((room, i) => (
                     <div
                       key={room.room + i}
-                      className="sticky left-0 z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap"
-                      style={{ gridColumn: 1, gridRow: i + 2 }}
+                      className="sticky left-[28px] z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap"
+                      style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
                       {room.room}
@@ -546,7 +585,7 @@ export default function BcpPage() {
                       key={"strip" + i}
                       className="border-b border-[var(--text-primary)]/10"
                       style={{
-                        gridColumn: `2 / span ${windowDays.length}`,
+                        gridColumn: `3 / span ${windowDays.length}`,
                         gridRow: i + 2,
                         backgroundImage: `repeating-linear-gradient(to right, transparent, transparent calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length}))`,
                       }}
