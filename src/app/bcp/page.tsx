@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -124,6 +124,16 @@ export default function BcpPage() {
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [showManage, setShowManage] = useState(false);
+
+  // Timeline date-navigation toolbar (<< < Today > >> + date/space search) -
+  // pure client-side scrolling of the already-rendered grid, since the
+  // snapshot only ever contains reservations within its captured window;
+  // there's no new data to fetch for these controls.
+  const [focusedDate, setFocusedDate] = useState<string>("");
+  const [spaceSearch, setSpaceSearch] = useState("");
+  const [highlightedRoom, setHighlightedRoom] = useState<string | null>(null);
+  const dayColRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const roomRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   useEffect(() => {
     const fetchProperties = async () => {
@@ -345,6 +355,64 @@ export default function BcpPage() {
     return Math.max(1, daysBetween(inDay, outDay));
   }, [selectedReservation]);
 
+  // Reset the toolbar's focused date to "today" whenever a different
+  // snapshot loads (new property or a different capture picked from history).
+  useEffect(() => {
+    if (snapshot?.date) setFocusedDate(snapshot.date);
+  }, [snapshot?.property, snapshot?.captured_utc]);
+
+  const scrollToDate = (dateStr: string) => {
+    dayColRefs.current.get(dateStr)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+  };
+
+  const clampToWindow = (dateStr: string) => {
+    if (!snapshot?.window) return dateStr;
+    if (dateStr < snapshot.window.start) return snapshot.window.start;
+    if (dateStr > snapshot.window.end) return snapshot.window.end;
+    return dateStr;
+  };
+
+  const shiftFocusedDate = (deltaDays: number) => {
+    if (!focusedDate) return;
+    const d = new Date(focusedDate + "T00:00:00Z");
+    d.setUTCDate(d.getUTCDate() + deltaDays);
+    const next = clampToWindow(fmtYMD(d));
+    setFocusedDate(next);
+    scrollToDate(next);
+  };
+
+  const goToWindowStart = () => {
+    if (!snapshot?.window) return;
+    setFocusedDate(snapshot.window.start);
+    scrollToDate(snapshot.window.start);
+  };
+  const goToWindowEnd = () => {
+    if (!snapshot?.window) return;
+    setFocusedDate(snapshot.window.end);
+    scrollToDate(snapshot.window.end);
+  };
+  const goToToday = () => {
+    if (!snapshot?.date) return;
+    setFocusedDate(snapshot.date);
+    scrollToDate(snapshot.date);
+  };
+  const handleDatePick = (v: string) => {
+    if (!v) return;
+    const clamped = clampToWindow(v);
+    setFocusedDate(clamped);
+    scrollToDate(clamped);
+  };
+
+  const handleSpaceSearch = () => {
+    const query = spaceSearch.trim().toLowerCase();
+    if (!query || !snapshot) return;
+    const match = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query));
+    if (!match) return;
+    setHighlightedRoom(match.room);
+    roomRowRefs.current.get(match.room)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    setTimeout(() => setHighlightedRoom((cur) => (cur === match.room ? null : cur)), 1500);
+  };
+
   const paymentTable = (rows: PaymentRow[]) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
@@ -528,6 +596,35 @@ export default function BcpPage() {
               )}
             </div>
 
+            {mainTab === "timeline" && snapshot.window && (
+              <div className="no-print flex flex-wrap items-center gap-2 mb-4 p-2 border border-[var(--text-primary)]/14 bg-[var(--paper)]">
+                <input
+                  type="text"
+                  value={spaceSearch}
+                  onChange={(e) => setSpaceSearch(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") handleSpaceSearch(); }}
+                  placeholder="Search space (press Enter)"
+                  className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent w-44 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
+                />
+                <div className="flex items-center border border-[var(--text-primary)]/20 divide-x divide-[var(--text-primary)]/20">
+                  <button onClick={goToWindowStart} title={`First day with data (${snapshot.window.start})`} className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">«</button>
+                  <button onClick={() => shiftFocusedDate(-1)} title="Previous day" className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">‹</button>
+                  <button onClick={goToToday} title="Today" className="px-4 py-2 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 transition-colors">Today</button>
+                  <button onClick={() => shiftFocusedDate(1)} title="Next day" className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">›</button>
+                  <button onClick={goToWindowEnd} title={`Last day with data (${snapshot.window.end})`} className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">»</button>
+                </div>
+                <input
+                  type="date"
+                  value={focusedDate}
+                  min={snapshot.window.start}
+                  max={snapshot.window.end}
+                  onChange={(e) => handleDatePick(e.target.value)}
+                  title="Jump to a date within the captured window"
+                  className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent focus:outline-none focus:border-[var(--text-primary)]/50"
+                />
+              </div>
+            )}
+
             {mainTab === "timeline" ? (
               <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
@@ -541,9 +638,11 @@ export default function BcpPage() {
                   </div>
                   {windowDays.map((d, i) => {
                     const isToday = fmtYMD(d) === snapshot.date;
+                    const dateStr = fmtYMD(d);
                     return (
                       <div
                         key={i}
+                        ref={(el) => { if (el) dayColRefs.current.set(dateStr, el); else dayColRefs.current.delete(dateStr); }}
                         className={`sticky top-0 z-10 border-b border-[var(--text-primary)]/10 p-2 text-[10px] font-bold text-center whitespace-nowrap ${isToday ? "bg-amber-100 text-amber-900" : "bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] text-[var(--text-primary)]/70"}`}
                         style={{ gridColumn: i + 3, gridRow: 1 }}
                       >
@@ -573,17 +672,18 @@ export default function BcpPage() {
                   {snapshot.rooms.map((room, i) => (
                     <div
                       key={room.room + i}
-                      className="sticky left-[28px] z-10 bg-[var(--paper)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap"
+                      ref={(el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
+                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
                       {room.room}
                     </div>
                   ))}
-                  {snapshot.rooms.map((_, i) => (
+                  {snapshot.rooms.map((room, i) => (
                     <div
                       key={"strip" + i}
-                      className="border-b border-[var(--text-primary)]/10"
+                      className={`border-b border-[var(--text-primary)]/10 transition-colors ${highlightedRoom === room.room ? "bg-amber-100" : ""}`}
                       style={{
                         gridColumn: `3 / span ${windowDays.length}`,
                         gridRow: i + 2,
