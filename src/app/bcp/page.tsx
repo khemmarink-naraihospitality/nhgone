@@ -24,7 +24,10 @@ interface ReservationRow {
   rate?: string;
   company?: string;
   travel_agency?: string;
+  rate_amount?: number;
+  items_amount?: number;
   total_amount?: number | null;
+  to_be_paid?: number;
   currency?: string;
   origin?: string;
   purpose?: string;
@@ -914,9 +917,6 @@ export default function BcpPage() {
                             <div className="text-[10px] text-[var(--text-primary)]/50">Owner · {selectedReservation.email || "-"} · {selectedReservation.phone || "-"}</div>
                           </div>
                         </div>
-                        {typeof selectedReservation.total_amount === "number" && (
-                          <div className="shrink-0">{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
-                        )}
                       </div>
                       <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
                         <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
@@ -924,17 +924,59 @@ export default function BcpPage() {
                       </div>
                     </div>
 
+                    {/* Box 3: billing breakdown - Rate/Items amounts come from
+                        order items (RequestedPaymentAmount on the reservation
+                        itself is never populated in this property's data,
+                        confirmed live); "To be paid" mirrors MEWS's own
+                        explicitly-requested-payment amount, not a running
+                        balance, so it can legitimately read 0 against a
+                        nonzero Total amount. */}
+                    {typeof selectedReservation.total_amount === "number" && (
+                      <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
+                        <div className="px-4 py-3 flex items-center justify-between font-bold">
+                          <div>To be paid</div>
+                          <div>{(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        </div>
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
+                          <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Rate</div>
+                          <div className="flex items-center justify-between">
+                            <div>1× {selectedReservation.rate || "-"}</div>
+                            <div>{(selectedReservation.rate_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
+                          <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Items</div>
+                          <div className="flex items-center justify-between">
+                            <div>Products</div>
+                            <div>{(selectedReservation.items_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold">
+                          <div>Total amount</div>
+                          <div>{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                        </div>
+                        <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
+                          <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Details</div>
+                          <div className="grid grid-cols-2 gap-y-1">
+                            <div className="text-[var(--text-primary)]/50">Avg. rate (nightly)</div>
+                            <div className="text-right">{((selectedReservation.rate_amount ?? 0) / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div className="text-[var(--text-primary)]/50">Avg. price with products (nightly)</div>
+                            <div className="text-right">{(selectedReservation.total_amount / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     <div>
                       <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Products</div>
                       <div>{selectedReservation.products.length > 0 ? selectedReservation.products.join(", ") : "-"}</div>
                     </div>
 
-                    {(selectedReservation.nationality || selectedReservation.category || selectedReservation.purpose || selectedReservation.rate || selectedReservation.company || selectedReservation.travel_agency) && (
+                    {(selectedReservation.nationality || selectedReservation.category || selectedReservation.purpose || selectedReservation.company || selectedReservation.travel_agency) && (
                       <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 pt-3 border-t border-[var(--text-primary)]/10">
                         {selectedReservation.nationality && (<><div className="text-[var(--text-primary)]/50">Nationality</div><div className="text-right">{selectedReservation.nationality}</div></>)}
                         {selectedReservation.category && (<><div className="text-[var(--text-primary)]/50">Requested category</div><div className="text-right">{selectedReservation.category}</div></>)}
                         {selectedReservation.purpose && (<><div className="text-[var(--text-primary)]/50">Booking purpose</div><div className="text-right">{selectedReservation.purpose}</div></>)}
-                        {selectedReservation.rate && (<><div className="text-[var(--text-primary)]/50">Rate</div><div className="text-right">{selectedReservation.rate}</div></>)}
                         {selectedReservation.company && (<><div className="text-[var(--text-primary)]/50">Company</div><div className="text-right">{selectedReservation.company}</div></>)}
                         {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right">{selectedReservation.travel_agency}</div></>)}
                       </div>
