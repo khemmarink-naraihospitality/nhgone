@@ -125,13 +125,14 @@ export default function BcpPage() {
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [showManage, setShowManage] = useState(false);
 
-  // Timeline date-navigation toolbar (<< < Today > >> + date/space search) -
-  // pure client-side scrolling of the already-rendered grid, since the
-  // snapshot only ever contains reservations within its captured window;
-  // there's no new data to fetch for these controls.
+  // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
+  // client-side scrolling of the already-rendered grid's own scroll
+  // container, since the snapshot only ever contains reservations within
+  // its captured window; there's no new data to fetch for these controls.
   const [focusedDate, setFocusedDate] = useState<string>("");
   const [spaceSearch, setSpaceSearch] = useState("");
   const [highlightedRoom, setHighlightedRoom] = useState<string | null>(null);
+  const timelineScrollRef = useRef<HTMLDivElement>(null);
   const dayColRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const roomRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
@@ -361,8 +362,24 @@ export default function BcpPage() {
     if (snapshot?.date) setFocusedDate(snapshot.date);
   }, [snapshot?.property, snapshot?.captured_utc]);
 
+  // Scrolls only the grid's own scroll container (never the outer page) by
+  // setting scrollLeft/scrollTop directly - scrollIntoView() was cascading
+  // up to the page's own scroll container too, jumping the whole page.
+  const LEFT_COLS_WIDTH = 28 + 160; // category strip + room-label sticky columns
+
   const scrollToDate = (dateStr: string) => {
-    dayColRefs.current.get(dateStr)?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    const container = timelineScrollRef.current;
+    const target = dayColRefs.current.get(dateStr);
+    if (!container || !target) return;
+    container.scrollTo({ left: Math.max(0, target.offsetLeft - LEFT_COLS_WIDTH), behavior: "smooth" });
+  };
+
+  const scrollToRoom = (roomName: string) => {
+    const container = timelineScrollRef.current;
+    const target = roomRowRefs.current.get(roomName);
+    if (!container || !target) return;
+    const top = target.offsetTop - container.clientHeight / 2 + target.offsetHeight / 2;
+    container.scrollTo({ top: Math.max(0, top), behavior: "smooth" });
   };
 
   const clampToWindow = (dateStr: string) => {
@@ -396,20 +413,13 @@ export default function BcpPage() {
     setFocusedDate(snapshot.date);
     scrollToDate(snapshot.date);
   };
-  const handleDatePick = (v: string) => {
-    if (!v) return;
-    const clamped = clampToWindow(v);
-    setFocusedDate(clamped);
-    scrollToDate(clamped);
-  };
-
   const handleSpaceSearch = () => {
     const query = spaceSearch.trim().toLowerCase();
     if (!query || !snapshot) return;
     const match = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query));
     if (!match) return;
     setHighlightedRoom(match.room);
-    roomRowRefs.current.get(match.room)?.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+    scrollToRoom(match.room);
     setTimeout(() => setHighlightedRoom((cur) => (cur === match.room ? null : cur)), 1500);
   };
 
@@ -613,20 +623,11 @@ export default function BcpPage() {
                   <button onClick={() => shiftFocusedDate(1)} title="Next day" className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">›</button>
                   <button onClick={goToWindowEnd} title={`Last day with data (${snapshot.window.end})`} className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">»</button>
                 </div>
-                <input
-                  type="date"
-                  value={focusedDate}
-                  min={snapshot.window.start}
-                  max={snapshot.window.end}
-                  onChange={(e) => handleDatePick(e.target.value)}
-                  title="Jump to a date within the captured window"
-                  className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent focus:outline-none focus:border-[var(--text-primary)]/50"
-                />
               </div>
             )}
 
             {mainTab === "timeline" ? (
-              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
+              <div ref={timelineScrollRef} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
                   style={{ gridTemplateColumns: `28px 160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
