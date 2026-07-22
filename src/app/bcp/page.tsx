@@ -165,6 +165,7 @@ export default function BcpPage() {
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
+  const [showGuestProfile, setShowGuestProfile] = useState(false);
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -377,13 +378,13 @@ export default function BcpPage() {
     }));
   }, [snapshot]);
 
-  const guestProfileNotes = useMemo(() => {
-    if (!selectedReservation || !snapshot) return "";
-    const match = snapshot.customers.find(
+  const matchedGuestProfile = useMemo(() => {
+    if (!selectedReservation || !snapshot) return null;
+    return snapshot.customers.find(
       (c) => (selectedReservation.email && c.email === selectedReservation.email) || c.name === selectedReservation.guest
-    );
-    return match?.notes || "";
+    ) || null;
   }, [selectedReservation, snapshot]);
+  const guestProfileNotes = matchedGuestProfile?.notes || "";
 
   // For the "Manage" detail view: the assigned room's today HK status
   // (joined from the room list) and the stay length, both absent from
@@ -759,7 +760,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); }}
+                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}`}
@@ -834,24 +835,51 @@ export default function BcpPage() {
                 </button>
               </div>
 
-              <div className="px-6 flex gap-5 border-b border-[var(--text-primary)]/10">
-                {(["reservation", "group"] as const).map((t) => (
+              {showGuestProfile ? (
+                <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
                   <button
-                    key={t}
-                    onClick={() => setManageTab(t)}
-                    className={`py-3 text-[13px] font-bold capitalize border-b-2 -mb-px transition-all ${
-                      manageTab === t
-                        ? "border-[var(--text-primary)] text-[var(--text-primary)]"
-                        : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
-                    }`}
+                    onClick={() => setShowGuestProfile(false)}
+                    className="flex items-center gap-1.5 text-[12px] font-bold text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors self-start"
                   >
-                    {t}
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    Back to reservation
                   </button>
-                ))}
-              </div>
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[13px] font-bold shrink-0">
+                      {guestInitials(selectedReservation.guest || "?")}
+                    </div>
+                    <div className="font-display text-xl">{selectedReservation.guest || "(no name)"}</div>
+                  </div>
+                  <div className="border border-[var(--text-primary)]/14 rounded-lg grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3">
+                    <div className="text-[var(--text-primary)]/50">Nationality</div><div className="text-right">{matchedGuestProfile?.nationality || selectedReservation.nationality || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Email</div><div className="text-right">{matchedGuestProfile?.email || selectedReservation.email || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Phone</div><div className="text-right">{matchedGuestProfile?.phone || selectedReservation.phone || "-"}</div>
+                  </div>
+                  <div className="border border-[var(--text-primary)]/14 rounded-lg px-4 py-3">
+                    <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
+                    <div>{guestProfileNotes || "-"}</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="px-6 flex gap-5 border-b border-[var(--text-primary)]/10">
+                    {(["reservation", "group"] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setManageTab(t)}
+                        className={`py-3 text-[13px] font-bold capitalize border-b-2 -mb-px transition-all ${
+                          manageTab === t
+                            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                            : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        {t}
+                      </button>
+                    ))}
+                  </div>
 
-              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
-                {manageTab === "reservation" ? (
+                  <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                    {manageTab === "reservation" ? (
                   <>
                     {/* Box 1: stay dates, room + HK status, collapsible notes */}
                     <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
@@ -913,8 +941,13 @@ export default function BcpPage() {
                             {guestInitials(selectedReservation.guest || "?")}
                           </div>
                           <div>
-                            <div className="font-bold">{selectedReservation.guest || "(no name)"}</div>
-                            <div className="text-[10px] text-[var(--text-primary)]/50">Owner · {selectedReservation.email || "-"} · {selectedReservation.phone || "-"}</div>
+                            <button
+                              onClick={() => setShowGuestProfile(true)}
+                              className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors"
+                            >
+                              {selectedReservation.guest || "(no name)"}
+                            </button>
+                            <span className="text-[10px] text-[var(--text-primary)]/50"> Owner</span>
                           </div>
                         </div>
                       </div>
@@ -1000,6 +1033,8 @@ export default function BcpPage() {
                   Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this reservation from here.
                 </div>
               </div>
+                </>
+              )}
               <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
                 <button
                   disabled
