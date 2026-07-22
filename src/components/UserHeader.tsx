@@ -5,6 +5,9 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
 
+// Bump this if the default theme ever needs to be force-reset again.
+const THEME_DEFAULT_RESET_KEY = "theme_default_reset_v1";
+
 export default function UserHeader() {
   const [isOpen, setIsOpen] = useState(false);
   const [user, setUser] = useState<any>(null);
@@ -16,8 +19,17 @@ export default function UserHeader() {
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
 
   useEffect(() => {
-    // Initial theme check
-    const savedTheme = localStorage.getItem("theme") || "light";
+    // Initial theme check. Light Mode became the app-wide default here -
+    // anyone whose browser still has an old "dark" value saved from before
+    // that change gets switched to light once (marked by
+    // THEME_DEFAULT_RESET_KEY so it only happens the one time); toggling to
+    // dark afterward is respected normally, same as any other preference.
+    const resetDone = localStorage.getItem(THEME_DEFAULT_RESET_KEY) === "1";
+    const savedTheme = resetDone ? (localStorage.getItem("theme") || "light") : "light";
+    if (!resetDone) {
+      localStorage.setItem("theme", "light");
+      localStorage.setItem(THEME_DEFAULT_RESET_KEY, "1");
+    }
     setTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
     
