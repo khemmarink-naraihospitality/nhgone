@@ -630,7 +630,7 @@ export default function BcpPage() {
               <div ref={timelineScrollRef} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
-                  style={{ gridTemplateColumns: `28px 160px repeat(${windowDays.length}, minmax(84px, 1fr))` }}
+                  style={{ gridTemplateColumns: `28px 160px repeat(${windowDays.length}, 84px)` }}
                 >
                   {/* Header row */}
                   <div className="sticky top-0 left-0 z-30 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10" style={{ gridColumn: 1, gridRow: 1 }}></div>
