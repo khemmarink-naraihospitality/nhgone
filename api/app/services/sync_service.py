@@ -1739,10 +1739,20 @@ class SyncService:
         # MEWS's Reservation.Origin is a combined string like "CommanderInPerson"
         # (Origin enum + CommanderOrigin sub-enum concatenated - confirmed
         # against a live response, not split into two fields as the public
-        # docs describe). Reconstructs both MEWS's own full label ("Mews
-        # Operations In person") and the shorter "Reservation source" MEWS
-        # shows separately (just the sub-detail, "In person") from the
-        # documented enum value lists.
+        # docs describe). Reconstructs MEWS's own full label ("Mews Operations
+        # In person") from the documented enum value lists.
+        #
+        # Channel-manager (OTA) bookings get a richer, different Origin format
+        # entirely - confirmed against a live Agoda-via-SiteMinder reservation:
+        # "SiteMinder 1750892592: AGO-1750892592-01" is
+        # f"{ChannelManager} {ChannelNumber}: {ChannelManagerNumber}", not the
+        # generic prefix+suffix split used for Commander/Distributor/etc.
+        #
+        # "Reservation source" prefers OriginDetails when MEWS populates it
+        # (it did for that same Agoda reservation - "TravelBundle, Agoda"),
+        # falling back to the derived suffix/channel-manager name otherwise -
+        # confirmed against the walk-in reservation, whose OriginDetails was
+        # null but still showed a "Reservation source" ("In person").
         _ORIGIN_PREFIX_LABELS = {
             "Distributor": "Booking Engine",
             "ChannelManager": "Channel Manager",
@@ -1752,20 +1762,30 @@ class SyncService:
             "Navigator": "Guest Services",
         }
 
-        def format_origin(raw: str):
+        def format_origin(res: dict):
+            raw = res.get("Origin") or ""
+            origin_details = (res.get("OriginDetails") or "").strip()
             if not raw:
-                return "", ""
+                return "", origin_details
+
+            if raw.startswith("ChannelManager"):
+                cm = res.get("ChannelManager")
+                cn = res.get("ChannelNumber")
+                cmn = res.get("ChannelManagerNumber")
+                if cm and cn and cmn:
+                    return f"{cm} {cn}: {cmn}", (origin_details or cm)
+
             for prefix, label in _ORIGIN_PREFIX_LABELS.items():
                 if raw.startswith(prefix):
                     suffix = raw[len(prefix):]
                     if not suffix:
-                        return label, ""
+                        return label, origin_details
                     words = re.findall(r"[A-Z][a-z]*", suffix)
                     if not words:
-                        return label, suffix
+                        return label, (origin_details or suffix)
                     source = words[0] + ("" if len(words) == 1 else " " + " ".join(w.lower() for w in words[1:]))
-                    return f"{label} {source}", source
-            return raw, raw
+                    return f"{label} {source}", (origin_details or source)
+            return raw, (origin_details or raw)
 
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
@@ -1780,7 +1800,7 @@ class SyncService:
             requested_amount = res.get("RequestedPaymentAmount") or {}
             rate_amount = rate_amount_by_reservation.get(res_id, 0)
             items_amount = items_amount_by_reservation.get(res_id, 0)
-            origin_label, reservation_source = format_origin(res.get("Origin", ""))
+            origin_label, reservation_source = format_origin(res)
             return {
                 "number": res.get("Number", ""),
                 "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
@@ -1800,6 +1820,11 @@ class SyncService:
                 "rate": rate.get("Name", ""),
                 "company": company.get("Name", ""),
                 "travel_agency": travel_agency.get("Name", ""),
+                # ChannelNumber is the OTA/channel's own booking reference,
+                # e.g. Agoda's own confirmation number for the stay - not
+                # MEWS's own "Number" - confirmed against a live Agoda
+                # reservation matching this exactly.
+                "travel_agency_confirmation_number": res.get("ChannelNumber", ""),
                 "rate_amount": rate_amount,
                 "items_amount": items_amount,
                 "rate_lines": rate_lines_by_reservation.get(res_id, []),
