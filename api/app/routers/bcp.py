@@ -9,9 +9,10 @@ from app.services.encryption import encryption_service
 router = APIRouter(prefix="/bcp", tags=["BCP"])
 
 # Snapshots kept per property, pruned on every capture. Captures run every 5
-# minutes, so 576 = 48 hours of history (unchanged from the original hourly-
-# capture design's 48-snapshot/48-hour window).
-SNAPSHOTS_KEPT = 576
+# minutes, so 12 = 1 hour of history (reduced from the original 576/48h to
+# cut Supabase disk usage - see project_bcp_disk_usage memory for the sizing
+# that drove this call).
+SNAPSHOTS_KEPT = 12
 
 
 @router.get("/live")
