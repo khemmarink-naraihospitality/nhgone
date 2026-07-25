@@ -1924,36 +1924,81 @@ class SyncService:
         # Room list (the Timeline's Y-axis): every active resource + today's
         # housekeeping state. Who's in/arriving/departing each room is now
         # derived client-side from `reservations` (the whole window), not
-        # computed here - the timeline bars already show that. Grouped by
-        # resource category (e.g. "The Duo | King"), categories ordered
-        # alphabetically A-Z rather than MEWS's own internal Ordering field;
-        # any resource without a category assignment falls into an
-        # ungrouped, unlabeled tail sorted last.
+        # computed here - the timeline bars already show that.
+        #
+        # MEWS sells some physical spaces multiple ways - e.g. room 210 as a
+        # whole-dorm buyout ("TRIBE HIDEOUT - ALL YOURS!") AND its individual
+        # beds 211-219 as their own bookable category ("1 BED IN OUR TRIBE
+        # HIDEOUT") - and nests the beds directly under the parent room in
+        # its own Timeline regardless of the beds' different category.
+        # Mirror that here: top-level (parentless) resources are grouped/
+        # sorted by their own category as before, but a resource with a
+        # ParentResourceId is nested immediately after its parent instead of
+        # sorting into its own category's alphabetical slot. `group_category`
+        # carries the category used for the vertical group-label span (the
+        # parent's, for children) separately from `category` (the room's own
+        # true category, still used for its Room Properties/tooltip) so a
+        # family of parent+children reads as one section even though the
+        # children's real category differs.
         all_rooms_res = await mews_client.post(
             "/api/connector/v1/resources/getAll",
             {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
             property_name=property_name,
         )
-        # Full (unfiltered) Id->Name map so a parent-room lookup still resolves
-        # even if the parent itself is inactive.
-        resource_name_by_id = {r["Id"]: r.get("Name", "") for r in all_rooms_res.get("Resources", [])}
-        rooms = []
+        raw_resources = []
         for r in all_rooms_res.get("Resources", []):
             if not r.get("IsActive", True):
                 continue
             data_val = (r.get("Data") or {}).get("Value") or {}
             cat_id = resource_category_id.get(r["Id"])
-            parent_id = r.get("ParentResourceId")
-            rooms.append({
+            raw_resources.append({
+                "id": r["Id"],
+                "parent_id": r.get("ParentResourceId") or "",
                 "room": r.get("Name", ""),
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
                 "category": categories_dict.get(cat_id, ""),
                 "category_short": category_short_names.get(cat_id, ""),
-                "parent_room": resource_name_by_id.get(parent_id, "") if parent_id else "",
-                "service": stay_service_name,
             })
-        rooms.sort(key=lambda x: (1 if not x["category"] else 0, x["category"], x["room"]))
+
+        by_id = {res["id"]: res for res in raw_resources}
+        children_by_parent: dict = {}
+        top_level = []
+        for res in raw_resources:
+            # An orphaned child (parent inactive/missing from this list)
+            # falls back to top-level so it doesn't silently vanish.
+            if res["parent_id"] and res["parent_id"] in by_id:
+                children_by_parent.setdefault(res["parent_id"], []).append(res)
+            else:
+                top_level.append(res)
+
+        def room_sort_key(res):
+            name = res["room"]
+            return (int(name), name) if name.isdigit() else (float("inf"), name)
+
+        for kids in children_by_parent.values():
+            kids.sort(key=room_sort_key)
+        top_level.sort(key=lambda res: (1 if not res["category"] else 0, res["category"], res["room"]))
+
+        def to_room_row(res, parent_room_name, group_category, group_category_short, is_child):
+            return {
+                "room": res["room"],
+                "floor": res["floor"],
+                "state": res["state"],
+                "category": res["category"],
+                "category_short": res["category_short"],
+                "parent_room": parent_room_name,
+                "service": stay_service_name,
+                "group_category": group_category,
+                "group_category_short": group_category_short,
+                "is_child": is_child,
+            }
+
+        rooms = []
+        for parent in top_level:
+            rooms.append(to_room_row(parent, "", parent["category"], parent["category_short"], False))
+            for child in children_by_parent.get(parent["id"], []):
+                rooms.append(to_room_row(child, parent["room"], parent["category"], parent["category_short"], True))
 
         return {
             "property": property_name,

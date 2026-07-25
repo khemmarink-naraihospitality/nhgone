@@ -69,6 +69,9 @@ interface RoomRow {
   category_short?: string;
   parent_room?: string;
   service?: string;
+  group_category?: string;
+  group_category_short?: string;
+  is_child?: boolean;
 }
 
 interface BcpSnapshot {
@@ -305,15 +308,19 @@ export default function BcpPage() {
   }, [snapshot?.rooms]);
 
   // Vertical category-group labels for the room column (e.g. "The Duo |
-  // King"). Rooms already arrive pre-sorted alphabetically (A-Z) by
-  // category from the backend, so a contiguous same-category run is just
-  // one group - blank categories (no assignment on that resource) are
-  // skipped rather than drawn as an empty label.
+  // King"). Grouped by `group_category`, not `category`: a parent room and
+  // its nested children (e.g. room 210 sold whole vs. its individual beds
+  // 211-219 sold separately) share the parent's category label as one
+  // section even though the children's own `category` differs - matching
+  // MEWS's own Timeline. Rooms already arrive pre-sorted/pre-nested from the
+  // backend, so a contiguous same-group_category run is just one group -
+  // blank categories (no assignment on that resource) are skipped rather
+  // than drawn as an empty label.
   const roomCategoryGroups = useMemo(() => {
     const rooms = snapshot?.rooms || [];
     const groups: { category: string; shortLabel: string; startIdx: number; count: number }[] = [];
     rooms.forEach((r, i) => {
-      const cat = r.category || "";
+      const cat = r.group_category ?? r.category ?? "";
       const last = groups[groups.length - 1];
       if (last && last.category === cat) {
         last.count++;
@@ -322,7 +329,8 @@ export default function BcpPage() {
         // this narrow vertical strip (e.g. "1 BED IN OUR TRIBE HIDEOUT
         // (8-SHARED-BEDS)") - use MEWS's own short code there instead,
         // falling back to the full name for categories with none configured.
-        groups.push({ category: cat, shortLabel: r.category_short || cat, startIdx: i, count: 1 });
+        const shortLabel = r.group_category_short || r.category_short || cat;
+        groups.push({ category: cat, shortLabel, startIdx: i, count: 1 });
       }
     });
     return groups.filter((g) => g.category);
@@ -748,11 +756,11 @@ export default function BcpPage() {
                       ref={(el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
                       onClick={() => setSelectedRoom(room)}
                       title={room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`}
-                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer hover:bg-[var(--text-primary)]/5 ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer hover:bg-[var(--text-primary)]/5 ${room.is_child ? "pl-5" : "font-bold"} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
-                      {room.room}
+                      <span className={room.is_child ? "" : "underline decoration-1 underline-offset-2"}>{room.room}</span>
                     </div>
                   ))}
                   {snapshot.rooms.map((room, i) => (
