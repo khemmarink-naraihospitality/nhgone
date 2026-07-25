@@ -39,6 +39,7 @@ interface ReservationRow {
   reservation_source?: string;
   purpose?: string;
   created_utc?: string;
+  room_locked?: boolean;
 }
 
 interface CustomerRow {
@@ -811,11 +812,14 @@ export default function BcpPage() {
                       <button
                         key={res.number + i}
                         onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); setRateLinesOpen(false); setItemLinesOpen(false); }}
-                        className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
+                        className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
-                        title={`${res.guest} — ${res.state}`}
+                        title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
                       >
-                        {res.guest || "(no name)"}
+                        {res.room_locked && (
+                          <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                        )}
+                        <span className="truncate">{res.guest || "(no name)"}</span>
                       </button>
                     );
                   })}
@@ -950,8 +954,18 @@ export default function BcpPage() {
                         className={`px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between ${selectedRoomInfo ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""}`}
                         onClick={() => { if (selectedRoomInfo) setSelectedRoom(selectedRoomInfo); }}
                       >
-                        <div className={`font-bold ${selectedRoomInfo ? "underline decoration-1 underline-offset-2" : ""}`}>
-                          {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room || "-"}
+                        <div className="flex items-center gap-2">
+                          <div className={`font-bold ${selectedRoomInfo ? "underline decoration-1 underline-offset-2" : ""}`}>
+                            {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room || "-"}
+                          </div>
+                          {typeof selectedReservation.room_locked === "boolean" && (
+                            <span
+                              title={selectedReservation.room_locked ? "Room assignment locked" : "Room assignment not locked"}
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${selectedReservation.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}
+                            >
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            </span>
+                          )}
                         </div>
                         {selectedRoomInfo && (
                           <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoomInfo.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>

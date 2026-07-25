@@ -1871,6 +1871,11 @@ class SyncService:
                 "reservation_source": reservation_source,
                 "purpose": res.get("Purpose", ""),
                 "created_utc": res.get("CreatedUtc", ""),
+                # MEWS shows this as a padlock toggle next to the room number
+                # (locked = this exact room is guaranteed; unlocked = MEWS
+                # may still reassign the room before check-in) - read-only
+                # here, same as everything else in BCP.
+                "room_locked": bool(res.get("AssignedResourceLocked")),
             }
 
         def sort_key(row):
