@@ -356,7 +356,7 @@ export default function BcpPage() {
         const clippedStart = Math.max(0, startIdx);
         const clippedEnd = Math.min(totalDays, endIdx);
         if (clippedEnd <= clippedStart) return null;
-        return { res, roomIdx, colStart: clippedStart + 3, colSpan: clippedEnd - clippedStart };
+        return { res, roomIdx, colStart: clippedStart + 4, colSpan: clippedEnd - clippedStart };
       })
       .filter((b): b is NonNullable<typeof b> => b !== null);
   }, [snapshot?.reservations, windowDays, roomIndexByName]);
@@ -431,7 +431,7 @@ export default function BcpPage() {
   // Scrolls only the grid's own scroll container (never the outer page) by
   // setting scrollLeft/scrollTop directly - scrollIntoView() was cascading
   // up to the page's own scroll container too, jumping the whole page.
-  const LEFT_COLS_WIDTH = 28 + 160; // category strip + room-label sticky columns
+  const LEFT_COLS_WIDTH = 28 + 70 + 90; // category strip + parent/child room-number sticky columns
 
   const scrollToDate = (dateStr: string) => {
     const container = timelineScrollRef.current;
@@ -696,11 +696,11 @@ export default function BcpPage() {
               <div ref={timelineScrollRef} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
-                  style={{ gridTemplateColumns: `28px 160px repeat(${windowDays.length}, 84px)` }}
+                  style={{ gridTemplateColumns: `28px 70px 90px repeat(${windowDays.length}, 84px)` }}
                 >
                   {/* Header row */}
                   <div className="sticky top-0 left-0 z-30 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10" style={{ gridColumn: 1, gridRow: 1 }}></div>
-                  <div className="sticky top-0 left-[28px] z-20 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: 2, gridRow: 1 }}>
+                  <div className="sticky top-0 left-[28px] z-20 bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] border-b border-r border-[var(--text-primary)]/10 p-2 text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps" style={{ gridColumn: "2 / span 2", gridRow: 1 }}>
                     Room
                   </div>
                   {windowDays.map((d, i) => {
@@ -722,7 +722,7 @@ export default function BcpPage() {
                             ? "bg-[var(--text-primary)]/20 text-[var(--text-primary)]"
                             : "bg-[color-mix(in_srgb,var(--paper),var(--text-primary)_10%)] text-[var(--text-primary)]/70"
                         }`}
-                        style={{ gridColumn: i + 3, gridRow: 1 }}
+                        style={{ gridColumn: i + 4, gridRow: 1 }}
                       >
                         {d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" })} {d.getUTCDate()}
                       </div>
@@ -749,18 +749,46 @@ export default function BcpPage() {
                     </div>
                   ))}
 
-                  {/* Room label column + gridline strips */}
+                  {/* Room-number columns, split into two like MEWS's own
+                      Timeline: a "parent" column (standalone rooms and
+                      whole-space buyouts, e.g. room 210) and a "child"
+                      column (its individual sold-separately sub-resources,
+                      e.g. beds 211-219) - only one of the two is non-empty
+                      per row. The Search-space ref and click-to-open-Room-
+                      Properties handler live on whichever cell actually
+                      shows that room's number. */}
                   {snapshot.rooms.map((room, i) => (
                     <div
-                      key={room.room + i}
-                      ref={(el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
-                      onClick={() => setSelectedRoom(room)}
-                      title={room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`}
-                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer hover:bg-[var(--text-primary)]/5 ${room.is_child ? "pl-5" : "font-bold"} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      key={"parentcol" + room.room + i}
+                      ref={room.is_child ? undefined : (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
+                      onClick={room.is_child ? undefined : () => setSelectedRoom(room)}
+                      title={!room.is_child ? (room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`) : undefined}
+                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${!room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
-                      <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
-                      <span className={room.is_child ? "" : "underline decoration-1 underline-offset-2"}>{room.room}</span>
+                      {!room.is_child && (
+                        <>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
+                          <span className="underline decoration-1 underline-offset-2">{room.room}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                  {snapshot.rooms.map((room, i) => (
+                    <div
+                      key={"childcol" + room.room + i}
+                      ref={room.is_child ? (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); } : undefined}
+                      onClick={room.is_child ? () => setSelectedRoom(room) : undefined}
+                      title={room.is_child ? (room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`) : undefined}
+                      className={`sticky left-[98px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      style={{ gridColumn: 3, gridRow: i + 2 }}
+                    >
+                      {room.is_child && (
+                        <>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
+                          <span>{room.room}</span>
+                        </>
+                      )}
                     </div>
                   ))}
                   {snapshot.rooms.map((room, i) => (
@@ -768,7 +796,7 @@ export default function BcpPage() {
                       key={"strip" + i}
                       className={`border-b border-[var(--text-primary)]/10 transition-colors ${highlightedRoom === room.room ? "bg-amber-100" : ""}`}
                       style={{
-                        gridColumn: `3 / span ${windowDays.length}`,
+                        gridColumn: `4 / span ${windowDays.length}`,
                         gridRow: i + 2,
                         backgroundImage: `repeating-linear-gradient(to right, transparent, transparent calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length} - 1px), rgba(128,128,128,0.08) calc(100%/${windowDays.length}))`,
                       }}
