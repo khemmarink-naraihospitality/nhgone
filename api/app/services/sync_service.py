@@ -1705,6 +1705,7 @@ class SyncService:
         # token lacks the Resource Categories permission.
         categories_dict: dict = {}      # category_id -> localized name
         category_short_names: dict = {}  # category_id -> short code (e.g. "TNK"), may be empty
+        category_ordering: dict = {}    # category_id -> MEWS's own display-order integer
         resource_category_id: dict = {}  # resource_id -> category_id
         stay_service_name: str = ""
         try:
@@ -1730,6 +1731,7 @@ class SyncService:
                     shorts = c.get("ShortNames") or {}
                     categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
                     category_short_names[c["Id"]] = shorts.get("en-US") or shorts.get("en-GB") or next(iter(shorts.values()), "")
+                    category_ordering[c["Id"]] = c.get("Ordering", 0)
 
                 all_cat_ids = list(categories_dict.keys())
                 if all_cat_ids:
@@ -1934,7 +1936,7 @@ class SyncService:
         # Mirror that here: top-level (parentless) resources are grouped/
         # sorted by their own category as before, but a resource with a
         # ParentResourceId is nested immediately after its parent instead of
-        # sorting into its own category's alphabetical slot. `group_category`
+        # sorting into its own category's slot. `group_category`
         # carries the category used for the vertical group-label span (the
         # parent's, for children) separately from `category` (the room's own
         # true category, still used for its Room Properties/tooltip) so a
@@ -1959,6 +1961,7 @@ class SyncService:
                 "state": r.get("State", ""),
                 "category": categories_dict.get(cat_id, ""),
                 "category_short": category_short_names.get(cat_id, ""),
+                "category_ordering": category_ordering.get(cat_id, 0),
             })
 
         by_id = {res["id"]: res for res in raw_resources}
@@ -1978,7 +1981,19 @@ class SyncService:
 
         for kids in children_by_parent.values():
             kids.sort(key=room_sort_key)
-        top_level.sort(key=lambda res: (1 if not res["category"] else 0, res["category"], res["room"]))
+        # Group order follows MEWS's own resourceCategories.Ordering field
+        # (confirmed against a real property: alphabetical grouping put
+        # unrelated categories first and buried "The Duo | King" mid-list,
+        # while Ordering reproduces MEWS's actual on-screen sequence).
+        # Ordering ties (MEWS sometimes assigns the same number to a few
+        # categories) fall back to the category name, then numeric room
+        # order, so the result is still fully deterministic.
+        top_level.sort(key=lambda res: (
+            1 if not res["category"] else 0,
+            res["category_ordering"],
+            res["category"],
+            room_sort_key(res),
+        ))
 
         def to_room_row(res, parent_room_name, group_category, group_category_short, is_child):
             return {
