@@ -1651,9 +1651,16 @@ class SyncService:
                         # response. Getting this wrong silently drops every
                         # note (they all bucket under the None key and never
                         # match a real reservation Id).
-                        notes_by_reservation.setdefault(note.get("OrderId"), []).append(text)
+                        notes_by_reservation.setdefault(note.get("OrderId"), []).append({
+                            "text": text,
+                            "type": note.get("Type", ""),
+                            "created_utc": note.get("CreatedUtc", ""),
+                        })
             except Exception:
                 break  # endpoint not enabled for this token - skip quietly
+        # MEWS's own Notes panel lists newest first.
+        for notes_list in notes_by_reservation.values():
+            notes_list.sort(key=lambda n: n["created_utc"], reverse=True)
 
         # Extra lookups for the "Manage" detail view (group name, requested
         # category, rate, company/travel agency) - IDs deduplicated across
@@ -1842,7 +1849,7 @@ class SyncService:
                 "adults": res.get("AdultCount", 0),
                 "children": res.get("ChildCount", 0),
                 "products": items_by_reservation.get(res_id, []),
-                "notes": " | ".join(notes_by_reservation.get(res_id, [])),
+                "notes": notes_by_reservation.get(res_id, []),
                 "group_name": group.get("Name", ""),
                 "category": category_name,
                 "rate": rate.get("Name", ""),

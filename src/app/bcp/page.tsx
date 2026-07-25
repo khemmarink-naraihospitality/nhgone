@@ -18,7 +18,7 @@ interface ReservationRow {
   adults: number;
   children: number;
   products: string[];
-  notes: string;
+  notes: { text: string; type: string; created_utc: string }[];
   group_name?: string;
   category?: string;
   rate?: string;
@@ -101,6 +101,15 @@ const fmtDateTime = (v: string) => {
   const d = new Date(v);
   if (isNaN(d.getTime())) return v;
   return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+};
+
+// Matches MEWS's own note-timestamp precision (down to the second), unlike
+// fmtDateTime above which only needs minute precision elsewhere.
+const fmtNoteTimestamp = (v: string) => {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v;
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", timeZone: "Asia/Bangkok" });
 };
 
 // MEWS timestamps are UTC instants for a Bangkok-local check-in/out moment.
@@ -976,21 +985,28 @@ export default function BcpPage() {
 
                       <button
                         onClick={() => setManageNotesOpen((v) => !v)}
-                        disabled={!selectedReservation.notes}
+                        disabled={selectedReservation.notes.length === 0}
                         className="w-full px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between text-left disabled:cursor-default"
                       >
                         <span className="flex items-center gap-2">
                           Notes
                           <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-600 text-white text-[9px] font-bold">
-                            {selectedReservation.notes ? 1 : 0}
+                            {selectedReservation.notes.length}
                           </span>
                         </span>
-                        {selectedReservation.notes && (
+                        {selectedReservation.notes.length > 0 && (
                           <svg className={`w-4 h-4 text-[var(--text-primary)]/50 transition-transform ${manageNotesOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                         )}
                       </button>
-                      {manageNotesOpen && selectedReservation.notes && (
-                        <div className="px-4 pb-3 text-[var(--text-primary)]/70">{selectedReservation.notes}</div>
+                      {manageNotesOpen && selectedReservation.notes.length > 0 && (
+                        <div className="px-4 pb-3 flex flex-col divide-y divide-[var(--text-primary)]/10">
+                          {selectedReservation.notes.map((n, i) => (
+                            <div key={i} className={i === 0 ? "pb-2.5" : "py-2.5"}>
+                              <div className="text-[var(--text-primary)]/80 whitespace-pre-line">{n.text}</div>
+                              <div className="text-[11px] text-[var(--text-primary)]/40 mt-1">Note ({n.type}), {fmtNoteTimestamp(n.created_utc)}</div>
+                            </div>
+                          ))}
+                        </div>
                       )}
                     </div>
 
