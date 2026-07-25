@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -133,6 +133,16 @@ const fmtWeekdayTime = (isoUtc: string) => {
   const weekday = d.toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
   return `${weekday} ${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
 };
+// MEWS's own Manage screen shows Arrival/Departure as "DD/MM/YYYY HH:MM:SS
+// Weekday" (full weekday name, with seconds) - none of the shorter
+// formatters above match that combination.
+const fmtFullDateTime = (isoUtc: string) => {
+  if (!isoUtc) return "-";
+  const d = toBangkokDateTime(isoUtc);
+  const time = `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}:${String(d.getUTCSeconds()).padStart(2, "0")}`;
+  const weekday = d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" });
+  return `${fmtDateOnly(isoUtc)} ${time} ${weekday}`;
+};
 const guestInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "?";
@@ -187,6 +197,7 @@ export default function BcpPage() {
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomRow | null>(null);
+  const [showManagePage, setShowManagePage] = useState(false);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
@@ -232,6 +243,7 @@ export default function BcpPage() {
     setLoading(true);
     setError(null);
     setSelectedReservation(null);
+    setShowManagePage(false);
     try {
       let res: Response;
       if (snapshotId) {
@@ -638,6 +650,205 @@ export default function BcpPage() {
     );
   }
 
+  // "Manage" full page - mirrors MEWS's own reservation Manage screen
+  // (Properties tab). Reuses fields already fetched for the drawer above
+  // (rate_lines/item_lines already carry the per-night and per-product
+  // breakdowns MEWS shows here) - no new backend calls needed. Read-only:
+  // note delete, "Add note"/OK, Arrival/Departure edit, "Create billing
+  // automation" and "Unlock" are all disabled, same reasoning as every
+  // other disabled action in BCP. Only the Properties tab has real content;
+  // the rest of MEWS's tab bar (Status/Group/Pricing/Items/Mailing/Action
+  // log/Summary/Billing/Contracting) keeps its layout position but is
+  // disabled rather than faked. "Companions" is omitted entirely (not just
+  // hidden-if-empty): checked against a real reservation whose MEWS screen
+  // showed 2 named companions - CompanionIds was an empty array even though
+  // AdultCount was 2, so the Connector API doesn't reliably expose this.
+  if (selectedReservation && showManagePage) {
+    const res = selectedReservation;
+    const disabledBtnCls = "opacity-50 cursor-not-allowed";
+    const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px]";
+    const detailRow = (label: string, value: ReactNode) => (
+      <>
+        <div className="text-[var(--text-primary)]/50">{label}</div>
+        <div className="text-right">{value}</div>
+      </>
+    );
+    const tabs = ["Status", "Properties", "Group", "Pricing", "Items", "Mailing", "Action log", "Summary", "Billing", "Contracting"];
+    return (
+      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center gap-3 mb-6">
+            <button onClick={() => setShowManagePage(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <h1 className="font-display text-3xl text-[var(--text-primary)] truncate">{res.group_name || res.guest || "(no name)"}</h1>
+          </div>
+
+          <div className="flex items-center gap-5 border-b border-[var(--text-primary)]/10 mb-8 overflow-x-auto">
+            {tabs.map((t) => (
+              <div
+                key={t}
+                title={t === "Properties" ? undefined : "Not available in this snapshot"}
+                className={`py-3 text-[13px] font-bold whitespace-nowrap border-b-2 -mb-px ${
+                  t === "Properties" ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/25 cursor-not-allowed"
+                }`}
+              >
+                {t}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {/* Left column: Notes + Arrival/Departure */}
+            <div className="flex flex-col gap-6">
+              <div>
+                <h2 className="font-display text-xl text-[var(--text-primary)] mb-3">Notes</h2>
+                <div className="flex flex-col gap-4">
+                  {res.notes.map((n, i) => (
+                    <div key={i}>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="text-[11px] text-[var(--text-primary)]/50">Note ({n.type}), {fmtNoteTimestamp(n.created_utc)}</div>
+                        <svg className="w-4 h-4 text-[var(--text-primary)]/20 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </div>
+                      <div className={`${fieldBoxCls} whitespace-pre-line`}>{n.text}</div>
+                    </div>
+                  ))}
+                  <div>
+                    <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Add note</div>
+                    <div className={`${fieldBoxCls} text-[var(--text-primary)]/30 italic min-h-[52px]`}>-</div>
+                    <button disabled title="No live connection to MEWS to manage this reservation from here" className={`mt-2 px-5 py-2 rounded-lg bg-blue-600 text-white text-[12px] font-bold ${disabledBtnCls}`}>OK</button>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Arrival *</div>
+                <div className="flex gap-2">
+                  <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(res.check_in)}</div>
+                  <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(res.check_in).split(" ")[1]}</div>
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Departure *</div>
+                <div className="flex gap-2">
+                  <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(res.check_out)}</div>
+                  <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(res.check_out).split(" ")[1]}</div>
+                </div>
+              </div>
+              <button disabled title="No live connection to MEWS to manage this reservation from here" className={`self-start px-6 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/40 text-[13px] font-bold ${disabledBtnCls}`}>OK</button>
+            </div>
+
+            {/* Right column: Reservations */}
+            <div>
+              <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                <h2 className="font-display text-xl text-[var(--text-primary)]">Reservations</h2>
+                <div className="flex gap-2">
+                  <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Create billing automation</button>
+                  <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Unlock</button>
+                </div>
+              </div>
+
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 mb-5 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
+                  <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
+                  <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
+                    {STATE_DISPLAY_LABEL[res.state] || res.state}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="font-bold text-[13px]">
+                    {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{res.room}
+                  </span>
+                  {typeof res.room_locked === "boolean" && (
+                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${res.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                {detailRow("Service", res.service || "-")}
+                {detailRow("Confirmation number", res.number || "-")}
+                {res.group_name && detailRow("Group name", res.group_name)}
+                {detailRow("Status", (
+                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
+                    {STATE_DISPLAY_LABEL[res.state] || res.state}
+                  </span>
+                ))}
+                {detailRow("Arrival", fmtFullDateTime(res.check_in))}
+                {detailRow("Departure", fmtFullDateTime(res.check_out))}
+                {res.purpose && detailRow("Booking purpose", res.purpose)}
+                {res.segment && detailRow("Segment", res.segment)}
+                {detailRow("Guests", `${res.adults} × Adult${res.adults !== 1 ? "s" : ""}${res.children ? `, ${res.children} × Child${res.children !== 1 ? "ren" : ""}` : ""}`)}
+                {typeof res.total_amount === "number" && (
+                  <>
+                    {detailRow("Avg. rate (nightly)", ((res.rate_amount ?? 0) / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                    {detailRow("Avg. price with products (nightly)", (res.total_amount / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                    {detailRow("Total amount", `${res.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${res.currency || ""}`)}
+                  </>
+                )}
+                {typeof res.total_amount_gross === "number" && detailRow("Total amount (Gross)", res.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                {res.category && detailRow("Requested category", res.category)}
+                {detailRow("Assigned space", (
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className="font-bold">{res.room || "-"}</span>
+                    {selectedRoomInfo && (
+                      <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoomInfo.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                        {selectedRoomInfo.state}
+                      </span>
+                    )}
+                  </span>
+                ))}
+                {res.rate && detailRow("Rate", res.rate)}
+                {res.travel_agency && detailRow("Travel agency", <span className="underline decoration-1 underline-offset-2">{res.travel_agency}</span>)}
+                {res.travel_agency_confirmation_number && detailRow("Travel agency confirmation number", res.travel_agency_confirmation_number)}
+              </div>
+
+              {!!res.rate_lines?.length && (
+                <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                  <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Nights</div>
+                  <div className="flex flex-col gap-1">
+                    {res.rate_lines.map((line, i) => (
+                      <div key={i} className="flex items-center justify-between text-[13px]">
+                        <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!!res.item_lines?.length && (
+                <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                  <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Products</div>
+                  <div className="flex flex-col gap-1">
+                    {res.item_lines.map((line, i) => (
+                      <div key={i} className="flex items-center justify-between text-[13px]">
+                        <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px] mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                {res.origin && detailRow("Origin", res.origin)}
+                {res.reservation_source && detailRow("Reservation source", res.reservation_source)}
+                {res.created_utc && detailRow("Created", fmtDateTime(res.created_utc))}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
+            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS, so notes, dates, billing and unlock actions are disabled here.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
@@ -928,7 +1139,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); setRateLinesOpen(false); setItemLinesOpen(false); }}
+                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
@@ -1266,16 +1477,15 @@ export default function BcpPage() {
                 )}
 
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
-                  Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this reservation from here.
+                  Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS, so nothing here can actually be changed.
                 </div>
               </div>
                 </>
               )}
               <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
                 <button
-                  disabled
-                  title="No live connection to MEWS to manage this reservation from here"
-                  className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold opacity-50 cursor-not-allowed"
+                  onClick={() => setShowManagePage(true)}
+                  className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
                   Manage
                 </button>

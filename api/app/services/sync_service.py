@@ -222,7 +222,13 @@ class SyncService:
 
             customers_dict, companies_dict, resources_dict, categories_dict, rates_dict, groups_dict = await asyncio.gather(
                 fetch_entity("/api/connector/v1/customers/getAll", "CustomerIds", customer_ids, "Customers"),
-                fetch_entity("/api/connector/v1/companies/getAll", "CompanyIds", all_company_ids, "Companies"),
+                # companies/getAll filters by "Ids", not "CompanyIds" - the
+                # latter is silently accepted but ignored, so it was
+                # returning an arbitrary/unfiltered batch of companies
+                # instead of the ones actually requested (confirmed live:
+                # asking for one specific TravelAgencyId came back with 10
+                # unrelated companies, none matching).
+                fetch_entity("/api/connector/v1/companies/getAll", "Ids", all_company_ids, "Companies"),
                 fetch_entity("/api/connector/v1/resources/getAll", "ResourceIds", resource_ids, "Resources"),
                 fetch_entity("/api/connector/v1/resourceCategories/getAll", "ResourceCategoryIds", category_ids, "ResourceCategories"),
                 fetch_entity("/api/connector/v1/rates/getAll", "RateIds", rate_ids, "Rates"),
@@ -1617,11 +1623,11 @@ class SyncService:
                                 .astimezone(ZoneInfo("Asia/Bangkok")).strftime("%d/%m")
                         else:
                             night_label = item.get("BillingName") or "Night"
-                        rate_lines_by_reservation.setdefault(order_id, []).append({"label": night_label, "amount": net})
+                        rate_lines_by_reservation.setdefault(order_id, []).append({"label": night_label, "amount": net, "_start": start_utc or ""})
                     elif item_type in ("ProductOrder", "ProductOrderRebate"):
                         items_amount_by_reservation[order_id] = items_amount_by_reservation.get(order_id, 0) + net
                         product_label = item.get("BillingName") or item.get("Name") or "Product"
-                        item_lines_by_reservation.setdefault(order_id, []).append({"label": product_label, "amount": net})
+                        item_lines_by_reservation.setdefault(order_id, []).append({"label": product_label, "amount": net, "_start": item.get("StartUtc") or ""})
 
                     if item_type != "ProductOrder":
                         continue
@@ -1632,6 +1638,16 @@ class SyncService:
                     )
             except Exception as e:
                 logger.warning(f"BCP order items fetch failed for {property_name}: {e}")
+
+        # orderItems/getAll doesn't return items in chronological order per
+        # reservation (confirmed live: a 3-night stay came back as
+        # 26/07, 25/07, 27/07) - sort each reservation's lines by the
+        # underlying StartUtc, then drop the sort-only field.
+        for lines_by_reservation in (rate_lines_by_reservation, item_lines_by_reservation):
+            for lines in lines_by_reservation.values():
+                lines.sort(key=lambda x: x["_start"])
+                for line in lines:
+                    del line["_start"]
 
         # Reservation-level notes (separate endpoint; permission-dependent)
         notes_by_reservation: dict = {}
@@ -1698,7 +1714,10 @@ class SyncService:
         groups_dict, rates_dict, companies_dict, segments_dict = await asyncio.gather(
             fetch_entity("/api/connector/v1/reservationGroups/getAll", "ReservationGroupIds", group_ids, "ReservationGroups"),
             fetch_entity("/api/connector/v1/rates/getAll", "RateIds", rate_ids, "Rates"),
-            fetch_entity("/api/connector/v1/companies/getAll", "CompanyIds", all_company_ids, "Companies"),
+            # companies/getAll filters by "Ids", not "CompanyIds" (confirmed
+            # against MEWS docs) - see the comment on the other fetch_entity
+            # call to this same endpoint above in this file.
+            fetch_entity("/api/connector/v1/companies/getAll", "Ids", all_company_ids, "Companies"),
             fetch_entity("/api/connector/v1/businessSegments/getAll", "BusinessSegmentIds", segment_ids, "BusinessSegments"),
         )
 
