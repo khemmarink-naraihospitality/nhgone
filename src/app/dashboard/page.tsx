@@ -31,6 +31,18 @@ interface PropertyImportStatus {
   expected: string[];
   synced: string[];
   level: LightLevel;
+  lastSyncedAt: string | null;
+}
+
+// Compact "23 Jul, 14:16" style, matching the DD-Mon format used on
+// /log-import but without seconds - this is a card subtitle, not a table.
+function formatLastSynced(dateStr: string): string {
+  const d = new Date(dateStr);
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const day = String(d.getDate()).padStart(2, "0");
+  const hours = String(d.getHours()).padStart(2, "0");
+  const mins = String(d.getMinutes()).padStart(2, "0");
+  return `${day} ${months[d.getMonth()]}, ${hours}:${mins}`;
 }
 
 // Start of the current Asia/Bangkok calendar day, as a UTC ISO string -
@@ -68,7 +80,7 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchImportStatus = async () => {
       try {
-        const [propsRes, logsRes] = await Promise.all([
+        const [propsRes, logsRes, latestRes] = await Promise.all([
           supabase
             .from("property_api_settings")
             .select("property_name, sync_enabled, sync_reservations, sync_members, sync_payments, sync_resources, sync_bills")
@@ -78,6 +90,16 @@ export default function Dashboard() {
             .select("property, target_table, status")
             .gte("created_at", startOfBangkokTodayIso())
             .limit(1000),
+          // Most recent successful sync per property, regardless of day -
+          // separate from the "today" query above since a property whose
+          // sync has been broken for days should still show its true last
+          // success instead of nothing.
+          supabase
+            .from("sync_logs")
+            .select("property, created_at")
+            .eq("status", "success")
+            .order("created_at", { ascending: false })
+            .limit(500),
         ]);
         if (!propsRes.data) return;
 
@@ -90,6 +112,14 @@ export default function Dashboard() {
           syncedByProperty.get(log.property)!.add(log.target_table);
         }
 
+        // latestRes is ordered newest-first, so the first row seen per
+        // property is its most recent successful sync.
+        const lastSyncedByProperty = new Map<string, string>();
+        for (const log of latestRes.data || []) {
+          if (!log.property || lastSyncedByProperty.has(log.property)) continue;
+          lastSyncedByProperty.set(log.property, log.created_at);
+        }
+
         const statuses: PropertyImportStatus[] = propsRes.data.map((p: any) => {
           const enabled = p.sync_enabled !== false;
           const expected = SYNC_FLAG_TABLES.filter(([flag]) => p[flag] !== false).map(([, table]) => table);
@@ -100,7 +130,14 @@ export default function Dashboard() {
           else if (expected.length > 0 && synced.length === expected.length) level = "green";
           else if (synced.length === 0) level = "red";
           else level = "amber";
-          return { property: p.property_name, enabled, expected, synced, level };
+          return {
+            property: p.property_name,
+            enabled,
+            expected,
+            synced,
+            level,
+            lastSyncedAt: lastSyncedByProperty.get(p.property_name) || null,
+          };
         });
         setImportStatus(statuses);
       } catch (err: any) {
@@ -144,6 +181,9 @@ export default function Dashboard() {
                     <div className="text-[12px] font-bold text-[var(--text-primary)] leading-snug">{s.property}</div>
                     <div className="text-[10px] font-bold tracked-caps mt-1 text-[var(--text-primary)]/50">
                       {s.enabled ? `${s.synced.length}/${s.expected.length} tables` : "Sync disabled"}
+                    </div>
+                    <div className="text-[10px] text-[var(--text-primary)]/40 mt-0.5">
+                      {s.lastSyncedAt ? `Last import: ${formatLastSynced(s.lastSyncedAt)}` : "No import yet"}
                     </div>
                     {s.enabled && s.level === "amber" && (
                       <div className="text-[10px] text-[#A76400] mt-0.5 leading-snug">
