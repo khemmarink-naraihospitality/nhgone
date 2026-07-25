@@ -328,19 +328,14 @@ export default function BcpPage() {
   // than drawn as an empty label.
   const roomCategoryGroups = useMemo(() => {
     const rooms = snapshot?.rooms || [];
-    const groups: { category: string; shortLabel: string; startIdx: number; count: number }[] = [];
+    const groups: { category: string; startIdx: number; count: number }[] = [];
     rooms.forEach((r, i) => {
       const cat = r.group_category ?? r.category ?? "";
       const last = groups[groups.length - 1];
       if (last && last.category === cat) {
         last.count++;
       } else {
-        // The full category name is often too long to read comfortably in
-        // this narrow vertical strip (e.g. "1 BED IN OUR TRIBE HIDEOUT
-        // (8-SHARED-BEDS)") - use MEWS's own short code there instead,
-        // falling back to the full name for categories with none configured.
-        const shortLabel = r.group_category_short || r.category_short || cat;
-        groups.push({ category: cat, shortLabel, startIdx: i, count: 1 });
+        groups.push({ category: cat, startIdx: i, count: 1 });
       }
     });
     return groups.filter((g) => g.category);
@@ -529,6 +524,119 @@ export default function BcpPage() {
       </tbody>
     </table>
   );
+
+  // Room Properties - a full page (not a drawer), replacing the whole BCP
+  // view exactly like MEWS's own Room Properties screen does (their icon
+  // rail stays, but everything to its right becomes this page). Read-only:
+  // the "Clean"/"Out of service"/"Out of order" buttons and the Status/
+  // Category dropdown chevrons are all disabled - decorative, matching
+  // MEWS's layout, but there's nothing live to action from a stale
+  // snapshot (same reasoning as every other disabled action in BCP).
+  // "Reason for status" and "Recent space changes" keep their layout slots
+  // (unlike the old drawer, which just hid the rows) but show an
+  // explanation instead of data: StateReason is a write-only input to
+  // resources/update (MEWS never returns it from resources/getAll), and
+  // there is no resource-history/activity-log endpoint anywhere in the
+  // Connector API - confirmed against MEWS's own docs, not a missing join.
+  if (selectedRoom) {
+    const room = selectedRoom;
+    const disabledBtnCls = "opacity-50 cursor-not-allowed";
+    const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px] flex items-center justify-between";
+    const chevron = (
+      <svg className="w-4 h-4 text-[var(--text-primary)]/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+    );
+    return (
+      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center justify-between mb-8">
+            <div className="flex items-center gap-3">
+              <button onClick={() => setSelectedRoom(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <h1 className="font-display text-4xl text-[var(--text-primary)]">{room.room}</h1>
+            </div>
+            <button
+              disabled
+              title="No live connection to MEWS to manage this room from here"
+              className={`p-2.5 rounded-lg border border-[var(--text-primary)]/14 text-[var(--text-primary)]/40 ${disabledBtnCls}`}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+            {/* Left column: Properties */}
+            <div>
+              <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                <h2 className="font-display text-2xl text-[var(--text-primary)]">Properties</h2>
+                <div className="flex gap-2">
+                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-bold ${disabledBtnCls}`}>Clean</button>
+                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/60 text-[13px] font-bold ${disabledBtnCls}`}>Out of service</button>
+                </div>
+              </div>
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Number</div>
+                  <div className={fieldBoxCls}>{room.room}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Floor number</div>
+                  <div className={fieldBoxCls}>{room.floor || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Status</div>
+                  <div className={fieldBoxCls}>{room.state}{chevron}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason for status</div>
+                  <div className={`${fieldBoxCls} text-[var(--text-primary)]/35 italic`}>Not available via the MEWS API</div>
+                </div>
+                {room.parent_room && (
+                  <div>
+                    <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Parent room</div>
+                    <div className={fieldBoxCls}>{room.parent_room}</div>
+                  </div>
+                )}
+                {room.category && (
+                  <div className="pt-3 border-t border-[var(--text-primary)]/10">
+                    <div className="flex items-center gap-1.5 text-[13px] font-bold text-[var(--text-primary)] mb-2">
+                      Category
+                      <svg className="w-3.5 h-3.5 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                    </div>
+                    {room.service && <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">{room.service}</div>}
+                    <div className={fieldBoxCls}>{room.category}{chevron}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right column: Out of order + Recent space changes */}
+            <div className="flex flex-col gap-8">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-2xl text-[var(--text-primary)]">Out of order</h2>
+                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg bg-indigo-500 text-white text-[13px] font-bold ${disabledBtnCls}`}>Out of order</button>
+                </div>
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="font-display text-2xl text-[var(--text-primary)]">Recent space changes</h2>
+                  <button disabled className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 ${disabledBtnCls}`}>All</button>
+                </div>
+                <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 text-[13px] text-[var(--text-primary)]/45 italic leading-relaxed">
+                  Space-change history isn&apos;t exposed by the MEWS Connector API - there&apos;s no resource-history/activity-log endpoint at all, so this can&apos;t be shown here even from a live connection.
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
+            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this room from here.
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
@@ -740,9 +848,9 @@ export default function BcpPage() {
                   })}
 
                   {/* Room-category group labels (e.g. "The Duo | King"),
-                      matching MEWS's own vertical grouping strip. Uses the
-                      short code (title = full name, on hover) since long
-                      category names don't fit legibly in this narrow strip. */}
+                      matching MEWS's own vertical grouping strip - MEWS shows
+                      the full category name here, not a short code (confirmed
+                      against a live screenshot), so this does too. */}
                   {roomCategoryGroups.map((g, i) => (
                     <div
                       key={"cat" + i}
@@ -754,7 +862,7 @@ export default function BcpPage() {
                         className="text-[10px] font-bold text-[var(--text-primary)]/60 whitespace-nowrap"
                         style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
                       >
-                        {g.shortLabel}
+                        {g.category}
                       </span>
                     </div>
                   ))}
@@ -1176,65 +1284,6 @@ export default function BcpPage() {
           </div>
         )}
 
-        {/* Room Properties panel - mirrors MEWS's own Room Properties screen
-            (Number/Floor number/Status/Parent room/Category). Read-only: no
-            segmented Clean/Dirty/Out-of-service control and no "Out of
-            order" action, since there is nothing live to action from a stale
-            snapshot - same reasoning as the disabled "Manage" button on the
-            reservation panel above. "Reason for status" and "Recent space
-            changes" are omitted entirely (not just hidden-if-empty): the
-            MEWS Connector API doesn't expose either one - StateReason is a
-            write-only input to resources/update, and there's no
-            resource-history/activity-log endpoint at all - so this is a
-            confirmed API gap, not a missing join. */}
-        {selectedRoom && (
-          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedRoom(null)}>
-            <div
-              className="bg-[var(--paper)] text-[var(--text-primary)] border-l border-[var(--text-primary)]/14 w-full max-w-md h-full overflow-y-auto shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center gap-3">
-                <button onClick={() => setSelectedRoom(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <div className="font-display text-2xl truncate">{selectedRoom.room}</div>
-              </div>
-
-              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
-                <div className="border border-[var(--text-primary)]/14 rounded-lg px-4 py-3">
-                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Properties</div>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-                    <div className="text-[var(--text-primary)]/50">Number</div>
-                    <div className="text-right">{selectedRoom.room}</div>
-                    {selectedRoom.floor && (<><div className="text-[var(--text-primary)]/50">Floor number</div><div className="text-right">{selectedRoom.floor}</div></>)}
-                    <div className="text-[var(--text-primary)]/50">Status</div>
-                    <div className="text-right">
-                      <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoom.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
-                        {selectedRoom.state}
-                      </span>
-                    </div>
-                    {selectedRoom.parent_room && (<><div className="text-[var(--text-primary)]/50">Parent room</div><div className="text-right">{selectedRoom.parent_room}</div></>)}
-                    {selectedRoom.category && (<><div className="text-[var(--text-primary)]/50">Category</div><div className="text-right">{selectedRoom.service ? `${selectedRoom.service} → ` : ""}{selectedRoom.category}</div></>)}
-                  </div>
-                </div>
-
-                <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
-                  Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this room from here. Reason for status and recent space-change history aren&apos;t exposed by the MEWS API and can&apos;t be shown here.
-                </div>
-              </div>
-
-              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
-                <button
-                  disabled
-                  title="No live connection to MEWS to manage this room from here"
-                  className="w-[40%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold opacity-50 cursor-not-allowed"
-                >
-                  Out of order
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
