@@ -1674,7 +1674,15 @@ class SyncService:
             if not ids:
                 return {}
             try:
-                res = await mews_client.post(endpoint, {payload_key: ids[:200]}, property_name=property_name)
+                # Limitation is required by some of these endpoints (e.g.
+                # reservationGroups/getAll rejects its absence with a 400
+                # "Invalid Limitation") even when filtering by an explicit Id
+                # list - include it unconditionally rather than special-casing.
+                res = await mews_client.post(
+                    endpoint,
+                    {payload_key: ids[:200], "Limitation": {"Count": 200}},
+                    property_name=property_name,
+                )
                 return {item["Id"]: item for item in res.get(response_key, [])}
             except Exception as e:
                 logger.warning(f"BCP {response_key} lookup failed for {property_name}: {e}")
@@ -1926,18 +1934,24 @@ class SyncService:
             {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
             property_name=property_name,
         )
+        # Full (unfiltered) Id->Name map so a parent-room lookup still resolves
+        # even if the parent itself is inactive.
+        resource_name_by_id = {r["Id"]: r.get("Name", "") for r in all_rooms_res.get("Resources", [])}
         rooms = []
         for r in all_rooms_res.get("Resources", []):
             if not r.get("IsActive", True):
                 continue
             data_val = (r.get("Data") or {}).get("Value") or {}
             cat_id = resource_category_id.get(r["Id"])
+            parent_id = r.get("ParentResourceId")
             rooms.append({
                 "room": r.get("Name", ""),
                 "floor": data_val.get("FloorNumber", ""),
                 "state": r.get("State", ""),
                 "category": categories_dict.get(cat_id, ""),
                 "category_short": category_short_names.get(cat_id, ""),
+                "parent_room": resource_name_by_id.get(parent_id, "") if parent_id else "",
+                "service": stay_service_name,
             })
         rooms.sort(key=lambda x: (1 if not x["category"] else 0, x["category"], x["room"]))
 

@@ -67,6 +67,8 @@ interface RoomRow {
   state: string;
   category?: string;
   category_short?: string;
+  parent_room?: string;
+  service?: string;
 }
 
 interface BcpSnapshot {
@@ -171,6 +173,7 @@ export default function BcpPage() {
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
   const [showReadme, setShowReadme] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
+  const [selectedRoom, setSelectedRoom] = useState<RoomRow | null>(null);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
@@ -743,8 +746,9 @@ export default function BcpPage() {
                     <div
                       key={room.room + i}
                       ref={(el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
+                      onClick={() => setSelectedRoom(room)}
                       title={room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`}
-                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors cursor-pointer hover:bg-[var(--text-primary)]/5 ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
@@ -906,8 +910,11 @@ export default function BcpPage() {
                         </span>
                       </div>
 
-                      <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between">
-                        <div className="font-bold">
+                      <div
+                        className={`px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between ${selectedRoomInfo ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""}`}
+                        onClick={() => { if (selectedRoomInfo) setSelectedRoom(selectedRoomInfo); }}
+                      >
+                        <div className={`font-bold ${selectedRoomInfo ? "underline decoration-1 underline-offset-2" : ""}`}>
                           {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room || "-"}
                         </div>
                         {selectedRoomInfo && (
@@ -1097,6 +1104,66 @@ export default function BcpPage() {
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold opacity-50 cursor-not-allowed"
                 >
                   Manage
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Room Properties panel - mirrors MEWS's own Room Properties screen
+            (Number/Floor number/Status/Parent room/Category). Read-only: no
+            segmented Clean/Dirty/Out-of-service control and no "Out of
+            order" action, since there is nothing live to action from a stale
+            snapshot - same reasoning as the disabled "Manage" button on the
+            reservation panel above. "Reason for status" and "Recent space
+            changes" are omitted entirely (not just hidden-if-empty): the
+            MEWS Connector API doesn't expose either one - StateReason is a
+            write-only input to resources/update, and there's no
+            resource-history/activity-log endpoint at all - so this is a
+            confirmed API gap, not a missing join. */}
+        {selectedRoom && (
+          <div className="no-print fixed inset-0 z-50 flex justify-end bg-black/40" onClick={() => setSelectedRoom(null)}>
+            <div
+              className="bg-[var(--paper)] text-[var(--text-primary)] border-l border-[var(--text-primary)]/14 w-full max-w-md h-full overflow-y-auto shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center gap-3">
+                <button onClick={() => setSelectedRoom(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <div className="font-display text-2xl truncate">{selectedRoom.room}</div>
+              </div>
+
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                <div className="border border-[var(--text-primary)]/14 rounded-lg px-4 py-3">
+                  <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Properties</div>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                    <div className="text-[var(--text-primary)]/50">Number</div>
+                    <div className="text-right">{selectedRoom.room}</div>
+                    {selectedRoom.floor && (<><div className="text-[var(--text-primary)]/50">Floor number</div><div className="text-right">{selectedRoom.floor}</div></>)}
+                    <div className="text-[var(--text-primary)]/50">Status</div>
+                    <div className="text-right">
+                      <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoom.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                        {selectedRoom.state}
+                      </span>
+                    </div>
+                    {selectedRoom.parent_room && (<><div className="text-[var(--text-primary)]/50">Parent room</div><div className="text-right">{selectedRoom.parent_room}</div></>)}
+                    {selectedRoom.category && (<><div className="text-[var(--text-primary)]/50">Category</div><div className="text-right">{selectedRoom.service ? `${selectedRoom.service} → ` : ""}{selectedRoom.category}</div></>)}
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
+                  Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this room from here. Reason for status and recent space-change history aren&apos;t exposed by the MEWS API and can&apos;t be shown here.
+                </div>
+              </div>
+
+              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
+                <button
+                  disabled
+                  title="No live connection to MEWS to manage this room from here"
+                  className="w-[40%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold opacity-50 cursor-not-allowed"
+                >
+                  Out of order
                 </button>
               </div>
             </div>
