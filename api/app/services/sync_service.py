@@ -1697,54 +1697,72 @@ class SyncService:
 
         # Resource categories (+ per-room assignment) - needed for both the
         # reservation detail's "Requested category" and, unconditionally, for
-        # grouping the Timeline's room rows (e.g. "The Duo | King" spanning
-        # every room of that type, whether or not it currently has a
+        # grouping/ordering the Timeline's room rows (e.g. "The Duo | King"
+        # spanning every room of that type, whether or not it currently has a
         # reservation in this window). Same ServiceIds quirk
         # get_st_files_report already works around - resolve the bookable
-        # service first. Degrades to empty/ungrouped if any call fails or the
-        # token lacks the Resource Categories permission.
+        # service first. Retries once on any failure (a transient MEWS
+        # error/rate-limit here doesn't just lose category names - it also
+        # wipes category_ordering, which silently collapses the Timeline's
+        # whole group order back to an arbitrary/wrong one instead of
+        # matching MEWS - confirmed against a real production capture where
+        # a single failed cycle put "LADIES TRIBE HIDEOUT" ahead of "The Duo
+        # | King" instead of the reverse). Still degrades to
+        # empty/ungrouped after a second failure, or if the token lacks the
+        # Resource Categories permission.
         categories_dict: dict = {}      # category_id -> localized name
         category_short_names: dict = {}  # category_id -> short code (e.g. "TNK"), may be empty
         category_ordering: dict = {}    # category_id -> MEWS's own display-order integer
         resource_category_id: dict = {}  # resource_id -> category_id
         stay_service_name: str = ""
-        try:
-            services_res = await mews_client.post(
-                "/api/connector/v1/services/getAll",
-                {"Limitation": {"Count": 100}},
-                property_name=property_name,
-            )
-            stay_service = next(
-                (s for s in services_res.get("Services", [])
-                 if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
-                None,
-            )
-            if stay_service:
-                stay_service_name = stay_service.get("Name", "")
-                cats_res = await mews_client.post(
-                    "/api/connector/v1/resourceCategories/getAll",
-                    {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
+        for attempt in range(2):
+            categories_dict.clear()
+            category_short_names.clear()
+            category_ordering.clear()
+            resource_category_id.clear()
+            stay_service_name = ""
+            try:
+                services_res = await mews_client.post(
+                    "/api/connector/v1/services/getAll",
+                    {"Limitation": {"Count": 100}},
                     property_name=property_name,
                 )
-                for c in cats_res.get("ResourceCategories", []):
-                    names = c.get("Names") or {}
-                    shorts = c.get("ShortNames") or {}
-                    categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
-                    category_short_names[c["Id"]] = shorts.get("en-US") or shorts.get("en-GB") or next(iter(shorts.values()), "")
-                    category_ordering[c["Id"]] = c.get("Ordering", 0)
-
-                all_cat_ids = list(categories_dict.keys())
-                if all_cat_ids:
-                    assign_res = await mews_client.post(
-                        "/api/connector/v1/resourceCategoryAssignments/getAll",
-                        {"ResourceCategoryIds": all_cat_ids, "Limitation": {"Count": 1000}},
+                stay_service = next(
+                    (s for s in services_res.get("Services", [])
+                     if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
+                    None,
+                )
+                if stay_service:
+                    stay_service_name = stay_service.get("Name", "")
+                    cats_res = await mews_client.post(
+                        "/api/connector/v1/resourceCategories/getAll",
+                        {"ServiceIds": [stay_service["Id"]], "Limitation": {"Count": 200}},
                         property_name=property_name,
                     )
-                    for a in assign_res.get("ResourceCategoryAssignments", []):
-                        if a.get("IsActive", True):
-                            resource_category_id[a["ResourceId"]] = a["CategoryId"]
-        except Exception as e:
-            logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
+                    for c in cats_res.get("ResourceCategories", []):
+                        names = c.get("Names") or {}
+                        shorts = c.get("ShortNames") or {}
+                        categories_dict[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
+                        category_short_names[c["Id"]] = shorts.get("en-US") or shorts.get("en-GB") or next(iter(shorts.values()), "")
+                        category_ordering[c["Id"]] = c.get("Ordering", 0)
+
+                    all_cat_ids = list(categories_dict.keys())
+                    if all_cat_ids:
+                        assign_res = await mews_client.post(
+                            "/api/connector/v1/resourceCategoryAssignments/getAll",
+                            {"ResourceCategoryIds": all_cat_ids, "Limitation": {"Count": 1000}},
+                            property_name=property_name,
+                        )
+                        for a in assign_res.get("ResourceCategoryAssignments", []):
+                            if a.get("IsActive", True):
+                                resource_category_id[a["ResourceId"]] = a["CategoryId"]
+                break  # success - no need to retry
+            except Exception as e:
+                if attempt == 0:
+                    logger.warning(f"BCP resource categories lookup failed for {property_name}, retrying once: {e}")
+                    await asyncio.sleep(1)
+                    continue
+                logger.warning(f"BCP resource categories lookup failed for {property_name}: {e}")
 
         # MEWS's Reservation.Origin is a combined string like "CommanderInPerson"
         # (Origin enum + CommanderOrigin sub-enum concatenated - confirmed
