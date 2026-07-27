@@ -58,6 +58,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
   const [importStatus, setImportStatus] = useState<PropertyImportStatus[]>([]);
+  const [importing, setImporting] = useState<Set<string>>(new Set());
+  const [importResults, setImportResults] = useState<Record<string, { ok: boolean; message: string }>>({});
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -77,8 +79,7 @@ export default function Dashboard() {
     fetchStats();
   }, []);
 
-  useEffect(() => {
-    const fetchImportStatus = async () => {
+  const fetchImportStatus = async () => {
       try {
         const [propsRes, logsRes, latestRes] = await Promise.all([
           supabase
@@ -143,9 +144,47 @@ export default function Dashboard() {
       } catch (err: any) {
         console.warn("Could not fetch import status:", err.message);
       }
-    };
+  };
+
+  useEffect(() => {
     fetchImportStatus();
   }, []);
+
+  // Manual "Import Latest" from a property's card - reruns exactly what its
+  // scheduled sync would have done (see POST /sync/property in api/app/main.py),
+  // then refreshes the traffic lights so a fixed property flips to green
+  // without waiting for the next automatic run.
+  const handleImportNow = async (property: string) => {
+    setImporting((prev) => new Set(prev).add(property));
+    setImportResults((prev) => {
+      const next = { ...prev };
+      delete next[property];
+      return next;
+    });
+    try {
+      const response = await fetch("/api/sync/property", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_name: property }),
+      });
+      const result = await response.json();
+      if (result.status === "success") {
+        const count = result.synced?.length ?? 0;
+        setImportResults((prev) => ({ ...prev, [property]: { ok: true, message: `Imported ${count} table${count === 1 ? "" : "s"}` } }));
+        await fetchImportStatus();
+      } else {
+        setImportResults((prev) => ({ ...prev, [property]: { ok: false, message: result.message || "Import failed" } }));
+      }
+    } catch (err: any) {
+      setImportResults((prev) => ({ ...prev, [property]: { ok: false, message: err.message || "Import failed" } }));
+    } finally {
+      setImporting((prev) => {
+        const next = new Set(prev);
+        next.delete(property);
+        return next;
+      });
+    }
+  };
 
   return (
     <div className="flex-1 p-4 md:p-6 bg-[var(--bg-primary)] text-[var(--text-primary)] font-sans transition-colors duration-300">
@@ -174,25 +213,45 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-[var(--text-primary)]/10 border border-[var(--text-primary)]/10">
-              {importStatus.map((s) => (
-                <Link key={s.property} href="/log-import" className="bg-[var(--paper)] hover:bg-[var(--text-primary)]/5 transition-colors p-4 flex items-center gap-4 group">
-                  <TrafficLight level={s.level} />
-                  <div className="min-w-0">
-                    <div className="text-[12px] font-bold text-[var(--text-primary)] leading-snug">{s.property}</div>
-                    <div className="text-[10px] font-bold tracked-caps mt-1 text-[var(--text-primary)]/50">
-                      {s.enabled ? `${s.synced.length}/${s.expected.length} tables` : "Sync disabled"}
-                    </div>
-                    <div className="text-[10px] text-[var(--text-primary)]/40 mt-0.5">
-                      {s.lastSyncedAt ? `Last import: ${formatLastSynced(s.lastSyncedAt)}` : "No import yet"}
-                    </div>
-                    {s.enabled && s.level === "amber" && (
-                      <div className="text-[10px] text-[#A76400] mt-0.5 leading-snug">
-                        Missing: {s.expected.filter((t) => !s.synced.includes(t)).join(", ")}
+              {importStatus.map((s) => {
+                const isImporting = importing.has(s.property);
+                const result = importResults[s.property];
+                return (
+                  <div key={s.property} className="bg-[var(--paper)] hover:bg-[var(--text-primary)]/5 transition-colors p-4 flex items-center gap-4 group">
+                    <Link href="/log-import" className="contents">
+                      <TrafficLight level={s.level} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[12px] font-bold text-[var(--text-primary)] leading-snug">{s.property}</div>
+                        <div className="text-[10px] font-bold tracked-caps mt-1 text-[var(--text-primary)]/50">
+                          {s.enabled ? `${s.synced.length}/${s.expected.length} tables` : "Sync disabled"}
+                        </div>
+                        <div className="text-[10px] text-[var(--text-primary)]/40 mt-0.5">
+                          {s.lastSyncedAt ? `Last import: ${formatLastSynced(s.lastSyncedAt)}` : "No import yet"}
+                        </div>
+                        {s.enabled && s.level === "amber" && (
+                          <div className="text-[10px] text-[#A76400] mt-0.5 leading-snug">
+                            Missing: {s.expected.filter((t) => !s.synced.includes(t)).join(", ")}
+                          </div>
+                        )}
+                        {result && (
+                          <div className={`text-[10px] font-bold mt-0.5 leading-snug ${result.ok ? "text-emerald-700" : "text-red-600"}`}>
+                            {result.message}
+                          </div>
+                        )}
                       </div>
+                    </Link>
+                    {s.enabled && s.level !== "green" && (
+                      <button
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleImportNow(s.property); }}
+                        disabled={isImporting}
+                        className="shrink-0 px-3 py-2 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 text-[var(--text-primary)]/70 hover:bg-[var(--text-primary)]/5 hover:text-[var(--text-primary)] disabled:opacity-50 disabled:cursor-wait transition-colors"
+                      >
+                        {isImporting ? "Importing…" : "Import Latest"}
+                      </button>
                     )}
                   </div>
-                </Link>
-              ))}
+                );
+              })}
             </div>
           </section>
         )}

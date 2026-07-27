@@ -74,7 +74,7 @@ def _log_sync(prop, prop_id, target, status, count, msg, sync_type="auto"):
 # re-running everything.
 
 async def _sync_reservations(prop, prop_id, now_iso, report_date, sync_type="auto"):
-    label = "Retry" if sync_type == "retry" else "Auto"
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         res_result = await sync_service.get_mapped_reservations(property_name=prop)
         res_batch = []
@@ -98,7 +98,7 @@ async def _sync_reservations(prop, prop_id, now_iso, report_date, sync_type="aut
         print(f"Error syncing reservations for {prop}: {e}")
 
 async def _sync_members(prop, prop_id, now_iso, report_date, sync_type="auto"):
-    label = "Retry" if sync_type == "retry" else "Auto"
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         mem_result = await sync_service.get_mapped_members(property_name=prop)
         mem_batch = []
@@ -122,7 +122,7 @@ async def _sync_members(prop, prop_id, now_iso, report_date, sync_type="auto"):
         print(f"Error syncing members for {prop}: {e}")
 
 async def _sync_payments(prop, prop_id, now_iso, report_date, sync_type="auto"):
-    label = "Retry" if sync_type == "retry" else "Auto"
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         pay_result = await sync_service.get_mapped_payments(property_name=prop)
         pay_batch = []
@@ -148,7 +148,7 @@ async def _sync_payments(prop, prop_id, now_iso, report_date, sync_type="auto"):
         print(f"Error syncing payments for {prop}: {e}")
 
 async def _sync_resources(prop, prop_id, now_iso, report_date, sync_type="auto"):
-    label = "Retry" if sync_type == "retry" else "Auto"
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         resrc_result = await sync_service.get_mapped_resources(property_name=prop)
         resrc_batch = []
@@ -172,7 +172,7 @@ async def _sync_resources(prop, prop_id, now_iso, report_date, sync_type="auto")
         print(f"Error syncing resources for {prop}: {e}")
 
 async def _sync_bills(prop, prop_id, now_iso, report_date, sync_type="auto"):
-    label = "Retry" if sync_type == "retry" else "Auto"
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         bill_result = await sync_service.get_mapped_bills_with_items(property_name=prop)
         bill_batch = []
@@ -424,6 +424,59 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # otherwise re-trigger a full daily_auto_sync multiple times an hour if
     # this endpoint were invoked more often just to feed BCP.
     return {"status": "accepted", "message": f"Sync job started in background (force={force})"}
+
+@app.post("/sync/property")
+async def sync_property_now(payload: dict):
+    """
+    Manual "Import Latest" trigger from the Dashboard's per-property import
+    status card - re-runs exactly what the scheduled daily_auto_sync would
+    have done for this one property (its enabled sync_* tables, report_date
+    = yesterday Bangkok), tagged sync_type="manual" so it's distinguishable
+    in the Activity Log from the automatic run it's covering for. Runs
+    synchronously (not backgrounded like /sync/auto) so the button can show
+    a real success/failure result instead of firing and hoping.
+    """
+    property_name = payload.get("property_name")
+    if not property_name:
+        return {"status": "error", "message": "property_name is required"}
+    if not sync_service.supabase:
+        return {"status": "error", "message": "Supabase not connected"}
+
+    prop_res = sync_service.supabase.table("property_api_settings") \
+        .select("id, sync_enabled, sync_reservations, sync_members, sync_payments, sync_resources, sync_bills") \
+        .eq("property_name", property_name).limit(1).execute()
+    if not prop_res.data:
+        return {"status": "error", "message": f"Unknown property: {property_name}"}
+    prop_settings = prop_res.data[0]
+    prop_id = prop_settings["id"]
+    if prop_settings.get("sync_enabled") is False:
+        return {"status": "error", "message": f"Sync is disabled for {property_name}"}
+
+    try:
+        lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+            "target_property_id": prop_id, "timeout_mins": 15,
+        }).execute().data
+    except Exception as e:
+        return {"status": "error", "message": f"Lock error: {str(e)}"}
+    if not lock_acquired:
+        return {"status": "error", "message": "A sync is already in progress for this property. Try again shortly."}
+
+    try:
+        now = datetime.now(ZoneInfo("Asia/Bangkok"))
+        report_date = (now - timedelta(days=1)).date().isoformat()
+        now_iso = now.astimezone(timezone.utc).isoformat()
+
+        synced_tables = []
+        for target, (fn, flag) in _TARGET_TABLE_SYNC_FN.items():
+            if prop_settings.get(flag) is not False:
+                await fn(property_name, prop_id, now_iso, report_date, sync_type="manual")
+                synced_tables.append(target)
+        return {"status": "success", "synced": synced_tables}
+    finally:
+        try:
+            sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+        except Exception:
+            pass
 
 @app.get("/health")
 async def health_check():
