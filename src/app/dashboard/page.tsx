@@ -168,12 +168,20 @@ export default function Dashboard() {
         body: JSON.stringify({ property_name: property }),
       });
       const result = await response.json();
-      if (result.status === "success") {
+      if (result.status === "success" || result.status === "partial") {
+        // Whichever tables actually succeeded already have a fresh "success"
+        // row in sync_logs, so re-fetching recomputes the real traffic-light
+        // colour from the database - it only shows green if every expected
+        // table genuinely synced, not just because this call returned 200.
         const count = result.synced?.length ?? 0;
-        setImportResults((prev) => ({ ...prev, [property]: { ok: true, message: `Imported ${count} table${count === 1 ? "" : "s"}` } }));
+        const message = result.status === "success"
+          ? `Imported ${count} table${count === 1 ? "" : "s"}`
+          : `Imported ${count}, failed: ${result.failed.join(", ")}`;
+        setImportResults((prev) => ({ ...prev, [property]: { ok: result.status === "success", message } }));
         await fetchImportStatus();
       } else {
         setImportResults((prev) => ({ ...prev, [property]: { ok: false, message: result.message || "Import failed" } }));
+        if (result.failed?.length) await fetchImportStatus();
       }
     } catch (err: any) {
       setImportResults((prev) => ({ ...prev, [property]: { ok: false, message: err.message || "Import failed" } }));

@@ -92,10 +92,12 @@ async def _sync_reservations(prop, prop_id, now_iso, report_date, sync_type="aut
             await chunked_upsert("reservations_sync", res_batch, on_conflict="mews_id")
         _log_sync(prop, prop_id, "Reservations", "success", len(res_batch), f"{label} Sync: {len(res_batch)} records", sync_type)
         print(f"Reservations synced: {len(res_batch)} for {prop}")
+        return True
     except Exception as e:
         err = str(e)[:1000]
         _log_sync(prop, prop_id, "Reservations", "error", 0, f"{label} Sync Failed: {err}", sync_type)
         print(f"Error syncing reservations for {prop}: {e}")
+        return False
 
 async def _sync_members(prop, prop_id, now_iso, report_date, sync_type="auto"):
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
@@ -116,10 +118,12 @@ async def _sync_members(prop, prop_id, now_iso, report_date, sync_type="auto"):
             await chunked_upsert("members_sync", mem_batch, on_conflict="mews_id")
         _log_sync(prop, prop_id, "Customers", "success", len(mem_batch), f"{label} Sync: {len(mem_batch)} records", sync_type)
         print(f"Members synced: {len(mem_batch)} for {prop}")
+        return True
     except Exception as e:
         err = str(e)[:1000]
         _log_sync(prop, prop_id, "Customers", "error", 0, f"{label} Sync Failed: {err}", sync_type)
         print(f"Error syncing members for {prop}: {e}")
+        return False
 
 async def _sync_payments(prop, prop_id, now_iso, report_date, sync_type="auto"):
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
@@ -142,10 +146,12 @@ async def _sync_payments(prop, prop_id, now_iso, report_date, sync_type="auto"):
             await chunked_upsert("payments", pay_batch, on_conflict="mews_id")
         _log_sync(prop, prop_id, "Payments", "success", len(pay_batch), f"{label} Sync: {len(pay_batch)} records", sync_type)
         print(f"Payments synced: {len(pay_batch)} for {prop}")
+        return True
     except Exception as e:
         err = str(e)[:1000]
         _log_sync(prop, prop_id, "Payments", "error", 0, f"{label} Sync Failed: {err}", sync_type)
         print(f"Error syncing payments for {prop}: {e}")
+        return False
 
 async def _sync_resources(prop, prop_id, now_iso, report_date, sync_type="auto"):
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
@@ -166,10 +172,12 @@ async def _sync_resources(prop, prop_id, now_iso, report_date, sync_type="auto")
             await chunked_upsert("resources_sync", resrc_batch, on_conflict="mews_id")
         _log_sync(prop, prop_id, "Resources", "success", len(resrc_batch), f"{label} Sync: {len(resrc_batch)} records", sync_type)
         print(f"Resources synced: {len(resrc_batch)} for {prop}")
+        return True
     except Exception as e:
         err = str(e)[:1000]
         _log_sync(prop, prop_id, "Resources", "error", 0, f"{label} Sync Failed: {err}", sync_type)
         print(f"Error syncing resources for {prop}: {e}")
+        return False
 
 async def _sync_bills(prop, prop_id, now_iso, report_date, sync_type="auto"):
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
@@ -195,10 +203,12 @@ async def _sync_bills(prop, prop_id, now_iso, report_date, sync_type="auto"):
             await chunked_upsert("bills_sync", bill_batch, on_conflict="mews_id")
         _log_sync(prop, prop_id, "Bills", "success", len(bill_batch), f"{label} Sync: {len(bill_batch)} records", sync_type)
         print(f"Bills synced: {len(bill_batch)} for {prop}")
+        return True
     except Exception as e:
         err = str(e)[:1000]
         _log_sync(prop, prop_id, "Bills", "error", 0, f"{label} Sync Failed: {err}", sync_type)
         print(f"Error syncing bills for {prop}: {e}")
+        return False
 
 _TARGET_TABLE_SYNC_FN = {
     "Reservations": (_sync_reservations, "sync_reservations"),
@@ -467,10 +477,15 @@ async def sync_property_now(payload: dict):
         now_iso = now.astimezone(timezone.utc).isoformat()
 
         synced_tables = []
+        failed_tables = []
         for target, (fn, flag) in _TARGET_TABLE_SYNC_FN.items():
             if prop_settings.get(flag) is not False:
-                await fn(property_name, prop_id, now_iso, report_date, sync_type="manual")
-                synced_tables.append(target)
+                ok = await fn(property_name, prop_id, now_iso, report_date, sync_type="manual")
+                (synced_tables if ok else failed_tables).append(target)
+        if failed_tables and not synced_tables:
+            return {"status": "error", "message": f"Import failed: {', '.join(failed_tables)}", "failed": failed_tables}
+        if failed_tables:
+            return {"status": "partial", "synced": synced_tables, "failed": failed_tables}
         return {"status": "success", "synced": synced_tables}
     finally:
         try:
