@@ -1176,9 +1176,16 @@ export default function BcpPage() {
                 <span>({ageMinutes < 60 ? `${ageMinutes} min ago` : `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min ago`})</span>
               )}
               {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
+              {(mainTab === "timeline" || mainTab === "rooms") && (
+                <>
+                  <span>Arrivals today: {todayStats.arrivals}</span>
+                  <span>Departures today: {todayStats.departures}</span>
+                  <span>In-house today: {todayStats.inHouse}</span>
+                </>
+              )}
             </div>
 
-            <div className="no-print flex flex-wrap items-center justify-between gap-4 mb-4">
+            <div className="no-print flex flex-wrap items-center gap-4 mb-4">
               <div className="flex border-b border-[var(--text-primary)]/14">
                 {(
                   [
@@ -1201,13 +1208,6 @@ export default function BcpPage() {
                   </button>
                 ))}
               </div>
-              {(mainTab === "timeline" || mainTab === "rooms") && (
-                <div className="flex items-center gap-4 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60">
-                  <span>Arrivals today: {todayStats.arrivals}</span>
-                  <span>Departures today: {todayStats.departures}</span>
-                  <span>In-house today: {todayStats.inHouse}</span>
-                </div>
-              )}
             </div>
 
             {mainTab === "timeline" && snapshot.window && (
