@@ -1639,7 +1639,13 @@ export default function BcpPage() {
             )}
 
             {/* Print-only housekeeping sheet - not the on-screen Timeline grid,
-                which doesn't paginate; a plain table prints reliably instead. */}
+                which doesn't paginate; a plain table prints reliably instead.
+                Hidden while Reg Card is open (regCardFor set) so the two
+                print-only blocks on this page can't both fire from one Print
+                click - without this, printing from inside the Reg Card modal
+                printed the housekeeping sheet first and the RR3 form second,
+                easy to miss/mistake for "the signature didn't print". */}
+            {!regCardFor && (
             <div className="hidden print:block">
               <div className="mb-4 text-black">
                 <div className="text-lg font-bold">Housekeeping Room Status — {snapshot.property}</div>
@@ -1672,6 +1678,7 @@ export default function BcpPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </>
         )}
 
