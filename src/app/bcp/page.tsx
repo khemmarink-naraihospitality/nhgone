@@ -301,7 +301,7 @@ export default function BcpPage() {
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<MainTab>("timeline");
+  const [mainTab, setMainTab] = useState<MainTab>("reservations");
   const [showReadme, setShowReadme] = useState(false);
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
@@ -1310,10 +1310,10 @@ export default function BcpPage() {
               <div className="flex border-b border-[var(--text-primary)]/14">
                 {(
                   [
-                    ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
                     ["reservations", `Reservations (${frontDeskRows.length})`],
                     ["rooms", "Rooms (HK)"],
                     ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
+                    ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
                   ] as [MainTab, string][]
                 ).map(([t, label]) => (
                   <button
