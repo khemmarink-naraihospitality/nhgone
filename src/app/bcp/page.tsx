@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
+import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
 
 interface ReservationRow {
   number: string;
@@ -113,6 +114,34 @@ function frontDeskStatus(r: ReservationRow, today: string): { label: string; cls
   if (r.state === "Started" && outDay === today) return { label: "Departure", cls: "bg-amber-50 text-amber-800 border-amber-200" };
   if (r.state === "Started") return { label: "In-house", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
   return null;
+}
+
+// Reg Card prints the exact same ร.ร.๓ form as /rr3, but /rr3's own data
+// comes from a live MEWS customer-profile join (ID/passport number, address,
+// occupation, etc.) that isn't available here - the BCP snapshot only ever
+// carries what get_bcp_snapshot captures. Those tokens are simply left
+// blank for the front desk to fill in by hand, same as any guest whose full
+// profile wasn't captured in MEWS yet.
+function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData {
+  const nameParts = (r.guest || "").trim().split(/\s+/);
+  const fmtTimeOnly = (iso: string) => {
+    if (!iso) return "";
+    const d = toBangkokDateTime(iso);
+    return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+  };
+  return {
+    HotelName: hotelName,
+    FirstName: nameParts[0] || "",
+    LastName: nameParts.slice(1).join(" "),
+    ReservationsNumber: r.number,
+    RoomNumber: r.room,
+    CheckIn: fmtDateOnly(r.check_in),
+    CheckInTime: fmtTimeOnly(r.check_in),
+    CheckOut: fmtDateOnly(r.check_out),
+    CheckOutTime: fmtTimeOnly(r.check_out),
+    NationalityCode: r.nationality,
+    NationalityName: r.nationality,
+  };
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -253,6 +282,22 @@ export default function BcpPage() {
   const [roomStatusOverrides, setRoomStatusOverrides] = useState<Record<string, string>>({});
   // Action Logs tab - clicking a logged row opens its own Detail view.
   const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
+
+  // Reg Card prints on the exact same admin-editable ร.ร.๓ form as /rr3
+  // (rr3_templates table) - fetched once, since it's one shared template
+  // regardless of property, same as /print-rr3 itself.
+  const [rr3Template, setRr3Template] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`/api/rr3/template`);
+        const result = await res.json();
+        if (result.status === "success") setRr3Template(result.data.html_template);
+      } catch {
+        /* Print button below just stays disabled if this never loads. */
+      }
+    })();
+  }, []);
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -1465,27 +1510,18 @@ export default function BcpPage() {
           </>
         )}
 
-        {/* Print-only registration card - the interactive Reg Card modal
-            below is marked no-print (fixed-position overlays don't paginate
-            reliably), so this plain in-flow duplicate is what actually
-            prints, same pattern as the housekeeping sheet above. */}
-        {regCardFor && (
-          <div className="hidden print:block text-black">
-            <div className="text-lg font-bold mb-1">{snapshot?.property}</div>
-            <div className="text-xs text-black/50 mb-4">Guest Registration Card</div>
-            <div className="grid grid-cols-2 gap-y-2 text-sm max-w-md">
-              <div className="text-black/50">Guest Name</div><div className="font-bold">{regCardFor.guest || "-"}</div>
-              <div className="text-black/50">Nationality</div><div>{regCardFor.nationality || "-"}</div>
-              <div className="text-black/50">Room</div><div className="font-bold">{regCardFor.room}</div>
-              <div className="text-black/50">Category</div><div>{regCardFor.category || "-"}</div>
-              <div className="text-black/50">Check-in</div><div>{fmtDateOnly(regCardFor.check_in)}</div>
-              <div className="text-black/50">Check-out</div><div>{fmtDateOnly(regCardFor.check_out)}</div>
-              <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
-            </div>
-            <div className="mt-6 pt-4 border-t border-black/10 text-[10px] text-black/40 italic max-w-md">
-              Generated from cached BCP data while MEWS is unavailable — not a substitute for MEWS&apos;s own registration card.
-            </div>
-          </div>
+        {/* Print-only registration card - renders on the exact same
+            admin-editable ร.ร.๓ template as /rr3 (rr3_templates table),
+            just populated from cached snapshot fields instead of a live
+            MEWS customer-profile fetch. The interactive Reg Card modal
+            below is marked no-print (fixed-position overlays don't
+            paginate reliably), so this plain in-flow duplicate is what
+            actually prints, same pattern as the housekeeping sheet above. */}
+        {regCardFor && rr3Template && (
+          <div
+            className="hidden print:block"
+            dangerouslySetInnerHTML={{ __html: renderRr3Template(rr3Template, buildRegCardTokens(regCardFor, snapshot?.property || "")) }}
+          />
         )}
 
         {regCardFor && (
@@ -1504,14 +1540,20 @@ export default function BcpPage() {
                   <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
                 </div>
                 <div className="mt-6 pt-4 border-t border-black/10 text-[10px] text-black/40 italic">
-                  Generated from cached BCP data while MEWS is unavailable — not a substitute for MEWS&apos;s own registration card.
+                  {rr3Template
+                    ? "Printing uses the same ร.ร.๓ form as /rr3 - fields not captured in this cached snapshot (ID/passport, address, occupation) print blank for the front desk to fill in by hand."
+                    : "The ร.ร.๓ print template hasn't loaded yet - try again in a moment."}
                 </div>
               </div>
               <div className="flex justify-end gap-2 p-4 border-t border-black/10">
                 <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-black/20 hover:bg-black/5 transition-colors">
                   Close
                 </button>
-                <button onClick={() => window.print()} className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity">
+                <button
+                  onClick={() => window.print()}
+                  disabled={!rr3Template}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
                   Print
                 </button>
               </div>
