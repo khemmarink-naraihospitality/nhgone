@@ -155,3 +155,43 @@ async def get_snapshot(id: str = Query(...)):
         return {"status": "success", "data": snapshot}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reg-card")
+async def save_reg_card(payload: dict = Body(...)):
+    """
+    Persists a signed Reg Card (guest details + the on-screen SignaturePad
+    capture) from the Reservations tab's Reg Card modal. Unlike Check In/
+    Check Out/Chg Room/Room Status - which only mimic an action MEWS would
+    otherwise record, so they stay purely local and get flagged red as
+    "not synced" - a signed Reg Card is new data our own system is creating
+    from scratch. There's nothing to reconcile against MEWS, so it's fine
+    (and the whole point) to actually store it: it's the front desk's own
+    durable proof of who signed while MEWS was down.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    if not property_name:
+        raise HTTPException(status_code=400, detail="property_name is required")
+
+    record = {
+        "guest": payload.get("guest", ""),
+        "nationality": payload.get("nationality", ""),
+        "room": payload.get("room", ""),
+        "category": payload.get("category", ""),
+        "check_in": payload.get("check_in", ""),
+        "check_out": payload.get("check_out", ""),
+        "adults": payload.get("adults", 0),
+        "children": payload.get("children", 0),
+        "signature_data_url": payload.get("signature_data_url", ""),
+    }
+    try:
+        sync_service.supabase.table("bcp_reg_cards").insert({
+            "property": property_name,
+            "reservation_number": payload.get("reservation_number"),
+            "data": {"blob": encryption_service.encrypt(json.dumps(record))},
+        }).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

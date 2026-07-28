@@ -275,10 +275,14 @@ export default function BcpPage() {
   // survives a refresh during a long outage.
   const [actions, setActions] = useState<OfflineAction[]>([]);
   const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
-  // Captured on-screen at print time (SignaturePad) - reset per guest, never
-  // persisted, since a real signature only ever needs to exist long enough
-  // to be printed onto that guest's own card.
+  // Captured on-screen at print time (SignaturePad), reset per guest. Not
+  // persisted automatically - the front desk chooses to via the Save button,
+  // which unlike Check In/Out/Chg Room/Room Status actually writes to
+  // Supabase (bcp_reg_cards): a signed Reg Card is new data we're creating,
+  // not something that needs to be reconciled back into MEWS later.
   const [guestSignature, setGuestSignature] = useState<string | null>(null);
+  const [savingRegCard, setSavingRegCard] = useState(false);
+  const [regCardSaveResult, setRegCardSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
   // Rooms (HK) tab - housekeeping status is editable locally the same way,
@@ -566,6 +570,41 @@ export default function BcpPage() {
     });
     setChgRoomFor(null);
     setNewRoomValue("");
+  };
+
+  const handleSaveRegCard = async () => {
+    if (!regCardFor || !snapshot) return;
+    setSavingRegCard(true);
+    setRegCardSaveResult(null);
+    try {
+      const res = await fetch("/api/bcp/reg-card", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: snapshot.property,
+          reservation_number: regCardFor.number,
+          guest: regCardFor.guest,
+          nationality: regCardFor.nationality,
+          room: regCardFor.room,
+          category: regCardFor.category,
+          check_in: regCardFor.check_in,
+          check_out: regCardFor.check_out,
+          adults: regCardFor.adults,
+          children: regCardFor.children,
+          signature_data_url: guestSignature,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === "success") {
+        setRegCardSaveResult({ ok: true, message: "Saved to our system" });
+      } else {
+        setRegCardSaveResult({ ok: false, message: result.message || result.detail || "Save failed" });
+      }
+    } catch (err: any) {
+      setRegCardSaveResult({ ok: false, message: err.message || "Save failed" });
+    } finally {
+      setSavingRegCard(false);
+    }
   };
 
   const roomStatusKey = snapshot ? `bcp_room_status_${snapshot.property}_${snapshot.date}` : null;
@@ -1358,7 +1397,7 @@ export default function BcpPage() {
                           <td className="p-3 px-4 align-top">
                             <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => { setRegCardFor(r); setGuestSignature(null); }}
+                                onClick={() => { setRegCardFor(r); setGuestSignature(null); setRegCardSaveResult(null); }}
                                 className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                               >
                                 Reg Card
@@ -1547,9 +1586,21 @@ export default function BcpPage() {
             its <<GuestSign>> slot, so placement is confirmed before printing. */}
         {regCardFor && (
           <div className="no-print fixed inset-0 z-50 overflow-auto" style={{ background: "#525659" }}>
-            <div className="fixed top-4 right-4 z-10 flex gap-2">
+            <div className="fixed top-4 right-4 z-10 flex items-center gap-2">
+              {regCardSaveResult && (
+                <span className={`text-[11px] font-bold tracked-caps ${regCardSaveResult.ok ? "text-emerald-300" : "text-red-300"}`}>
+                  {regCardSaveResult.ok ? "✓ " : "✕ "}{regCardSaveResult.message}
+                </span>
+              )}
               <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
                 Close
+              </button>
+              <button
+                onClick={handleSaveRegCard}
+                disabled={savingRegCard}
+                className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {savingRegCard ? "Saving..." : "Save"}
               </button>
               <button
                 onClick={() => window.print()}
