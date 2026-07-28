@@ -103,12 +103,18 @@ interface SnapshotMeta {
 type MainTab = "timeline" | "reservations" | "rooms" | "logs";
 
 interface OfflineAction {
+  id: string;
   at: string;
   reservationNumber?: string;
   guest: string;
   room: string;
   action: "Check In" | "Check Out" | "Chg Room" | "Room Status";
   detail: string;
+  // "BCP Check" - ticked once the front desk has re-keyed this action into
+  // MEWS, so it no longer needs flagging red or counting toward the Action
+  // Logs tab's outstanding-items badge. The row itself stays in the log
+  // either way - this only changes how it's displayed, not the history.
+  checked?: boolean;
 }
 
 // Reservations tab (front-desk action list) status, distinct from the
@@ -260,23 +266,27 @@ const STATE_DISPLAY_LABEL: Record<string, string> = {
   Processed: "Checked out",
 };
 
-// Click-to-toggle wrapper for the header blocks above the tabs (description,
-// property/snapshot picker, status bar) - collapsed by default so the actual
-// data table gets more vertical room, one click away when actually needed.
-function CollapsibleSection({ label, defaultOpen = false, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useState(defaultOpen);
+// Show/hide wrapper for the header blocks above the tabs (description,
+// property/snapshot picker, status bar) - all 3 share one externally-owned
+// open state (a single toggle button covers all of them) so the actual
+// data table gets more vertical room by default, one click away when
+// actually needed. Only the block passed a label+onToggle renders the
+// button itself; the others just follow the same `open` value.
+function CollapsibleSection({ label, open, onToggle, children }: { label?: string; open: boolean; onToggle?: () => void; children: ReactNode }) {
   return (
     <div className="no-print mb-3">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1.5 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
-      >
-        <svg className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
-        {label}
-      </button>
-      {open && <div className="mt-2">{children}</div>}
+      {label && onToggle && (
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-1.5 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          {label}
+        </button>
+      )}
+      {open && <div className={label ? "mt-2" : ""}>{children}</div>}
     </div>
   );
 }
@@ -293,6 +303,9 @@ export default function BcpPage() {
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
   const [showReadme, setShowReadme] = useState(false);
+  // Single toggle covering About BCP / Select Property & Snapshot / the
+  // status bar - see CollapsibleSection above.
+  const [headerOpen, setHeaderOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomRow | null>(null);
   const [showManagePage, setShowManagePage] = useState(false);
@@ -577,16 +590,30 @@ export default function BcpPage() {
     }
   }, [offlineActionsKey]);
 
-  const logOfflineAction = (entry: OfflineAction) => {
+  const logOfflineAction = (entry: Omit<OfflineAction, "id" | "checked">) => {
     if (!offlineActionsKey) return;
+    const full: OfflineAction = { ...entry, id: crypto.randomUUID(), checked: false };
     setActions((prev) => {
-      const next = [entry, ...prev];
+      const next = [full, ...prev];
       localStorage.setItem(offlineActionsKey, JSON.stringify(next));
       return next;
     });
   };
 
-  const latestActionFor = (number: string) => actions.find((a) => a.reservationNumber === number);
+  const handleToggleActionChecked = (id: string) => {
+    if (!offlineActionsKey) return;
+    setActions((prev) => {
+      const next = prev.map((a) => (a.id === id ? { ...a, checked: !a.checked } : a));
+      localStorage.setItem(offlineActionsKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // Most recent action for a reservation/room that's still unresolved (not
+  // BCP-Checked) - once checked, that record stops flagging its source row
+  // red, same as if nothing were outstanding.
+  const latestActionFor = (number: string) => actions.find((a) => a.reservationNumber === number && !a.checked);
+  const unresolvedActionsCount = actions.filter((a) => !a.checked).length;
 
   const handleCheckIn = (r: ReservationRow) =>
     logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${r.room}` });
@@ -1087,7 +1114,13 @@ export default function BcpPage() {
           }
         />
 
-        <CollapsibleSection label="About BCP">
+        <CollapsibleSection
+          open={headerOpen}
+          onToggle={() => setHeaderOpen((o) => !o)}
+          label={`Details — ${selectedProperty || "no property selected"}${
+            snapshot ? ` · Data as of ${fmtDateTime(snapshot.captured_utc)}${stale && !isLiveFallback ? " ⚠ stale" : ""}` : ""
+          }`}
+        >
           <p className="text-[var(--text-primary)] text-sm opacity-70 leading-relaxed max-w-4xl">
             Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, front-desk actions and room status, so the front desk can keep operating from the latest copy if MEWS goes down.
           </p>
@@ -1141,7 +1174,7 @@ export default function BcpPage() {
           </div>
         )}
 
-        <CollapsibleSection label={`Select Property & Snapshot — ${selectedProperty || "none selected"}`}>
+        <CollapsibleSection open={headerOpen}>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
             <div className="flex flex-col gap-2 w-full md:w-80">
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
@@ -1191,9 +1224,7 @@ export default function BcpPage() {
           </div>
         ) : snapshot && (
           <>
-            <CollapsibleSection
-              label={`${snapshot.property} — Data as of ${fmtDateTime(snapshot.captured_utc)}${stale && !isLiveFallback ? " ⚠ stale" : ""}`}
-            >
+            <CollapsibleSection open={headerOpen}>
               <div className={`flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border ${
                 stale && !isLiveFallback
                   ? "bg-amber-50 border-amber-300 text-amber-800"
@@ -1224,7 +1255,7 @@ export default function BcpPage() {
                     ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
                     ["reservations", `Reservations (${frontDeskRows.length})`],
                     ["rooms", "Rooms (HK)"],
-                    ["logs", `Action Logs${actions.length ? ` (${actions.length})` : ""}`],
+                    ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
                   ] as [MainTab, string][]
                 ).map(([t, label]) => (
                   <button
@@ -1490,17 +1521,17 @@ export default function BcpPage() {
                   const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
                     ? "Out of Order"
                     : rm.occupant ? "Occupied" : "Vacant";
-                  const lastRoomLog = actions.find((a) => a.action === "Room Status" && a.room === rm.room);
+                  const lastRoomLog = actions.find((a) => a.action === "Room Status" && a.room === rm.room && !a.checked);
                   return (
                     <div
                       key={rm.room + i}
                       className={`border p-4 flex flex-col gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"} ${
-                        overridden ? "ring-2 ring-red-500 ring-offset-1" : ""
+                        lastRoomLog ? "ring-2 ring-red-500 ring-offset-1" : ""
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
                         <div className="text-xl font-display text-[var(--text-primary)]">{rm.room}</div>
-                        {overridden && lastRoomLog && (
+                        {lastRoomLog && (
                           <button
                             onClick={() => setSelectedLogEntry(lastRoomLog)}
                             className="text-[9px] font-bold tracked-caps text-red-700 underline decoration-dotted hover:decoration-solid shrink-0 mt-1"
@@ -1537,31 +1568,44 @@ export default function BcpPage() {
                       <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
                       <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Action</th>
                       <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Detail</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 text-center">BCP Check</th>
                     </tr>
                   </thead>
                   <tbody>
                     {actions.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No actions logged yet.</td>
+                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No actions logged yet.</td>
                       </tr>
                     )}
-                    {actions.map((a, i) => (
+                    {actions.map((a) => (
                       <tr
-                        key={i}
+                        key={a.id}
                         onClick={() => setSelectedLogEntry(a)}
-                        className="border-b border-red-100 last:border-0 bg-red-50 text-red-900 cursor-pointer hover:bg-red-100 transition-colors"
+                        className={`border-b last:border-0 cursor-pointer transition-colors ${
+                          a.checked
+                            ? "border-[var(--text-primary)]/8 text-[var(--text-primary)] hover:bg-[var(--text-primary)]/[0.03]"
+                            : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
+                        }`}
                       >
                         <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
                         <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
                         <td className="p-3 px-4 text-[13px]">{a.room}</td>
                         <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
                         <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
+                        <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={!!a.checked}
+                            onChange={() => handleToggleActionChecked(a.id)}
+                            className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+                          />
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
                 <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
-                  Saved on this device only — use as a reference to re-enter these actions into MEWS once it&apos;s back online.
+                  Saved on this device only — use as a reference to re-enter these actions into MEWS once it&apos;s back online. Tick BCP Check once an action has been re-keyed into MEWS.
                 </div>
               </div>
             )}
