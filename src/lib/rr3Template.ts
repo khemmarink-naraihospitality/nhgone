@@ -89,10 +89,16 @@ function stripTagsToText(html: string): string {
 // none of them wrap either.
 const PARAGRAPH_RE = /<p((?:\s+[^>]*)?)>([\s\S]*?)<\/p>/g;
 
-function eligibleParagraphFontSize(attrs: string): { tier: "s1" | "s2"; basePt: number } | null {
+// A paragraph marked class="half" (e.g. the Name/Surname row, split into two
+// 50%-wide <td> columns so Surname always starts at the line's midpoint
+// regardless of how long the first name is) only has half the page's usable
+// width to render in - it must fit against that narrower budget, not the
+// full-page one every other s1/s2 line uses.
+function eligibleParagraphFontSize(attrs: string): { tier: "s1" | "s2"; basePt: number; maxWidthPt: number } | null {
   if (/font-size\s*:/.test(attrs)) return null;
-  if (/class="[^"]*\bs2\b[^"]*"/.test(attrs)) return { tier: "s2", basePt: 15 };
-  if (/class="[^"]*\bs1\b[^"]*"/.test(attrs)) return { tier: "s1", basePt: 14 };
+  const maxWidthPt = /class="[^"]*\bhalf\b[^"]*"/.test(attrs) ? PAGE_CONTENT_WIDTH_PT / 2 : PAGE_CONTENT_WIDTH_PT;
+  if (/class="[^"]*\bs2\b[^"]*"/.test(attrs)) return { tier: "s2", basePt: 15, maxWidthPt };
+  if (/class="[^"]*\bs1\b[^"]*"/.test(attrs)) return { tier: "s1", basePt: 14, maxWidthPt };
   return null;
 }
 
@@ -107,7 +113,7 @@ function fitParagraphsToOneLine(html: string): string {
     if (!eligible) continue;
     const text = stripTagsToText(inner);
     if (!text) continue;
-    const fitted = fitFontSizePt(text, PAGE_CONTENT_WIDTH_PT, eligible.basePt, 9);
+    const fitted = fitFontSizePt(text, eligible.maxWidthPt, eligible.basePt, 9);
     if (eligible.tier === "s2") minS2 = Math.min(minS2, fitted);
     else minS1 = Math.min(minS1, fitted);
   }

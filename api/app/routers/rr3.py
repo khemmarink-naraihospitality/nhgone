@@ -45,7 +45,10 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม <span class="val"><<HotelName>></span></p>
       <p class="s1" style="text-align:center; margin-bottom: 10pt;">(Lodger Registration Card)</p>
 
-      <p class="s1">ชื่อตัว (Name) <span class="val"><<FirstName>></span> &nbsp;&nbsp; ชื่อสกุล (Surname) <span class="val"><<LastName>></span></p>
+      <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half">ชื่อตัว (Name) <span class="val"><<FirstName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half">ชื่อสกุล (Surname) <span class="val"><<LastName>></span></p></td>
+      </tr></table>
 
       <p class="s1" style="margin-top: 5pt;">เลขประจำตัวประชาชน (Identification Card No.) &nbsp;&nbsp;<span class="val"><<IdentityCardNumber>></span></p>
 
