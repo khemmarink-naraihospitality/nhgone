@@ -93,8 +93,7 @@ table, tbody { vertical-align:top; overflow:visible; }
     <td style="width:33.33%; border-top:1pt solid black; padding: 10pt;">
       <p class="s1" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
       <p class="s1" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
-      <p class="s1" style="padding-top:15pt; text-align:center;">...............................................................</p>
-      <p class="s1" style="text-align:center;"><span class="val"><<GuestSign>></span></p>
+      <p class="s1" style="text-align:center; margin-top:20pt;"><span class="val"><<GuestSign>></span></p>
     </td>
   </tr>
 </table>"""
