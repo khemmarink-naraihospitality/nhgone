@@ -43,22 +43,22 @@ table, tbody { vertical-align:top; overflow:visible; }
     <td style="width:100%; border:0pt solid; padding: 15pt 25pt;" colspan="3">
       <p class="s1" style="text-align:right;">ร.ร. ๓</p>
       <p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม <span class="val"><<HotelName>></span></p>
-      <p class="s1" style="text-align:center; margin-bottom: 10pt;">(Lodger Registration Card)</p>
+      <p class="s1" style="text-align:center;">(Lodger Registration Card)</p>
 
       <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อตัว (Name)</span><span class="val" style="display:table-cell; width:100%;"><<FirstName>></span></p></td>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อสกุล (Surname)</span><span class="val" style="display:table-cell; width:100%;"><<LastName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อตัว (Name)</span><span class="val" style="display:table-cell; width:100%;"><<FirstName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อสกุล (Surname)</span><span class="val" style="display:table-cell; width:100%;"><<LastName>></span></p></td>
       </tr></table>
 
-      <p class="s1" style="margin-top: 5pt; display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เลขประจำตัวประชาชน (Identification Card No.)</span><span class="val" style="display:table-cell; width:100%;"><<IdentityCardNumber>></span></p>
+      <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เลขประจำตัวประชาชน (Identification Card No.)</span><span class="val" style="display:table-cell; width:100%;"><<IdentityCardNumber>></span></p>
 
       <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ใบสำคัญประจำตัวคนต่างด้าวเลขที่ (Alien Registration Book No.)</span><span class="val" style="display:table-cell; width:100%;"><<AlienBook>></span></p>
 
       <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">หนังสือเดินทางเลขที่ (Passport No.)</span><span class="val" style="display:table-cell; width:100%;"><<PassportNumber>></span></p>
 
       <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">อาชีพ (Occupation)</span><span class="val" style="display:table-cell; width:100%;"><<Occupation>></span></p></td>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">สัญชาติ (Nationality)</span><span class="val" style="display:table-cell; width:100%;"><<NationalityName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">อาชีพ (Occupation)</span><span class="val" style="display:table-cell; width:100%;"><<Occupation>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">สัญชาติ (Nationality)</span><span class="val" style="display:table-cell; width:100%;"><<NationalityName>></span></p></td>
       </tr></table>
 
       <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ที่อยู่ปัจจุบัน (Current Address)</span><span class="val" style="display:table-cell; width:100%;"><<AddressDetails>></span></p>
