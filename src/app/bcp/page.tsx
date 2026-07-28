@@ -102,6 +102,8 @@ interface SnapshotMeta {
 
 type MainTab = "timeline" | "reservations" | "rooms" | "logs";
 
+type ReservationSortKey = "status" | "guest" | "dates" | "room" | "category";
+
 interface OfflineAction {
   id: string;
   at: string;
@@ -313,6 +315,11 @@ export default function BcpPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>("reservations");
+  // Reservations tab search (name/room/confirmation #) and sortable column
+  // headers - client-side only, since frontDeskRows is already the full
+  // day's list in memory.
+  const [reservationSearch, setReservationSearch] = useState("");
+  const [reservationSort, setReservationSort] = useState<{ key: ReservationSortKey; dir: "asc" | "desc" }>({ key: "room", dir: "asc" });
   const [showReadme, setShowReadme] = useState(false);
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
@@ -586,6 +593,49 @@ export default function BcpPage() {
       .filter((x): x is { r: ReservationRow; status: { label: string; cls: string } } => x.status !== null)
       .sort((a, b) => a.r.room.localeCompare(b.r.room, undefined, { numeric: true }));
   }, [snapshot]);
+
+  // Search matches guest (covers first/last name together) + room + the
+  // reservation/confirmation number; sort is column-driven via the table
+  // headers below. Kept separate from frontDeskRows so the tab's badge
+  // count above always reflects the full unfiltered list.
+  const displayedFrontDeskRows = useMemo(() => {
+    const q = reservationSearch.trim().toLowerCase();
+    const filtered = q
+      ? frontDeskRows.filter(
+          ({ r }) =>
+            r.guest.toLowerCase().includes(q) ||
+            r.room.toLowerCase().includes(q) ||
+            r.number.toLowerCase().includes(q)
+        )
+      : frontDeskRows;
+    const { key, dir } = reservationSort;
+    const sign = dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (key) {
+        case "status":
+          return sign * a.status.label.localeCompare(b.status.label);
+        case "guest":
+          return sign * a.r.guest.localeCompare(b.r.guest);
+        case "dates":
+          return sign * a.r.check_in.localeCompare(b.r.check_in);
+        case "room":
+          return sign * a.r.room.localeCompare(b.r.room, undefined, { numeric: true });
+        case "category":
+          return sign * (a.r.category || "").localeCompare(b.r.category || "");
+        default:
+          return 0;
+      }
+    });
+  }, [frontDeskRows, reservationSearch, reservationSort]);
+
+  const handleReservationSort = (key: ReservationSortKey) => {
+    setReservationSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  };
+
+  const reservationSortArrow = (key: ReservationSortKey) => {
+    if (reservationSort.key !== key) return "";
+    return reservationSort.dir === "asc" ? " ▲" : " ▼";
+  };
 
   // Action Logs used to live in localStorage only - moved to Supabase
   // (bcp_action_logs) per feedback that it must never be lost to a device
@@ -1340,6 +1390,15 @@ export default function BcpPage() {
                   </button>
                 ))}
               </div>
+              {mainTab === "reservations" && (
+                <input
+                  type="text"
+                  value={reservationSearch}
+                  onChange={(e) => setReservationSearch(e.target.value)}
+                  placeholder="Search name, room, or confirmation #"
+                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
+                />
+              )}
             </div>
 
             {mainTab === "timeline" && snapshot.window && (
@@ -1501,21 +1560,35 @@ export default function BcpPage() {
                 <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Status</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Guest Name</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Dates</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Category</th>
+                      {(
+                        [
+                          ["status", "Status"],
+                          ["guest", "Guest Name"],
+                          ["dates", "Dates"],
+                          ["room", "Room"],
+                          ["category", "Category"],
+                        ] as [ReservationSortKey, string][]
+                      ).map(([key, label]) => (
+                        <th
+                          key={key}
+                          onClick={() => handleReservationSort(key)}
+                          className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                        >
+                          {label}{reservationSortArrow(key)}
+                        </th>
+                      ))}
                       <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {frontDeskRows.length === 0 && (
+                    {displayedFrontDeskRows.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No arrivals or in-house guests for today.</td>
+                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                          {reservationSearch ? "No matching reservations." : "No arrivals or in-house guests for today."}
+                        </td>
                       </tr>
                     )}
-                    {frontDeskRows.map(({ r, status }) => {
+                    {displayedFrontDeskRows.map(({ r, status }) => {
                       const done = latestActionFor(r.number);
                       return (
                         <tr
