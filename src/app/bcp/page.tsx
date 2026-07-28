@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -93,7 +92,28 @@ interface SnapshotMeta {
   captured_at: string;
 }
 
-type MainTab = "timeline" | "payments";
+type MainTab = "timeline" | "reservations" | "rooms" | "logs";
+
+interface OfflineAction {
+  at: string;
+  reservationNumber: string;
+  guest: string;
+  room: string;
+  action: "Check In" | "Check Out" | "Chg Room";
+  detail: string;
+}
+
+// Reservations tab (front-desk action list) status, distinct from the
+// Timeline's own raw MEWS state - "today" here is the snapshot's own date,
+// matching the Arrivals/Departures/In-house counts in the toolbar.
+function frontDeskStatus(r: ReservationRow, today: string): { label: string; cls: string } | null {
+  const inDay = fmtYMD(toBangkokDay(r.check_in));
+  const outDay = fmtYMD(toBangkokDay(r.check_out));
+  if (inDay === today) return { label: "Arrival", cls: "bg-blue-50 text-blue-700 border-blue-200" };
+  if (r.state === "Started" && outDay === today) return { label: "Departure", cls: "bg-amber-50 text-amber-800 border-amber-200" };
+  if (r.state === "Started") return { label: "In-house", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" };
+  return null;
+}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -204,6 +224,16 @@ export default function BcpPage() {
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
   const [itemLinesOpen, setItemLinesOpen] = useState(false);
   const [showGuestProfile, setShowGuestProfile] = useState(false);
+
+  // Reservations tab (front-desk action list) - Check In/Out and Chg Room
+  // can't write back to MEWS (that's the whole premise of this page: MEWS
+  // is down), so they only log locally as the front desk's own paper trail
+  // to re-key into MEWS once it's back. Persisted per property+date so it
+  // survives a refresh during a long outage.
+  const [actions, setActions] = useState<OfflineAction[]>([]);
+  const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
+  const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
+  const [newRoomValue, setNewRoomValue] = useState("");
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -417,6 +447,58 @@ export default function BcpPage() {
     }));
   }, [snapshot]);
 
+  const frontDeskRows = useMemo(() => {
+    if (!snapshot?.reservations) return [];
+    const today = snapshot.date;
+    return snapshot.reservations
+      .map((r) => ({ r, status: frontDeskStatus(r, today) }))
+      .filter((x): x is { r: ReservationRow; status: { label: string; cls: string } } => x.status !== null)
+      .sort((a, b) => a.r.room.localeCompare(b.r.room, undefined, { numeric: true }));
+  }, [snapshot]);
+
+  const offlineActionsKey = snapshot ? `bcp_offline_actions_${snapshot.property}_${snapshot.date}` : null;
+  useEffect(() => {
+    if (!offlineActionsKey) {
+      setActions([]);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(offlineActionsKey);
+      setActions(raw ? JSON.parse(raw) : []);
+    } catch {
+      setActions([]);
+    }
+  }, [offlineActionsKey]);
+
+  const logOfflineAction = (entry: OfflineAction) => {
+    if (!offlineActionsKey) return;
+    setActions((prev) => {
+      const next = [entry, ...prev];
+      localStorage.setItem(offlineActionsKey, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const latestActionFor = (number: string) => actions.find((a) => a.reservationNumber === number);
+
+  const handleCheckIn = (r: ReservationRow) =>
+    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${r.room}` });
+  const handleCheckOut = (r: ReservationRow) =>
+    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check Out", detail: `Room ${r.room}` });
+  const handleChgRoomSave = () => {
+    if (!chgRoomFor || !newRoomValue.trim()) return;
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: chgRoomFor.number,
+      guest: chgRoomFor.guest,
+      room: chgRoomFor.room,
+      action: "Chg Room",
+      detail: `${chgRoomFor.room} -> ${newRoomValue.trim()}`,
+    });
+    setChgRoomFor(null);
+    setNewRoomValue("");
+  };
+
   const matchedGuestProfile = useMemo(() => {
     if (!selectedReservation || !snapshot) return null;
     return snapshot.customers.find(
@@ -507,36 +589,6 @@ export default function BcpPage() {
     setTimeout(() => setHighlightedRoom((cur) => (cur === match.room ? null : cur)), 1500);
   };
 
-  const paymentTable = (rows: PaymentRow[]) => (
-    <table className="w-full text-left border-collapse min-w-max">
-      <thead>
-        <tr className="bg-[var(--text-primary)]/5">
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Time</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Guest</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Res No.</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Type</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">State</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap text-right">Amount</th>
-          <th className="p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap">Notes</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-[var(--text-primary)]/5">
-        {rows.length === 0 ? (
-          <tr><td colSpan={7} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
-        ) : rows.map((p, i) => (
-          <tr key={p.created + i} className="hover:bg-[var(--text-primary)]/[0.02]">
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{fmtDateTime(p.created)}</td>
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.guest || "-"}</td>
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.reservation || "-"}</td>
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.type}</td>
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top">{p.state}</td>
-            <td className="p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap align-top text-right font-bold">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}</td>
-            <td className="p-2 px-3 text-[12px] text-[var(--text-primary)]/80 max-w-[240px]">{p.notes || "-"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
 
   // Room Properties - a full page (not a drawer), replacing the whole BCP
   // view exactly like MEWS's own Room Properties screen does (their icon
@@ -854,7 +906,7 @@ export default function BcpPage() {
     <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <div className="no-print">
-        <PageHeader title="BCP" description="Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, payments and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
+        <PageHeader title="BCP" description="Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, front-desk actions and room status, so the front desk can keep operating from the latest copy if MEWS goes down." />
         <button
           onClick={() => setShowReadme(true)}
           className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors"
@@ -862,13 +914,6 @@ export default function BcpPage() {
           <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           Read Me
         </button>
-        <Link
-          href="/bcp/offline"
-          className="mt-2 ml-2 inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
-          Front Desk Mode
-        </Link>
 
         {showReadme && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowReadme(false)}>
@@ -983,21 +1028,28 @@ export default function BcpPage() {
 
             <div className="no-print flex flex-wrap items-center justify-between gap-4 mb-4">
               <div className="flex border-b border-[var(--text-primary)]/14">
-                {(["timeline", "payments"] as MainTab[]).map((t) => (
+                {(
+                  [
+                    ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
+                    ["reservations", `Reservations (${frontDeskRows.length})`],
+                    ["rooms", "Rooms (HK)"],
+                    ["logs", `Action Logs${actions.length ? ` (${actions.length})` : ""}`],
+                  ] as [MainTab, string][]
+                ).map(([t, label]) => (
                   <button
                     key={t}
                     onClick={() => setMainTab(t)}
-                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all capitalize ${
+                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all ${
                       mainTab === t
                         ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                         : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
                     }`}
                   >
-                    {t === "timeline" ? `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})` : `Payments (${snapshot.counts.payments})`}
+                    {label}
                   </button>
                 ))}
               </div>
-              {mainTab === "timeline" && (
+              {(mainTab === "timeline" || mainTab === "rooms") && (
                 <div className="flex items-center gap-4 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60">
                   <span>Arrivals today: {todayStats.arrivals}</span>
                   <span>Departures today: {todayStats.departures}</span>
@@ -1029,7 +1081,7 @@ export default function BcpPage() {
               </div>
             )}
 
-            {mainTab === "timeline" ? (
+            {mainTab === "timeline" && (
               <div ref={timelineScrollRef} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
@@ -1161,9 +1213,150 @@ export default function BcpPage() {
                   })}
                 </div>
               </div>
-            ) : (
-              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-4">
-                {paymentTable(snapshot.payments)}
+            )}
+
+            {mainTab === "reservations" && (
+              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[900px]">
+                  <thead>
+                    <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Status</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Guest Name</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Dates</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Category</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {frontDeskRows.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No arrivals or in-house guests for today.</td>
+                      </tr>
+                    )}
+                    {frontDeskRows.map(({ r, status }) => {
+                      const done = latestActionFor(r.number);
+                      return (
+                        <tr key={r.number} className="border-b border-[var(--text-primary)]/8 last:border-0 hover:bg-[var(--text-primary)]/[0.02]">
+                          <td className="p-3 px-4 align-top">
+                            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${status.cls}`}>{status.label}</span>
+                          </td>
+                          <td className="p-3 px-4 align-top">
+                            <div className="font-bold text-[13px] text-[var(--text-primary)]">{r.guest || "(no name)"}</div>
+                            <div className="text-[11px] text-[var(--text-primary)]/50">{r.nationality || "-"}</div>
+                            {done && <div className="text-[10px] text-emerald-700 font-bold mt-1">✓ {done.action} logged {fmtDateTime(done.at)}</div>}
+                          </td>
+                          <td className="p-3 px-4 align-top text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">
+                            {fmtDateOnly(r.check_in)} – {fmtDateOnly(r.check_out)}
+                          </td>
+                          <td className="p-3 px-4 align-top text-[13px] font-bold text-[var(--text-primary)]">{r.room}</td>
+                          <td className="p-3 px-4 align-top text-[12px] text-[var(--text-primary)]/70">{r.category || "-"}</td>
+                          <td className="p-3 px-4 align-top">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                onClick={() => setRegCardFor(r)}
+                                className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                              >
+                                Reg Card
+                              </button>
+                              {status.label === "Arrival" ? (
+                                <button
+                                  onClick={() => handleCheckIn(r)}
+                                  className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-emerald-600 text-white hover:opacity-90 transition-opacity"
+                                >
+                                  Check In
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleCheckOut(r)}
+                                  className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                                >
+                                  Check Out
+                                </button>
+                              )}
+                              <button
+                                onClick={() => { setChgRoomFor(r); setNewRoomValue(r.room); }}
+                                className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity"
+                              >
+                                Chg Room
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {mainTab === "rooms" && (
+              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Floor</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Category</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">HK Status</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Occupant</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Arriving</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Departing</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {housekeepingRows.map((rm, i) => (
+                      <tr key={rm.room + i} className="border-b border-[var(--text-primary)]/8 last:border-0 hover:bg-[var(--text-primary)]/[0.02]">
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/70">{rm.floor || "-"}</td>
+                        <td className="p-3 px-4 text-[13px] font-bold text-[var(--text-primary)]">{rm.room}</td>
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/70">{rm.category || "-"}</td>
+                        <td className="p-3 px-4">
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[rm.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                            {rm.state}
+                          </span>
+                        </td>
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.occupant || "-"}</td>
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.arriving || "-"}</td>
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.departing || "-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {mainTab === "logs" && (
+              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+                <table className="w-full text-left border-collapse min-w-[700px]">
+                  <thead>
+                    <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Time</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Guest</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Action</th>
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {actions.length === 0 && (
+                      <tr>
+                        <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No actions logged yet.</td>
+                      </tr>
+                    )}
+                    {actions.map((a, i) => (
+                      <tr key={i} className="border-b border-[var(--text-primary)]/8 last:border-0">
+                        <td className="p-3 px-4 text-[12px] whitespace-nowrap text-[var(--text-primary)]/70">{fmtDateTime(a.at)}</td>
+                        <td className="p-3 px-4 text-[13px] font-bold text-[var(--text-primary)]">{a.guest}</td>
+                        <td className="p-3 px-4 text-[13px] text-[var(--text-primary)]">{a.room}</td>
+                        <td className="p-3 px-4 text-[12px] font-bold text-[var(--text-primary)]/80">{a.action}</td>
+                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/60">{a.detail}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
+                  Saved on this device only — use as a reference to re-enter these actions into MEWS once it&apos;s back online.
+                </div>
               </div>
             )}
 
@@ -1202,6 +1395,88 @@ export default function BcpPage() {
               </table>
             </div>
           </>
+        )}
+
+        {/* Print-only registration card - the interactive Reg Card modal
+            below is marked no-print (fixed-position overlays don't paginate
+            reliably), so this plain in-flow duplicate is what actually
+            prints, same pattern as the housekeeping sheet above. */}
+        {regCardFor && (
+          <div className="hidden print:block text-black">
+            <div className="text-lg font-bold mb-1">{snapshot?.property}</div>
+            <div className="text-xs text-black/50 mb-4">Guest Registration Card</div>
+            <div className="grid grid-cols-2 gap-y-2 text-sm max-w-md">
+              <div className="text-black/50">Guest Name</div><div className="font-bold">{regCardFor.guest || "-"}</div>
+              <div className="text-black/50">Nationality</div><div>{regCardFor.nationality || "-"}</div>
+              <div className="text-black/50">Room</div><div className="font-bold">{regCardFor.room}</div>
+              <div className="text-black/50">Category</div><div>{regCardFor.category || "-"}</div>
+              <div className="text-black/50">Check-in</div><div>{fmtDateOnly(regCardFor.check_in)}</div>
+              <div className="text-black/50">Check-out</div><div>{fmtDateOnly(regCardFor.check_out)}</div>
+              <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
+            </div>
+            <div className="mt-6 pt-4 border-t border-black/10 text-[10px] text-black/40 italic max-w-md">
+              Generated from cached BCP data while MEWS is unavailable — not a substitute for MEWS&apos;s own registration card.
+            </div>
+          </div>
+        )}
+
+        {regCardFor && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRegCardFor(null)}>
+            <div className="bg-white text-black border border-black/10 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="text-lg font-bold mb-1">{snapshot?.property}</div>
+                <div className="text-xs text-black/50 mb-4">Guest Registration Card</div>
+                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                  <div className="text-black/50">Guest Name</div><div className="font-bold">{regCardFor.guest || "-"}</div>
+                  <div className="text-black/50">Nationality</div><div>{regCardFor.nationality || "-"}</div>
+                  <div className="text-black/50">Room</div><div className="font-bold">{regCardFor.room}</div>
+                  <div className="text-black/50">Category</div><div>{regCardFor.category || "-"}</div>
+                  <div className="text-black/50">Check-in</div><div>{fmtDateOnly(regCardFor.check_in)}</div>
+                  <div className="text-black/50">Check-out</div><div>{fmtDateOnly(regCardFor.check_out)}</div>
+                  <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-black/10 text-[10px] text-black/40 italic">
+                  Generated from cached BCP data while MEWS is unavailable — not a substitute for MEWS&apos;s own registration card.
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 p-4 border-t border-black/10">
+                <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-black/20 hover:bg-black/5 transition-colors">
+                  Close
+                </button>
+                <button onClick={() => window.print()} className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity">
+                  Print
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {chgRoomFor && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setChgRoomFor(null)}>
+            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="font-display text-xl mb-1">Change Room</div>
+              <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">{chgRoomFor.guest} — currently in {chgRoomFor.room}</div>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">New Room Number</label>
+              <input
+                autoFocus
+                value={newRoomValue}
+                onChange={(e) => setNewRoomValue(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleChgRoomSave(); }}
+                className="w-full mt-1 bg-[var(--bg-primary)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+              />
+              <div className="text-[10px] text-[var(--text-primary)]/40 italic mt-2">
+                This only logs the change locally — it does not move the reservation in MEWS.
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setChgRoomFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={handleChgRoomSave} className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity">
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Reservation detail panel - mirrors MEWS's own reservation popup
