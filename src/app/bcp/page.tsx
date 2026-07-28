@@ -11,8 +11,14 @@ interface ReservationRow {
   number: string;
   guest: string;
   nationality: string;
+  nationality_name?: string;
   email: string;
   phone: string;
+  identity_card_number?: string;
+  passport_number?: string;
+  occupation?: string;
+  address_details?: string;
+  alien_book?: string;
   room: string;
   check_in: string;
   check_out: string;
@@ -117,12 +123,13 @@ function frontDeskStatus(r: ReservationRow, today: string): { label: string; cls
   return null;
 }
 
-// Reg Card prints the exact same ร.ร.๓ form as /rr3, but /rr3's own data
-// comes from a live MEWS customer-profile join (ID/passport number, address,
-// occupation, etc.) that isn't available here - the BCP snapshot only ever
-// carries what get_bcp_snapshot captures. Those tokens are simply left
-// blank for the front desk to fill in by hand, same as any guest whose full
-// profile wasn't captured in MEWS yet.
+// Reg Card prints the exact same ร.ร.๓ form as /rr3. get_bcp_snapshot's
+// Timeline query already requests Customers:True from MEWS (needed for
+// guest name/nationality), so identity_card_number/passport_number/
+// occupation/address_details/alien_book below come from that same fetch,
+// not an extra live call - captured into the snapshot, so still there once
+// MEWS is down. Only GuestSign has no MEWS source at all (it's whatever the
+// front desk types or the SignaturePad captures on screen).
 function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData {
   const nameParts = (r.guest || "").trim().split(/\s+/);
   const fmtTimeOnly = (iso: string) => {
@@ -141,7 +148,13 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData 
     CheckOut: fmtDateOnly(r.check_out),
     CheckOutTime: fmtTimeOnly(r.check_out),
     NationalityCode: r.nationality,
-    NationalityName: r.nationality,
+    NationalityName: r.nationality_name || r.nationality,
+    IdentityCardNumber: r.identity_card_number,
+    PassportNumber: r.passport_number,
+    Occupation: r.occupation,
+    AddressDetails: r.address_details,
+    Telephone: r.phone,
+    AlienBook: r.alien_book,
   };
 }
 
@@ -1630,7 +1643,7 @@ export default function BcpPage() {
               <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1">Guest Signature</div>
               <SignaturePad value={guestSignature} onChange={setGuestSignature} />
               <div className="mt-2 text-[10px] text-black/40 italic">
-                Not captured in this cached snapshot: ID/passport, address, occupation - prints blank for the front desk to fill in by hand.
+                ID/passport, address, occupation and telephone come from MEWS&apos;s customer profile, cached at capture time - prints blank only if the guest&apos;s own MEWS profile is missing that field.
               </div>
             </div>
           </div>

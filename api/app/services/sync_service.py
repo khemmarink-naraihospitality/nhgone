@@ -1855,12 +1855,44 @@ class SyncService:
             rate_amount = rate_amount_by_reservation.get(res_id, 0)
             items_amount = items_amount_by_reservation.get(res_id, 0)
             origin_label, reservation_source = format_origin(res)
+
+            # Same customer-profile extraction as get_rr3_cards - the Extent
+            # here already includes Customers:True, so this is just reading
+            # more fields off data already fetched for the Timeline, not an
+            # extra live call. Captured into the snapshot at capture time, so
+            # it's still there for the Reg Card even once MEWS is down.
+            identity_card_value = ""
+            identity_card = customer.get("IdentityCard")
+            identity_cards = customer.get("IdentityCards")
+            if isinstance(identity_card, dict):
+                identity_card_value = identity_card.get("Number", "")
+            elif isinstance(identity_cards, list) and identity_cards:
+                identity_card_value = identity_cards[0].get("Number", "")
+            passport = customer.get("Passport") or {}
+            cust_address = customer.get("Address") or {}
+            addr_line1 = (cust_address.get("Line1") or "").strip()
+            addr_line2 = (cust_address.get("Line2") or "").strip()
+            if addr_line1 or addr_line2:
+                addr_parts = [cust_address.get("Line1"), cust_address.get("Line2"), cust_address.get("City"),
+                              cust_address.get("PostalCode"), cust_address.get("CountryCode")]
+                address_details = " ".join(p for p in addr_parts if p)
+            elif (customer.get("BirthPlace") or "").strip():
+                address_details = customer.get("BirthPlace")
+            else:
+                address_details = _rr3_country_name(customer.get("NationalityCode"))
+
             return {
                 "number": res.get("Number", ""),
                 "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
                 "nationality": customer.get("NationalityCode", ""),
+                "nationality_name": _rr3_country_name(customer.get("NationalityCode")),
                 "email": customer.get("Email", ""),
                 "phone": customer.get("Phone", ""),
+                "identity_card_number": identity_card_value,
+                "passport_number": passport.get("Number", ""),
+                "occupation": customer.get("Occupation") or "นักธุรกิจ",
+                "address_details": address_details,
+                "alien_book": customer.get("IdentityDocumentSupportNumber", ""),
                 "room": room.get("Name", ""),
                 "check_in": res.get("StartUtc", ""),
                 "check_out": res.get("EndUtc", ""),
