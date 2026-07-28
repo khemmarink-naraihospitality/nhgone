@@ -273,6 +273,7 @@ async def create_action_log(payload: dict = Body(...)):
         "room": payload.get("room", ""),
         "action": payload.get("action", ""),
         "detail": payload.get("detail", ""),
+        "userEmail": payload.get("user_email", ""),
     }
     try:
         res = sync_service.supabase.table("bcp_action_logs").insert({

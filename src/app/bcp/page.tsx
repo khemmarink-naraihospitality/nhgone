@@ -104,7 +104,7 @@ type MainTab = "timeline" | "reservations" | "rooms" | "logs";
 
 type ReservationSortKey = "status" | "guest" | "dates" | "room" | "category";
 
-type ActionLogSortKey = "time" | "guest" | "room" | "action" | "detail" | "checked";
+type ActionLogSortKey = "time" | "guest" | "room" | "action" | "detail" | "userEmail" | "checked";
 
 interface OfflineAction {
   id: string;
@@ -114,6 +114,10 @@ interface OfflineAction {
   room: string;
   action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Reg Card Saved";
   detail: string;
+  // Who was signed in when this action was logged - filled in automatically
+  // by logOfflineAction from the current Supabase Auth session, not passed
+  // by callers, so it can never be forgotten/inconsistent per call site.
+  userEmail?: string;
   // "BCP Check" - ticked once the front desk has re-keyed this action into
   // MEWS, so it no longer needs flagging red or counting toward the Action
   // Logs tab's outstanding-items badge. The row itself stays in the log
@@ -311,6 +315,13 @@ function CollapsibleSection({ label, open, onToggle, children }: { label?: strin
 }
 
 export default function BcpPage() {
+  // Fetched once for the Action Logs "User" column - who was signed in when
+  // each Check In/Out/Chg Room/Room Status/Reg Card Saved entry was logged.
+  const [currentUserEmail, setCurrentUserEmail] = useState("");
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setCurrentUserEmail(data.user?.email || ""));
+  }, []);
+
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
@@ -676,7 +687,7 @@ export default function BcpPage() {
     })();
   }, [snapshot?.property, snapshot?.date]);
 
-  const logOfflineAction = async (entry: Omit<OfflineAction, "id" | "checked">) => {
+  const logOfflineAction = async (entry: Omit<OfflineAction, "id" | "checked" | "userEmail">) => {
     if (!snapshot) return;
     try {
       const res = await fetch("/api/bcp/action-logs", {
@@ -690,6 +701,7 @@ export default function BcpPage() {
           room: entry.room,
           action: entry.action,
           detail: entry.detail,
+          user_email: currentUserEmail,
         }),
       });
       const result = await res.json();
@@ -732,7 +744,8 @@ export default function BcpPage() {
             a.guest.toLowerCase().includes(q) ||
             a.room.toLowerCase().includes(q) ||
             a.action.toLowerCase().includes(q) ||
-            a.detail.toLowerCase().includes(q)
+            a.detail.toLowerCase().includes(q) ||
+            (a.userEmail || "").toLowerCase().includes(q)
         )
       : actions;
     const { key, dir } = logSort;
@@ -749,6 +762,8 @@ export default function BcpPage() {
           return sign * a.action.localeCompare(b.action);
         case "detail":
           return sign * a.detail.localeCompare(b.detail);
+        case "userEmail":
+          return sign * (a.userEmail || "").localeCompare(b.userEmail || "");
         case "checked":
           return sign * (Number(a.checked) - Number(b.checked));
         default:
@@ -1476,7 +1491,7 @@ export default function BcpPage() {
                   type="text"
                   value={logSearch}
                   onChange={(e) => setLogSearch(e.target.value)}
-                  placeholder="Search guest, room, or action"
+                  placeholder="Search guest, room, action, or user"
                   className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                 />
               )}
@@ -1796,6 +1811,7 @@ export default function BcpPage() {
                           ["room", "Room"],
                           ["action", "Action"],
                           ["detail", "Detail"],
+                          ["userEmail", "User"],
                         ] as [ActionLogSortKey, string][]
                       ).map(([key, label]) => (
                         <th
@@ -1817,7 +1833,7 @@ export default function BcpPage() {
                   <tbody>
                     {displayedActions.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                        <td colSpan={7} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                           {logSearch ? "No matching actions." : "No actions logged yet."}
                         </td>
                       </tr>
@@ -1837,6 +1853,7 @@ export default function BcpPage() {
                         <td className="p-3 px-4 text-[13px]">{a.room}</td>
                         <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
                         <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
+                        <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
                         <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
@@ -2029,6 +2046,8 @@ export default function BcpPage() {
                   <div className="font-bold">{selectedLogEntry.action}</div>
                   <div className="text-[var(--text-primary)]/50">Detail</div>
                   <div>{selectedLogEntry.detail}</div>
+                  <div className="text-[var(--text-primary)]/50">User</div>
+                  <div>{selectedLogEntry.userEmail || "-"}</div>
                 </div>
                 <div className="mt-6 pt-4 border-t border-[var(--text-primary)]/10 text-[10px] text-[var(--text-primary)]/40 italic">
                   Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
