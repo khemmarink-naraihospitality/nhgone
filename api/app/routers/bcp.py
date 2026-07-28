@@ -222,3 +222,80 @@ async def get_reg_card(property_name: str = Query(...), reservation_number: str 
         return {"status": "success", "data": record}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _action_log_row_to_json(row: dict) -> dict:
+    blob = (row.get("data") or {}).get("blob", "")
+    fields = json.loads(encryption_service.decrypt(blob)) if blob else {}
+    return {
+        "id": row["id"],
+        "at": row["created_at"],
+        "checked": bool(row.get("checked")),
+        **fields,
+    }
+
+
+@router.get("/action-logs")
+async def list_action_logs(property_name: str = Query(...), report_date: str = Query(...)):
+    """
+    Reservations/Rooms/Action Logs tabs' shared audit trail (Check In/Out,
+    Chg Room, Room Status, Reg Card Saved). Previously kept in localStorage
+    only - durable in Supabase now, per feedback that it must never be lost
+    to a device change or a cleared browser, unlike bcp_snapshots (which is
+    deliberately pruned - this table is not).
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_action_logs") \
+            .select("id, checked, data, created_at") \
+            .eq("property", property_name) \
+            .eq("report_date", report_date) \
+            .order("created_at", desc=True) \
+            .execute()
+        return {"status": "success", "data": [_action_log_row_to_json(r) for r in (res.data or [])]}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-logs")
+async def create_action_log(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    report_date = payload.get("report_date")
+    if not property_name or not report_date:
+        raise HTTPException(status_code=400, detail="property_name and report_date are required")
+
+    fields = {
+        "reservationNumber": payload.get("reservation_number"),
+        "guest": payload.get("guest", ""),
+        "room": payload.get("room", ""),
+        "action": payload.get("action", ""),
+        "detail": payload.get("detail", ""),
+    }
+    try:
+        res = sync_service.supabase.table("bcp_action_logs").insert({
+            "property": property_name,
+            "report_date": report_date,
+            "checked": False,
+            "data": {"blob": encryption_service.encrypt(json.dumps(fields))},
+        }).execute()
+        return {"status": "success", "data": _action_log_row_to_json(res.data[0])}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-logs/toggle")
+async def toggle_action_log(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    log_id = payload.get("id")
+    checked = payload.get("checked")
+    if not log_id or checked is None:
+        raise HTTPException(status_code=400, detail="id and checked are required")
+    try:
+        sync_service.supabase.table("bcp_action_logs").update({"checked": checked}).eq("id", log_id).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

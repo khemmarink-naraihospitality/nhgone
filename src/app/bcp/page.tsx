@@ -576,37 +576,67 @@ export default function BcpPage() {
       .sort((a, b) => a.r.room.localeCompare(b.r.room, undefined, { numeric: true }));
   }, [snapshot]);
 
-  const offlineActionsKey = snapshot ? `bcp_offline_actions_${snapshot.property}_${snapshot.date}` : null;
+  // Action Logs used to live in localStorage only - moved to Supabase
+  // (bcp_action_logs) per feedback that it must never be lost to a device
+  // change or a cleared browser. Scoped by property + the snapshot's own
+  // Bangkok date, same scoping localStorage used, just durable now.
   useEffect(() => {
-    if (!offlineActionsKey) {
+    if (!snapshot) {
       setActions([]);
       return;
     }
-    try {
-      const raw = localStorage.getItem(offlineActionsKey);
-      setActions(raw ? JSON.parse(raw) : []);
-    } catch {
-      setActions([]);
-    }
-  }, [offlineActionsKey]);
+    (async () => {
+      try {
+        const params = new URLSearchParams({ property_name: snapshot.property, report_date: snapshot.date });
+        const res = await fetch(`/api/bcp/action-logs?${params.toString()}`);
+        const result = await res.json();
+        setActions(result.status === "success" ? result.data || [] : []);
+      } catch {
+        setActions([]);
+      }
+    })();
+  }, [snapshot?.property, snapshot?.date]);
 
-  const logOfflineAction = (entry: Omit<OfflineAction, "id" | "checked">) => {
-    if (!offlineActionsKey) return;
-    const full: OfflineAction = { ...entry, id: crypto.randomUUID(), checked: false };
-    setActions((prev) => {
-      const next = [full, ...prev];
-      localStorage.setItem(offlineActionsKey, JSON.stringify(next));
-      return next;
-    });
+  const logOfflineAction = async (entry: Omit<OfflineAction, "id" | "checked">) => {
+    if (!snapshot) return;
+    try {
+      const res = await fetch("/api/bcp/action-logs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: snapshot.property,
+          report_date: snapshot.date,
+          reservation_number: entry.reservationNumber,
+          guest: entry.guest,
+          room: entry.room,
+          action: entry.action,
+          detail: entry.detail,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === "success" && result.data) {
+        setActions((prev) => [result.data, ...prev]);
+      }
+    } catch {
+      /* action still happened locally (room status override, etc.) - only
+         the audit-trail write failed. Nothing to roll back here. */
+    }
   };
 
-  const handleToggleActionChecked = (id: string) => {
-    if (!offlineActionsKey) return;
-    setActions((prev) => {
-      const next = prev.map((a) => (a.id === id ? { ...a, checked: !a.checked } : a));
-      localStorage.setItem(offlineActionsKey, JSON.stringify(next));
-      return next;
-    });
+  const handleToggleActionChecked = async (id: string) => {
+    const current = actions.find((a) => a.id === id);
+    if (!current) return;
+    const nextChecked = !current.checked;
+    setActions((prev) => prev.map((a) => (a.id === id ? { ...a, checked: nextChecked } : a)));
+    try {
+      await fetch("/api/bcp/action-logs/toggle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, checked: nextChecked }),
+      });
+    } catch {
+      setActions((prev) => prev.map((a) => (a.id === id ? { ...a, checked: !nextChecked } : a)));
+    }
   };
 
   // Most recent action for a reservation/room that's still unresolved (not
