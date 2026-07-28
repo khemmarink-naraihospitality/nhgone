@@ -68,16 +68,16 @@ table, tbody { vertical-align:top; overflow:visible; }
         <p class="s1 indent-1">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>
         <p class="s1 indent-3"><span class="chk"></span> 1.1 เดินทางมาจากที่อยู่ปัจจุบันที่เป็นภูมิลำเนาข้างต้น (Depart from the current address above)</p>
         <p class="s1 indent-3"><span class="chk"></span> 1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Place of Departure) <span class="val"><<Departure>></span></p>
-        <p class="s1">............................................................................................................................................................................................</p>
-        <p class="s1">............................................................................................................................................................................................</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
       </div>
 
       <div style="margin-top: 15pt; margin-bottom: 20pt;">
         <p class="s1 indent-1">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด (Next Destination)</p>
         <p class="s1 indent-3"><span class="chk"></span> 2.1 เดินทางกลับไปยังที่อยู่ปัจจุบันที่เป็นภูมิลำเนา (Back to the current address above)</p>
         <p class="s1 indent-3"><span class="chk"></span> 2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Next Destination) <span class="val"><<Destination>></span></p>
-        <p class="s1">............................................................................................................................................................................................</p>
-        <p class="s1">............................................................................................................................................................................................</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
       </div>
     </td>
   </tr>
