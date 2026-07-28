@@ -1534,44 +1534,48 @@ export default function BcpPage() {
           />
         )}
 
+        {/* Reg Card preview - shows the actual ร.ร.๓ form on screen (not a
+            summary of it), same look as /print-rr3's dark viewer, so what
+            the guest sees and signs is exactly what prints. The signature
+            pad is a real <canvas> floating over it (dangerouslySetInnerHTML
+            can't host a live React canvas inline); every stroke re-renders
+            the form preview behind it with the signature already placed in
+            its <<GuestSign>> slot, so placement is confirmed before printing. */}
         {regCardFor && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRegCardFor(null)}>
-            <div className="bg-white text-black border border-black/10 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6">
-                <div className="text-lg font-bold mb-1">{snapshot?.property}</div>
-                <div className="text-xs text-black/50 mb-4">Guest Registration Card</div>
-                <div className="grid grid-cols-2 gap-y-2 text-sm">
-                  <div className="text-black/50">Guest Name</div><div className="font-bold">{regCardFor.guest || "-"}</div>
-                  <div className="text-black/50">Nationality</div><div>{regCardFor.nationality || "-"}</div>
-                  <div className="text-black/50">Room</div><div className="font-bold">{regCardFor.room}</div>
-                  <div className="text-black/50">Category</div><div>{regCardFor.category || "-"}</div>
-                  <div className="text-black/50">Check-in</div><div>{fmtDateOnly(regCardFor.check_in)}</div>
-                  <div className="text-black/50">Check-out</div><div>{fmtDateOnly(regCardFor.check_out)}</div>
-                  <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
-                </div>
+          <div className="no-print fixed inset-0 z-50 overflow-auto" style={{ background: "#525659" }}>
+            <div className="fixed top-4 right-4 z-10 flex gap-2">
+              <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
+                Close
+              </button>
+              <button
+                onClick={() => window.print()}
+                disabled={!rr3Template}
+                className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Print
+              </button>
+            </div>
 
-                <div className="mt-4 pt-4 border-t border-black/10">
-                  <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1">Guest Signature</div>
-                  <SignaturePad value={guestSignature} onChange={setGuestSignature} />
-                </div>
+            <div className="flex justify-center py-10">
+              {rr3Template ? (
+                <div
+                  dangerouslySetInnerHTML={{
+                    __html: renderRr3Template(rr3Template, {
+                      ...buildRegCardTokens(regCardFor, snapshot?.property || ""),
+                      GuestSignatureDataUrl: guestSignature || undefined,
+                    }),
+                  }}
+                />
+              ) : (
+                <div className="text-white/70 text-sm italic mt-20">Loading the ร.ร.๓ template...</div>
+              )}
+            </div>
 
-                <div className="mt-4 pt-4 border-t border-black/10 text-[10px] text-black/40 italic">
-                  {rr3Template
-                    ? "Printing uses the same ร.ร.๓ form as /rr3 - fields not captured in this cached snapshot (ID/passport, address, occupation) print blank for the front desk to fill in by hand."
-                    : "The ร.ร.๓ print template hasn't loaded yet - try again in a moment."}
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 p-4 border-t border-black/10">
-                <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-black/20 hover:bg-black/5 transition-colors">
-                  Close
-                </button>
-                <button
-                  onClick={() => window.print()}
-                  disabled={!rr3Template}
-                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Print
-                </button>
+            <div className="fixed bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px]">
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1">Guest Signature</div>
+              <SignaturePad value={guestSignature} onChange={setGuestSignature} />
+              <div className="mt-2 text-[10px] text-black/40 italic">
+                Not captured in this cached snapshot: ID/passport, address, occupation - prints blank for the front desk to fill in by hand.
               </div>
             </div>
           </div>
