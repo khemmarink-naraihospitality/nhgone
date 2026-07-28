@@ -260,6 +260,27 @@ const STATE_DISPLAY_LABEL: Record<string, string> = {
   Processed: "Checked out",
 };
 
+// Click-to-toggle wrapper for the header blocks above the tabs (description,
+// property/snapshot picker, status bar) - collapsed by default so the actual
+// data table gets more vertical room, one click away when actually needed.
+function CollapsibleSection({ label, defaultOpen = false, children }: { label: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="no-print mb-3">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-1.5 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+      >
+        <svg className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+        </svg>
+        {label}
+      </button>
+      {open && <div className="mt-2">{children}</div>}
+    </div>
+  );
+}
+
 export default function BcpPage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -1064,8 +1085,13 @@ export default function BcpPage() {
               </button>
             </span>
           }
-          description="Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, front-desk actions and room status, so the front desk can keep operating from the latest copy if MEWS goes down."
         />
+
+        <CollapsibleSection label="About BCP">
+          <p className="text-[var(--text-primary)] text-sm opacity-70 leading-relaxed max-w-4xl">
+            Mews Business Continuity Plan - snapshots (captured every 5 minutes) of a 15-day reservation timeline, front-desk actions and room status, so the front desk can keep operating from the latest copy if MEWS goes down.
+          </p>
+        </CollapsibleSection>
 
         {showReadme && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowReadme(false)}>
@@ -1115,43 +1141,45 @@ export default function BcpPage() {
           </div>
         )}
 
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
-          <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-            <select
-              value={selectedProperty}
-              onChange={(e) => setSelectedProperty(e.target.value)}
-              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+        <CollapsibleSection label={`Select Property & Snapshot — ${selectedProperty || "none selected"}`}>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
+            <div className="flex flex-col gap-2 w-full md:w-80">
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
+              <select
+                value={selectedProperty}
+                onChange={(e) => setSelectedProperty(e.target.value)}
+                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+              >
+                {properties.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2 w-full md:w-72">
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Snapshot</label>
+              <select
+                value={selectedSnapshotId}
+                onChange={(e) => handlePickSnapshot(e.target.value)}
+                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+              >
+                {snapshots.length === 0 && <option value="">Live (no stored snapshots yet)</option>}
+                {snapshots.map((s) => (
+                  <option key={s.id} value={s.id}>{fmtDateTime(s.captured_at)}</option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={handleCapture}
+              disabled={capturing || !selectedProperty}
+              className="btn-brand btn-primary h-[46px] disabled:opacity-60"
             >
-              {properties.map((p) => (
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </select>
+              {capturing ? "Capturing..." : "Capture Now"}
+            </button>
           </div>
-          <div className="flex flex-col gap-2 w-full md:w-72">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Snapshot</label>
-            <select
-              value={selectedSnapshotId}
-              onChange={(e) => handlePickSnapshot(e.target.value)}
-              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-            >
-              {snapshots.length === 0 && <option value="">Live (no stored snapshots yet)</option>}
-              {snapshots.map((s) => (
-                <option key={s.id} value={s.id}>{fmtDateTime(s.captured_at)}</option>
-              ))}
-            </select>
-          </div>
-          <button
-            onClick={handleCapture}
-            disabled={capturing || !selectedProperty}
-            className="btn-brand btn-primary h-[46px] disabled:opacity-60"
-          >
-            {capturing ? "Capturing..." : "Capture Now"}
-          </button>
-        </div>
+        </CollapsibleSection>
 
         {error && (
-          <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+          <div className="no-print p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         )}
         </div>
 
@@ -1163,27 +1191,31 @@ export default function BcpPage() {
           </div>
         ) : snapshot && (
           <>
-            <div className={`no-print flex flex-wrap items-center gap-3 text-[11px] mb-4 px-4 py-3 border ${
-              stale && !isLiveFallback
-                ? "bg-amber-50 border-amber-300 text-amber-800"
-                : "bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70"
-            }`}>
-              <span className="font-bold">{snapshot.property}</span>
-              <span>Data as of: <b>{fmtDateTime(snapshot.captured_utc)}</b> (Asia/Bangkok)</span>
-              {isLiveFallback ? (
-                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">LIVE — not stored</span>
-              ) : (
-                <span>({ageMinutes < 60 ? `${ageMinutes} min ago` : `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min ago`})</span>
-              )}
-              {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
-              {(mainTab === "timeline" || mainTab === "rooms") && (
-                <>
-                  <span>Arrivals today: {todayStats.arrivals}</span>
-                  <span>Departures today: {todayStats.departures}</span>
-                  <span>In-house today: {todayStats.inHouse}</span>
-                </>
-              )}
-            </div>
+            <CollapsibleSection
+              label={`${snapshot.property} — Data as of ${fmtDateTime(snapshot.captured_utc)}${stale && !isLiveFallback ? " ⚠ stale" : ""}`}
+            >
+              <div className={`flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border ${
+                stale && !isLiveFallback
+                  ? "bg-amber-50 border-amber-300 text-amber-800"
+                  : "bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70"
+              }`}>
+                <span className="font-bold">{snapshot.property}</span>
+                <span>Data as of: <b>{fmtDateTime(snapshot.captured_utc)}</b> (Asia/Bangkok)</span>
+                {isLiveFallback ? (
+                  <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">LIVE — not stored</span>
+                ) : (
+                  <span>({ageMinutes < 60 ? `${ageMinutes} min ago` : `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min ago`})</span>
+                )}
+                {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
+                {(mainTab === "timeline" || mainTab === "rooms") && (
+                  <>
+                    <span>Arrivals today: {todayStats.arrivals}</span>
+                    <span>Departures today: {todayStats.departures}</span>
+                    <span>In-house today: {todayStats.inHouse}</span>
+                  </>
+                )}
+              </div>
+            </CollapsibleSection>
 
             <div className="no-print flex flex-wrap items-center gap-4 mb-4">
               <div className="flex border-b border-[var(--text-primary)]/14">
