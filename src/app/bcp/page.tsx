@@ -1002,7 +1002,7 @@ export default function BcpPage() {
         <PageHeader
           title={
             <span className="inline-flex items-center gap-4">
-              BCP
+              Business Continuity Plan (BCP)
               <button
                 onClick={() => setShowReadme(true)}
                 className="font-sans inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors align-middle"
