@@ -320,6 +320,9 @@ export default function BcpPage() {
   // day's list in memory.
   const [reservationSearch, setReservationSearch] = useState("");
   const [reservationSort, setReservationSort] = useState<{ key: ReservationSortKey; dir: "asc" | "desc" }>({ key: "room", dir: "asc" });
+  // Same idea for Rooms (HK) and Action Logs - each tab searches its own data.
+  const [roomSearch, setRoomSearch] = useState("");
+  const [logSearch, setLogSearch] = useState("");
   const [showReadme, setShowReadme] = useState(false);
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
@@ -585,6 +588,12 @@ export default function BcpPage() {
     }));
   }, [snapshot]);
 
+  const displayedHousekeepingRows = useMemo(() => {
+    const q = roomSearch.trim().toLowerCase();
+    if (!q) return housekeepingRows;
+    return housekeepingRows.filter((rm) => rm.room.toLowerCase().includes(q) || rm.occupant.toLowerCase().includes(q));
+  }, [housekeepingRows, roomSearch]);
+
   const frontDeskRows = useMemo(() => {
     if (!snapshot?.reservations) return [];
     const today = snapshot.date;
@@ -705,6 +714,18 @@ export default function BcpPage() {
   // red, same as if nothing were outstanding.
   const latestActionFor = (number: string) => actions.find((a) => a.reservationNumber === number && !a.checked);
   const unresolvedActionsCount = actions.filter((a) => !a.checked).length;
+
+  const displayedActions = useMemo(() => {
+    const q = logSearch.trim().toLowerCase();
+    if (!q) return actions;
+    return actions.filter(
+      (a) =>
+        a.guest.toLowerCase().includes(q) ||
+        a.room.toLowerCase().includes(q) ||
+        a.action.toLowerCase().includes(q) ||
+        a.detail.toLowerCase().includes(q)
+    );
+  }, [actions, logSearch]);
 
   const handleCheckIn = (r: ReservationRow) =>
     logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${r.room}` });
@@ -1396,7 +1417,25 @@ export default function BcpPage() {
                   value={reservationSearch}
                   onChange={(e) => setReservationSearch(e.target.value)}
                   placeholder="Search name, room, or confirmation #"
-                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
+                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                />
+              )}
+              {mainTab === "rooms" && (
+                <input
+                  type="text"
+                  value={roomSearch}
+                  onChange={(e) => setRoomSearch(e.target.value)}
+                  placeholder="Search room or occupant"
+                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                />
+              )}
+              {mainTab === "logs" && (
+                <input
+                  type="text"
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  placeholder="Search guest, room, or action"
+                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                 />
               )}
             </div>
@@ -1657,7 +1696,10 @@ export default function BcpPage() {
                 Changing a status below only updates our own system — it is never sent to MEWS.
               </div>
               <div className="no-print grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
-                {housekeepingRows.map((rm, i) => {
+                {displayedHousekeepingRows.length === 0 && (
+                  <div className="col-span-full p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No matching rooms.</div>
+                )}
+                {displayedHousekeepingRows.map((rm, i) => {
                   const overridden = roomStatusOverrides[rm.room];
                   const effectiveState = overridden || rm.state;
                   const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
@@ -1714,12 +1756,14 @@ export default function BcpPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {actions.length === 0 && (
+                    {displayedActions.length === 0 && (
                       <tr>
-                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No actions logged yet.</td>
+                        <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                          {logSearch ? "No matching actions." : "No actions logged yet."}
+                        </td>
                       </tr>
                     )}
-                    {actions.map((a) => (
+                    {displayedActions.map((a) => (
                       <tr
                         key={a.id}
                         onClick={() => setSelectedLogEntry(a)}
