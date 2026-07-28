@@ -45,7 +45,7 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม....................<span class="val"><<HotelName>></span>....................</p>
       <p class="s1" style="text-align:center; margin-bottom: 10pt;">(Lodger Registration Card)</p>
 
-      <p class="s1">ชื่อตัว (Name) ....................................<span class="val"><<FirstName>></span>.................................... ชื่อสกุล (Surname) ....................................<span class="val"><<LastName>></span>....................................</p>
+      <p class="s1">ชื่อตัว (Name) ........<span class="val"><<FirstName>></span>........ ชื่อสกุล (Surname) ........<span class="val"><<LastName>></span>........</p>
 
       <p class="s1" style="margin-top: 5pt;">เลขประจำตัวประชาชน (Identification Card No.) &nbsp;&nbsp;<span class="val"><<IdentityCardNumber>></span></p>
 
@@ -53,7 +53,7 @@ table, tbody { vertical-align:top; overflow:visible; }
 
       <p class="s1">หนังสือเดินทางเลขที่ (Passport No.)......................................................................<span class="val"><<PassportNumber>></span>......................................................................</p>
 
-      <p class="s1">อาชีพ (Occupation)...................................<span class="val"><<Occupation>></span>...................................สัญชาติ (Nationality) ...................................<span class="val"><<NationalityName>></span>...................................</p>
+      <p class="s1">อาชีพ (Occupation)........<span class="val"><<Occupation>></span>........สัญชาติ (Nationality) ........<span class="val"><<NationalityName>></span>........</p>
 
       <p class="s1">ที่อยู่ปัจจุบัน (Current Address)................................................................<span class="val"><<AddressDetails>></span>................................................................</p>
       <p class="s1">................................................................................................หมายเลขโทรศัพท์ (Telephone No.).......................<span class="val"><<Telephone>></span>.......................</p>
