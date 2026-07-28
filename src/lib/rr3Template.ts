@@ -35,13 +35,14 @@ export interface Rr3TokenData {
 export const escapeHtml = (s: string) =>
   String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-// The template's dotted blank lines (e.g. "ชื่อตัว (Name) ....................")
-// are laid out to fit one line by design - a value only overflows because
-// it adds width the blank form never had. So rather than touch the
-// surrounding label/dots at all, only the inserted value shrinks, and only
-// as much as it needs to: measured with Canvas (approximates the print
-// font closely enough to reliably avoid wrapping, even if not pixel-exact)
-// against a conservative per-field width budget.
+// First attempt at this (fitting just the inserted value against a guessed
+// per-field width budget) still wrapped in practice: the dots/label text
+// alone were already eating most of the page width before any data was
+// even inserted, so shrinking only the value didn't help. This measures
+// each *whole rendered line* (labels, dots, and value together) against
+// the page's actual usable width and shrinks that line's own font-size
+// just enough to keep it on one line - correct regardless of how long the
+// label/dot-fill is, so it isn't a guess anymore.
 let measureCanvas: HTMLCanvasElement | null = null;
 function fitFontSizePt(text: string, maxWidthPt: number, basePt: number, minPt: number): number {
   if (typeof document === "undefined" || !text) return basePt;
@@ -56,34 +57,44 @@ function fitFontSizePt(text: string, maxWidthPt: number, basePt: number, minPt: 
   return Math.max(minPt, basePt * (maxWidthPx / widthPx));
 }
 
-// How much extra horizontal room (pt, at the base 14pt) each value
-// realistically has before it starts crowding the rest of its line. Kept
-// deliberately tight: measuring the live template showed every dotted line
-// is already running close to the page-width edge on its own (e.g. the
-// Occupation/Nationality line only just fit for a short "นักธุรกิจ" +
-// "Singapore" - a longer pair would tip it the same way Name/Surname did),
-// so budgets here bias toward shrinking a little early rather than risking
-// a wrap. Tighter still for fields sharing a row with a second value
-// (Name/Surname, Occupation/Nationality). Tune further if a specific field
-// still overflows in practice.
-const VALUE_WIDTH_BUDGET_PT: Record<string, number> = {
-  FirstName: 65,
-  LastName: 65,
-  Occupation: 60,
-  NationalityName: 60,
-  AddressDetails: 180,
-  Telephone: 70,
-  PassportNumber: 95,
-  AlienBook: 80,
-  IdentityCardNumber: 140,
-};
+// .center-table is 210mm wide with 15mm left/right padding (see the
+// template's own <style>) - 180mm of usable width, in pt (1mm = 2.83465pt),
+// with a small safety margin since Canvas metrics only approximate the
+// actual print font.
+const PAGE_CONTENT_WIDTH_PT = 180 * 2.83465 * 0.96;
 
-function fitValueHtml(key: string, value: string): string {
-  const escaped = escapeHtml(value);
-  const budget = VALUE_WIDTH_BUDGET_PT[key];
-  if (!budget || !value) return escaped;
-  const fitted = fitFontSizePt(value, budget, 14, 8);
-  return fitted < 14 ? `<span style="font-size:${fitted.toFixed(1)}pt;">${escaped}</span>` : escaped;
+function stripTagsToText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .trim();
+}
+
+// Runs last, after every <<Token>> has already been substituted in, so it
+// sees exactly what will print. Only touches plain body-text paragraphs
+// (class="s1"/"s2") that don't already carry a hand-tuned font-size (e.g.
+// the Room No. line), so it can't fight with a more specific existing style.
+function fitParagraphsToOneLine(html: string): string {
+  if (typeof document === "undefined") return html;
+  return html.replace(/<p((?:\s+[^>]*)?)>([\s\S]*?)<\/p>/g, (match, attrs: string, inner: string) => {
+    if (/font-size\s*:/.test(attrs)) return match;
+    const isS1 = /class="[^"]*\bs1\b[^"]*"/.test(attrs);
+    const isS2 = /class="[^"]*\bs2\b[^"]*"/.test(attrs);
+    if (!isS1 && !isS2) return match;
+    const text = stripTagsToText(inner);
+    if (!text) return match;
+    const basePt = isS2 ? 15 : 14;
+    const fitted = fitFontSizePt(text, PAGE_CONTENT_WIDTH_PT, basePt, 7);
+    if (fitted >= basePt) return match;
+    const addition = `font-size:${fitted.toFixed(1)}pt;white-space:nowrap;`;
+    const newAttrs = /style="/.test(attrs)
+      ? attrs.replace(/style="([^"]*)"/, (_m: string, existing: string) => `style="${existing}${existing.endsWith(";") ? "" : ";"}${addition}"`)
+      : `${attrs} style="${addition}"`;
+    return `<p${newAttrs}>${inner}</p>`;
+  });
 }
 
 // The 13-digit Thai ID card box layout: 1-4-5-2-1 digits separated by dashes.
@@ -127,12 +138,12 @@ export function renderRr3Template(template: string, d: Rr3TokenData): string {
   };
   let result = template;
   for (const [key, value] of Object.entries(tokens)) {
-    result = result.split(`<<${key}>>`).join(fitValueHtml(key, value));
+    result = result.split(`<<${key}>>`).join(escapeHtml(value));
   }
   result = result.split("<<IdBoxes>>").join(buildIdBoxesHtml(d.IdentityCardNumber || ""));
   const guestSignHtml = d.GuestSignatureDataUrl
     ? `<img src="${d.GuestSignatureDataUrl}" style="height:26pt;max-width:110pt;vertical-align:bottom;" />`
     : escapeHtml(d.GuestSign || "");
   result = result.split("<<GuestSign>>").join(guestSignHtml);
-  return result;
+  return fitParagraphsToOneLine(result);
 }
