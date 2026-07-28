@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
-import SignaturePad from "@/components/SignaturePad";
+import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignaturePad";
 
 interface ReservationRow {
   number: string;
@@ -840,7 +840,10 @@ export default function BcpPage() {
       const res = await fetch(`/api/bcp/reg-card?${params.toString()}`);
       const result = await res.json();
       if (result.status === "success" && result.data?.signature_data_url) {
-        setGuestSignature(result.data.signature_data_url);
+        // Signatures saved before signature capture cropped to ink are still
+        // the full blank canvas (off-center on the printed line) - crop on
+        // read so older saved Reg Cards self-heal without re-signing.
+        setGuestSignature(await cropSignatureDataUrlToInk(result.data.signature_data_url));
       }
     } catch {
       /* no saved card yet, or fetch failed - start blank as before */

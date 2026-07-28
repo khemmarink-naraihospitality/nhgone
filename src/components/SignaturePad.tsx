@@ -28,6 +28,56 @@ function findInkBounds(ctx: CanvasRenderingContext2D, width: number, height: num
   return maxX >= minX && maxY >= minY ? { minX, minY, maxX, maxY } : null;
 }
 
+const CROP_PADDING_PX = 8;
+
+// Shared by handlePointerUp (crop right after drawing) and
+// cropSignatureDataUrlToInk below (crop an already-stored data URL, for
+// signatures saved before this cropping existed) - re-running this on an
+// image that's already tightly cropped is a no-op (the padding it finds
+// matches the padding already baked in), so it's safe to apply
+// unconditionally without knowing which case it is.
+function cropCanvasToInk(ctx: CanvasRenderingContext2D): string | null {
+  const { canvas } = ctx;
+  const bounds = findInkBounds(ctx, canvas.width, canvas.height);
+  if (!bounds) return null;
+  const x = Math.max(0, bounds.minX - CROP_PADDING_PX);
+  const y = Math.max(0, bounds.minY - CROP_PADDING_PX);
+  const w = Math.min(canvas.width, bounds.maxX + CROP_PADDING_PX + 1) - x;
+  const h = Math.min(canvas.height, bounds.maxY + CROP_PADDING_PX + 1) - y;
+  const cropped = document.createElement("canvas");
+  cropped.width = w;
+  cropped.height = h;
+  const croppedCtx = cropped.getContext("2d");
+  if (!croppedCtx) return null;
+  croppedCtx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+  return cropped.toDataURL("image/png");
+}
+
+// For signatures saved before signature capture cropped to ink (see above) -
+// those stored data URLs are still the full blank 400x120 canvas, so they'd
+// print off-center forever even though newly-drawn signatures are now fine.
+// Called when restoring a saved Reg Card so old records self-heal on next
+// view/print without anyone having to re-sign.
+export function cropSignatureDataUrlToInk(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(dataUrl);
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      resolve(cropCanvasToInk(ctx) ?? dataUrl);
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
 // Plain <canvas> signature capture using Pointer Events, which unifies
 // mouse/touch/stylus input into one handler set instead of needing separate
 // mouse and touch listeners. Emits a PNG data URL cropped to the drawn ink
@@ -109,23 +159,7 @@ export default function SignaturePad({ value, onChange }: SignaturePadProps) {
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
 
-    const bounds = findInkBounds(ctx, canvas.width, canvas.height);
-    let dataUrl: string;
-    if (bounds) {
-      const PAD = 8;
-      const x = Math.max(0, bounds.minX - PAD);
-      const y = Math.max(0, bounds.minY - PAD);
-      const w = Math.min(canvas.width, bounds.maxX + PAD + 1) - x;
-      const h = Math.min(canvas.height, bounds.maxY + PAD + 1) - y;
-      const cropped = document.createElement("canvas");
-      cropped.width = w;
-      cropped.height = h;
-      const croppedCtx = cropped.getContext("2d");
-      croppedCtx?.drawImage(canvas, x, y, w, h, 0, 0, w, h);
-      dataUrl = croppedCtx ? cropped.toDataURL("image/png") : canvas.toDataURL("image/png");
-    } else {
-      dataUrl = canvas.toDataURL("image/png");
-    }
+    const dataUrl = cropCanvasToInk(ctx) ?? canvas.toDataURL("image/png");
     lastEmittedRef.current = dataUrl;
     onChange(dataUrl);
   };
