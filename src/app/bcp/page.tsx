@@ -140,15 +140,19 @@ function frontDeskStatus(r: ReservationRow, today: string): { label: string; cls
 // not an extra live call - captured into the snapshot, so still there once
 // MEWS is down. Only GuestSign has no MEWS source at all (it's whatever the
 // front desk types or the SignaturePad captures on screen).
-// DD-MM-YYYY specifically for the RR3 form's Date of Arrival/Expected
-// Departure fields - matches _rr3_format_thai_date on the /rr3 side (same
-// form, same token, same format). Deliberately separate from fmtDateOnly
-// (DD/MM/YYYY), which is used all over this page's Manage view to mirror
-// MEWS's own date display and shouldn't change.
-function fmtDateDash(isoUtc: string): string {
+const RR3_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// dd/mmm/yyyy (e.g. 28/Jul/2026) specifically for the RR3 form's Date of
+// Arrival/Expected Departure fields - matches _rr3_format_thai_date on the
+// /rr3 side (same form, same token, same format). A fixed abbreviation
+// array instead of toLocaleDateString/strftime %b avoids the month name
+// silently depending on the browser's/server's locale. Deliberately
+// separate from fmtDateOnly (DD/MM/YYYY), which is used all over this
+// page's Manage view to mirror MEWS's own date display and shouldn't change.
+function fmtRr3Date(isoUtc: string): string {
   if (!isoUtc) return "";
   const d = toBangkokDay(isoUtc);
-  return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
+  return `${String(d.getUTCDate()).padStart(2, "0")}/${RR3_MONTH_ABBR[d.getUTCMonth()]}/${d.getUTCFullYear()}`;
 }
 
 function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData {
@@ -164,9 +168,9 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData 
     LastName: nameParts.slice(1).join(" "),
     ReservationsNumber: r.number,
     RoomNumber: r.room,
-    CheckIn: fmtDateDash(r.check_in),
+    CheckIn: fmtRr3Date(r.check_in),
     CheckInTime: fmtTimeOnly(r.check_in),
-    CheckOut: fmtDateDash(r.check_out),
+    CheckOut: fmtRr3Date(r.check_out),
     CheckOutTime: fmtTimeOnly(r.check_out),
     NationalityCode: r.nationality,
     NationalityName: r.nationality_name || r.nationality,

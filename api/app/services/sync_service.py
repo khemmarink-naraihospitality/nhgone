@@ -97,12 +97,17 @@ def _rr3_country_name(code: str) -> str:
     return _RR3_COUNTRY_MAP.get(code, code or "")
 
 
+_RR3_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+
 def _rr3_format_thai_date(utc_str: str) -> str:
     if not utc_str:
         return ""
     try:
         dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Bangkok"))
-        return dt.strftime("%d-%m-%Y")
+        # dd/mmm/yyyy (e.g. 28/Jul/2026) - a fixed abbreviation list instead of
+        # strftime("%b") avoids the month name depending on the server's locale.
+        return f"{dt.day:02d}/{_RR3_MONTH_ABBR[dt.month - 1]}/{dt.year}"
     except Exception:
         return ""
 
