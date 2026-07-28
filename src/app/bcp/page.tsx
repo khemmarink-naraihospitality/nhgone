@@ -96,10 +96,10 @@ type MainTab = "timeline" | "reservations" | "rooms" | "logs";
 
 interface OfflineAction {
   at: string;
-  reservationNumber: string;
+  reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Chg Room";
+  action: "Check In" | "Check Out" | "Chg Room" | "Room Status";
   detail: string;
 }
 
@@ -189,6 +189,19 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
   OutOfOrder: "bg-red-50 text-red-700 border-red-200",
 };
 
+// Manually adjustable HK status options for the Rooms (HK) card grid - the
+// same 5 states MEWS itself uses, but overriding one here is purely local
+// (see roomStatusOverrides below), since there's nothing live to write this
+// back to while MEWS is down.
+const ROOM_STATUS_OPTIONS = ["Clean", "Dirty", "Inspected", "OutOfService", "OutOfOrder"] as const;
+const ROOM_STATUS_CARD_CLS: Record<string, string> = {
+  Clean: "bg-emerald-50 border-emerald-200",
+  Inspected: "bg-emerald-50 border-emerald-200",
+  Dirty: "bg-red-50 border-red-200",
+  OutOfService: "bg-amber-50 border-amber-200",
+  OutOfOrder: "bg-amber-50 border-amber-200",
+};
+
 const STATE_BADGE_CLS: Record<string, string> = {
   Confirmed: "bg-slate-100 text-slate-600 border-slate-300",
   Started: "bg-emerald-50 text-emerald-700 border-emerald-200",
@@ -234,6 +247,10 @@ export default function BcpPage() {
   const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
+  // Rooms (HK) tab - housekeeping status is editable locally the same way,
+  // for the same reason: MEWS is down, so there's nowhere real to send a
+  // status change. Keyed by room number, per property+date.
+  const [roomStatusOverrides, setRoomStatusOverrides] = useState<Record<string, string>>({});
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -497,6 +514,30 @@ export default function BcpPage() {
     });
     setChgRoomFor(null);
     setNewRoomValue("");
+  };
+
+  const roomStatusKey = snapshot ? `bcp_room_status_${snapshot.property}_${snapshot.date}` : null;
+  useEffect(() => {
+    if (!roomStatusKey) {
+      setRoomStatusOverrides({});
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(roomStatusKey);
+      setRoomStatusOverrides(raw ? JSON.parse(raw) : {});
+    } catch {
+      setRoomStatusOverrides({});
+    }
+  }, [roomStatusKey]);
+
+  const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string) => {
+    if (!roomStatusKey || newStatus === previousStatus) return;
+    setRoomStatusOverrides((prev) => {
+      const next = { ...prev, [room]: newStatus };
+      localStorage.setItem(roomStatusKey, JSON.stringify(next));
+      return next;
+    });
+    logOfflineAction({ at: new Date().toISOString(), guest: "-", room, action: "Room Status", detail: `Room ${room}: ${previousStatus} -> ${newStatus}` });
   };
 
   const matchedGuestProfile = useMemo(() => {
@@ -1291,37 +1332,32 @@ export default function BcpPage() {
             )}
 
             {mainTab === "rooms" && (
-              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
-                <table className="w-full text-left border-collapse min-w-[700px]">
-                  <thead>
-                    <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Floor</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Category</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">HK Status</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Occupant</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Arriving</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Departing</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {housekeepingRows.map((rm, i) => (
-                      <tr key={rm.room + i} className="border-b border-[var(--text-primary)]/8 last:border-0 hover:bg-[var(--text-primary)]/[0.02]">
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/70">{rm.floor || "-"}</td>
-                        <td className="p-3 px-4 text-[13px] font-bold text-[var(--text-primary)]">{rm.room}</td>
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/70">{rm.category || "-"}</td>
-                        <td className="p-3 px-4">
-                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[rm.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
-                            {rm.state}
-                          </span>
-                        </td>
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.occupant || "-"}</td>
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.arriving || "-"}</td>
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]">{rm.departing || "-"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
+                {housekeepingRows.map((rm, i) => {
+                  const effectiveState = roomStatusOverrides[rm.room] || rm.state;
+                  const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
+                    ? "Out of Order"
+                    : rm.occupant ? "Occupied" : "Vacant";
+                  return (
+                    <div
+                      key={rm.room + i}
+                      className={`border p-4 flex flex-col gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"}`}
+                    >
+                      <div className="text-xl font-display text-[var(--text-primary)]">{rm.room}</div>
+                      <div className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{occupancy}</div>
+                      {rm.occupant && <div className="text-[11px] text-[var(--text-primary)]/70 truncate">{rm.occupant}</div>}
+                      <select
+                        value={effectiveState}
+                        onChange={(e) => handleRoomStatusChange(rm.room, effectiveState, e.target.value)}
+                        className="mt-2 w-full bg-white border border-black/10 px-2 py-1.5 text-[12px] font-bold text-[var(--text-primary)] cursor-pointer focus:outline-none"
+                      >
+                        {ROOM_STATUS_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
               </div>
             )}
 
@@ -1384,7 +1420,7 @@ export default function BcpPage() {
                     <tr key={r.room + i}>
                       <td className="p-2 px-3 text-[13px]">{r.floor || "-"}</td>
                       <td className="p-2 px-3 text-[13px] font-bold">{r.room}</td>
-                      <td className="p-2 px-3 text-[13px]">{r.state}</td>
+                      <td className="p-2 px-3 text-[13px]">{roomStatusOverrides[r.room] || r.state}</td>
                       <td className="p-2 px-3 text-[13px]">{r.occupant || "-"}</td>
                       <td className="p-2 px-3 text-[13px]">{r.arriving || "-"}</td>
                       <td className="p-2 px-3 text-[13px]">{r.departing || "-"}</td>
