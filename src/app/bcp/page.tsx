@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
+import SignaturePad from "@/components/SignaturePad";
 
 interface ReservationRow {
   number: string;
@@ -274,6 +275,10 @@ export default function BcpPage() {
   // survives a refresh during a long outage.
   const [actions, setActions] = useState<OfflineAction[]>([]);
   const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
+  // Captured on-screen at print time (SignaturePad) - reset per guest, never
+  // persisted, since a real signature only ever needs to exist long enough
+  // to be printed onto that guest's own card.
+  const [guestSignature, setGuestSignature] = useState<string | null>(null);
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
   // Rooms (HK) tab - housekeeping status is editable locally the same way,
@@ -1349,7 +1354,7 @@ export default function BcpPage() {
                           <td className="p-3 px-4 align-top">
                             <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => setRegCardFor(r)}
+                                onClick={() => { setRegCardFor(r); setGuestSignature(null); }}
                                 className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                               >
                                 Reg Card
@@ -1520,7 +1525,12 @@ export default function BcpPage() {
         {regCardFor && rr3Template && (
           <div
             className="hidden print:block"
-            dangerouslySetInnerHTML={{ __html: renderRr3Template(rr3Template, buildRegCardTokens(regCardFor, snapshot?.property || "")) }}
+            dangerouslySetInnerHTML={{
+              __html: renderRr3Template(rr3Template, {
+                ...buildRegCardTokens(regCardFor, snapshot?.property || ""),
+                GuestSignatureDataUrl: guestSignature || undefined,
+              }),
+            }}
           />
         )}
 
@@ -1539,7 +1549,13 @@ export default function BcpPage() {
                   <div className="text-black/50">Check-out</div><div>{fmtDateOnly(regCardFor.check_out)}</div>
                   <div className="text-black/50">Guests</div><div>{regCardFor.adults} adult(s), {regCardFor.children} child(ren)</div>
                 </div>
-                <div className="mt-6 pt-4 border-t border-black/10 text-[10px] text-black/40 italic">
+
+                <div className="mt-4 pt-4 border-t border-black/10">
+                  <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1">Guest Signature</div>
+                  <SignaturePad value={guestSignature} onChange={setGuestSignature} />
+                </div>
+
+                <div className="mt-4 pt-4 border-t border-black/10 text-[10px] text-black/40 italic">
                   {rr3Template
                     ? "Printing uses the same ร.ร.๓ form as /rr3 - fields not captured in this cached snapshot (ID/passport, address, occupation) print blank for the front desk to fill in by hand."
                     : "The ร.ร.๓ print template hasn't loaded yet - try again in a moment."}

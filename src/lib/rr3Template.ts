@@ -26,6 +26,10 @@ export interface Rr3TokenData {
   GuestSign?: string;
   Departure?: string;
   Destination?: string;
+  // If set, rendered as an <img> in the <<GuestSign>> slot instead of the
+  // plain-text GuestSign token above - a captured-on-screen signature
+  // (see SignaturePad), not something MEWS itself ever provides.
+  GuestSignatureDataUrl?: string;
 }
 
 export const escapeHtml = (s: string) =>
@@ -67,7 +71,6 @@ export function renderRr3Template(template: string, d: Rr3TokenData): string {
     Email: d.Email || "",
     Occupation: d.Occupation || "",
     AlienBook: d.AlienBook || "",
-    GuestSign: d.GuestSign || "",
     Departure: d.Departure || "",
     Destination: d.Destination || "",
   };
@@ -76,5 +79,9 @@ export function renderRr3Template(template: string, d: Rr3TokenData): string {
     result = result.split(`<<${key}>>`).join(escapeHtml(value));
   }
   result = result.split("<<IdBoxes>>").join(buildIdBoxesHtml(d.IdentityCardNumber || ""));
+  const guestSignHtml = d.GuestSignatureDataUrl
+    ? `<img src="${d.GuestSignatureDataUrl}" style="height:26pt;max-width:110pt;vertical-align:bottom;" />`
+    : escapeHtml(d.GuestSign || "");
+  result = result.split("<<GuestSign>>").join(guestSignHtml);
   return result;
 }
