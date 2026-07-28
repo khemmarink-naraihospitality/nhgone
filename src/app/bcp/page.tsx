@@ -1703,29 +1703,31 @@ export default function BcpPage() {
             its <<GuestSign>> slot, so placement is confirmed before printing. */}
         {regCardFor && (
           <div className="no-print fixed inset-0 z-50 overflow-auto" style={{ background: "#525659" }}>
-            <div className="fixed top-4 right-4 z-10 flex items-center gap-2">
+            <div className="fixed top-4 right-4 z-10 flex flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
+                  Close
+                </button>
+                <button
+                  onClick={handleSaveRegCard}
+                  disabled={savingRegCard}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {savingRegCard ? "Saving..." : "Save"}
+                </button>
+                <button
+                  onClick={() => window.print()}
+                  disabled={!rr3Template}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Print
+                </button>
+              </div>
               {regCardSaveResult && (
-                <span className={`text-[11px] font-bold tracked-caps ${regCardSaveResult.ok ? "text-emerald-300" : "text-red-300"}`}>
+                <span className={`px-3 py-1.5 text-[11px] font-bold tracked-caps bg-black/50 rounded ${regCardSaveResult.ok ? "text-emerald-300" : "text-red-300"}`}>
                   {regCardSaveResult.ok ? "✓ " : "✕ "}{regCardSaveResult.message}
                 </span>
               )}
-              <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
-                Close
-              </button>
-              <button
-                onClick={handleSaveRegCard}
-                disabled={savingRegCard}
-                className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {savingRegCard ? "Saving..." : "Save"}
-              </button>
-              <button
-                onClick={() => window.print()}
-                disabled={!rr3Template}
-                className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Print
-              </button>
             </div>
 
             <div className="flex justify-center py-10">
