@@ -46,8 +46,8 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s1" style="text-align:center; margin-bottom: 10pt;">(Lodger Registration Card)</p>
 
       <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half">ชื่อตัว (Name) <span class="val"><<FirstName>></span></p></td>
-        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half">ชื่อสกุล (Surname) <span class="val"><<LastName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อตัว (Name)</span><span class="val" style="display:table-cell; width:100%;"><<FirstName>></span></p></td>
+        <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อสกุล (Surname)</span><span class="val" style="display:table-cell; width:100%;"><<LastName>></span></p></td>
       </tr></table>
 
       <p class="s1" style="margin-top: 5pt;">เลขประจำตัวประชาชน (Identification Card No.) &nbsp;&nbsp;<span class="val"><<IdentityCardNumber>></span></p>
