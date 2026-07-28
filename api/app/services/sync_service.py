@@ -102,7 +102,7 @@ def _rr3_format_thai_date(utc_str: str) -> str:
         return ""
     try:
         dt = datetime.fromisoformat(utc_str.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Bangkok"))
-        return dt.strftime("%d/%m/%Y")
+        return dt.strftime("%d-%m-%Y")
     except Exception:
         return ""
 

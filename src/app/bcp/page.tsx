@@ -136,6 +136,17 @@ function frontDeskStatus(r: ReservationRow, today: string): { label: string; cls
 // not an extra live call - captured into the snapshot, so still there once
 // MEWS is down. Only GuestSign has no MEWS source at all (it's whatever the
 // front desk types or the SignaturePad captures on screen).
+// DD-MM-YYYY specifically for the RR3 form's Date of Arrival/Expected
+// Departure fields - matches _rr3_format_thai_date on the /rr3 side (same
+// form, same token, same format). Deliberately separate from fmtDateOnly
+// (DD/MM/YYYY), which is used all over this page's Manage view to mirror
+// MEWS's own date display and shouldn't change.
+function fmtDateDash(isoUtc: string): string {
+  if (!isoUtc) return "";
+  const d = toBangkokDay(isoUtc);
+  return `${String(d.getUTCDate()).padStart(2, "0")}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${d.getUTCFullYear()}`;
+}
+
 function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData {
   const nameParts = (r.guest || "").trim().split(/\s+/);
   const fmtTimeOnly = (iso: string) => {
@@ -149,9 +160,9 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData 
     LastName: nameParts.slice(1).join(" "),
     ReservationsNumber: r.number,
     RoomNumber: r.room,
-    CheckIn: fmtDateOnly(r.check_in),
+    CheckIn: fmtDateDash(r.check_in),
     CheckInTime: fmtTimeOnly(r.check_in),
-    CheckOut: fmtDateOnly(r.check_out),
+    CheckOut: fmtDateDash(r.check_out),
     CheckOutTime: fmtTimeOnly(r.check_out),
     NationalityCode: r.nationality,
     NationalityName: r.nationality_name || r.nationality,
