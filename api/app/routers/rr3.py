@@ -20,13 +20,17 @@ DEFAULT_RR3_TEMPLATE = """<style>
 .s1 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:normal; font-size:14pt; line-height:1.12; }
 .s2 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:bold; font-size:15pt; line-height:1.12; }
 .s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:13pt; line-height:1; display:inline-block; width:14pt; height:15pt; text-align:center; border:1pt solid black; margin:0 1pt; vertical-align:middle; }
-.dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 1.5pt; }
-.chk { display:inline-block; width:9pt; height:9pt; border:1pt solid black; vertical-align:-1pt; margin-right:3pt; }
+.dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 1.5pt; vertical-align:middle; }
+.chk { display:inline-block; width:10pt; height:10pt; border:1pt solid black; vertical-align:-1pt; margin-right:4pt; }
 .val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; line-height:1.12; }
 .val:empty { padding:0; }
 table, tbody { vertical-align:top; overflow:visible; }
 .center-table { margin:0 auto; width:210mm; height:297mm; padding:12mm 15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; overflow:hidden; }
-.center-table p { margin:1pt 0; }
+.center-table p { margin:2pt 0; }
+.indent-1 { padding-left: 30pt; }
+.indent-2 { padding-left: 45pt; }
+.indent-3 { padding-left: 60pt; }
+.indent-4 { padding-left: 80pt; }
 @page { size:A4 portrait; margin:0mm; }
 @media print {
   html, body { width:210mm; height:297mm; margin:0; padding:0; background:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
@@ -35,33 +39,65 @@ table, tbody { vertical-align:top; overflow:visible; }
 }
 </style>
 <table class="center-table" cellspacing="0">
-<tr><td style="width:100%;border:0pt solid;" colspan="3">
-<p class="s1" style="padding-right:5pt;text-align:right;">ร.ร. ๓</p>
-<p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม.............<span class="val"><<HotelName>></span>.............</p>
-<p class="s1" style="text-align:center;">(Lodger Registration Card)</p>
-<p class="s1">ชื่อตัว (Name) ....................<span class="val"><<FirstName>></span>.................... ชื่อสกุล (Surname) ....................<span class="val"><<LastName>></span>....................</p>
-<p class="s1">เลขประจำตัวประชาชน (Identification Card No.)&nbsp;&nbsp;<span class="val"><<IdentityCardNumber>></span></p>
-<p class="s1">ใบสำคัญประจำตัวคนต่างด้าวเลขที่ (Alien Registration Book No.)........................<span class="val"><<AlienBook>></span>...............................................................</p>
-<p class="s1">หนังสือเดินทางเลขที่ (Passport No.)..............................................<span class="val"><<PassportNumber>></span>........................................................................</p>
-<p class="s1">อาชีพ (Occupation)......................<span class="val"><<Occupation>></span>.......................สัญชาติ (Nationality) ......................<span class="val"><<NationalityName>></span>............................</p>
-<p class="s1">ที่อยู่ปัจจุบัน (Current Address).....................................<span class="val"><<AddressDetails>></span>...............................................................................</p>
-<p class="s1">........................................................................หมายเลขโทรศัพท์ (Telephone No.).................<span class="val"><<Telephone>></span>.......................</p>
-<p class="s1" style="padding-left:30pt;">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>
-<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 1.1 เดินทางมาจากที่อยู่ปัจจุบันที่เป็นภูมิลำเนาข้างต้น (Depart from the current address above)</p>
-<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Place of Departure) ..............<span class="val"><<Departure>></span>..............</p>
-<p class="s1">............................................................................................................................................................................................</p>
-<p class="s1">............................................................................................................................................................................................</p>
-<p class="s1" style="padding-left:30pt;">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด (Next Destination)</p>
-<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 2.1 เดินทางกลับไปยังที่อยู่ปัจจุบันที่เป็นภูมิลำเนา (Back to the current address above)</p>
-<p class="s1" style="padding-left:60pt;"><span class="chk"></span> 2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Next Destination)..............<span class="val"><<Destination>></span>..............</p>
-<p class="s1">............................................................................................................................................................................................</p>
-<p class="s1">............................................................................................................................................................................................</p>
-</td></tr>
-<tr style="height:120pt">
-<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p><p class="s1" style="text-align:center;">.......<span class="val"><<CheckIn>></span>.......</p><p class="s1" style="padding-left:10pt;">เวลา (Time) ........<span class="val"><<CheckInTime>></span>........</p></td>
-<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="text-align:center;">วัน เดือน ปี ที่ออกไป (Expected Departure)</p><p class="s1" style="text-align:center;">.......<span class="val"><<CheckOut>></span>.......</p><p class="s1" style="padding-left:10pt;">เวลา (Time) ........<span class="val"><<CheckOutTime>></span>........</p></td>
-<td style="width:33%;border:1pt solid;"><br/><p class="s1" style="padding-left:6pt;font-size:10.5pt;white-space:nowrap;">ห้องพักเลขที่...<span class="val" style="font-size:12pt;"><<RoomNumber>></span>... (Room No.)</p><p class="s1" style="text-align:center;">ลายมือชื่อผู้พัก (Guest Signature)</p><p class="s1" style="padding-top:12pt;text-align:center;">..............................................</p><p class="s1" style="text-align:center;"><span class="val"><<GuestSign>></span></p></td>
-</tr></table>"""
+  <tr>
+    <td style="width:100%; border:0pt solid; padding: 15pt 25pt;" colspan="3">
+      <p class="s1" style="text-align:right;">ร.ร. ๓</p>
+      <p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม....................<span class="val"><<HotelName>></span>....................</p>
+      <p class="s1" style="text-align:center; margin-bottom: 10pt;">(Lodger Registration Card)</p>
+
+      <p class="s1">ชื่อตัว (Name) ....................................<span class="val"><<FirstName>></span>.................................... ชื่อสกุล (Surname) ....................................<span class="val"><<LastName>></span>....................................</p>
+
+      <p class="s1" style="margin-top: 5pt;">เลขประจำตัวประชาชน (Identification Card No.) &nbsp;&nbsp;<span class="val"><<IdentityCardNumber>></span></p>
+
+      <p class="s1">ใบสำคัญประจำตัวคนต่างด้าวเลขที่ (Alien Registration Book No.).......................................................<span class="val"><<AlienBook>></span>.......................................................</p>
+
+      <p class="s1">หนังสือเดินทางเลขที่ (Passport No.)......................................................................<span class="val"><<PassportNumber>></span>......................................................................</p>
+
+      <p class="s1">อาชีพ (Occupation)...................................<span class="val"><<Occupation>></span>...................................สัญชาติ (Nationality) ...................................<span class="val"><<NationalityName>></span>...................................</p>
+
+      <p class="s1">ที่อยู่ปัจจุบัน (Current Address)................................................................<span class="val"><<AddressDetails>></span>................................................................</p>
+      <p class="s1">................................................................................................หมายเลขโทรศัพท์ (Telephone No.).......................<span class="val"><<Telephone>></span>.......................</p>
+
+      <div style="margin-top: 15pt;">
+        <p class="s1 indent-1">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>
+        <p class="s1 indent-3"><span class="chk"></span> 1.1 เดินทางมาจากที่อยู่ปัจจุบันที่เป็นภูมิลำเนาข้างต้น (Depart from the current address above)</p>
+        <p class="s1 indent-3"><span class="chk"></span> 1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Place of Departure) ...........<span class="val"><<Departure>></span>...........</p>
+        <p class="s1">............................................................................................................................................................................................</p>
+        <p class="s1">............................................................................................................................................................................................</p>
+      </div>
+
+      <div style="margin-top: 15pt; margin-bottom: 20pt;">
+        <p class="s1 indent-1">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด (Next Destination)</p>
+        <p class="s1 indent-3"><span class="chk"></span> 2.1 เดินทางกลับไปยังที่อยู่ปัจจุบันที่เป็นภูมิลำเนา (Back to the current address above)</p>
+        <p class="s1 indent-3"><span class="chk"></span> 2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Next Destination) ...........<span class="val"><<Destination>></span>...........</p>
+        <p class="s1">............................................................................................................................................................................................</p>
+        <p class="s1">............................................................................................................................................................................................</p>
+      </div>
+    </td>
+  </tr>
+  <tr style="height:120pt">
+    <td style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt;">
+      <p class="s1" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p>
+      <p class="s1" style="text-align:center; margin-top: 10pt;">.....................<span class="val"><<CheckIn>></span>.....................</p>
+      <div style="margin-top: 15pt; padding-left: 10pt;">
+        <p class="s1">เวลา (Time) .....................<span class="val"><<CheckInTime>></span>.....................</p>
+      </div>
+    </td>
+    <td style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt;">
+      <p class="s1" style="text-align:center;">วัน เดือน ปี ที่ออกไป (Expected Departure)</p>
+      <p class="s1" style="text-align:center; margin-top: 10pt;">.....................<span class="val"><<CheckOut>></span>.....................</p>
+      <div style="margin-top: 15pt; padding-left: 10pt;">
+        <p class="s1">เวลา (Time) .....................<span class="val"><<CheckOutTime>></span>.....................</p>
+      </div>
+    </td>
+    <td style="width:33.33%; border-top:1pt solid black; padding: 10pt;">
+      <p class="s1" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
+      <p class="s1" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
+      <p class="s1" style="padding-top:15pt; text-align:center;">...............................................................</p>
+      <p class="s1" style="text-align:center;"><span class="val"><<GuestSign>></span></p>
+    </td>
+  </tr>
+</table>"""
 
 class Rr3TemplateUpdate(BaseModel):
     html_template: str
