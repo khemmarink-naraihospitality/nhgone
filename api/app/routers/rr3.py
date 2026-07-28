@@ -26,7 +26,7 @@ DEFAULT_RR3_TEMPLATE = """<style>
 .val:empty { padding:0; }
 table, tbody { vertical-align:top; overflow:visible; }
 .center-table { margin:0 auto; width:210mm; height:297mm; padding:12mm 15mm; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; border-collapse:collapse; page-break-after:always; break-after:page; overflow:hidden; }
-.center-table p { margin:2pt 0; }
+.center-table p { margin:4pt 0; }
 .indent-1 { padding-left: 30pt; }
 .indent-2 { padding-left: 45pt; }
 .indent-3 { padding-left: 60pt; }
@@ -45,7 +45,7 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s2" style="text-align:center;">บัตรทะเบียนผู้พักโรงแรม <span class="val"><<HotelName>></span></p>
       <p class="s1" style="text-align:center;">(Lodger Registration Card)</p>
 
-      <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
+      <table style="width:100%; border-collapse:collapse; margin:4pt 0;" cellspacing="0"><tr>
         <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อตัว (Name)</span><span class="val" style="display:table-cell; width:100%;"><<FirstName>></span></p></td>
         <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ชื่อสกุล (Surname)</span><span class="val" style="display:table-cell; width:100%;"><<LastName>></span></p></td>
       </tr></table>
@@ -56,7 +56,7 @@ table, tbody { vertical-align:top; overflow:visible; }
 
       <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">หนังสือเดินทางเลขที่ (Passport No.)</span><span class="val" style="display:table-cell; width:100%;"><<PassportNumber>></span></p>
 
-      <table style="width:100%; border-collapse:collapse; margin:2pt 0;" cellspacing="0"><tr>
+      <table style="width:100%; border-collapse:collapse; margin:4pt 0;" cellspacing="0"><tr>
         <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">อาชีพ (Occupation)</span><span class="val" style="display:table-cell; width:100%;"><<Occupation>></span></p></td>
         <td style="width:50%; padding:0; vertical-align:top;"><p class="s1 half" style="display:table; width:100%; margin:0;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">สัญชาติ (Nationality)</span><span class="val" style="display:table-cell; width:100%;"><<NationalityName>></span></p></td>
       </tr></table>
@@ -68,16 +68,16 @@ table, tbody { vertical-align:top; overflow:visible; }
         <p class="s1 indent-1">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>
         <p class="s1 indent-3"><span class="chk"></span> 1.1 เดินทางมาจากที่อยู่ปัจจุบันที่เป็นภูมิลำเนาข้างต้น (Depart from the current address above)</p>
         <p class="s1 indent-3"><span class="chk"></span> 1.2 เดินทางมาจากสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Place of Departure) <span class="val"><<Departure>></span></p>
-        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
-        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;">&nbsp;</p>
       </div>
 
       <div style="margin-top: 15pt; margin-bottom: 20pt;">
         <p class="s1 indent-1">2. ประสงค์จะเดินทางต่อไปยังสถานที่ใด (Next Destination)</p>
         <p class="s1 indent-3"><span class="chk"></span> 2.1 เดินทางกลับไปยังที่อยู่ปัจจุบันที่เป็นภูมิลำเนา (Back to the current address above)</p>
         <p class="s1 indent-3"><span class="chk"></span> 2.2 เดินทางต่อไปยังสถานที่พักอื่น (บ้านเลขที่ ตำบล อำเภอ จังหวัด ประเทศ) (Next Destination) <span class="val"><<Destination>></span></p>
-        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
-        <p style="border-bottom:1pt solid black; height:16pt; margin:2pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;">&nbsp;</p>
+        <p style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;">&nbsp;</p>
       </div>
     </td>
   </tr>
