@@ -56,7 +56,7 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s1">อาชีพ (Occupation) <span class="val"><<Occupation>></span> &nbsp;&nbsp; สัญชาติ (Nationality) <span class="val"><<NationalityName>></span></p>
 
       <p class="s1">ที่อยู่ปัจจุบัน (Current Address) <span class="val"><<AddressDetails>></span></p>
-      <p class="s1">................................................................................................หมายเลขโทรศัพท์ (Telephone No.) <span class="val"><<Telephone>></span></p>
+      <p class="s1">หมายเลขโทรศัพท์ (Telephone No.) <span class="val"><<Telephone>></span></p>
 
       <div style="margin-top: 15pt;">
         <p class="s1 indent-1">1. เดินทางมาจากสถานที่ใด (Place of Departure)</p>
