@@ -251,6 +251,8 @@ export default function BcpPage() {
   // for the same reason: MEWS is down, so there's nowhere real to send a
   // status change. Keyed by room number, per property+date.
   const [roomStatusOverrides, setRoomStatusOverrides] = useState<Record<string, string>>({});
+  // Action Logs tab - clicking a logged row opens its own Detail view.
+  const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
 
   // Timeline date-navigation toolbar (<< < Today > >> + space search) - pure
   // client-side scrolling of the already-rendered grid's own scroll
@@ -1278,14 +1280,21 @@ export default function BcpPage() {
                     {frontDeskRows.map(({ r, status }) => {
                       const done = latestActionFor(r.number);
                       return (
-                        <tr key={r.number} className="border-b border-[var(--text-primary)]/8 last:border-0 hover:bg-[var(--text-primary)]/[0.02]">
+                        <tr
+                          key={r.number}
+                          className={`border-b last:border-0 ${done ? "bg-red-50 border-red-100 hover:bg-red-100" : "border-[var(--text-primary)]/8 hover:bg-[var(--text-primary)]/[0.02]"}`}
+                        >
                           <td className="p-3 px-4 align-top">
                             <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${status.cls}`}>{status.label}</span>
                           </td>
                           <td className="p-3 px-4 align-top">
                             <div className="font-bold text-[13px] text-[var(--text-primary)]">{r.guest || "(no name)"}</div>
                             <div className="text-[11px] text-[var(--text-primary)]/50">{r.nationality || "-"}</div>
-                            {done && <div className="text-[10px] text-emerald-700 font-bold mt-1">✓ {done.action} logged {fmtDateTime(done.at)}</div>}
+                            {done && (
+                              <button onClick={() => setSelectedLogEntry(done)} className="text-[10px] text-red-700 font-bold mt-1 underline decoration-dotted hover:decoration-solid">
+                                ● Updated in our system — {done.action} {fmtDateTime(done.at)}
+                              </button>
+                            )}
                           </td>
                           <td className="p-3 px-4 align-top text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">
                             {fmtDateOnly(r.check_in)} – {fmtDateOnly(r.check_out)}
@@ -1334,16 +1343,30 @@ export default function BcpPage() {
             {mainTab === "rooms" && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
                 {housekeepingRows.map((rm, i) => {
-                  const effectiveState = roomStatusOverrides[rm.room] || rm.state;
+                  const overridden = roomStatusOverrides[rm.room];
+                  const effectiveState = overridden || rm.state;
                   const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
                     ? "Out of Order"
                     : rm.occupant ? "Occupied" : "Vacant";
+                  const lastRoomLog = actions.find((a) => a.action === "Room Status" && a.room === rm.room);
                   return (
                     <div
                       key={rm.room + i}
-                      className={`border p-4 flex flex-col gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"}`}
+                      className={`border p-4 flex flex-col gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"} ${
+                        overridden ? "ring-2 ring-red-500 ring-offset-1" : ""
+                      }`}
                     >
-                      <div className="text-xl font-display text-[var(--text-primary)]">{rm.room}</div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xl font-display text-[var(--text-primary)]">{rm.room}</div>
+                        {overridden && lastRoomLog && (
+                          <button
+                            onClick={() => setSelectedLogEntry(lastRoomLog)}
+                            className="text-[9px] font-bold tracked-caps text-red-700 underline decoration-dotted hover:decoration-solid shrink-0 mt-1"
+                          >
+                            ● Updated
+                          </button>
+                        )}
+                      </div>
                       <div className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{occupancy}</div>
                       {rm.occupant && <div className="text-[11px] text-[var(--text-primary)]/70 truncate">{rm.occupant}</div>}
                       <select
@@ -1380,12 +1403,16 @@ export default function BcpPage() {
                       </tr>
                     )}
                     {actions.map((a, i) => (
-                      <tr key={i} className="border-b border-[var(--text-primary)]/8 last:border-0">
-                        <td className="p-3 px-4 text-[12px] whitespace-nowrap text-[var(--text-primary)]/70">{fmtDateTime(a.at)}</td>
-                        <td className="p-3 px-4 text-[13px] font-bold text-[var(--text-primary)]">{a.guest}</td>
-                        <td className="p-3 px-4 text-[13px] text-[var(--text-primary)]">{a.room}</td>
-                        <td className="p-3 px-4 text-[12px] font-bold text-[var(--text-primary)]/80">{a.action}</td>
-                        <td className="p-3 px-4 text-[12px] text-[var(--text-primary)]/60">{a.detail}</td>
+                      <tr
+                        key={i}
+                        onClick={() => setSelectedLogEntry(a)}
+                        className="border-b border-red-100 last:border-0 bg-red-50 text-red-900 cursor-pointer hover:bg-red-100 transition-colors"
+                      >
+                        <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
+                        <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
+                        <td className="p-3 px-4 text-[13px]">{a.room}</td>
+                        <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
+                        <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1509,6 +1536,42 @@ export default function BcpPage() {
                 </button>
                 <button onClick={handleChgRoomSave} className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity">
                   Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Action Log Detail - every entry here is by definition a local-only
+            change (there's nowhere to write these back to while MEWS is
+            down), so the Status field always reads the same thing: it's a
+            record of something updated in our system, not MEWS. */}
+        {selectedLogEntry && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedLogEntry(null)}>
+            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-red-200 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="font-display text-xl mb-1">Action Log Detail</div>
+                <div className="grid grid-cols-2 gap-y-2 text-[13px] mt-4">
+                  <div className="text-[var(--text-primary)]/50">Status</div>
+                  <div className="font-bold text-red-700">● Updated in our system</div>
+                  <div className="text-[var(--text-primary)]/50">Time</div>
+                  <div>{fmtDateTime(selectedLogEntry.at)}</div>
+                  <div className="text-[var(--text-primary)]/50">Guest</div>
+                  <div>{selectedLogEntry.guest || "-"}</div>
+                  <div className="text-[var(--text-primary)]/50">Room</div>
+                  <div className="font-bold">{selectedLogEntry.room}</div>
+                  <div className="text-[var(--text-primary)]/50">Action</div>
+                  <div className="font-bold">{selectedLogEntry.action}</div>
+                  <div className="text-[var(--text-primary)]/50">Detail</div>
+                  <div>{selectedLogEntry.detail}</div>
+                </div>
+                <div className="mt-6 pt-4 border-t border-[var(--text-primary)]/10 text-[10px] text-[var(--text-primary)]/40 italic">
+                  Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 p-4 border-t border-[var(--text-primary)]/10">
+                <button onClick={() => setSelectedLogEntry(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Close
                 </button>
               </div>
             </div>
