@@ -1041,7 +1041,7 @@ export default function BcpPage() {
                   <ol className="list-decimal list-inside flex flex-col gap-1">
                     <li>เปิดหน้านี้ เลือกโรงแรม แล้วเลือก <b>snapshot ล่าสุด</b> (ดูเวลา &quot;Data as of&quot; ประกอบ — ถ้าเก่ากว่า 2 ชม. ระบบจะเตือนสีส้ม)</li>
                     <li>ดูตาราง <b>Timeline</b> เหมือนหน้า MEWS ปกติ — คลิกที่แถบการจองเพื่อดูรายละเอียดแขก/โน้ต: ถ่ายรูปพาสปอร์ต / สแกนเอกสารเก็บเข้าคอมไว้ก่อน แล้วลงทะเบียนผ่านกระดาษ / PDF บน iPad แทน</li>
-                    <li>ดูจุดสีหน้าเลขห้องเพื่อประสานแม่บ้านว่าให้แขกเข้าห้องไหน — กดปุ่ม <b>Print Housekeeping Sheet</b> พิมพ์ใบงานแจกแม่บ้าน (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
+                    <li>ดูจุดสีหน้าเลขห้องเพื่อประสานแม่บ้านว่าให้แขกเข้าห้องไหน — พิมพ์ใบงานแจกแม่บ้านได้จากคำสั่ง Print ของเบราว์เซอร์ (Ctrl/Cmd+P) ตอนอยู่แท็บ Timeline หรือ Rooms (HK) (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
                     <li>การเงิน: ชาร์จ Payment ไว้ก่อนได้ แต่<b>ยังตัดจ่ายไม่ได้</b>จนกว่า MEWS จะกลับมา — ใช้แท็บ <b>Payments</b> เทียบรายการที่เข้าแล้ววันนี้</li>
                     <li><b>จดบันทึกทุกรายการ</b>ที่ทำระหว่าง MEWS ล่ม (เช็คอิน/เช็คเอาท์/ย้ายห้อง/ชาร์จเงิน) ลงกระดาษหรือไฟล์ Activity report ของสาขา</li>
                     <li>เมื่อ MEWS กลับมาใช้ได้: นำบันทึกทั้งหมดไปคีย์ย้อนเข้า MEWS ให้ครบ (สาขาที่มี AdriaScan ใช้สแกนเอกสารเข้า MEWS ได้เลย)</li>
@@ -1154,9 +1154,6 @@ export default function BcpPage() {
                   <span>Arrivals today: {todayStats.arrivals}</span>
                   <span>Departures today: {todayStats.departures}</span>
                   <span>In-house today: {todayStats.inHouse}</span>
-                  <button onClick={() => window.print()} className="px-4 py-2 bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity">
-                    Print Housekeeping Sheet
-                  </button>
                 </div>
               )}
             </div>
