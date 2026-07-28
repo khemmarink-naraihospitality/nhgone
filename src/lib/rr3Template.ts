@@ -77,19 +77,48 @@ function stripTagsToText(html: string): string {
 // sees exactly what will print. Only touches plain body-text paragraphs
 // (class="s1"/"s2") that don't already carry a hand-tuned font-size (e.g.
 // the Room No. line), so it can't fight with a more specific existing style.
+//
+// Shrinking each line to its own individually-needed size (the first
+// version of this) technically stopped every line wrapping, but left the
+// form looking like a patchwork of different type sizes depending on how
+// long that particular line's data happened to be. Instead: find whichever
+// s1 line needs the *most* shrinking, then apply that one size to every s1
+// line uniformly (same for s2, kept as its own tier since it's the larger
+// heading style) - the whole form still reads as one consistent size, and
+// every line has strictly *more* margin than the one that set the size, so
+// none of them wrap either.
+const PARAGRAPH_RE = /<p((?:\s+[^>]*)?)>([\s\S]*?)<\/p>/g;
+
+function eligibleParagraphFontSize(attrs: string): { tier: "s1" | "s2"; basePt: number } | null {
+  if (/font-size\s*:/.test(attrs)) return null;
+  if (/class="[^"]*\bs2\b[^"]*"/.test(attrs)) return { tier: "s2", basePt: 15 };
+  if (/class="[^"]*\bs1\b[^"]*"/.test(attrs)) return { tier: "s1", basePt: 14 };
+  return null;
+}
+
 function fitParagraphsToOneLine(html: string): string {
   if (typeof document === "undefined") return html;
-  return html.replace(/<p((?:\s+[^>]*)?)>([\s\S]*?)<\/p>/g, (match, attrs: string, inner: string) => {
-    if (/font-size\s*:/.test(attrs)) return match;
-    const isS1 = /class="[^"]*\bs1\b[^"]*"/.test(attrs);
-    const isS2 = /class="[^"]*\bs2\b[^"]*"/.test(attrs);
-    if (!isS1 && !isS2) return match;
+
+  let minS1 = 14;
+  let minS2 = 15;
+  for (const match of html.matchAll(PARAGRAPH_RE)) {
+    const [, attrs, inner] = match;
+    const eligible = eligibleParagraphFontSize(attrs);
+    if (!eligible) continue;
     const text = stripTagsToText(inner);
-    if (!text) return match;
-    const basePt = isS2 ? 15 : 14;
-    const fitted = fitFontSizePt(text, PAGE_CONTENT_WIDTH_PT, basePt, 7);
-    if (fitted >= basePt) return match;
-    const addition = `font-size:${fitted.toFixed(1)}pt;white-space:nowrap;`;
+    if (!text) continue;
+    const fitted = fitFontSizePt(text, PAGE_CONTENT_WIDTH_PT, eligible.basePt, 9);
+    if (eligible.tier === "s2") minS2 = Math.min(minS2, fitted);
+    else minS1 = Math.min(minS1, fitted);
+  }
+  if (minS1 >= 14 && minS2 >= 15) return html; // every line already fits at its normal size
+
+  return html.replace(PARAGRAPH_RE, (match, attrs: string, inner: string) => {
+    const eligible = eligibleParagraphFontSize(attrs);
+    if (!eligible) return match;
+    const size = eligible.tier === "s2" ? minS2 : minS1;
+    if (size >= eligible.basePt) return match;
+    const addition = `font-size:${size.toFixed(1)}pt;white-space:nowrap;`;
     const newAttrs = /style="/.test(attrs)
       ? attrs.replace(/style="([^"]*)"/, (_m: string, existing: string) => `style="${existing}${existing.endsWith(";") ? "" : ";"}${addition}"`)
       : `${attrs} style="${addition}"`;
