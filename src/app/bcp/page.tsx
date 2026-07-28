@@ -104,6 +104,8 @@ type MainTab = "timeline" | "reservations" | "rooms" | "logs";
 
 type ReservationSortKey = "status" | "guest" | "dates" | "room" | "category";
 
+type ActionLogSortKey = "time" | "guest" | "room" | "action" | "detail" | "checked";
+
 interface OfflineAction {
   id: string;
   at: string;
@@ -323,6 +325,9 @@ export default function BcpPage() {
   // Same idea for Rooms (HK) and Action Logs - each tab searches its own data.
   const [roomSearch, setRoomSearch] = useState("");
   const [logSearch, setLogSearch] = useState("");
+  // Default matches the server's own order (list_action_logs sorts
+  // created_at desc), so leaving headers unclicked looks unchanged.
+  const [logSort, setLogSort] = useState<{ key: ActionLogSortKey; dir: "asc" | "desc" }>({ key: "time", dir: "desc" });
   const [showReadme, setShowReadme] = useState(false);
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
@@ -717,15 +722,45 @@ export default function BcpPage() {
 
   const displayedActions = useMemo(() => {
     const q = logSearch.trim().toLowerCase();
-    if (!q) return actions;
-    return actions.filter(
-      (a) =>
-        a.guest.toLowerCase().includes(q) ||
-        a.room.toLowerCase().includes(q) ||
-        a.action.toLowerCase().includes(q) ||
-        a.detail.toLowerCase().includes(q)
-    );
-  }, [actions, logSearch]);
+    const filtered = q
+      ? actions.filter(
+          (a) =>
+            a.guest.toLowerCase().includes(q) ||
+            a.room.toLowerCase().includes(q) ||
+            a.action.toLowerCase().includes(q) ||
+            a.detail.toLowerCase().includes(q)
+        )
+      : actions;
+    const { key, dir } = logSort;
+    const sign = dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => {
+      switch (key) {
+        case "time":
+          return sign * a.at.localeCompare(b.at);
+        case "guest":
+          return sign * a.guest.localeCompare(b.guest);
+        case "room":
+          return sign * a.room.localeCompare(b.room, undefined, { numeric: true });
+        case "action":
+          return sign * a.action.localeCompare(b.action);
+        case "detail":
+          return sign * a.detail.localeCompare(b.detail);
+        case "checked":
+          return sign * (Number(a.checked) - Number(b.checked));
+        default:
+          return 0;
+      }
+    });
+  }, [actions, logSearch, logSort]);
+
+  const handleLogSort = (key: ActionLogSortKey) => {
+    setLogSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+  };
+
+  const logSortArrow = (key: ActionLogSortKey) => {
+    if (logSort.key !== key) return "";
+    return logSort.dir === "asc" ? " ▲" : " ▼";
+  };
 
   const handleCheckIn = (r: ReservationRow) =>
     logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${r.room}` });
@@ -1747,12 +1782,29 @@ export default function BcpPage() {
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Time</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Guest</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Room</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Action</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50">Detail</th>
-                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 text-center">BCP Check</th>
+                      {(
+                        [
+                          ["time", "Time"],
+                          ["guest", "Guest"],
+                          ["room", "Room"],
+                          ["action", "Action"],
+                          ["detail", "Detail"],
+                        ] as [ActionLogSortKey, string][]
+                      ).map(([key, label]) => (
+                        <th
+                          key={key}
+                          onClick={() => handleLogSort(key)}
+                          className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                        >
+                          {label}{logSortArrow(key)}
+                        </th>
+                      ))}
+                      <th
+                        onClick={() => handleLogSort("checked")}
+                        className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 text-center cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                      >
+                        BCP Check{logSortArrow("checked")}
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
