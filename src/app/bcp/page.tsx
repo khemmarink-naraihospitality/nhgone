@@ -108,7 +108,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Chg Room" | "Room Status";
+  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Reg Card Saved";
   detail: string;
   // "BCP Check" - ticked once the front desk has re-keyed this action into
   // MEWS, so it no longer needs flagging red or counting toward the Action
@@ -658,6 +658,14 @@ export default function BcpPage() {
       const result = await res.json();
       if (result.status === "success") {
         setRegCardSaveResult({ ok: true, message: "Saved to our system" });
+        logOfflineAction({
+          at: new Date().toISOString(),
+          reservationNumber: regCardFor.number,
+          guest: regCardFor.guest,
+          room: regCardFor.room,
+          action: "Reg Card Saved",
+          detail: guestSignature ? "Reg Card saved with signature" : "Reg Card saved (no signature)",
+        });
       } else {
         setRegCardSaveResult({ ok: false, message: result.message || result.detail || "Save failed" });
       }
@@ -665,6 +673,26 @@ export default function BcpPage() {
       setRegCardSaveResult({ ok: false, message: err.message || "Save failed" });
     } finally {
       setSavingRegCard(false);
+    }
+  };
+
+  // Reg Card button - restores a previously saved signature (if Save was
+  // already used for this reservation) instead of always starting blank,
+  // since save_reg_card persists it but had no matching read until now.
+  const handleOpenRegCard = async (r: ReservationRow) => {
+    setRegCardFor(r);
+    setGuestSignature(null);
+    setRegCardSaveResult(null);
+    if (!snapshot) return;
+    try {
+      const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number });
+      const res = await fetch(`/api/bcp/reg-card?${params.toString()}`);
+      const result = await res.json();
+      if (result.status === "success" && result.data?.signature_data_url) {
+        setGuestSignature(result.data.signature_data_url);
+      }
+    } catch {
+      /* no saved card yet, or fetch failed - start blank as before */
     }
   };
 
@@ -1473,7 +1501,7 @@ export default function BcpPage() {
                           <td className="p-3 px-4 align-top">
                             <div className="flex flex-wrap gap-2">
                               <button
-                                onClick={() => { setRegCardFor(r); setGuestSignature(null); setRegCardSaveResult(null); }}
+                                onClick={() => handleOpenRegCard(r)}
                                 className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                               >
                                 Reg Card

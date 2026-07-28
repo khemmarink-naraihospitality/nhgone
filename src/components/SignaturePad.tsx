@@ -15,23 +15,30 @@ export default function SignaturePad({ value, onChange }: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  // Tracks the last data URL *this component itself* emitted via onChange,
+  // so the redraw effect below can tell "the parent just echoed our own
+  // stroke back down as a prop" (skip - already painted live) apart from
+  // "the parent set/loaded a signature from outside" (e.g. a previously
+  // saved Reg Card loading in asynchronously after this pad already
+  // mounted blank, or being reset to null for a new guest) - that case
+  // needs to actually draw it.
+  const lastEmittedRef = useRef<string | null>(null);
 
-  // Redraw from `value` when it's cleared/replaced from outside (e.g. the
-  // parent resetting it to null for a new guest) - not on every local stroke,
-  // since those already paint the canvas directly.
   useEffect(() => {
+    if (value === lastEmittedRef.current) return;
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (!canvas || !ctx) return;
     if (!value) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      lastEmittedRef.current = null;
       return;
     }
     const img = new window.Image();
     img.onload = () => ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
     img.src = value;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    lastEmittedRef.current = value;
+  }, [value]);
 
   const getPos = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current!;
@@ -70,13 +77,17 @@ export default function SignaturePad({ value, onChange }: SignaturePadProps) {
     if (!drawingRef.current) return;
     drawingRef.current = false;
     const canvas = canvasRef.current;
-    if (canvas) onChange(canvas.toDataURL("image/png"));
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    lastEmittedRef.current = dataUrl;
+    onChange(dataUrl);
   };
 
   const handleClear = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext("2d");
     if (canvas && ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    lastEmittedRef.current = null;
     onChange(null);
   };
 

@@ -195,3 +195,30 @@ async def save_reg_card(payload: dict = Body(...)):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reg-card")
+async def get_reg_card(property_name: str = Query(...), reservation_number: str = Query(...)):
+    """
+    The most recently saved Reg Card for a reservation, if any - so reopening
+    it (e.g. Save, Close, then Reg Card again later) restores the guest's
+    signature and details instead of starting blank, since save_reg_card
+    above was write-only and never had a matching read.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_reg_cards") \
+            .select("data, created_at") \
+            .eq("property", property_name) \
+            .eq("reservation_number", reservation_number) \
+            .order("created_at", desc=True) \
+            .limit(1) \
+            .execute()
+        if not res.data:
+            return {"status": "success", "data": None}
+        blob = (res.data[0].get("data") or {}).get("blob", "")
+        record = json.loads(encryption_service.decrypt(blob))
+        return {"status": "success", "data": record}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
