@@ -189,11 +189,11 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
   OutOfOrder: "bg-red-50 text-red-700 border-red-200",
 };
 
-// Manually adjustable HK status options for the Rooms (HK) card grid - the
-// same 5 states MEWS itself uses, but overriding one here is purely local
-// (see roomStatusOverrides below), since there's nothing live to write this
-// back to while MEWS is down.
-const ROOM_STATUS_OPTIONS = ["Clean", "Dirty", "Inspected", "OutOfService", "OutOfOrder"] as const;
+// Manually adjustable HK status options for the Rooms (HK) card grid.
+// Overriding one here is purely local (see roomStatusOverrides below) and
+// is NEVER sent to MEWS - there's nothing live to write it back to while
+// MEWS is down, which is the entire premise of this tab.
+const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfOrder"] as const;
 const ROOM_STATUS_CARD_CLS: Record<string, string> = {
   Clean: "bg-emerald-50 border-emerald-200",
   Inspected: "bg-emerald-50 border-emerald-200",
@@ -1341,6 +1341,10 @@ export default function BcpPage() {
             )}
 
             {mainTab === "rooms" && (
+              <>
+              <div className="no-print text-[10px] text-[var(--text-primary)]/40 italic mb-3">
+                Changing a status below only updates our own system — it is never sent to MEWS.
+              </div>
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
                 {housekeepingRows.map((rm, i) => {
                   const overridden = roomStatusOverrides[rm.room];
@@ -1382,6 +1386,7 @@ export default function BcpPage() {
                   );
                 })}
               </div>
+              </>
             )}
 
             {mainTab === "logs" && (
