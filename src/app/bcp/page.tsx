@@ -1363,7 +1363,7 @@ export default function BcpPage() {
             )}
 
             {mainTab === "timeline" && (
-              <div ref={timelineScrollRef} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
+              <div ref={timelineScrollRef} className="no-print bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-auto max-h-[70vh]">
                 <div
                   className="grid relative"
                   style={{ gridTemplateColumns: `28px 70px 90px repeat(${windowDays.length}, 84px)` }}
@@ -1497,7 +1497,7 @@ export default function BcpPage() {
             )}
 
             {mainTab === "reservations" && (
-              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+              <div className="no-print bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
@@ -1583,7 +1583,7 @@ export default function BcpPage() {
               <div className="no-print text-[10px] text-[var(--text-primary)]/40 italic mb-3">
                 Changing a status below only updates our own system — it is never sent to MEWS.
               </div>
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
+              <div className="no-print grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
                 {housekeepingRows.map((rm, i) => {
                   const overridden = roomStatusOverrides[rm.room];
                   const effectiveState = overridden || rm.state;
@@ -1628,7 +1628,7 @@ export default function BcpPage() {
             )}
 
             {mainTab === "logs" && (
-              <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+              <div className="no-print bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
