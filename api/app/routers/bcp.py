@@ -1,5 +1,6 @@
 import json
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Body
 
@@ -236,23 +237,30 @@ def _action_log_row_to_json(row: dict) -> dict:
 
 
 @router.get("/action-logs")
-async def list_action_logs(property_name: str = Query(...), report_date: str = Query(...)):
+async def list_action_logs(property_name: str = Query(...), report_date: Optional[str] = Query(None)):
     """
     Reservations/Rooms/Action Logs tabs' shared audit trail (Check In/Out,
     Chg Room, Room Status, Reg Card Saved). Previously kept in localStorage
     only - durable in Supabase now, per feedback that it must never be lost
     to a device change or a cleared browser, unlike bcp_snapshots (which is
     deliberately pruned - this table is not).
+
+    report_date used to be required, scoping every query to a single day -
+    but that just made yesterday's entries look lost the moment the date
+    rolled over, when they were sitting in the table the whole time. Now
+    optional and unused by the frontend: every entry for the property comes
+    back, permanently, since an unresolved (not yet re-keyed into MEWS)
+    action shouldn't stop being flagged just because a day passed.
     """
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
-        res = sync_service.supabase.table("bcp_action_logs") \
+        query = sync_service.supabase.table("bcp_action_logs") \
             .select("id, checked, data, created_at") \
-            .eq("property", property_name) \
-            .eq("report_date", report_date) \
-            .order("created_at", desc=True) \
-            .execute()
+            .eq("property", property_name)
+        if report_date:
+            query = query.eq("report_date", report_date)
+        res = query.order("created_at", desc=True).execute()
         return {"status": "success", "data": [_action_log_row_to_json(r) for r in (res.data or [])]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -669,10 +669,14 @@ export default function BcpPage() {
 
   // Action Logs used to live in localStorage only - moved to Supabase
   // (bcp_action_logs) per feedback that it must never be lost to a device
-  // change or a cleared browser. Scoped by property + the snapshot's own
-  // Bangkok date, same scoping localStorage used, just durable now. Rows are
-  // never pruned (unlike bcp_snapshots' 1-hour history) - they're always
-  // still here, `actions` just only ever queried "today".
+  // change or a cleared browser. Rows are never pruned (unlike
+  // bcp_snapshots' 1-hour history) - kept forever. Fetches every entry for
+  // the property, not scoped to any one date: an unresolved (not yet
+  // re-keyed into MEWS) action shouldn't stop being flagged, and shouldn't
+  // disappear from the log, just because a day passed. A per-date filter
+  // was tried and removed - it made yesterday's entries invisible the
+  // moment the date rolled over, looking exactly like data loss even though
+  // nothing was ever deleted.
   useEffect(() => {
     if (!snapshot) {
       setActions([]);
@@ -680,7 +684,7 @@ export default function BcpPage() {
     }
     (async () => {
       try {
-        const params = new URLSearchParams({ property_name: snapshot.property, report_date: snapshot.date });
+        const params = new URLSearchParams({ property_name: snapshot.property });
         const res = await fetch(`/api/bcp/action-logs?${params.toString()}`);
         const result = await res.json();
         setActions(result.status === "success" ? result.data || [] : []);
@@ -688,38 +692,7 @@ export default function BcpPage() {
         setActions([]);
       }
     })();
-  }, [snapshot?.property, snapshot?.date]);
-
-  // Action Logs tab lets you browse a report_date other than "today" without
-  // disturbing `actions` above, which also drives the red-flagging on the
-  // Reservations/Rooms tabs and this tab's own badge count - those must stay
-  // tied to today regardless of what date happens to be on screen here.
-  // null means "not browsing history" - the tab just shows `actions` as-is,
-  // so the common case (viewing today) does no extra fetch at all.
-  const [logsDate, setLogsDate] = useState("");
-  useEffect(() => {
-    if (snapshot?.date) setLogsDate(snapshot.date);
-  }, [snapshot?.property, snapshot?.date]);
-
-  const [historicalActions, setHistoricalActions] = useState<OfflineAction[] | null>(null);
-  useEffect(() => {
-    if (!snapshot || !logsDate || logsDate === snapshot.date) {
-      setHistoricalActions(null);
-      return;
-    }
-    (async () => {
-      try {
-        const params = new URLSearchParams({ property_name: snapshot.property, report_date: logsDate });
-        const res = await fetch(`/api/bcp/action-logs?${params.toString()}`);
-        const result = await res.json();
-        setHistoricalActions(result.status === "success" ? result.data || [] : []);
-      } catch {
-        setHistoricalActions([]);
-      }
-    })();
-  }, [snapshot?.property, snapshot?.date, logsDate]);
-
-  const logsViewActions = historicalActions ?? actions;
+  }, [snapshot?.property]);
 
   const logOfflineAction = async (entry: Omit<OfflineAction, "id" | "checked" | "userEmail">) => {
     if (!snapshot) return;
@@ -749,16 +722,10 @@ export default function BcpPage() {
   };
 
   const handleToggleActionChecked = async (id: string) => {
-    const current = logsViewActions.find((a) => a.id === id);
+    const current = actions.find((a) => a.id === id);
     if (!current) return;
     const nextChecked = !current.checked;
-    const applyChecked = (checked: boolean) => (prev: OfflineAction[]) =>
-      prev.map((a) => (a.id === id ? { ...a, checked } : a));
-    // Update whichever array is actually driving the table right now - the
-    // live one (also used for red-flagging elsewhere) if viewing today, the
-    // historical snapshot if browsing a past date.
-    if (historicalActions) setHistoricalActions(applyChecked(nextChecked));
-    else setActions(applyChecked(nextChecked));
+    setActions((prev) => prev.map((a) => (a.id === id ? { ...a, checked: nextChecked } : a)));
     try {
       await fetch("/api/bcp/action-logs/toggle", {
         method: "POST",
@@ -766,8 +733,7 @@ export default function BcpPage() {
         body: JSON.stringify({ id, checked: nextChecked }),
       });
     } catch {
-      if (historicalActions) setHistoricalActions(applyChecked(!nextChecked));
-      else setActions(applyChecked(!nextChecked));
+      setActions((prev) => prev.map((a) => (a.id === id ? { ...a, checked: !nextChecked } : a)));
     }
   };
 
@@ -780,7 +746,7 @@ export default function BcpPage() {
   const displayedActions = useMemo(() => {
     const q = logSearch.trim().toLowerCase();
     const filtered = q
-      ? logsViewActions.filter(
+      ? actions.filter(
           (a) =>
             a.guest.toLowerCase().includes(q) ||
             a.room.toLowerCase().includes(q) ||
@@ -788,7 +754,7 @@ export default function BcpPage() {
             a.detail.toLowerCase().includes(q) ||
             (a.userEmail || "").toLowerCase().includes(q)
         )
-      : logsViewActions;
+      : actions;
     const { key, dir } = logSort;
     const sign = dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => {
@@ -811,7 +777,7 @@ export default function BcpPage() {
           return 0;
       }
     });
-  }, [logsViewActions, logSearch, logSort]);
+  }, [actions, logSearch, logSort]);
 
   const handleLogSort = (key: ActionLogSortKey) => {
     setLogSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -1528,29 +1494,13 @@ export default function BcpPage() {
                 />
               )}
               {mainTab === "logs" && (
-                <div className="ml-auto flex items-center gap-2">
-                  <input
-                    type="date"
-                    value={logsDate}
-                    onChange={(e) => setLogsDate(e.target.value)}
-                    className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black focus:outline-none focus:border-[var(--text-primary)]/50"
-                  />
-                  {snapshot.date && logsDate !== snapshot.date && (
-                    <button
-                      onClick={() => setLogsDate(snapshot.date)}
-                      className="px-3 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                    >
-                      Today
-                    </button>
-                  )}
-                  <input
-                    type="text"
-                    value={logSearch}
-                    onChange={(e) => setLogSearch(e.target.value)}
-                    placeholder="Search guest, room, action, or user"
-                    className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
-                  />
-                </div>
+                <input
+                  type="text"
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                  placeholder="Search guest, room, action, or user"
+                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                />
               )}
             </div>
 
@@ -1924,7 +1874,7 @@ export default function BcpPage() {
                   </tbody>
                 </table>
                 <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
-                  Saved permanently, not just on this device — use as a reference to re-enter these actions into MEWS once it&apos;s back online. Tick BCP Check once an action has been re-keyed into MEWS. Pick a different date above to see past days&apos; entries.
+                  Saved permanently, not just on this device — every entry ever logged for this property stays here (use search above to narrow it down). Use as a reference to re-enter these actions into MEWS once it&apos;s back online, and tick BCP Check once an action has been re-keyed into MEWS.
                 </div>
               </div>
             )}
