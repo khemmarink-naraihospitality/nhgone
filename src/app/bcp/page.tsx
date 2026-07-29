@@ -1577,10 +1577,10 @@ export default function BcpPage() {
               <div className="flex border-b border-[var(--text-primary)]/14">
                 {(
                   [
-                    ["reservations", `Reservations (${frontDeskRows.length})`],
+                    ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
                     ["rooms", "Rooms (HK)"],
                     ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
-                    ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
+                    ["reservations", `Reservations (${frontDeskRows.length})`],
                   ] as [MainTab, string][]
                 ).map(([t, label]) => (
                   <button
