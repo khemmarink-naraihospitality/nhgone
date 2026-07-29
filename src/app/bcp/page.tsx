@@ -242,11 +242,16 @@ const guestInitials = (name: string) => {
 };
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
 
+// Matches MEWS's own housekeeping status colors: Clean=blue, Inspected=
+// green, Dirty=dark orange, OutOfService=light orange/yellow, OutOfOrder=
+// red. (Card/dot/badge previously disagreed with each other - e.g. Dirty
+// rendered red on the card but amber as the dot, OutOfOrder the reverse -
+// all three now share this same scheme.)
 const ROOM_DOT_CLS: Record<string, string> = {
   Clean: "bg-sky-500",
   Inspected: "bg-emerald-500",
-  Dirty: "bg-amber-500",
-  OutOfService: "bg-slate-400",
+  Dirty: "bg-orange-600",
+  OutOfService: "bg-amber-300",
   OutOfOrder: "bg-red-500",
 };
 
@@ -256,8 +261,8 @@ const ROOM_DOT_CLS: Record<string, string> = {
 const ROOM_STATE_BADGE_CLS: Record<string, string> = {
   Clean: "bg-sky-50 text-sky-700 border-sky-200",
   Inspected: "bg-emerald-50 text-emerald-700 border-emerald-200",
-  Dirty: "bg-amber-50 text-amber-800 border-amber-200",
-  OutOfService: "bg-slate-100 text-slate-600 border-slate-300",
+  Dirty: "bg-orange-100 text-orange-800 border-orange-300",
+  OutOfService: "bg-amber-50 text-amber-700 border-amber-200",
   OutOfOrder: "bg-red-50 text-red-700 border-red-200",
 };
 
@@ -268,11 +273,11 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
 // which is the entire premise of this tab.
 const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfOrder"] as const;
 const ROOM_STATUS_CARD_CLS: Record<string, string> = {
-  Clean: "bg-emerald-50 border-emerald-200",
+  Clean: "bg-sky-50 border-sky-200",
   Inspected: "bg-emerald-50 border-emerald-200",
-  Dirty: "bg-red-50 border-red-200",
+  Dirty: "bg-orange-50 border-orange-200",
   OutOfService: "bg-amber-50 border-amber-200",
-  OutOfOrder: "bg-amber-50 border-amber-200",
+  OutOfOrder: "bg-red-50 border-red-200",
 };
 
 const STATE_BADGE_CLS: Record<string, string> = {
@@ -387,6 +392,12 @@ export default function BcpPage() {
   // r.room (the table, sort, search, the detail panel, Reg Card tokens)
   // automatically shows the current room without each needing its own fix.
   const [roomChangeOverrides, setRoomChangeOverrides] = useState<Record<string, string>>({});
+  // Current housekeeping status for a room - the override if housekeeping
+  // has changed it via Rooms (HK), otherwise whatever MEWS last reported.
+  // Used everywhere a room's status color/badge shows (Timeline dot, Manage
+  // view badge, Rooms (HK) card) so changing it in one place is reflected
+  // everywhere immediately, not just on the Rooms (HK) card itself.
+  const effectiveRoomState = (room: { room: string; state: string }) => roomStatusOverrides[room.room] || room.state;
   // Action Logs tab - clicking a logged row opens its own Detail view.
   const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
 
@@ -1288,8 +1299,8 @@ export default function BcpPage() {
                   <span className="inline-flex items-center gap-1.5">
                     <span className="font-bold">{res.room || "-"}</span>
                     {selectedRoomInfo && (
-                      <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoomInfo.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
-                        {selectedRoomInfo.state}
+                      <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[effectiveRoomState(selectedRoomInfo)] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                        {effectiveRoomState(selectedRoomInfo)}
                       </span>
                     )}
                   </span>
@@ -1644,7 +1655,7 @@ export default function BcpPage() {
                     >
                       {!room.is_child && (
                         <>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[effectiveRoomState(room)] || "bg-slate-300"}`} title={effectiveRoomState(room)}></span>
                           <span className="underline decoration-1 underline-offset-2">{room.room}</span>
                         </>
                       )}
@@ -1661,7 +1672,7 @@ export default function BcpPage() {
                     >
                       {room.is_child && (
                         <>
-                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[room.state] || "bg-slate-300"}`} title={room.state}></span>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[effectiveRoomState(room)] || "bg-slate-300"}`} title={effectiveRoomState(room)}></span>
                           <span>{room.room}</span>
                         </>
                       )}
@@ -1808,8 +1819,7 @@ export default function BcpPage() {
                   <div className="col-span-full p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No matching rooms.</div>
                 )}
                 {displayedHousekeepingRows.map((rm, i) => {
-                  const overridden = roomStatusOverrides[rm.room];
-                  const effectiveState = overridden || rm.state;
+                  const effectiveState = effectiveRoomState(rm);
                   const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
                     ? "Out of Order"
                     : rm.occupant ? "Occupied" : "Vacant";
@@ -2213,8 +2223,8 @@ export default function BcpPage() {
                           )}
                         </div>
                         {selectedRoomInfo && (
-                          <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[selectedRoomInfo.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
-                            {selectedRoomInfo.state}
+                          <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[effectiveRoomState(selectedRoomInfo)] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                            {effectiveRoomState(selectedRoomInfo)}
                           </span>
                         )}
                       </div>
