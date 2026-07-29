@@ -343,7 +343,7 @@ export default function BcpPage() {
   const [loading, setLoading] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mainTab, setMainTab] = useState<MainTab>("reservations");
+  const [mainTab, setMainTab] = useState<MainTab>("timeline");
   // Reservations tab search (name/room/confirmation #) and sortable column
   // headers - client-side only, since frontDeskRows is already the full
   // day's list in memory.
