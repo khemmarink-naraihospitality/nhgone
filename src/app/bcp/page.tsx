@@ -1115,17 +1115,54 @@ export default function BcpPage() {
   };
 
 
+  // Shared with the main return below (which this page's early return
+  // bypasses entirely) so choosing OutOfService/OutOfOrder from the Status
+  // dropdown on this page can open the same required-reason modal.
+  const roomStatusReasonModal = roomStatusReasonFor && (
+    <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRoomStatusReasonFor(null)}>
+      <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="font-display text-xl mb-1">Reason Required</div>
+        <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
+          Room {roomStatusReasonFor.room} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
+        </div>
+        <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Reason</label>
+        <textarea
+          autoFocus
+          rows={3}
+          value={roomStatusReasonText}
+          onChange={(e) => setRoomStatusReasonText(e.target.value)}
+          placeholder="e.g. AC broken, awaiting maintenance"
+          className="w-full mt-1 bg-[var(--bg-primary)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none resize-none"
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={() => setRoomStatusReasonFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+            Cancel
+          </button>
+          <button
+            onClick={handleConfirmRoomStatusReason}
+            disabled={!roomStatusReasonText.trim()}
+            className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Room Properties - a full page (not a drawer), replacing the whole BCP
   // view exactly like MEWS's own Room Properties screen does (their icon
   // rail stays, but everything to its right becomes this page). Read-only:
-  // the "Clean"/"Out of service"/"Out of order" buttons and the Status/
-  // Category dropdown chevrons are all disabled - decorative, matching
-  // MEWS's layout, but there's nothing live to action from a stale
-  // snapshot (same reasoning as every other disabled action in BCP).
-  // "Reason for status" and "Recent space changes" keep their layout slots
-  // (unlike the old drawer, which just hid the rows) but show an
-  // explanation instead of data: StateReason is a write-only input to
-  // resources/update (MEWS never returns it from resources/getAll), and
+  // the "Clean"/"Out of service"/"Out of order" buttons are disabled -
+  // decorative, matching MEWS's layout, but there's nothing live to action
+  // from a stale snapshot (same reasoning as every other disabled action in
+  // BCP). Status is the one exception - it's our own durable override (see
+  // roomStatusOverrides), so it's a real editable dropdown here too, same
+  // as the Rooms (HK) tab. "Reason for status" shows our own recorded
+  // reason if there is one (see roomStatusReasons), otherwise the same
+  // explanation as before: MEWS's StateReason is write-only to
+  // resources/update, never returned by resources/getAll. "Recent space
+  // changes" also keeps its layout slot but stays a fixed explanation -
   // there is no resource-history/activity-log endpoint anywhere in the
   // Connector API - confirmed against MEWS's own docs, not a missing join.
   if (selectedRoom) {
@@ -1175,11 +1212,23 @@ export default function BcpPage() {
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Status</div>
-                  <div className={fieldBoxCls}>{room.state}{chevron}</div>
+                  <select
+                    value={effectiveRoomState(room)}
+                    onChange={(e) => handleRoomStatusSelect(room.room, effectiveRoomState(room), e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px] cursor-pointer focus:outline-none"
+                  >
+                    {ROOM_STATUS_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason for status</div>
-                  <div className={`${fieldBoxCls} text-[var(--text-primary)]/35 italic`}>Not available via the MEWS API</div>
+                  {roomStatusReasons[room.room] ? (
+                    <div className={fieldBoxCls}>{roomStatusReasons[room.room]}</div>
+                  ) : (
+                    <div className={`${fieldBoxCls} text-[var(--text-primary)]/35 italic`}>Not available via the MEWS API</div>
+                  )}
                 </div>
                 {room.parent_room && (
                   <div>
@@ -1221,9 +1270,10 @@ export default function BcpPage() {
           </div>
 
           <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
-            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this room from here.
+            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS to manage this room from here. Status is the exception: it saves to our own system, same as the Rooms (HK) tab.
           </div>
         </div>
+        {roomStatusReasonModal}
       </div>
     );
   }
@@ -2175,37 +2225,7 @@ export default function BcpPage() {
           </div>
         )}
 
-        {roomStatusReasonFor && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRoomStatusReasonFor(null)}>
-            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
-              <div className="font-display text-xl mb-1">Reason Required</div>
-              <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
-                Room {roomStatusReasonFor.room} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
-              </div>
-              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Reason</label>
-              <textarea
-                autoFocus
-                rows={3}
-                value={roomStatusReasonText}
-                onChange={(e) => setRoomStatusReasonText(e.target.value)}
-                placeholder="e.g. AC broken, awaiting maintenance"
-                className="w-full mt-1 bg-[var(--bg-primary)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none resize-none"
-              />
-              <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => setRoomStatusReasonFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
-                  Cancel
-                </button>
-                <button
-                  onClick={handleConfirmRoomStatusReason}
-                  disabled={!roomStatusReasonText.trim()}
-                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Confirm
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
+        {roomStatusReasonModal}
 
         {/* Action Log Detail - every entry here is by definition a local-only
             change (there's nowhere to write these back to while MEWS is
