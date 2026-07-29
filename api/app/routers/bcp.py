@@ -397,6 +397,7 @@ async def create_action_log(payload: dict = Body(...)):
         "room": payload.get("room", ""),
         "action": payload.get("action", ""),
         "detail": payload.get("detail", ""),
+        "reason": payload.get("reason"),
         "userEmail": payload.get("user_email", ""),
     }
     try:

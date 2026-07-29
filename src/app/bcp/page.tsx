@@ -114,6 +114,10 @@ interface OfflineAction {
   room: string;
   action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Reg Card Saved";
   detail: string;
+  // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
+  // own field, not folded into detail's text, so the Action Log Detail page
+  // can show it as its own labeled row.
+  reason?: string;
   // Who was signed in when this action was logged - filled in automatically
   // by logOfflineAction from the current Supabase Auth session, not passed
   // by callers, so it can never be forgotten/inconsistent per call site.
@@ -744,6 +748,7 @@ export default function BcpPage() {
           room: entry.room,
           action: entry.action,
           detail: entry.detail,
+          reason: entry.reason,
           user_email: currentUserEmail,
         }),
       });
@@ -970,8 +975,14 @@ export default function BcpPage() {
     }).catch(() => {
       /* logOfflineAction below still records the intent even if this write failed */
     });
-    const detail = `Room ${room}: ${previousStatus} -> ${newStatus}${reason ? ` (${reason})` : ""}`;
-    logOfflineAction({ at: new Date().toISOString(), guest: "-", room, action: "Room Status", detail });
+    logOfflineAction({
+      at: new Date().toISOString(),
+      guest: "-",
+      room,
+      action: "Room Status",
+      detail: `Room ${room}: ${previousStatus} -> ${newStatus}`,
+      reason,
+    });
   };
 
   // OutOfService/OutOfOrder require a typed reason before the change is
@@ -2194,6 +2205,12 @@ export default function BcpPage() {
                 <div className="font-bold">{selectedLogEntry.action}</div>
                 <div className="text-[var(--text-primary)]/50">Detail</div>
                 <div>{selectedLogEntry.detail}</div>
+                {selectedLogEntry.reason && (
+                  <>
+                    <div className="text-[var(--text-primary)]/50">Reason</div>
+                    <div>{selectedLogEntry.reason}</div>
+                  </>
+                )}
                 <div className="text-[var(--text-primary)]/50">User</div>
                 <div>{selectedLogEntry.userEmail || "-"}</div>
               </div>
