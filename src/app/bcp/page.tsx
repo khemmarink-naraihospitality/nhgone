@@ -388,6 +388,10 @@ export default function BcpPage() {
   // survives a device change and doesn't reset at midnight the way the old
   // localStorage-per-day version did.
   const [roomStatusOverrides, setRoomStatusOverrides] = useState<Record<string, string>>({});
+  // The typed reason behind an OutOfService/OutOfOrder status (see the
+  // required-reason modal below) - shown on the room's own card underneath
+  // the status dropdown. Absent for any other status.
+  const [roomStatusReasons, setRoomStatusReasons] = useState<Record<string, string>>({});
   // Which room a reservation is actually in right now, per Chg Room -
   // persisted in bcp_room_changes, keyed by (property, reservation_number).
   // Applied transparently in frontDeskRows below so every place that reads
@@ -916,6 +920,7 @@ export default function BcpPage() {
   useEffect(() => {
     if (!snapshot?.property) {
       setRoomStatusOverrides({});
+      setRoomStatusReasons({});
       setRoomChangeOverrides({});
       return;
     }
@@ -924,9 +929,18 @@ export default function BcpPage() {
       try {
         const res = await fetch(`/api/bcp/room-status?${params.toString()}`);
         const result = await res.json();
-        setRoomStatusOverrides(result.status === "success" ? result.data || {} : {});
+        const data: Record<string, { status: string; reason?: string | null }> = result.status === "success" ? result.data || {} : {};
+        const statuses: Record<string, string> = {};
+        const reasons: Record<string, string> = {};
+        for (const [room, info] of Object.entries(data)) {
+          statuses[room] = info.status;
+          if (info.reason) reasons[room] = info.reason;
+        }
+        setRoomStatusOverrides(statuses);
+        setRoomStatusReasons(reasons);
       } catch {
         setRoomStatusOverrides({});
+        setRoomStatusReasons({});
       }
     })();
     (async () => {
@@ -943,10 +957,16 @@ export default function BcpPage() {
   const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string, reason?: string) => {
     if (!snapshot?.property || newStatus === previousStatus) return;
     setRoomStatusOverrides((prev) => ({ ...prev, [room]: newStatus }));
+    setRoomStatusReasons((prev) => {
+      if (reason) return { ...prev, [room]: reason };
+      const next = { ...prev };
+      delete next[room];
+      return next;
+    });
     fetch("/api/bcp/room-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ property_name: snapshot.property, room, status: newStatus }),
+      body: JSON.stringify({ property_name: snapshot.property, room, status: newStatus, reason: reason || null }),
     }).catch(() => {
       /* logOfflineAction below still records the intent even if this write failed */
     });
@@ -1877,6 +1897,9 @@ export default function BcpPage() {
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
+                      {roomStatusReasons[rm.room] && (
+                        <div className="text-[11px] text-[var(--text-primary)]/70 italic">{roomStatusReasons[rm.room]}</div>
+                      )}
                     </div>
                   );
                 })}

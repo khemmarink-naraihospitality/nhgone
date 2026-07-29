@@ -254,21 +254,23 @@ async def get_reg_card(property_name: str = Query(...), reservation_number: str 
 @router.get("/room-status")
 async def get_room_status_overrides(property_name: str = Query(...)):
     """
-    Housekeeping status per room (Inspected/Clean/Dirty/OutOfOrder), set from
-    the Rooms (HK) tab. Was localStorage-only, keyed by property+date, so it
-    was invisible on another device and silently reset every midnight - a
-    room's physical condition isn't a "per day" concept, so this is keyed by
-    (property, room) only and just holds whatever the latest status is,
-    permanently, until changed again.
+    Housekeeping status per room (Inspected/Clean/Dirty/OutOfService/
+    OutOfOrder), set from the Rooms (HK) tab. Was localStorage-only, keyed by
+    property+date, so it was invisible on another device and silently reset
+    every midnight - a room's physical condition isn't a "per day" concept,
+    so this is keyed by (property, room) only and just holds whatever the
+    latest status is, permanently, until changed again. reason is only ever
+    non-null for OutOfService/OutOfOrder (see the frontend's required-reason
+    modal) and is cleared whenever the room moves to any other status.
     """
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
         res = sync_service.supabase.table("bcp_room_status_overrides") \
-            .select("room, status") \
+            .select("room, status, reason") \
             .eq("property", property_name) \
             .execute()
-        return {"status": "success", "data": {r["room"]: r["status"] for r in (res.data or [])}}
+        return {"status": "success", "data": {r["room"]: {"status": r["status"], "reason": r.get("reason")} for r in (res.data or [])}}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -287,6 +289,7 @@ async def set_room_status_override(payload: dict = Body(...)):
             "property": property_name,
             "room": room,
             "status": new_status,
+            "reason": payload.get("reason"),
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="property,room").execute()
         return {"status": "success"}
