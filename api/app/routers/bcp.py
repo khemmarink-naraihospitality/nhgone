@@ -30,11 +30,25 @@ async def get_live_snapshot(property_name: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-async def capture_snapshot(property_name: str) -> str:
+def _floor_to_5min(dt: datetime) -> str:
+    floored = dt.replace(minute=(dt.minute // 5) * 5, second=0, microsecond=0)
+    return floored.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+async def capture_snapshot(property_name: str, captured_at_override: Optional[str] = None) -> str:
     """Builds + stores one snapshot, prunes history to SNAPSHOTS_KEPT, and
-    returns the captured_utc timestamp."""
+    returns the captured_utc timestamp.
+
+    captured_at_override lets the automatic 5-minute cron (see
+    capture_all_bcp_snapshots below) stamp every property captured in the
+    same cycle with one shared, floored-to-5-minutes timestamp instead of
+    each property's own actual completion time. Left unset (as the manual
+    "Capture Now" button does), the real completion time is used, which is
+    correct there since a manual click isn't part of the interval schedule.
+    """
     snapshot = await sync_service.get_bcp_snapshot(property_name)
-    captured = snapshot["captured_utc"]
+    captured = captured_at_override or snapshot["captured_utc"]
+    snapshot["captured_utc"] = captured
     sync_service.supabase.table("bcp_snapshots").insert({
         "property": property_name,
         "captured_at": captured,
@@ -64,6 +78,15 @@ async def capture_all_bcp_snapshots():
     concurrent full data sync for that property - can't overlap with the
     next 5-minute tick; that property is just skipped this cycle and
     retried on the next one.
+
+    Properties are captured sequentially, each with its own real MEWS API
+    round-trips, so by the time this loop reaches the last property its
+    actual completion time can be a couple of minutes past when the cycle
+    started - stamping captured_at with each one's own completion time (as
+    this used to) landed on odd minutes like :01/:06 instead of :00/:05, and
+    scattered property-to-property within the same logical cycle. Computing
+    one shared, floored-to-5-minutes timestamp up front and passing it to
+    every capture_snapshot call in this cycle fixes both.
     """
     try:
         props = sync_service.supabase.table("property_api_settings") \
@@ -71,6 +94,7 @@ async def capture_all_bcp_snapshots():
     except Exception as e:
         print(f"BCP capture: failed to list properties: {e}")
         return
+    cycle_captured_at = _floor_to_5min(datetime.now(timezone.utc))
     for p in props.data or []:
         prop_id = p.get("id")
         try:
@@ -84,7 +108,7 @@ async def capture_all_bcp_snapshots():
             print(f"BCP capture: lock error for {p['property_name']}: {lock_err}")
             continue
         try:
-            await capture_snapshot(p["property_name"])
+            await capture_snapshot(p["property_name"], captured_at_override=cycle_captured_at)
         except Exception as e:
             print(f"BCP capture failed for {p['property_name']}: {e}")
             try:
