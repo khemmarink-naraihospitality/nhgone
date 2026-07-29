@@ -1907,6 +1907,7 @@ export default function BcpPage() {
                           {label}{logSortArrow(key)}
                         </th>
                       ))}
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50"></th>
                       <th
                         onClick={() => handleLogSort("checked")}
                         className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 text-center cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
@@ -1918,7 +1919,7 @@ export default function BcpPage() {
                   <tbody>
                     {displayedActions.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                        <td colSpan={8} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                           {logSearch ? "No matching actions." : "No actions logged yet."}
                         </td>
                       </tr>
@@ -1939,6 +1940,14 @@ export default function BcpPage() {
                         <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
                         <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
                         <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
+                        <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => setSelectedLogEntry(a)}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                          >
+                            Detail
+                          </button>
+                        </td>
                         <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
