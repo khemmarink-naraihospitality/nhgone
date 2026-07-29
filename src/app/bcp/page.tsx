@@ -1722,7 +1722,7 @@ export default function BcpPage() {
                       {!room.is_child && (
                         <>
                           <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[effectiveRoomState(room)] || "bg-slate-300"}`} title={effectiveRoomState(room)}></span>
-                          <span className="underline decoration-1 underline-offset-2">{room.room}</span>
+                          <span>{room.room}</span>
                         </>
                       )}
                     </div>
