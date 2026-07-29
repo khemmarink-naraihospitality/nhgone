@@ -100,7 +100,7 @@ interface SnapshotMeta {
   captured_at: string;
 }
 
-type MainTab = "timeline" | "reservations" | "rooms" | "logs";
+type MainTab = "timeline" | "rooms" | "logs";
 
 type ReservationSortKey = "status" | "guest" | "dates" | "room" | "category";
 
@@ -344,6 +344,13 @@ export default function BcpPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
+  // Reservations used to be a 4th tab alongside Timeline/Rooms/Logs, but the
+  // reservation table stayed expanded by default whichever of those 3 was
+  // active - now its own collapsed-by-default section (same show/hide
+  // pattern as CollapsibleSection above) sitting independently above
+  // whichever of the 3 tabs is showing, not part of the mutually-exclusive
+  // tab switch at all.
+  const [reservationsOpen, setReservationsOpen] = useState(false);
   // Reservations tab search (name/room/confirmation #) and sortable column
   // headers - client-side only, since frontDeskRows is already the full
   // day's list in memory.
@@ -1580,7 +1587,6 @@ export default function BcpPage() {
                     ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
                     ["rooms", "Rooms (HK)"],
                     ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
-                    ["reservations", `Reservations (${frontDeskRows.length})`],
                   ] as [MainTab, string][]
                 ).map(([t, label]) => (
                   <button
@@ -1596,15 +1602,6 @@ export default function BcpPage() {
                   </button>
                 ))}
               </div>
-              {mainTab === "reservations" && (
-                <input
-                  type="text"
-                  value={reservationSearch}
-                  onChange={(e) => setReservationSearch(e.target.value)}
-                  placeholder="Search name, room, or confirmation # (incl. travel agency)"
-                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
-                />
-              )}
               {mainTab === "rooms" && (
                 <input
                   type="text"
@@ -1779,7 +1776,20 @@ export default function BcpPage() {
               </div>
             )}
 
-            {mainTab === "reservations" && (
+            <CollapsibleSection
+              label={`Reservations (${frontDeskRows.length})`}
+              open={reservationsOpen}
+              onToggle={() => setReservationsOpen((v) => !v)}
+            >
+              <div className="no-print flex justify-end mb-3">
+                <input
+                  type="text"
+                  value={reservationSearch}
+                  onChange={(e) => setReservationSearch(e.target.value)}
+                  placeholder="Search name, room, or confirmation # (incl. travel agency)"
+                  className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                />
+              </div>
               <div className="no-print bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[900px]">
                   <thead>
@@ -1873,7 +1883,7 @@ export default function BcpPage() {
                   </tbody>
                 </table>
               </div>
-            )}
+            </CollapsibleSection>
 
             {mainTab === "rooms" && (
               <>
