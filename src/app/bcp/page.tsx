@@ -634,7 +634,8 @@ export default function BcpPage() {
           ({ r }) =>
             r.guest.toLowerCase().includes(q) ||
             r.room.toLowerCase().includes(q) ||
-            r.number.toLowerCase().includes(q)
+            r.number.toLowerCase().includes(q) ||
+            (r.travel_agency_confirmation_number || "").toLowerCase().includes(q)
         )
       : frontDeskRows;
     const { key, dir } = reservationSort;
@@ -1473,7 +1474,7 @@ export default function BcpPage() {
                   type="text"
                   value={reservationSearch}
                   onChange={(e) => setReservationSearch(e.target.value)}
-                  placeholder="Search name, room, or confirmation #"
+                  placeholder="Search name, room, or confirmation # (incl. travel agency)"
                   className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                 />
               )}
