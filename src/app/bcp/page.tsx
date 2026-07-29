@@ -784,6 +784,17 @@ export default function BcpPage() {
   const latestActionFor = (number: string) => actions.find((a) => a.reservationNumber === number && !a.checked);
   const unresolvedActionsCount = actions.filter((a) => !a.checked).length;
 
+  // Chronological sequence number (1 = the very first action ever logged,
+  // increasing up to the most recent) - fixed to creation order regardless
+  // of whatever sort/filter the table's currently displaying, since actions
+  // itself is always server-ordered created_at desc (newest first), so the
+  // entry at index i has sequence number (actions.length - i).
+  const actionSeqNo = useMemo(() => {
+    const map = new Map<string, number>();
+    actions.forEach((a, i) => map.set(a.id, actions.length - i));
+    return map;
+  }, [actions]);
+
   const displayedActions = useMemo(() => {
     const q = logSearch.trim().toLowerCase();
     const filtered = q
@@ -1923,6 +1934,7 @@ export default function BcpPage() {
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                      <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 whitespace-nowrap">No.</th>
                       {(
                         [
                           ["time", "Time"],
@@ -1953,7 +1965,7 @@ export default function BcpPage() {
                   <tbody>
                     {displayedActions.length === 0 && (
                       <tr>
-                        <td colSpan={8} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                        <td colSpan={9} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                           {logSearch ? "No matching actions." : "No actions logged yet."}
                         </td>
                       </tr>
@@ -1968,6 +1980,7 @@ export default function BcpPage() {
                             : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
                         }`}
                       >
+                        <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
                         <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
                         <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
                         <td className="p-3 px-4 text-[13px]">{a.room}</td>
