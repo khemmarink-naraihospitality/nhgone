@@ -270,8 +270,10 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
 // Overriding one here persists to our own database (see
 // bcp_room_status_overrides / roomStatusOverrides below) but is NEVER sent
 // to MEWS - there's nothing live to write it back to while MEWS is down,
-// which is the entire premise of this tab.
-const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfOrder"] as const;
+// which is the entire premise of this tab. OutOfService/OutOfOrder require
+// a typed reason (see roomStatusReasonFor below) before they're applied.
+const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfService", "OutOfOrder"] as const;
+const ROOM_STATUS_REQUIRES_REASON = new Set(["OutOfService", "OutOfOrder"]);
 const ROOM_STATUS_CARD_CLS: Record<string, string> = {
   Clean: "bg-sky-50 border-sky-200",
   Inspected: "bg-emerald-50 border-emerald-200",
@@ -938,7 +940,7 @@ export default function BcpPage() {
     })();
   }, [snapshot?.property]);
 
-  const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string) => {
+  const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string, reason?: string) => {
     if (!snapshot?.property || newStatus === previousStatus) return;
     setRoomStatusOverrides((prev) => ({ ...prev, [room]: newStatus }));
     fetch("/api/bcp/room-status", {
@@ -948,7 +950,29 @@ export default function BcpPage() {
     }).catch(() => {
       /* logOfflineAction below still records the intent even if this write failed */
     });
-    logOfflineAction({ at: new Date().toISOString(), guest: "-", room, action: "Room Status", detail: `Room ${room}: ${previousStatus} -> ${newStatus}` });
+    const detail = `Room ${room}: ${previousStatus} -> ${newStatus}${reason ? ` (${reason})` : ""}`;
+    logOfflineAction({ at: new Date().toISOString(), guest: "-", room, action: "Room Status", detail });
+  };
+
+  // OutOfService/OutOfOrder require a typed reason before the change is
+  // actually applied - selecting one from the dropdown opens this instead
+  // of calling handleRoomStatusChange directly; every other status still
+  // applies immediately, same as before.
+  const [roomStatusReasonFor, setRoomStatusReasonFor] = useState<{ room: string; previousStatus: string; newStatus: string } | null>(null);
+  const [roomStatusReasonText, setRoomStatusReasonText] = useState("");
+  const handleRoomStatusSelect = (room: string, previousStatus: string, newStatus: string) => {
+    if (ROOM_STATUS_REQUIRES_REASON.has(newStatus)) {
+      setRoomStatusReasonFor({ room, previousStatus, newStatus });
+      setRoomStatusReasonText("");
+    } else {
+      handleRoomStatusChange(room, previousStatus, newStatus);
+    }
+  };
+  const handleConfirmRoomStatusReason = () => {
+    if (!roomStatusReasonFor || !roomStatusReasonText.trim()) return;
+    handleRoomStatusChange(roomStatusReasonFor.room, roomStatusReasonFor.previousStatus, roomStatusReasonFor.newStatus, roomStatusReasonText.trim());
+    setRoomStatusReasonFor(null);
+    setRoomStatusReasonText("");
   };
 
   const matchedGuestProfile = useMemo(() => {
@@ -1846,7 +1870,7 @@ export default function BcpPage() {
                       {rm.occupant && <div className="text-[11px] text-[var(--text-primary)]/70 truncate">{rm.occupant}</div>}
                       <select
                         value={effectiveState}
-                        onChange={(e) => handleRoomStatusChange(rm.room, effectiveState, e.target.value)}
+                        onChange={(e) => handleRoomStatusSelect(rm.room, effectiveState, e.target.value)}
                         className="mt-2 w-full bg-white border border-black/10 px-2 py-1.5 text-[12px] font-bold text-[var(--text-primary)] cursor-pointer focus:outline-none"
                       >
                         {ROOM_STATUS_OPTIONS.map((opt) => (
@@ -2079,6 +2103,38 @@ export default function BcpPage() {
                 </button>
                 <button onClick={handleChgRoomSave} className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity">
                   Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {roomStatusReasonFor && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRoomStatusReasonFor(null)}>
+            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="font-display text-xl mb-1">Reason Required</div>
+              <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
+                Room {roomStatusReasonFor.room} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
+              </div>
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Reason</label>
+              <textarea
+                autoFocus
+                rows={3}
+                value={roomStatusReasonText}
+                onChange={(e) => setRoomStatusReasonText(e.target.value)}
+                placeholder="e.g. AC broken, awaiting maintenance"
+                className="w-full mt-1 bg-[var(--bg-primary)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none resize-none"
+              />
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => setRoomStatusReasonFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleConfirmRoomStatusReason}
+                  disabled={!roomStatusReasonText.trim()}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Confirm
                 </button>
               </div>
             </div>
