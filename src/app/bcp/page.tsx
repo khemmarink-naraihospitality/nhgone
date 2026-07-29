@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -112,7 +112,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Reg Card Saved";
+  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -163,7 +163,12 @@ function fmtRr3Date(isoUtc: string): string {
   return `${String(d.getUTCDate()).padStart(2, "0")}/${RR3_MONTH_ABBR[d.getUTCMonth()]}/${d.getUTCFullYear()}`;
 }
 
-function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData {
+// roomNumberDisplay lets the caller (the component, where the display-name
+// override lives) pass in the room number as the user actually sees it -
+// this function is module-level, outside the component, so it can't reach
+// roomNumberOverrides/effectiveRoomNumber itself. Falls back to r.room
+// (the raw MEWS number) if not given.
+function buildRegCardTokens(r: ReservationRow, hotelName: string, roomNumberDisplay?: string): Rr3TokenData {
   const nameParts = (r.guest || "").trim().split(/\s+/);
   const fmtTimeOnly = (iso: string) => {
     if (!iso) return "";
@@ -175,7 +180,7 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string): Rr3TokenData 
     FirstName: nameParts[0] || "",
     LastName: nameParts.slice(1).join(" "),
     ReservationsNumber: r.number,
-    RoomNumber: r.room,
+    RoomNumber: roomNumberDisplay ?? r.room,
     CheckIn: fmtRr3Date(r.check_in),
     CheckInTime: fmtTimeOnly(r.check_in),
     CheckOut: fmtRr3Date(r.check_out),
@@ -368,6 +373,10 @@ export default function BcpPage() {
   const [headerOpen, setHeaderOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomRow | null>(null);
+  // Draft text for the Room Properties page's editable Number field - kept
+  // as its own local state (like Chg Room's newRoomValue) rather than
+  // writing straight into roomNumberOverrides on every keystroke.
+  const [roomNumberDraft, setRoomNumberDraft] = useState("");
   const [showManagePage, setShowManagePage] = useState(false);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
@@ -415,6 +424,18 @@ export default function BcpPage() {
   // view badge, Rooms (HK) card) so changing it in one place is reflected
   // everywhere immediately, not just on the Rooms (HK) card itself.
   const effectiveRoomState = (room: { room: string; state: string }) => roomStatusOverrides[room.room] || room.state;
+  // Display-only room number override - persisted in
+  // bcp_room_number_overrides, keyed by the ORIGINAL MEWS room number
+  // (never the renamed value), so every other override that keys by room
+  // number (status, reason, chg-room, action-log matching) keeps working
+  // unchanged after a rename. Applied purely at display time everywhere a
+  // room number shows on screen (Timeline, Rooms (HK), Reservations, Room
+  // Properties, Reg Card) - never used for lookups/matching itself.
+  const [roomNumberOverrides, setRoomNumberOverrides] = useState<Record<string, string>>({});
+  const effectiveRoomNumber = useCallback((room: string) => roomNumberOverrides[room] || room, [roomNumberOverrides]);
+  useEffect(() => {
+    setRoomNumberDraft(selectedRoom ? effectiveRoomNumber(selectedRoom.room) : "");
+  }, [selectedRoom, effectiveRoomNumber]);
   // Action Logs tab - clicking a logged row opens its own Detail view.
   const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
 
@@ -649,8 +670,10 @@ export default function BcpPage() {
   const displayedHousekeepingRows = useMemo(() => {
     const q = roomSearch.trim().toLowerCase();
     if (!q) return housekeepingRows;
-    return housekeepingRows.filter((rm) => rm.room.toLowerCase().includes(q) || rm.occupant.toLowerCase().includes(q));
-  }, [housekeepingRows, roomSearch]);
+    return housekeepingRows.filter(
+      (rm) => rm.room.toLowerCase().includes(q) || effectiveRoomNumber(rm.room).toLowerCase().includes(q) || rm.occupant.toLowerCase().includes(q)
+    );
+  }, [housekeepingRows, roomSearch, effectiveRoomNumber]);
 
   const frontDeskRows = useMemo(() => {
     if (!snapshot?.reservations) return [];
@@ -681,6 +704,7 @@ export default function BcpPage() {
           ({ r }) =>
             r.guest.toLowerCase().includes(q) ||
             r.room.toLowerCase().includes(q) ||
+            effectiveRoomNumber(r.room).toLowerCase().includes(q) ||
             r.number.toLowerCase().includes(q) ||
             (r.travel_agency_confirmation_number || "").toLowerCase().includes(q)
         )
@@ -696,14 +720,14 @@ export default function BcpPage() {
         case "dates":
           return sign * a.r.check_in.localeCompare(b.r.check_in);
         case "room":
-          return sign * a.r.room.localeCompare(b.r.room, undefined, { numeric: true });
+          return sign * effectiveRoomNumber(a.r.room).localeCompare(effectiveRoomNumber(b.r.room), undefined, { numeric: true });
         case "category":
           return sign * (a.r.category || "").localeCompare(b.r.category || "");
         default:
           return 0;
       }
     });
-  }, [frontDeskRows, reservationSearch, reservationSort]);
+  }, [frontDeskRows, reservationSearch, reservationSort, effectiveRoomNumber]);
 
   const handleReservationSort = (key: ReservationSortKey) => {
     setReservationSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -809,6 +833,7 @@ export default function BcpPage() {
           (a) =>
             a.guest.toLowerCase().includes(q) ||
             a.room.toLowerCase().includes(q) ||
+            effectiveRoomNumber(a.room).toLowerCase().includes(q) ||
             a.action.toLowerCase().includes(q) ||
             a.detail.toLowerCase().includes(q) ||
             (a.userEmail || "").toLowerCase().includes(q)
@@ -823,7 +848,7 @@ export default function BcpPage() {
         case "guest":
           return sign * a.guest.localeCompare(b.guest);
         case "room":
-          return sign * a.room.localeCompare(b.room, undefined, { numeric: true });
+          return sign * effectiveRoomNumber(a.room).localeCompare(effectiveRoomNumber(b.room), undefined, { numeric: true });
         case "action":
           return sign * a.action.localeCompare(b.action);
         case "detail":
@@ -836,7 +861,7 @@ export default function BcpPage() {
           return 0;
       }
     });
-  }, [actions, logSearch, logSort]);
+  }, [actions, logSearch, logSort, effectiveRoomNumber]);
 
   const handleLogSort = (key: ActionLogSortKey) => {
     setLogSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -848,9 +873,9 @@ export default function BcpPage() {
   };
 
   const handleCheckIn = (r: ReservationRow) =>
-    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${r.room}` });
+    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${effectiveRoomNumber(r.room)}` });
   const handleCheckOut = (r: ReservationRow) =>
-    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check Out", detail: `Room ${r.room}` });
+    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check Out", detail: `Room ${effectiveRoomNumber(r.room)}` });
   const handleChgRoomSave = () => {
     if (!chgRoomFor || !newRoomValue.trim() || !snapshot?.property) return;
     const newRoom = newRoomValue.trim();
@@ -860,7 +885,7 @@ export default function BcpPage() {
       guest: chgRoomFor.guest,
       room: chgRoomFor.room,
       action: "Chg Room",
-      detail: `${chgRoomFor.room} -> ${newRoom}`,
+      detail: `${effectiveRoomNumber(chgRoomFor.room)} -> ${newRoom}`,
     });
     setRoomChangeOverrides((prev) => ({ ...prev, [chgRoomFor.number]: newRoom }));
     fetch("/api/bcp/room-changes", {
@@ -945,6 +970,7 @@ export default function BcpPage() {
       setRoomStatusOverrides({});
       setRoomStatusReasons({});
       setRoomChangeOverrides({});
+      setRoomNumberOverrides({});
       return;
     }
     const params = new URLSearchParams({ property_name: snapshot.property });
@@ -975,6 +1001,15 @@ export default function BcpPage() {
         setRoomChangeOverrides({});
       }
     })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/room-numbers?${params.toString()}`);
+        const result = await res.json();
+        setRoomNumberOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setRoomNumberOverrides({});
+      }
+    })();
   }, [snapshot?.property]);
 
   const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string, reason?: string) => {
@@ -1000,6 +1035,32 @@ export default function BcpPage() {
       action: "Room Status",
       detail: `Room ${room}: ${previousStatus} -> ${newStatus}`,
       reason,
+    });
+  };
+
+  // Renames how a room's number is DISPLAYED everywhere (Timeline, Rooms
+  // (HK), Reservations, Reg Card, this page) without touching `room` (the
+  // original MEWS number), which stays the key every other override
+  // (status, reason, chg-room, action-log matching) is keyed by.
+  const handleRoomNumberChange = (room: string, newDisplayNumber: string) => {
+    if (!snapshot?.property) return;
+    const trimmed = newDisplayNumber.trim();
+    const previousDisplay = effectiveRoomNumber(room);
+    if (!trimmed || trimmed === previousDisplay) return;
+    setRoomNumberOverrides((prev) => ({ ...prev, [room]: trimmed }));
+    fetch("/api/bcp/room-numbers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_name: snapshot.property, room, display_number: trimmed }),
+    }).catch(() => {
+      /* logOfflineAction below still records the intent even if this write failed */
+    });
+    logOfflineAction({
+      at: new Date().toISOString(),
+      guest: "-",
+      room,
+      action: "Room Number",
+      detail: `Room ${previousDisplay}: renamed to ${trimmed}`,
     });
   };
 
@@ -1107,7 +1168,7 @@ export default function BcpPage() {
   const handleSpaceSearch = () => {
     const query = spaceSearch.trim().toLowerCase();
     if (!query || !snapshot) return;
-    const match = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query));
+    const match = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query) || effectiveRoomNumber(r.room).toLowerCase().includes(query));
     if (!match) return;
     setHighlightedRoom(match.room);
     scrollToRoom(match.room);
@@ -1123,7 +1184,7 @@ export default function BcpPage() {
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="font-display text-xl mb-1">Reason Required</div>
         <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
-          Room {roomStatusReasonFor.room} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
+          Room {effectiveRoomNumber(roomStatusReasonFor.room)} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
         </div>
         <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Reason</label>
         <textarea
@@ -1180,7 +1241,7 @@ export default function BcpPage() {
               <button onClick={() => setSelectedRoom(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
               </button>
-              <h1 className="font-display text-4xl text-[var(--text-primary)]">{room.room}</h1>
+              <h1 className="font-display text-4xl text-[var(--text-primary)]">{effectiveRoomNumber(room.room)}</h1>
             </div>
             <button
               disabled
@@ -1204,7 +1265,15 @@ export default function BcpPage() {
               <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Number</div>
-                  <div className={fieldBoxCls}>{room.room}</div>
+                  <input
+                    value={roomNumberDraft}
+                    onChange={(e) => setRoomNumberDraft(e.target.value)}
+                    onBlur={() => handleRoomNumberChange(room.room, roomNumberDraft)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                    }}
+                    className={`${fieldBoxCls} w-full focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                  />
                 </div>
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Floor number</div>
@@ -1385,7 +1454,7 @@ export default function BcpPage() {
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <span className="font-bold text-[13px]">
-                    {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{res.room}
+                    {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{effectiveRoomNumber(res.room)}
                   </span>
                   {typeof res.room_locked === "boolean" && (
                     <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${res.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
@@ -1420,7 +1489,7 @@ export default function BcpPage() {
                 {res.category && detailRow("Requested category", res.category)}
                 {detailRow("Assigned space", (
                   <span className="inline-flex items-center gap-1.5">
-                    <span className="font-bold">{res.room || "-"}</span>
+                    <span className="font-bold">{res.room ? effectiveRoomNumber(res.room) : "-"}</span>
                     {selectedRoomInfo && (
                       <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[effectiveRoomState(selectedRoomInfo)] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
                         {effectiveRoomState(selectedRoomInfo)}
@@ -1762,14 +1831,14 @@ export default function BcpPage() {
                       key={"parentcol" + room.room + i}
                       ref={room.is_child ? undefined : (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
                       onClick={room.is_child ? undefined : () => setSelectedRoom(room)}
-                      title={!room.is_child ? (room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`) : undefined}
+                      title={!room.is_child ? (room.category ? `Room ${effectiveRoomNumber(room.room)}\n${room.category}` : `Room ${effectiveRoomNumber(room.room)}`) : undefined}
                       className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${!room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       {!room.is_child && (
                         <>
                           <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[effectiveRoomState(room)] || "bg-slate-300"}`} title={effectiveRoomState(room)}></span>
-                          <span>{room.room}</span>
+                          <span>{effectiveRoomNumber(room.room)}</span>
                         </>
                       )}
                     </div>
@@ -1779,14 +1848,14 @@ export default function BcpPage() {
                       key={"childcol" + room.room + i}
                       ref={room.is_child ? (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); } : undefined}
                       onClick={room.is_child ? () => setSelectedRoom(room) : undefined}
-                      title={room.is_child ? (room.category ? `Room ${room.room}\n${room.category}` : `Room ${room.room}`) : undefined}
+                      title={room.is_child ? (room.category ? `Room ${effectiveRoomNumber(room.room)}\n${room.category}` : `Room ${effectiveRoomNumber(room.room)}`) : undefined}
                       className={`sticky left-[98px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 3, gridRow: i + 2 }}
                     >
                       {room.is_child && (
                         <>
                           <span className={`w-2 h-2 rounded-full shrink-0 ${ROOM_DOT_CLS[effectiveRoomState(room)] || "bg-slate-300"}`} title={effectiveRoomState(room)}></span>
-                          <span>{room.room}</span>
+                          <span>{effectiveRoomNumber(room.room)}</span>
                         </>
                       )}
                     </div>
@@ -1894,7 +1963,7 @@ export default function BcpPage() {
                           <td className="p-3 px-4 align-top text-[12px] text-[var(--text-primary)]/80 whitespace-nowrap">
                             {fmtDateOnly(r.check_in)} – {fmtDateOnly(r.check_out)}
                           </td>
-                          <td className="p-3 px-4 align-top text-[13px] font-bold text-[var(--text-primary)]">{r.room}</td>
+                          <td className="p-3 px-4 align-top text-[13px] font-bold text-[var(--text-primary)]">{effectiveRoomNumber(r.room)}</td>
                           <td className="p-3 px-4 align-top text-[12px] text-[var(--text-primary)]/70">{r.category || "-"}</td>
                           <td className="p-3 px-4 align-top">
                             <div className="flex flex-wrap gap-2">
@@ -1920,7 +1989,7 @@ export default function BcpPage() {
                                 </button>
                               )}
                               <button
-                                onClick={() => { setChgRoomFor(r); setNewRoomValue(r.room); }}
+                                onClick={() => { setChgRoomFor(r); setNewRoomValue(effectiveRoomNumber(r.room)); }}
                                 className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity"
                               >
                                 Chg Room
@@ -1958,7 +2027,7 @@ export default function BcpPage() {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-xl font-display text-[var(--text-primary)]">{rm.room}</div>
+                        <div className="text-xl font-display text-[var(--text-primary)]">{effectiveRoomNumber(rm.room)}</div>
                         {lastRoomLog && (
                           <button
                             onClick={() => setSelectedLogEntry(lastRoomLog)}
@@ -2043,7 +2112,7 @@ export default function BcpPage() {
                         <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
                         <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
                         <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
-                        <td className="p-3 px-4 text-[13px]">{a.room}</td>
+                        <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
                         <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
                         <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
                         <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
@@ -2102,8 +2171,8 @@ export default function BcpPage() {
                   {housekeepingRows.map((r, i) => (
                     <tr key={r.room + i}>
                       <td className="p-2 px-3 text-[13px]">{r.floor || "-"}</td>
-                      <td className="p-2 px-3 text-[13px] font-bold">{r.room}</td>
-                      <td className="p-2 px-3 text-[13px]">{roomStatusOverrides[r.room] || r.state}</td>
+                      <td className="p-2 px-3 text-[13px] font-bold">{effectiveRoomNumber(r.room)}</td>
+                      <td className="p-2 px-3 text-[13px]">{effectiveRoomState(r)}</td>
                       <td className="p-2 px-3 text-[13px]">{r.occupant || "-"}</td>
                       <td className="p-2 px-3 text-[13px]">{r.arriving || "-"}</td>
                       <td className="p-2 px-3 text-[13px]">{r.departing || "-"}</td>
@@ -2129,7 +2198,7 @@ export default function BcpPage() {
             className="hidden print:block"
             dangerouslySetInnerHTML={{
               __html: renderRr3Template(rr3Template, {
-                ...buildRegCardTokens(regCardFor, snapshot?.property || ""),
+                ...buildRegCardTokens(regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                 GuestSignatureDataUrl: guestSignature || undefined,
               }),
             }}
@@ -2177,7 +2246,7 @@ export default function BcpPage() {
                 <div
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
-                      ...buildRegCardTokens(regCardFor, snapshot?.property || ""),
+                      ...buildRegCardTokens(regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                       GuestSignatureDataUrl: guestSignature || undefined,
                     }),
                   }}
@@ -2201,7 +2270,7 @@ export default function BcpPage() {
           <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setChgRoomFor(null)}>
             <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
               <div className="font-display text-xl mb-1">Change Room</div>
-              <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">{chgRoomFor.guest} — currently in {chgRoomFor.room}</div>
+              <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">{chgRoomFor.guest} — currently in {effectiveRoomNumber(chgRoomFor.room)}</div>
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">New Room Number</label>
               <input
                 autoFocus
@@ -2243,7 +2312,7 @@ export default function BcpPage() {
                 <div className="text-[var(--text-primary)]/50">Guest</div>
                 <div>{selectedLogEntry.guest || "-"}</div>
                 <div className="text-[var(--text-primary)]/50">Room</div>
-                <div className="font-bold">{selectedLogEntry.room}</div>
+                <div className="font-bold">{effectiveRoomNumber(selectedLogEntry.room)}</div>
                 <div className="text-[var(--text-primary)]/50">Action</div>
                 <div className="font-bold">{selectedLogEntry.action}</div>
                 <div className="text-[var(--text-primary)]/50">Detail</div>
@@ -2357,7 +2426,7 @@ export default function BcpPage() {
                       >
                         <div className="flex items-center gap-2">
                           <div className={`font-bold ${selectedRoomInfo ? "underline decoration-1 underline-offset-2" : ""}`}>
-                            {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room || "-"}
+                            {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room ? effectiveRoomNumber(selectedReservation.room) : "-"}
                           </div>
                           {typeof selectedReservation.room_locked === "boolean" && (
                             <span

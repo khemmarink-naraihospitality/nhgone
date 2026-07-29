@@ -341,6 +341,50 @@ async def set_room_change_override(payload: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/room-numbers")
+async def get_room_number_overrides(property_name: str = Query(...)):
+    """
+    Display-only room number override, applied wherever a room number is
+    shown to the user (Timeline, Rooms (HK), Reservations, Reg Card, etc.).
+    Deliberately separate from room-changes/room-status above: the ORIGINAL
+    MEWS room number keeps being used as the key for every other override
+    (status, reason, chg-room, action-log matching) - renaming a room's
+    display label here can never orphan or break those lookups, since
+    nothing else is keyed by the renamed value.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_room_number_overrides") \
+            .select("room, display_number") \
+            .eq("property", property_name) \
+            .execute()
+        return {"status": "success", "data": {r["room"]: r["display_number"] for r in (res.data or [])}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room-numbers")
+async def set_room_number_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    room = payload.get("room")
+    display_number = payload.get("display_number")
+    if not property_name or not room or not display_number:
+        raise HTTPException(status_code=400, detail="property_name, room, and display_number are required")
+    try:
+        sync_service.supabase.table("bcp_room_number_overrides").upsert({
+            "property": property_name,
+            "room": room,
+            "display_number": display_number,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,room").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _action_log_row_to_json(row: dict) -> dict:
     blob = (row.get("data") or {}).get("blob", "")
     fields = json.loads(encryption_service.decrypt(blob)) if blob else {}
