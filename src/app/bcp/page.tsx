@@ -262,9 +262,10 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
 };
 
 // Manually adjustable HK status options for the Rooms (HK) card grid.
-// Overriding one here is purely local (see roomStatusOverrides below) and
-// is NEVER sent to MEWS - there's nothing live to write it back to while
-// MEWS is down, which is the entire premise of this tab.
+// Overriding one here persists to our own database (see
+// bcp_room_status_overrides / roomStatusOverrides below) but is NEVER sent
+// to MEWS - there's nothing live to write it back to while MEWS is down,
+// which is the entire premise of this tab.
 const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfOrder"] as const;
 const ROOM_STATUS_CARD_CLS: Record<string, string> = {
   Clean: "bg-emerald-50 border-emerald-200",
@@ -373,10 +374,19 @@ export default function BcpPage() {
   const [regCardSaveResult, setRegCardSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
-  // Rooms (HK) tab - housekeeping status is editable locally the same way,
-  // for the same reason: MEWS is down, so there's nowhere real to send a
-  // status change. Keyed by room number, per property+date.
+  // Rooms (HK) tab - housekeeping status can't be written back to MEWS
+  // (it's down), but unlike Check In/Check Out this is a real durable
+  // current-state value, not just an audit-trail entry - persisted in
+  // bcp_room_status_overrides, keyed by (property, room) only, so it
+  // survives a device change and doesn't reset at midnight the way the old
+  // localStorage-per-day version did.
   const [roomStatusOverrides, setRoomStatusOverrides] = useState<Record<string, string>>({});
+  // Which room a reservation is actually in right now, per Chg Room -
+  // persisted in bcp_room_changes, keyed by (property, reservation_number).
+  // Applied transparently in frontDeskRows below so every place that reads
+  // r.room (the table, sort, search, the detail panel, Reg Card tokens)
+  // automatically shows the current room without each needing its own fix.
+  const [roomChangeOverrides, setRoomChangeOverrides] = useState<Record<string, string>>({});
   // Action Logs tab - clicking a logged row opens its own Detail view.
   const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
 
@@ -618,10 +628,19 @@ export default function BcpPage() {
     if (!snapshot?.reservations) return [];
     const today = snapshot.date;
     return snapshot.reservations
-      .map((r) => ({ r, status: frontDeskStatus(r, today) }))
+      .map((raw) => {
+        // Chg Room's override is applied here, once, so every downstream
+        // consumer of r.room (this table, sort, search, the detail panel,
+        // Reg Card tokens, Check In/Out log details) automatically shows
+        // the room the guest is actually in instead of the stale
+        // pre-change one, without each needing its own fix.
+        const overriddenRoom = roomChangeOverrides[raw.number];
+        const r = overriddenRoom && overriddenRoom !== raw.room ? { ...raw, room: overriddenRoom } : raw;
+        return { r, status: frontDeskStatus(r, today) };
+      })
       .filter((x): x is { r: ReservationRow; status: { label: string; cls: string } } => x.status !== null)
       .sort((a, b) => a.r.room.localeCompare(b.r.room, undefined, { numeric: true }));
-  }, [snapshot]);
+  }, [snapshot, roomChangeOverrides]);
 
   // Search matches guest (covers first/last name together) + room + the
   // reservation/confirmation number; sort is column-driven via the table
@@ -793,14 +812,23 @@ export default function BcpPage() {
   const handleCheckOut = (r: ReservationRow) =>
     logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check Out", detail: `Room ${r.room}` });
   const handleChgRoomSave = () => {
-    if (!chgRoomFor || !newRoomValue.trim()) return;
+    if (!chgRoomFor || !newRoomValue.trim() || !snapshot?.property) return;
+    const newRoom = newRoomValue.trim();
     logOfflineAction({
       at: new Date().toISOString(),
       reservationNumber: chgRoomFor.number,
       guest: chgRoomFor.guest,
       room: chgRoomFor.room,
       action: "Chg Room",
-      detail: `${chgRoomFor.room} -> ${newRoomValue.trim()}`,
+      detail: `${chgRoomFor.room} -> ${newRoom}`,
+    });
+    setRoomChangeOverrides((prev) => ({ ...prev, [chgRoomFor.number]: newRoom }));
+    fetch("/api/bcp/room-changes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_name: snapshot.property, reservation_number: chgRoomFor.number, new_room: newRoom }),
+    }).catch(() => {
+      /* logOfflineAction above still records the intent even if this write failed */
     });
     setChgRoomFor(null);
     setNewRoomValue("");
@@ -872,26 +900,42 @@ export default function BcpPage() {
     }
   };
 
-  const roomStatusKey = snapshot ? `bcp_room_status_${snapshot.property}_${snapshot.date}` : null;
   useEffect(() => {
-    if (!roomStatusKey) {
+    if (!snapshot?.property) {
       setRoomStatusOverrides({});
+      setRoomChangeOverrides({});
       return;
     }
-    try {
-      const raw = localStorage.getItem(roomStatusKey);
-      setRoomStatusOverrides(raw ? JSON.parse(raw) : {});
-    } catch {
-      setRoomStatusOverrides({});
-    }
-  }, [roomStatusKey]);
+    const params = new URLSearchParams({ property_name: snapshot.property });
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/room-status?${params.toString()}`);
+        const result = await res.json();
+        setRoomStatusOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setRoomStatusOverrides({});
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/room-changes?${params.toString()}`);
+        const result = await res.json();
+        setRoomChangeOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setRoomChangeOverrides({});
+      }
+    })();
+  }, [snapshot?.property]);
 
   const handleRoomStatusChange = (room: string, previousStatus: string, newStatus: string) => {
-    if (!roomStatusKey || newStatus === previousStatus) return;
-    setRoomStatusOverrides((prev) => {
-      const next = { ...prev, [room]: newStatus };
-      localStorage.setItem(roomStatusKey, JSON.stringify(next));
-      return next;
+    if (!snapshot?.property || newStatus === previousStatus) return;
+    setRoomStatusOverrides((prev) => ({ ...prev, [room]: newStatus }));
+    fetch("/api/bcp/room-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ property_name: snapshot.property, room, status: newStatus }),
+    }).catch(() => {
+      /* logOfflineAction below still records the intent even if this write failed */
     });
     logOfflineAction({ at: new Date().toISOString(), guest: "-", room, action: "Room Status", detail: `Room ${room}: ${previousStatus} -> ${newStatus}` });
   };

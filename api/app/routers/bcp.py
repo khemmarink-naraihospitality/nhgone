@@ -163,12 +163,14 @@ async def save_reg_card(payload: dict = Body(...)):
     """
     Persists a signed Reg Card (guest details + the on-screen SignaturePad
     capture) from the Reservations tab's Reg Card modal. Unlike Check In/
-    Check Out/Chg Room/Room Status - which only mimic an action MEWS would
-    otherwise record, so they stay purely local and get flagged red as
-    "not synced" - a signed Reg Card is new data our own system is creating
-    from scratch. There's nothing to reconcile against MEWS, so it's fine
-    (and the whole point) to actually store it: it's the front desk's own
-    durable proof of who signed while MEWS was down.
+    Check Out - which only mimic an action MEWS would otherwise record, so
+    they stay purely local and get flagged red as "not synced" - a signed
+    Reg Card is new data our own system is creating from scratch. There's
+    nothing to reconcile against MEWS, so it's fine (and the whole point) to
+    actually store it: it's the front desk's own durable proof of who signed
+    while MEWS was down. Room Status and Chg Room also persist their current
+    value now (see room-status/room-changes below) - only Check In/Check Out
+    remain pure audit-trail-only with no visible effect on the displayed data.
     """
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
@@ -221,6 +223,93 @@ async def get_reg_card(property_name: str = Query(...), reservation_number: str 
         blob = (res.data[0].get("data") or {}).get("blob", "")
         record = json.loads(encryption_service.decrypt(blob))
         return {"status": "success", "data": record}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/room-status")
+async def get_room_status_overrides(property_name: str = Query(...)):
+    """
+    Housekeeping status per room (Inspected/Clean/Dirty/OutOfOrder), set from
+    the Rooms (HK) tab. Was localStorage-only, keyed by property+date, so it
+    was invisible on another device and silently reset every midnight - a
+    room's physical condition isn't a "per day" concept, so this is keyed by
+    (property, room) only and just holds whatever the latest status is,
+    permanently, until changed again.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_room_status_overrides") \
+            .select("room, status") \
+            .eq("property", property_name) \
+            .execute()
+        return {"status": "success", "data": {r["room"]: r["status"] for r in (res.data or [])}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room-status")
+async def set_room_status_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    room = payload.get("room")
+    new_status = payload.get("status")
+    if not property_name or not room or not new_status:
+        raise HTTPException(status_code=400, detail="property_name, room, and status are required")
+    try:
+        sync_service.supabase.table("bcp_room_status_overrides").upsert({
+            "property": property_name,
+            "room": room,
+            "status": new_status,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,room").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/room-changes")
+async def get_room_change_overrides(property_name: str = Query(...)):
+    """
+    Which room a reservation is currently actually in, per the front desk's
+    own Chg Room actions - MEWS is down, so this can't be written back there,
+    but leaving it as an audit-trail-only Action Log entry meant the
+    Reservations table kept showing the stale pre-change room with no visible
+    indication anything had moved. Keyed by (property, reservation_number),
+    holding the latest room permanently until changed again (or the
+    reservation naturally ages out of the snapshot window).
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_room_changes") \
+            .select("reservation_number, new_room") \
+            .eq("property", property_name) \
+            .execute()
+        return {"status": "success", "data": {r["reservation_number"]: r["new_room"] for r in (res.data or [])}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room-changes")
+async def set_room_change_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    new_room = payload.get("new_room")
+    if not property_name or not reservation_number or not new_room:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number, and new_room are required")
+    try:
+        sync_service.supabase.table("bcp_room_changes").upsert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "new_room": new_room,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,reservation_number").execute()
+        return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
