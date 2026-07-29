@@ -2146,35 +2146,33 @@ export default function BcpPage() {
             down), so the Status field always reads the same thing: it's a
             record of something updated in our system, not MEWS. */}
         {selectedLogEntry && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSelectedLogEntry(null)}>
-            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-red-200 max-w-sm w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
-              <div className="p-6">
-                <div className="font-display text-xl mb-1">Action Log Detail</div>
-                <div className="grid grid-cols-2 gap-y-2 text-[13px] mt-4">
-                  <div className="text-[var(--text-primary)]/50">Status</div>
-                  <div className="font-bold text-red-700">● Updated in our system</div>
-                  <div className="text-[var(--text-primary)]/50">Time</div>
-                  <div>{fmtDateTime(selectedLogEntry.at)}</div>
-                  <div className="text-[var(--text-primary)]/50">Guest</div>
-                  <div>{selectedLogEntry.guest || "-"}</div>
-                  <div className="text-[var(--text-primary)]/50">Room</div>
-                  <div className="font-bold">{selectedLogEntry.room}</div>
-                  <div className="text-[var(--text-primary)]/50">Action</div>
-                  <div className="font-bold">{selectedLogEntry.action}</div>
-                  <div className="text-[var(--text-primary)]/50">Detail</div>
-                  <div>{selectedLogEntry.detail}</div>
-                  <div className="text-[var(--text-primary)]/50">User</div>
-                  <div>{selectedLogEntry.userEmail || "-"}</div>
-                </div>
-                <div className="mt-6 pt-4 border-t border-[var(--text-primary)]/10 text-[10px] text-[var(--text-primary)]/40 italic">
-                  Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
-                </div>
+          <div className="no-print fixed inset-0 z-50 bg-[var(--paper)] text-[var(--text-primary)] flex flex-col">
+            <div className="flex-1 overflow-y-auto p-10 md:p-16">
+              <div className="font-display text-4xl md:text-5xl mb-8">Action Log Detail</div>
+              <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
+                <div className="text-[var(--text-primary)]/50">Status</div>
+                <div className="font-bold text-red-700">● Updated in our system</div>
+                <div className="text-[var(--text-primary)]/50">Time</div>
+                <div>{fmtDateTime(selectedLogEntry.at)}</div>
+                <div className="text-[var(--text-primary)]/50">Guest</div>
+                <div>{selectedLogEntry.guest || "-"}</div>
+                <div className="text-[var(--text-primary)]/50">Room</div>
+                <div className="font-bold">{selectedLogEntry.room}</div>
+                <div className="text-[var(--text-primary)]/50">Action</div>
+                <div className="font-bold">{selectedLogEntry.action}</div>
+                <div className="text-[var(--text-primary)]/50">Detail</div>
+                <div>{selectedLogEntry.detail}</div>
+                <div className="text-[var(--text-primary)]/50">User</div>
+                <div>{selectedLogEntry.userEmail || "-"}</div>
               </div>
-              <div className="flex justify-end gap-2 p-4 border-t border-[var(--text-primary)]/10">
-                <button onClick={() => setSelectedLogEntry(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
-                  Close
-                </button>
+              <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-2xl">
+                Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
               </div>
+            </div>
+            <div className="flex justify-end gap-2 p-6 border-t border-[var(--text-primary)]/10">
+              <button onClick={() => setSelectedLogEntry(null)} className="px-6 py-3 text-[12px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                Close
+              </button>
             </div>
           </div>
         )}
