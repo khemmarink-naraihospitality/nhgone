@@ -3208,23 +3208,9 @@ export default function BcpPage() {
           return (
             <div className="no-print fixed inset-0 z-50 bg-[var(--paper)] text-[var(--text-primary)] flex flex-col">
               <div className="flex-1 overflow-y-auto p-10 md:p-16">
-                <div className="flex items-center justify-between gap-4 flex-wrap mb-6 max-w-5xl">
-                  <div className="font-display text-4xl md:text-5xl">Action Log Detail</div>
-                  {snap && actionGuest && (
-                    <button
-                      onClick={() => {
-                        handleOpenRegCard(snap, actionGuest);
-                        setSelectedLogEntry(null);
-                      }}
-                      title={`Open ${actionGuest.name || "this guest"}'s Reg Card`}
-                      className="shrink-0 px-4 py-2.5 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
-                    >
-                      Open Reg Card
-                    </button>
-                  )}
-                </div>
+                <div className="font-display text-4xl md:text-5xl mb-6 max-w-6xl">Action Log Detail</div>
 
-                <div className="flex items-center gap-6 border-b border-[var(--text-primary)]/10 mb-8 max-w-5xl overflow-x-auto">
+                <div className="flex items-center gap-6 border-b border-[var(--text-primary)]/10 mb-8 max-w-6xl overflow-x-auto">
                   {(["log", "properties", "guestProfile"] as const)
                     .filter((t) => t === "log" || !!snap)
                     .map((t) => (
@@ -3276,6 +3262,23 @@ export default function BcpPage() {
                         )}
                         <div className="text-[var(--text-primary)]/50">User</div>
                         <div>{entry.userEmail || "-"}</div>
+                        {snap && actionGuest && (
+                          <>
+                            <div className="text-[var(--text-primary)]/50">Reg Card</div>
+                            <div>
+                              <button
+                                onClick={() => {
+                                  handleOpenRegCard(snap, actionGuest);
+                                  setSelectedLogEntry(null);
+                                }}
+                                title={`Open ${actionGuest.name || "this guest"}'s Reg Card`}
+                                className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                              >
+                                Open Reg Card
+                              </button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
 
@@ -3287,7 +3290,7 @@ export default function BcpPage() {
                 )}
 
                 {logDetailTab === "properties" && snap && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl items-start">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-6xl items-start">
                     <div className="flex flex-col gap-6">
                       <div>
                         <div className="font-display text-xl mb-3">Notes</div>
@@ -3321,7 +3324,13 @@ export default function BcpPage() {
                     </div>
 
                     <div>
-                      <div className="font-display text-xl mb-4">Reservation</div>
+                      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+                        <div className="font-display text-xl">Reservations</div>
+                        <div className="flex gap-2">
+                          <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Create billing automation</button>
+                          <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Unlock</button>
+                        </div>
+                      </div>
                       <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 mb-5 flex items-center justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(snap.guest || "?")}</div>
@@ -3354,6 +3363,15 @@ export default function BcpPage() {
                         {snap.purpose && propRow("Booking purpose", snap.purpose)}
                         {snap.segment && propRow("Segment", snap.segment)}
                         {propRow("Guests", `${snap.adults} × Adult${snap.adults !== 1 ? "s" : ""}${snap.children ? `, ${snap.children} × Child${snap.children !== 1 ? "ren" : ""}` : ""}`)}
+                        {typeof snap.total_amount === "number" && (() => {
+                          const nights = Math.max(1, Math.round((new Date(snap.check_out).getTime() - new Date(snap.check_in).getTime()) / 86400000));
+                          return (
+                            <>
+                              {propRow("Avg. rate (nightly)", ((snap.rate_amount ?? 0) / nights).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                              {propRow("Avg. price with products (nightly)", (snap.total_amount / nights).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                            </>
+                          );
+                        })()}
                         {typeof snap.total_amount === "number" && propRow("Total amount", `${snap.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${snap.currency || ""}`)}
                         {typeof snap.total_amount_gross === "number" && propRow("Total amount (Gross)", snap.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
                         {snap.category && propRow("Requested category", snap.category)}
@@ -3711,7 +3729,7 @@ export default function BcpPage() {
                   );
                 })()}
 
-                <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-5xl">
+                <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-6xl">
                   Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
                 </div>
               </div>
