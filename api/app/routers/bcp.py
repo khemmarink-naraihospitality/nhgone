@@ -217,6 +217,11 @@ async def save_reg_card(payload: dict = Body(...)):
         "adults": payload.get("adults", 0),
         "children": payload.get("children", 0),
         "signature_data_url": payload.get("signature_data_url", ""),
+        # Required front-desk-entered field - MEWS's customer profile often
+        # has no Occupation at all, and the printed form used to fall back to
+        # a fabricated default ("นักธุรกิจ") in that case; now it's whatever
+        # was actually typed in (pre-filled from MEWS when present).
+        "occupation": payload.get("occupation", ""),
         # ร.ร.๓ sections 1/2 (Place of Departure / Next Destination) - filled
         # in on the Reg Card screen before the guest signs so they're on the
         # printed form itself instead of left blank for hand-writing.

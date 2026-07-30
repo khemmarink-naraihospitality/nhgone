@@ -333,13 +333,14 @@ function buildRegCardTokens(
     NationalityName: guest.nationality_name || guest.nationality,
     IdentityCardNumber: guest.identity_card_number,
     PassportNumber: guest.passport_number,
-    // Print-safe defaults - ONLY for the printed form, so it never shows a
-    // literally blank Occupation/Address field. guest.occupation/
-    // guest.address_details themselves are the raw MEWS value (possibly
-    // empty) - the Guest Profile page shows those as-is and must never see
-    // these fallbacks, or it would display fabricated data as if MEWS had
-    // actually provided it.
-    Occupation: guest.occupation || "นักธุรกิจ",
+    // Print-safe default - ONLY for the printed form, so AddressDetails
+    // never shows literally blank. guest.address_details itself is the raw
+    // MEWS value (possibly empty) - the Guest Profile page shows it as-is
+    // and must never see this fallback, or it would display fabricated data
+    // as if MEWS had actually provided it. Occupation has no such fallback
+    // (see regCardOccupation) - it's a required field the front desk fills
+    // in themselves whenever MEWS doesn't have one, not guessed at.
+    Occupation: guest.occupation || "",
     AddressDetails: guest.address_details || guest.nationality_name || guest.nationality || "",
     Telephone: guest.phone,
     AlienBook: guest.alien_book,
@@ -596,6 +597,13 @@ export default function BcpPage() {
   const [regCardDepartureDetail, setRegCardDepartureDetail] = useState("");
   const [regCardDestinationOption, setRegCardDestinationOption] = useState<"current" | "other">("current");
   const [regCardDestinationDetail, setRegCardDestinationDetail] = useState("");
+  // Required field, unlike Departure/Destination above (which always have a
+  // default answer) - MEWS's own customer profile very often has no
+  // Occupation at all, and printing a fabricated "นักธุรกิจ" (businessman) in
+  // that case was misrepresenting data MEWS never actually provided.
+  // Pre-filled from MEWS when present (still editable/correctable), blank
+  // otherwise - Save/Print are disabled until the front desk types one in.
+  const [regCardOccupation, setRegCardOccupation] = useState("");
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
   // Rooms (HK) tab - housekeeping status can't be written back to MEWS
@@ -1202,7 +1210,7 @@ export default function BcpPage() {
   };
 
   const handleSaveRegCard = async () => {
-    if (!regCardFor || !snapshot) return;
+    if (!regCardFor || !snapshot || !regCardOccupation.trim()) return;
     const guest = regCardGuestFor || ownerGuestIdentity(regCardFor);
     setSavingRegCard(true);
     setRegCardSaveResult(null);
@@ -1226,6 +1234,7 @@ export default function BcpPage() {
           adults: regCardFor.adults,
           children: regCardFor.children,
           signature_data_url: guestSignature,
+          occupation: regCardOccupation,
           departure_option: regCardDepartureOption,
           departure_detail: regCardDepartureDetail,
           destination_option: regCardDestinationOption,
@@ -1354,6 +1363,7 @@ export default function BcpPage() {
     setRegCardDepartureDetail("");
     setRegCardDestinationOption("current");
     setRegCardDestinationDetail("");
+    setRegCardOccupation(g.occupation || "");
     if (!snapshot) return;
     try {
       const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number, mews_customer_id: g.mews_customer_id || "" });
@@ -1370,6 +1380,7 @@ export default function BcpPage() {
         if (result.data.departure_detail) setRegCardDepartureDetail(result.data.departure_detail);
         if (result.data.destination_option === "other") setRegCardDestinationOption("other");
         if (result.data.destination_detail) setRegCardDestinationDetail(result.data.destination_detail);
+        if (result.data.occupation) setRegCardOccupation(result.data.occupation);
       }
     } catch {
       /* no saved card yet, or fetch failed - start blank as before */
@@ -3050,6 +3061,7 @@ export default function BcpPage() {
             dangerouslySetInnerHTML={{
               __html: renderRr3Template(rr3Template, {
                 ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                Occupation: regCardOccupation,
                 DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
                 DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
                 DepartureDetail: regCardDepartureDetail,
@@ -3078,14 +3090,16 @@ export default function BcpPage() {
                 </button>
                 <button
                   onClick={handleSaveRegCard}
-                  disabled={savingRegCard}
+                  disabled={savingRegCard || !regCardOccupation.trim()}
+                  title={!regCardOccupation.trim() ? "Occupation is required" : undefined}
                   className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   {savingRegCard ? "Saving..." : "Save"}
                 </button>
                 <button
                   onClick={handlePrintRegCard}
-                  disabled={!rr3Template}
+                  disabled={!rr3Template || !regCardOccupation.trim()}
+                  title={!regCardOccupation.trim() ? "Occupation is required" : undefined}
                   className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Print
@@ -3096,6 +3110,11 @@ export default function BcpPage() {
                   {regCardSaveResult.ok ? "✓ " : "✕ "}{regCardSaveResult.message}
                 </span>
               )}
+              {!regCardOccupation.trim() && (
+                <span className="px-3 py-1.5 text-[11px] font-bold tracked-caps bg-black/50 rounded text-amber-300">
+                  Occupation is required before saving or printing
+                </span>
+              )}
             </div>
 
             <div className="flex justify-center py-10">
@@ -3104,6 +3123,7 @@ export default function BcpPage() {
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
                       ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                      Occupation: regCardOccupation,
                       DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
                       DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
                       DepartureDetail: regCardDepartureDetail,
@@ -3120,6 +3140,24 @@ export default function BcpPage() {
             </div>
 
             <div className="fixed bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px] max-h-[92vh] overflow-y-auto">
+              {/* Occupation - MEWS's own customer profile very often has no
+                  Occupation at all; printing a fabricated default in that
+                  case misrepresented data MEWS never provided (see
+                  buildRegCardTokens). A required field instead: pre-filled
+                  from MEWS when present, but always front-desk-editable, and
+                  Save/Print stay disabled until it's non-empty. */}
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1.5">
+                Occupation <span className="text-red-500">*</span>
+              </div>
+              <input
+                value={regCardOccupation}
+                onChange={(e) => setRegCardOccupation(e.target.value)}
+                placeholder="e.g. Businessman, Engineer, Student"
+                className={`w-full mb-3 px-2 py-1.5 text-[12px] border rounded focus:outline-none focus:border-black/40 ${
+                  regCardOccupation.trim() ? "border-black/15" : "border-red-300"
+                }`}
+              />
+
               {/* ร.ร.๓ sections 1/2 - filled in before the guest signs, so
                   they're captured on the same printed form (see the
                   <<Departure*>>/<<Destination*>> tokens in DEFAULT_RR3_TEMPLATE)
