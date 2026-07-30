@@ -1854,6 +1854,16 @@ class SyncService:
             extraction either way, just applied to a different Customer
             record, so a reservation's companions get full profiles too
             instead of just a bare name.
+
+            occupation/address_details are the RAW MEWS values only (empty
+            if MEWS has none) - the Guest Profile page shows exactly this,
+            and must never show anything MEWS didn't actually provide. The
+            Reg Card/RR3 print form's own print-safe defaults ("นักธุรกิจ"
+            for a blank occupation, nationality as a last-resort address so
+            the government form field isn't literally empty) are applied
+            separately, only at Reg Card token-build time in the frontend
+            (buildRegCardTokens) - never baked in here, or the Guest Profile
+            page would show fabricated data as if MEWS provided it.
             """
             identity_card_value = ""
             identity_card = c.get("IdentityCard")
@@ -1873,7 +1883,7 @@ class SyncService:
             elif (c.get("BirthPlace") or "").strip():
                 address_details = c.get("BirthPlace")
             else:
-                address_details = _rr3_country_name(c.get("NationalityCode"))
+                address_details = ""
             return {
                 "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
                 "nationality": c.get("NationalityCode", ""),
@@ -1882,7 +1892,7 @@ class SyncService:
                 "phone": c.get("Phone", ""),
                 "identity_card_number": identity_card_value,
                 "passport_number": passport.get("Number", ""),
-                "occupation": c.get("Occupation") or "นักธุรกิจ",
+                "occupation": c.get("Occupation", ""),
                 "address_details": address_details,
                 "alien_book": c.get("IdentityDocumentSupportNumber", ""),
             }

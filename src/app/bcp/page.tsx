@@ -243,8 +243,13 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string, roomNumberDisp
     NationalityName: r.nationality_name || r.nationality,
     IdentityCardNumber: r.identity_card_number,
     PassportNumber: r.passport_number,
-    Occupation: r.occupation,
-    AddressDetails: r.address_details,
+    // Print-safe defaults - ONLY for the printed form, so it never shows a
+    // literally blank Occupation/Address field. r.occupation/r.address_details
+    // themselves are the raw MEWS value (possibly empty) - the Guest Profile
+    // page shows those as-is and must never see these fallbacks, or it would
+    // display fabricated data as if MEWS had actually provided it.
+    Occupation: r.occupation || "นักธุรกิจ",
+    AddressDetails: r.address_details || r.nationality_name || r.nationality || "",
     Telephone: r.phone,
     AlienBook: r.alien_book,
   };
