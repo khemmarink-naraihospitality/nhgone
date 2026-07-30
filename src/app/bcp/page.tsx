@@ -936,6 +936,34 @@ export default function BcpPage() {
     const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
     return latest?.action === "Check In";
   };
+
+  const roomStateFor = (roomNumber: string): string => {
+    const room = snapshot?.rooms.find((rm) => rm.room === roomNumber);
+    return room ? effectiveRoomState(room) : "";
+  };
+
+  // Mirrors MEWS's own "Please inspect room before check in" prompt - Check
+  // In on a Dirty room opens this instead of logging immediately, and only
+  // lets the front desk proceed once they've ticked "Make inspected" (which
+  // also flips the room's status to Inspected, same as ticking it would in
+  // MEWS). Any other status checks in immediately, unchanged.
+  const [checkInFor, setCheckInFor] = useState<ReservationRow | null>(null);
+  const [checkInMakeInspected, setCheckInMakeInspected] = useState(false);
+  const requestCheckIn = (r: ReservationRow) => {
+    if (roomStateFor(r.room) === "Dirty") {
+      setCheckInFor(r);
+      setCheckInMakeInspected(false);
+    } else {
+      handleCheckIn(r);
+    }
+  };
+  const handleConfirmCheckIn = () => {
+    if (!checkInFor || !checkInMakeInspected) return;
+    handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
+    handleCheckIn(checkInFor);
+    setCheckInFor(null);
+  };
+
   const handleChgRoomSave = () => {
     if (!chgRoomFor || !newRoomValue.trim() || !snapshot?.property) return;
     const newRoom = newRoomValue.trim();
@@ -1270,6 +1298,43 @@ export default function BcpPage() {
             className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // Mirrors MEWS's own Check In dialog for a Dirty room - "Check in" stays
+  // disabled until "Make inspected" is ticked, which both flips the room to
+  // Inspected and completes the check-in on confirm (see handleConfirmCheckIn).
+  const checkInDirtyModal = checkInFor && (
+    <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
+      <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="font-display text-xl mb-4">Check in</div>
+        <div className="text-[13px] mb-3">Please inspect room before check in</div>
+        <div className="flex items-center gap-2 mb-5">
+          <span className="font-bold text-[14px]">{effectiveRoomNumber(checkInFor.room)}</span>
+          <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS.Dirty}`}>Dirty</span>
+        </div>
+        <label className="flex items-center gap-2 text-[13px] cursor-pointer">
+          <input
+            type="checkbox"
+            checked={checkInMakeInspected}
+            onChange={(e) => setCheckInMakeInspected(e.target.checked)}
+            className="w-4 h-4"
+          />
+          Make inspected
+        </label>
+        <div className="flex justify-end items-center gap-4 mt-6">
+          <button onClick={() => setCheckInFor(null)} className="text-[12px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors">
+            Go back
+          </button>
+          <button
+            onClick={handleConfirmCheckIn}
+            disabled={!checkInMakeInspected}
+            className="px-5 py-2.5 text-[11px] font-bold tracked-caps bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Check in
           </button>
         </div>
       </div>
@@ -2040,7 +2105,7 @@ export default function BcpPage() {
                               </button>
                               {status.label === "Arrival" ? (
                                 <button
-                                  onClick={() => handleCheckIn(r)}
+                                  onClick={() => requestCheckIn(r)}
                                   className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-emerald-600 text-white hover:opacity-90 transition-opacity"
                                 >
                                   Check In
@@ -2360,6 +2425,7 @@ export default function BcpPage() {
         )}
 
         {roomStatusReasonModal}
+        {checkInDirtyModal}
 
         {/* Action Log Detail - every entry here is by definition a local-only
             change (there's nowhere to write these back to while MEWS is
@@ -2821,7 +2887,7 @@ export default function BcpPage() {
                   </button>
                 ) : (
                   <button
-                    onClick={() => handleCheckIn(selectedReservation)}
+                    onClick={() => requestCheckIn(selectedReservation)}
                     className="w-[30%] py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors"
                   >
                     Check In
