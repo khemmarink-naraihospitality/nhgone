@@ -3327,7 +3327,7 @@ export default function BcpPage() {
                 </div>
               </div>
                 </>
-              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4 flex gap-3">
+              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
                 <button
                   onClick={() => setShowManagePage(true)}
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
