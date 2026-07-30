@@ -54,6 +54,10 @@ interface GuestIdentity {
 
 interface ReservationRow {
   number: string;
+  // MEWS's own internal Id (a GUID, distinct from the human-readable
+  // number above) - needed as ServiceOrderId when adding a note via
+  // serviceOrderNotes/add (see handleAddReservationNote).
+  mews_reservation_id?: string;
   guest: string;
   first_name?: string;
   last_name?: string;
@@ -232,7 +236,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved";
+  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -537,6 +541,18 @@ export default function BcpPage() {
   // view's charge breakdown uses), since a guest has no bill of their own
   // independent of the stay they're attached to.
   const [guestProfileReservation, setGuestProfileReservation] = useState<ReservationRow | null>(null);
+
+  // Notes added to the currently-open reservation through our own system
+  // (permanent in bcp_reservation_notes, separate from bcp_snapshots) -
+  // shown merged with MEWS's own res.notes in the Manage view. The one BCP
+  // field that writes back into MEWS automatically once it's reachable
+  // again (see sync_pending_reservation_notes on the backend) - synced
+  // here just reflects whether that's already happened for display.
+  const [reservationNotes, setReservationNotes] = useState<
+    { id: string; text: string; created_at: string; created_by?: string; synced_to_mews: boolean }[]
+  >([]);
+  const [newNoteText, setNewNoteText] = useState("");
+  const [savingNote, setSavingNote] = useState(false);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -1176,6 +1192,68 @@ export default function BcpPage() {
       setRegCardSaveResult({ ok: false, message: err.message || "Save failed" });
     } finally {
       setSavingRegCard(false);
+    }
+  };
+
+  // Fetches our own notes for whichever reservation is currently open
+  // (slide-over or Manage page both set selectedReservation) - merged with
+  // MEWS's own res.notes for display in the Manage view.
+  useEffect(() => {
+    if (!selectedReservation || !snapshot?.property) {
+      setReservationNotes([]);
+      return;
+    }
+    const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: selectedReservation.number });
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/reservation-notes?${params.toString()}`);
+        const result = await res.json();
+        setReservationNotes(result.status === "success" ? result.data || [] : []);
+      } catch {
+        setReservationNotes([]);
+      }
+    })();
+  }, [selectedReservation?.number, snapshot?.property]);
+
+  // Adds a note permanently to our own system and queues it to be written
+  // into MEWS itself the next time a capture succeeds (see
+  // sync_pending_reservation_notes on the backend) - the one BCP field
+  // that writes back to MEWS automatically, and only ever as an addition.
+  const handleAddReservationNote = async () => {
+    if (!selectedReservation || !snapshot?.property || !newNoteText.trim() || !selectedReservation.mews_reservation_id) return;
+    const text = newNoteText.trim();
+    setSavingNote(true);
+    try {
+      const res = await fetch("/api/bcp/reservation-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: snapshot.property,
+          reservation_number: selectedReservation.number,
+          mews_reservation_id: selectedReservation.mews_reservation_id,
+          text,
+          user_email: currentUserEmail,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === "success" && result.data) {
+        setReservationNotes((prev) => [result.data, ...prev]);
+        setNewNoteText("");
+        logOfflineAction({
+          at: new Date().toISOString(),
+          reservationNumber: selectedReservation.number,
+          guest: selectedReservation.guest,
+          room: selectedReservation.room,
+          action: "Note Added",
+          detail: text,
+          reservationSnapshot: selectedReservation,
+          guestProfileSnapshot: findGuestProfile(selectedReservation),
+        });
+      }
+    } catch {
+      /* left in the textarea so the user can retry */
+    } finally {
+      setSavingNote(false);
     }
   };
 
@@ -2045,19 +2123,47 @@ export default function BcpPage() {
               <div>
                 <h2 className="font-display text-xl text-[var(--text-primary)] mb-3">Notes</h2>
                 <div className="flex flex-col gap-4">
-                  {res.notes.map((n, i) => (
-                    <div key={i}>
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="text-[11px] text-[var(--text-primary)]/50">Note ({n.type}), {fmtNoteTimestamp(n.created_utc)}</div>
-                        <svg className="w-4 h-4 text-[var(--text-primary)]/20 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                  {[
+                    ...res.notes.map((n) => ({ text: n.text, label: n.type, created: n.created_utc, ours: false, synced: false })),
+                    ...reservationNotes.map((n) => ({ text: n.text, label: "Front Desk", created: n.created_at, ours: true, synced: n.synced_to_mews })),
+                  ]
+                    .sort((a, b) => b.created.localeCompare(a.created))
+                    .map((n, i) => (
+                      <div key={i}>
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-[11px] text-[var(--text-primary)]/50">
+                            Note ({n.label}), {fmtNoteTimestamp(n.created)}
+                            {n.ours && (
+                              <span className={`ml-2 ${n.synced ? "text-emerald-600" : "text-amber-600"}`}>
+                                {n.synced ? "· synced to MEWS" : "· pending sync to MEWS"}
+                              </span>
+                            )}
+                          </div>
+                          <svg className="w-4 h-4 text-[var(--text-primary)]/20 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </div>
+                        <div className={`${fieldBoxCls} whitespace-pre-line`}>{n.text}</div>
                       </div>
-                      <div className={`${fieldBoxCls} whitespace-pre-line`}>{n.text}</div>
-                    </div>
-                  ))}
+                    ))}
                   <div>
                     <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Add note</div>
-                    <div className={`${fieldBoxCls} text-[var(--text-primary)]/30 italic min-h-[52px]`}>-</div>
-                    <button disabled title="No live connection to MEWS to manage this reservation from here" className={`mt-2 px-5 py-2 rounded-lg bg-blue-600 text-white text-[12px] font-bold ${disabledBtnCls}`}>OK</button>
+                    <textarea
+                      value={newNoteText}
+                      onChange={(e) => setNewNoteText(e.target.value)}
+                      placeholder="-"
+                      rows={2}
+                      className={`${fieldBoxCls} w-full min-h-[52px] resize-y focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                    />
+                    <button
+                      onClick={handleAddReservationNote}
+                      disabled={!newNoteText.trim() || savingNote || !res.mews_reservation_id}
+                      title={!res.mews_reservation_id ? "This snapshot predates the note feature - Capture Now to enable it" : undefined}
+                      className="mt-2 px-5 py-2 rounded-lg bg-blue-600 text-white text-[12px] font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                    >
+                      {savingNote ? "Saving..." : "OK"}
+                    </button>
+                    <div className="text-[10px] text-[var(--text-primary)]/40 italic mt-1">
+                      Saved to our system now, and written into MEWS automatically once it&apos;s back online.
+                    </div>
                   </div>
                 </div>
               </div>

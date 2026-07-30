@@ -2050,6 +2050,11 @@ class SyncService:
 
             return {
                 "number": res.get("Number", ""),
+                # MEWS's own internal Id (a GUID, distinct from the
+                # human-readable Number above) - needed as ServiceOrderId
+                # when pushing a locally-added note back into MEWS via
+                # serviceOrderNotes/add (see sync_pending_reservation_notes).
+                "mews_reservation_id": res.get("Id", ""),
                 "guest": guest_identity["name"],
                 "first_name": guest_identity["first_name"],
                 "last_name": guest_identity["last_name"],
@@ -2294,5 +2299,47 @@ class SyncService:
             "customers": customers,
             "payments": payments,
         }
+
+    async def sync_pending_reservation_notes(self, property_name: str):
+        """
+        Pushes every note added through our own system while MEWS was down
+        (bcp_reservation_notes, synced_to_mews = False) into MEWS itself via
+        serviceOrderNotes/add, then marks it synced. Called from
+        capture_snapshot right after a successful get_bcp_snapshot for the
+        same property - reaching that point already proves MEWS is
+        reachable, so there's no separate "is MEWS back up" check needed.
+
+        This is the one field in BCP that writes back to MEWS automatically,
+        per explicit instruction - and strictly an addition; nothing here
+        ever edits or deletes anything already in MEWS. A note that fails to
+        push (MEWS flaked again mid-sync) simply stays unsynced and is
+        retried on the next successful capture.
+        """
+        if not self.supabase:
+            return
+        try:
+            pending = self.supabase.table("bcp_reservation_notes") \
+                .select("id, mews_reservation_id, text") \
+                .eq("property", property_name) \
+                .eq("synced_to_mews", False) \
+                .execute()
+        except Exception as e:
+            logger.warning(f"BCP pending-notes lookup failed for {property_name}: {e}")
+            return
+        for row in (pending.data or []):
+            if not row.get("mews_reservation_id") or not row.get("text"):
+                continue
+            try:
+                await mews_client.post(
+                    "/api/connector/v1/serviceOrderNotes/add",
+                    {"ServiceOrderNotes": [{"ServiceOrderId": row["mews_reservation_id"], "Text": row["text"]}]},
+                    property_name=property_name,
+                )
+                self.supabase.table("bcp_reservation_notes").update({
+                    "synced_to_mews": True,
+                    "synced_at": datetime.now(timezone.utc).isoformat(),
+                }).eq("id", row["id"]).execute()
+            except Exception as e:
+                logger.warning(f"BCP note sync-to-MEWS failed for {property_name} note {row['id']}: {e}")
 
 sync_service = SyncService()

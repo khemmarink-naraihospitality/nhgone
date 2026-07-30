@@ -47,6 +47,11 @@ async def capture_snapshot(property_name: str, captured_at_override: Optional[st
     correct there since a manual click isn't part of the interval schedule.
     """
     snapshot = await sync_service.get_bcp_snapshot(property_name)
+    # MEWS is confirmed reachable at this point - flush any note added
+    # through our own system while it wasn't (see sync_pending_reservation_notes;
+    # the one field BCP writes back to MEWS automatically, strictly as an
+    # addition, never an edit/delete).
+    await sync_service.sync_pending_reservation_notes(property_name)
     captured = captured_at_override or snapshot["captured_utc"]
     snapshot["captured_utc"] = captured
     sync_service.supabase.table("bcp_snapshots").insert({
@@ -381,6 +386,61 @@ async def set_room_number_override(payload: dict = Body(...)):
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="property,room").execute()
         return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/reservation-notes")
+async def get_reservation_notes(property_name: str = Query(...), reservation_number: str = Query(...)):
+    """
+    Notes added to a reservation through our own system while MEWS may be
+    down - permanent (never pruned, unlike bcp_snapshots), shown merged
+    alongside MEWS's own serviceOrderNotes on the frontend. synced_to_mews
+    reflects whether sync_pending_reservation_notes has already pushed this
+    one into MEWS for real (see that function for the one-way, add-only
+    write-back this table exists to queue).
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_reservation_notes") \
+            .select("id, text, created_at, created_by, synced_to_mews") \
+            .eq("property", property_name) \
+            .eq("reservation_number", reservation_number) \
+            .order("created_at", desc=True) \
+            .execute()
+        return {"status": "success", "data": res.data or []}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/reservation-notes")
+async def add_reservation_note(payload: dict = Body(...)):
+    """
+    Adds a note permanently to our own system (separate from bcp_snapshots)
+    and queues it (synced_to_mews defaults False) to be written into MEWS
+    itself the next time a capture for this property succeeds - see
+    sync_pending_reservation_notes. This is the one BCP field that pushes
+    back to MEWS automatically, per explicit instruction, and only ever as
+    an addition - never an edit or delete of anything already in MEWS.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    mews_reservation_id = payload.get("mews_reservation_id")
+    text = (payload.get("text") or "").strip()
+    if not property_name or not reservation_number or not mews_reservation_id or not text:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number, mews_reservation_id, and text are required")
+    try:
+        res = sync_service.supabase.table("bcp_reservation_notes").insert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "mews_reservation_id": mews_reservation_id,
+            "text": text,
+            "created_by": payload.get("user_email"),
+        }).execute()
+        return {"status": "success", "data": res.data[0] if res.data else None}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
