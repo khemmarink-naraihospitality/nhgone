@@ -122,6 +122,15 @@ function ownerGuestIdentity(r: ReservationRow): GuestIdentity {
   };
 }
 
+// Every named guest on one reservation - the Owner first, then each
+// companion - used to populate the Guest Profile page's "Related guests"
+// box (MEWS's own equivalent lists other guests sharing the same
+// reservation) and to let clicking one of them navigate to their own
+// profile within the same fixed group, without recomputing it.
+function allReservationGuests(r: ReservationRow): GuestIdentity[] {
+  return [ownerGuestIdentity(r), ...(r.companions || [])];
+}
+
 // MEWS's BirthDate is a plain YYYY-MM-DD calendar date (no time component,
 // unlike check-in/out instants) - reformatted directly rather than through
 // the Bangkok +7h shift helpers used elsewhere, which would risk flipping
@@ -485,6 +494,12 @@ export default function BcpPage() {
   // set to that specific guest's GuestIdentity so each opens its own data,
   // not always the reservation's primary guest.
   const [selectedGuestProfile, setSelectedGuestProfile] = useState<GuestIdentity | null>(null);
+  // The fixed set of guests on the reservation selectedGuestProfile was
+  // opened from (Owner + companions, see allReservationGuests) - lets the
+  // Guest Profile page's "Related guests" box list "everyone else on this
+  // booking" and navigate between them without needing to reopen the
+  // reservation panel each time.
+  const [guestProfileGroup, setGuestProfileGroup] = useState<GuestIdentity[]>([]);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -1564,6 +1579,41 @@ export default function BcpPage() {
                   <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
                 )}
               </div>
+
+              {/* Other guests on the same reservation (MEWS's own
+                  equivalent lists guests it suggests might be related) -
+                  clicking one navigates within the same fixed group
+                  (guestProfileGroup) instead of needing to close this page
+                  and reopen the reservation panel. */}
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                <div className="font-display text-lg text-[var(--text-primary)] mb-3">Related guests</div>
+                {guestProfileGroup.filter((rg) => rg !== g).length > 0 ? (
+                  <div className="flex flex-col gap-3">
+                    {guestProfileGroup.filter((rg) => rg !== g).map((rg, i) => (
+                      <button key={i} onClick={() => setSelectedGuestProfile(rg)} className="flex items-center gap-3 text-left">
+                        <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                          {guestInitials(rg.name || "?")}
+                        </div>
+                        <span className="font-bold text-[13px] underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors">
+                          {rg.name || "(no name)"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                )}
+              </div>
+
+              {/* MEWS attaches uploaded scans/registration cards here - our
+                  snapshot never fetches file attachments at all (a
+                  different, much heavier endpoint than anything else the
+                  Timeline needs), so this is always empty rather than
+                  fabricating filenames MEWS never gave us. */}
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                <div className="font-display text-lg text-[var(--text-primary)] mb-3">Files</div>
+                <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+              </div>
             </div>
           </div>
 
@@ -2243,7 +2293,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
+                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
@@ -2941,7 +2991,11 @@ export default function BcpPage() {
                           </div>
                           <div>
                             <button
-                              onClick={() => setSelectedGuestProfile(ownerGuestIdentity(selectedReservation))}
+                              onClick={() => {
+                                const group = allReservationGuests(selectedReservation);
+                                setSelectedGuestProfile(group[0]);
+                                setGuestProfileGroup(group);
+                              }}
                               className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors"
                             >
                               {selectedReservation.guest || "(no name)"}
@@ -2956,7 +3010,11 @@ export default function BcpPage() {
                             {guestInitials(c.name || "?")}
                           </div>
                           <button
-                            onClick={() => setSelectedGuestProfile(c)}
+                            onClick={() => {
+                              const group = allReservationGuests(selectedReservation);
+                              setSelectedGuestProfile(group[i + 1]);
+                              setGuestProfileGroup(group);
+                            }}
                             className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left"
                           >
                             {c.name || "(no name)"}
