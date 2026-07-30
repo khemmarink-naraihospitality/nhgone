@@ -1934,11 +1934,17 @@ class SyncService:
                 identity_card_value = identity_cards[0].get("Number", "")
             passport = c.get("Passport") or {}
             cust_address = c.get("Address") or {}
-            addr_line1 = (cust_address.get("Line1") or "").strip()
-            addr_line2 = (cust_address.get("Line2") or "").strip()
-            if addr_line1 or addr_line2:
-                addr_parts = [cust_address.get("Line1"), cust_address.get("Line2"), cust_address.get("City"),
-                              cust_address.get("PostalCode"), cust_address.get("CountryCode")]
+            # MEWS's own Addresses table has separate Address/City/Country
+            # columns - a guest can have just a Country set with Address and
+            # City both blank (confirmed live: this exact guest's Address
+            # record has only CountryCode "VN", everything else null) and
+            # MEWS still shows that row rather than "No data available".
+            # Checking Line1/Line2 alone missed this - only counted as "no
+            # address" when actually MEWS had a country on file.
+            addr_country_name = _rr3_country_name(cust_address.get("CountryCode")) if cust_address.get("CountryCode") else ""
+            addr_parts = [cust_address.get("Line1"), cust_address.get("Line2"),
+                          cust_address.get("City"), cust_address.get("PostalCode"), addr_country_name]
+            if any(addr_parts):
                 address_details = " ".join(p for p in addr_parts if p)
             elif (c.get("BirthPlace") or "").strip():
                 address_details = c.get("BirthPlace")
