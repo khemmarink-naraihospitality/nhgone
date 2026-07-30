@@ -296,13 +296,24 @@ function fmtRr3Date(isoUtc: string): string {
   return `${String(d.getUTCDate()).padStart(2, "0")}/${RR3_MONTH_ABBR[d.getUTCMonth()]}/${d.getUTCFullYear()}`;
 }
 
-// roomNumberDisplay lets the caller (the component, where the display-name
-// override lives) pass in the room number as the user actually sees it -
-// this function is module-level, outside the component, so it can't reach
-// roomNumberOverrides/effectiveRoomNumber itself. Falls back to r.room
-// (the raw MEWS number) if not given.
-function buildRegCardTokens(r: ReservationRow, hotelName: string, roomNumberDisplay?: string): Rr3TokenData {
-  const nameParts = (r.guest || "").trim().split(/\s+/);
+// Split from ReservationRow so a Reg Card can be built for ANY guest on the
+// stay - the Owner or a companion - not just the reservation's own flat
+// fields (which are really just the Owner's GuestIdentity, repackaged; see
+// ownerGuestIdentity). roomNumberDisplay lets the caller (the component,
+// where the display-name override lives) pass in the room number as the
+// user actually sees it - this function is module-level, outside the
+// component, so it can't reach roomNumberOverrides/effectiveRoomNumber
+// itself. Falls back to stay.room (the raw MEWS number) if not given.
+function buildRegCardTokens(
+  guest: GuestIdentity,
+  stay: { number: string; room: string; check_in: string; check_out: string },
+  hotelName: string,
+  roomNumberDisplay?: string
+): Rr3TokenData {
+  // first_name/last_name are MEWS's own separate fields (see
+  // extract_guest_identity) - only split the combined name as a fallback,
+  // for the unlikely case a profile is missing them.
+  const nameParts = (guest.name || "").trim().split(/\s+/);
   const fmtTimeOnly = (iso: string) => {
     if (!iso) return "";
     const d = toBangkokDateTime(iso);
@@ -310,27 +321,28 @@ function buildRegCardTokens(r: ReservationRow, hotelName: string, roomNumberDisp
   };
   return {
     HotelName: hotelName,
-    FirstName: nameParts[0] || "",
-    LastName: nameParts.slice(1).join(" "),
-    ReservationsNumber: r.number,
-    RoomNumber: roomNumberDisplay ?? r.room,
-    CheckIn: fmtRr3Date(r.check_in),
-    CheckInTime: fmtTimeOnly(r.check_in),
-    CheckOut: fmtRr3Date(r.check_out),
-    CheckOutTime: fmtTimeOnly(r.check_out),
-    NationalityCode: r.nationality,
-    NationalityName: r.nationality_name || r.nationality,
-    IdentityCardNumber: r.identity_card_number,
-    PassportNumber: r.passport_number,
+    FirstName: guest.first_name || nameParts[0] || "",
+    LastName: guest.last_name || nameParts.slice(1).join(" "),
+    ReservationsNumber: stay.number,
+    RoomNumber: roomNumberDisplay ?? stay.room,
+    CheckIn: fmtRr3Date(stay.check_in),
+    CheckInTime: fmtTimeOnly(stay.check_in),
+    CheckOut: fmtRr3Date(stay.check_out),
+    CheckOutTime: fmtTimeOnly(stay.check_out),
+    NationalityCode: guest.nationality,
+    NationalityName: guest.nationality_name || guest.nationality,
+    IdentityCardNumber: guest.identity_card_number,
+    PassportNumber: guest.passport_number,
     // Print-safe defaults - ONLY for the printed form, so it never shows a
-    // literally blank Occupation/Address field. r.occupation/r.address_details
-    // themselves are the raw MEWS value (possibly empty) - the Guest Profile
-    // page shows those as-is and must never see these fallbacks, or it would
-    // display fabricated data as if MEWS had actually provided it.
-    Occupation: r.occupation || "นักธุรกิจ",
-    AddressDetails: r.address_details || r.nationality_name || r.nationality || "",
-    Telephone: r.phone,
-    AlienBook: r.alien_book,
+    // literally blank Occupation/Address field. guest.occupation/
+    // guest.address_details themselves are the raw MEWS value (possibly
+    // empty) - the Guest Profile page shows those as-is and must never see
+    // these fallbacks, or it would display fabricated data as if MEWS had
+    // actually provided it.
+    Occupation: guest.occupation || "นักธุรกิจ",
+    AddressDetails: guest.address_details || guest.nationality_name || guest.nationality || "",
+    Telephone: guest.phone,
+    AlienBook: guest.alien_book,
   };
 }
 
@@ -560,7 +572,12 @@ export default function BcpPage() {
   // to re-key into MEWS once it's back. Persisted per property+date so it
   // survives a refresh during a long outage.
   const [actions, setActions] = useState<OfflineAction[]>([]);
+  // regCardFor is the stay (dates/room/reservation number, shared by every
+  // guest on it) - regCardGuestFor is WHICH guest's own Reg Card is open
+  // (the Owner or a companion), since each has their own name/nationality/
+  // passport/etc and needs their own printed card and saved signature.
   const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
+  const [regCardGuestFor, setRegCardGuestFor] = useState<GuestIdentity | null>(null);
   // Captured on-screen at print time (SignaturePad), reset per guest. Not
   // persisted automatically - the front desk chooses to via the Save button,
   // which unlike Check In/Out/Chg Room/Room Status actually writes to
@@ -1152,6 +1169,7 @@ export default function BcpPage() {
 
   const handleSaveRegCard = async () => {
     if (!regCardFor || !snapshot) return;
+    const guest = regCardGuestFor || ownerGuestIdentity(regCardFor);
     setSavingRegCard(true);
     setRegCardSaveResult(null);
     try {
@@ -1161,8 +1179,12 @@ export default function BcpPage() {
         body: JSON.stringify({
           property_name: snapshot.property,
           reservation_number: regCardFor.number,
-          guest: regCardFor.guest,
-          nationality: regCardFor.nationality,
+          // Keyed by mews_customer_id, not just reservation_number - a
+          // reservation can have multiple guests (Owner + companions), each
+          // with their own signed card, sharing the same stay.
+          mews_customer_id: guest.mews_customer_id,
+          guest: guest.name,
+          nationality: guest.nationality,
           room: regCardFor.room,
           category: regCardFor.category,
           check_in: regCardFor.check_in,
@@ -1178,12 +1200,12 @@ export default function BcpPage() {
         logOfflineAction({
           at: new Date().toISOString(),
           reservationNumber: regCardFor.number,
-          guest: regCardFor.guest,
+          guest: guest.name,
           room: regCardFor.room,
           action: "Reg Card Saved",
           detail: guestSignature ? "Reg Card saved with signature" : "Reg Card saved (no signature)",
           reservationSnapshot: regCardFor,
-          guestProfileSnapshot: findGuestProfile(regCardFor),
+          guestProfileSnapshot: { name: guest.name, tags: [], nationality: guest.nationality, email: guest.email, phone: guest.phone, notes: "" },
         });
       } else {
         setRegCardSaveResult({ ok: false, message: result.message || result.detail || "Save failed" });
@@ -1193,6 +1215,27 @@ export default function BcpPage() {
     } finally {
       setSavingRegCard(false);
     }
+  };
+
+  // Chrome/Edge/Firefox's own "Save as PDF" destination in the print dialog
+  // defaults its suggested filename to document.title - set to "Booking No
+  // + guest name" right before printing (per explicit preference, over
+  // building a separate client-side PDF export) so a front desk saving the
+  // signed card gets a sensible filename without typing one, then restored
+  // once the dialog closes (afterprint fires either way - printed or
+  // cancelled) so it doesn't leak into the tab title afterwards.
+  const handlePrintRegCard = () => {
+    if (!regCardFor) return;
+    const guest = regCardGuestFor || ownerGuestIdentity(regCardFor);
+    const safeGuestName = (guest.name || "guest").replace(/[\\/:*?"<>|]/g, "").trim();
+    const originalTitle = document.title;
+    document.title = `${regCardFor.number}_${safeGuestName}`;
+    const restoreTitle = () => {
+      document.title = originalTitle;
+      window.removeEventListener("afterprint", restoreTitle);
+    };
+    window.addEventListener("afterprint", restoreTitle);
+    window.print();
   };
 
   // Fetches our own notes for whichever reservation is currently open
@@ -1258,15 +1301,20 @@ export default function BcpPage() {
   };
 
   // Reg Card button - restores a previously saved signature (if Save was
-  // already used for this reservation) instead of always starting blank,
-  // since save_reg_card persists it but had no matching read until now.
-  const handleOpenRegCard = async (r: ReservationRow) => {
+  // already used for this guest) instead of always starting blank, since
+  // save_reg_card persists it but had no matching read until now. guest
+  // defaults to the reservation's own Owner (matching the Reservations
+  // table's existing single-guest button) but any guest on the stay - a
+  // companion included - can open their own card.
+  const handleOpenRegCard = async (r: ReservationRow, guest?: GuestIdentity) => {
+    const g = guest || ownerGuestIdentity(r);
     setRegCardFor(r);
+    setRegCardGuestFor(g);
     setGuestSignature(null);
     setRegCardSaveResult(null);
     if (!snapshot) return;
     try {
-      const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number });
+      const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number, mews_customer_id: g.mews_customer_id || "" });
       const res = await fetch(`/api/bcp/reg-card?${params.toString()}`);
       const result = await res.json();
       if (result.status === "success" && result.data?.signature_data_url) {
@@ -2953,7 +3001,7 @@ export default function BcpPage() {
             className="hidden print:block"
             dangerouslySetInnerHTML={{
               __html: renderRr3Template(rr3Template, {
-                ...buildRegCardTokens(regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                 GuestSignatureDataUrl: guestSignature || undefined,
               }),
             }}
@@ -2971,7 +3019,7 @@ export default function BcpPage() {
           <div className="no-print fixed inset-0 z-50 overflow-auto" style={{ background: "#525659" }}>
             <div className="fixed top-4 right-4 z-10 flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                <button onClick={() => setRegCardFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
+                <button onClick={() => { setRegCardFor(null); setRegCardGuestFor(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
                   Close
                 </button>
                 <button
@@ -2982,7 +3030,7 @@ export default function BcpPage() {
                   {savingRegCard ? "Saving..." : "Save"}
                 </button>
                 <button
-                  onClick={() => window.print()}
+                  onClick={handlePrintRegCard}
                   disabled={!rr3Template}
                   className="px-4 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -3001,7 +3049,7 @@ export default function BcpPage() {
                 <div
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
-                      ...buildRegCardTokens(regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                      ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                       GuestSignatureDataUrl: guestSignature || undefined,
                     }),
                   }}
@@ -3346,23 +3394,37 @@ export default function BcpPage() {
                             <span className="text-[10px] text-[var(--text-primary)]/50"> Owner</span>
                           </div>
                         </div>
+                        <button
+                          onClick={() => handleOpenRegCard(selectedReservation, ownerGuestIdentity(selectedReservation))}
+                          className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                        >
+                          Reg Card
+                        </button>
                       </div>
                       {selectedReservation.companions?.map((c, i) => (
-                        <div key={i} className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
-                            {guestInitials(c.name || "?")}
+                        <div key={i} className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                              {guestInitials(c.name || "?")}
+                            </div>
+                            <button
+                              onClick={() => {
+                                const group = allReservationGuests(selectedReservation);
+                                setSelectedGuestProfile(group[i + 1]);
+                                setGuestProfileGroup(group);
+                                setGuestProfileReservation(selectedReservation);
+                                setGuestProfileTab("profile");
+                              }}
+                              className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left truncate"
+                            >
+                              {c.name || "(no name)"}
+                            </button>
                           </div>
                           <button
-                            onClick={() => {
-                              const group = allReservationGuests(selectedReservation);
-                              setSelectedGuestProfile(group[i + 1]);
-                              setGuestProfileGroup(group);
-                              setGuestProfileReservation(selectedReservation);
-                              setGuestProfileTab("profile");
-                            }}
-                            className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left"
+                            onClick={() => handleOpenRegCard(selectedReservation, c)}
+                            className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                           >
-                            {c.name || "(no name)"}
+                            Reg Card
                           </button>
                         </div>
                       ))}

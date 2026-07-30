@@ -222,6 +222,12 @@ async def save_reg_card(payload: dict = Body(...)):
         sync_service.supabase.table("bcp_reg_cards").insert({
             "property": property_name,
             "reservation_number": payload.get("reservation_number"),
+            # A reservation can have multiple guests (Owner + companions),
+            # each with their own signed card sharing the same stay - keyed
+            # by mews_customer_id alongside reservation_number so one
+            # guest's save/read never clobbers another's. Nullable for
+            # backward compatibility with rows saved before this existed.
+            "mews_customer_id": payload.get("mews_customer_id"),
             "data": {"blob": encryption_service.encrypt(json.dumps(record))},
         }).execute()
         return {"status": "success"}
@@ -230,23 +236,23 @@ async def save_reg_card(payload: dict = Body(...)):
 
 
 @router.get("/reg-card")
-async def get_reg_card(property_name: str = Query(...), reservation_number: str = Query(...)):
+async def get_reg_card(property_name: str = Query(...), reservation_number: str = Query(...), mews_customer_id: Optional[str] = Query(None)):
     """
-    The most recently saved Reg Card for a reservation, if any - so reopening
-    it (e.g. Save, Close, then Reg Card again later) restores the guest's
-    signature and details instead of starting blank, since save_reg_card
-    above was write-only and never had a matching read.
+    The most recently saved Reg Card for one guest on a reservation, if any -
+    so reopening it (e.g. Save, Close, then Reg Card again later) restores
+    that guest's signature and details instead of starting blank, since
+    save_reg_card above was write-only and never had a matching read.
     """
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
-        res = sync_service.supabase.table("bcp_reg_cards") \
+        query = sync_service.supabase.table("bcp_reg_cards") \
             .select("data, created_at") \
             .eq("property", property_name) \
-            .eq("reservation_number", reservation_number) \
-            .order("created_at", desc=True) \
-            .limit(1) \
-            .execute()
+            .eq("reservation_number", reservation_number)
+        if mews_customer_id:
+            query = query.eq("mews_customer_id", mews_customer_id)
+        res = query.order("created_at", desc=True).limit(1).execute()
         if not res.data:
             return {"status": "success", "data": None}
         blob = (res.data[0].get("data") or {}).get("blob", "")
