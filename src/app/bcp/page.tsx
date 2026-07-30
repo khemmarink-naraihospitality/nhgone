@@ -1156,6 +1156,16 @@ export default function BcpPage() {
     const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
     return latest?.action === "Check In";
   };
+  // Whether Check Out has already been logged locally for this stay - r.state
+  // stays "Started" until MEWS is reachable again to actually process the
+  // checkout, so isReservationCheckedIn above never flips on its own and the
+  // Check Out button would otherwise stay clickable forever (letting the
+  // front desk log the same checkout repeatedly). Disabling it once logged
+  // is the visible confirmation that it's been recorded.
+  const hasCheckedOutLocally = (r: ReservationRow): boolean => {
+    const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
+    return latest?.action === "Check Out";
+  };
 
   const roomStateFor = (roomNumber: string): string => {
     const room = snapshot?.rooms.find((rm) => rm.room === roomNumber);
@@ -2845,7 +2855,9 @@ export default function BcpPage() {
                               ) : (
                                 <button
                                   onClick={() => handleCheckOut(r)}
-                                  className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                                  disabled={hasCheckedOutLocally(r)}
+                                  title={hasCheckedOutLocally(r) ? "Already checked out" : undefined}
+                                  className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:hover:opacity-40 disabled:cursor-not-allowed"
                                 >
                                   Check Out
                                 </button>
@@ -4168,7 +4180,9 @@ export default function BcpPage() {
                 {isReservationCheckedIn(selectedReservation) ? (
                   <button
                     onClick={() => handleCheckOut(selectedReservation)}
-                    className="w-[30%] py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-sm font-bold hover:opacity-90 transition-opacity"
+                    disabled={hasCheckedOutLocally(selectedReservation)}
+                    title={hasCheckedOutLocally(selectedReservation) ? "Already checked out" : undefined}
+                    className="w-[30%] py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:hover:opacity-40 disabled:cursor-not-allowed"
                   >
                     Check Out
                   </button>
