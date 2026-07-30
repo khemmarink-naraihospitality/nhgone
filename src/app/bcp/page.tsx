@@ -586,6 +586,16 @@ export default function BcpPage() {
   const [guestSignature, setGuestSignature] = useState<string | null>(null);
   const [savingRegCard, setSavingRegCard] = useState(false);
   const [regCardSaveResult, setRegCardSaveResult] = useState<{ ok: boolean; message: string } | null>(null);
+  // ร.ร.๓ sections 1 (Place of Departure) and 2 (Next Destination) - each is
+  // a two-way choice between "the current address above" and "somewhere
+  // else" (with a free-text line for that other address), so a single
+  // "current"/"other" value per section can only ever have exactly one of
+  // the two printed checkboxes marked - the form's own "answer at least one"
+  // requirement holds automatically since "current" is the default.
+  const [regCardDepartureOption, setRegCardDepartureOption] = useState<"current" | "other">("current");
+  const [regCardDepartureDetail, setRegCardDepartureDetail] = useState("");
+  const [regCardDestinationOption, setRegCardDestinationOption] = useState<"current" | "other">("current");
+  const [regCardDestinationDetail, setRegCardDestinationDetail] = useState("");
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
   // Rooms (HK) tab - housekeeping status can't be written back to MEWS
@@ -1216,6 +1226,10 @@ export default function BcpPage() {
           adults: regCardFor.adults,
           children: regCardFor.children,
           signature_data_url: guestSignature,
+          departure_option: regCardDepartureOption,
+          departure_detail: regCardDepartureDetail,
+          destination_option: regCardDestinationOption,
+          destination_detail: regCardDestinationDetail,
         }),
       });
       const result = await res.json();
@@ -1336,6 +1350,10 @@ export default function BcpPage() {
     setRegCardGuestFor(g);
     setGuestSignature(null);
     setRegCardSaveResult(null);
+    setRegCardDepartureOption("current");
+    setRegCardDepartureDetail("");
+    setRegCardDestinationOption("current");
+    setRegCardDestinationDetail("");
     if (!snapshot) return;
     try {
       const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number, mews_customer_id: g.mews_customer_id || "" });
@@ -1346,6 +1364,12 @@ export default function BcpPage() {
         // the full blank canvas (off-center on the printed line) - crop on
         // read so older saved Reg Cards self-heal without re-signing.
         setGuestSignature(await cropSignatureDataUrlToInk(result.data.signature_data_url));
+      }
+      if (result.status === "success" && result.data) {
+        if (result.data.departure_option === "other") setRegCardDepartureOption("other");
+        if (result.data.departure_detail) setRegCardDepartureDetail(result.data.departure_detail);
+        if (result.data.destination_option === "other") setRegCardDestinationOption("other");
+        if (result.data.destination_detail) setRegCardDestinationDetail(result.data.destination_detail);
       }
     } catch {
       /* no saved card yet, or fetch failed - start blank as before */
@@ -3026,6 +3050,12 @@ export default function BcpPage() {
             dangerouslySetInnerHTML={{
               __html: renderRr3Template(rr3Template, {
                 ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
+                DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
+                DepartureDetail: regCardDepartureDetail,
+                DestinationCurrentChk: regCardDestinationOption === "current" ? "X" : "",
+                DestinationOtherChk: regCardDestinationOption === "other" ? "X" : "",
+                DestinationDetail: regCardDestinationDetail,
                 GuestSignatureDataUrl: guestSignature || undefined,
               }),
             }}
@@ -3074,6 +3104,12 @@ export default function BcpPage() {
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
                       ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                      DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
+                      DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
+                      DepartureDetail: regCardDepartureDetail,
+                      DestinationCurrentChk: regCardDestinationOption === "current" ? "X" : "",
+                      DestinationOtherChk: regCardDestinationOption === "other" ? "X" : "",
+                      DestinationDetail: regCardDestinationDetail,
                       GuestSignatureDataUrl: guestSignature || undefined,
                     }),
                   }}
@@ -3083,8 +3119,52 @@ export default function BcpPage() {
               )}
             </div>
 
-            <div className="fixed bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px]">
-              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1">Guest Signature</div>
+            <div className="fixed bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px] max-h-[92vh] overflow-y-auto">
+              {/* ร.ร.๓ sections 1/2 - filled in before the guest signs, so
+                  they're captured on the same printed form (see the
+                  <<Departure*>>/<<Destination*>> tokens in DEFAULT_RR3_TEMPLATE)
+                  instead of being left for the guest to hand-write. Each
+                  section is a "current address" vs. "other address" choice -
+                  toggling one option always unchecks the other, so exactly
+                  one is checked at all times (the form's own "answer at
+                  least one" requirement, satisfied by construction). */}
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1.5">1. Place of Departure</div>
+              <div className="flex flex-col gap-1 mb-2 text-[12px]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={regCardDepartureOption === "current"} onChange={() => setRegCardDepartureOption("current")} />
+                  Current address (above)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={regCardDepartureOption === "other"} onChange={() => setRegCardDepartureOption("other")} />
+                  Other accommodation
+                </label>
+              </div>
+              <input
+                value={regCardDepartureDetail}
+                onChange={(e) => setRegCardDepartureDetail(e.target.value)}
+                placeholder="House no., sub-district, district, province, country"
+                className="w-full mb-3 px-2 py-1.5 text-[12px] border border-black/15 rounded focus:outline-none focus:border-black/40"
+              />
+
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1.5">2. Next Destination</div>
+              <div className="flex flex-col gap-1 mb-2 text-[12px]">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={regCardDestinationOption === "current"} onChange={() => setRegCardDestinationOption("current")} />
+                  Current address (above)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={regCardDestinationOption === "other"} onChange={() => setRegCardDestinationOption("other")} />
+                  Other accommodation
+                </label>
+              </div>
+              <input
+                value={regCardDestinationDetail}
+                onChange={(e) => setRegCardDestinationDetail(e.target.value)}
+                placeholder="House no., sub-district, district, province, country"
+                className="w-full mb-4 px-2 py-1.5 text-[12px] border border-black/15 rounded focus:outline-none focus:border-black/40"
+              />
+
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1 pt-3 border-t border-black/10">Guest Signature</div>
               <SignaturePad value={guestSignature} onChange={setGuestSignature} />
               <div className="mt-2 text-[10px] text-black/40 italic">
                 ID/passport, address, occupation and telephone come from MEWS&apos;s customer profile, cached at capture time - prints blank only if the guest&apos;s own MEWS profile is missing that field.

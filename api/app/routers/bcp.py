@@ -217,6 +217,13 @@ async def save_reg_card(payload: dict = Body(...)):
         "adults": payload.get("adults", 0),
         "children": payload.get("children", 0),
         "signature_data_url": payload.get("signature_data_url", ""),
+        # ร.ร.๓ sections 1/2 (Place of Departure / Next Destination) - filled
+        # in on the Reg Card screen before the guest signs so they're on the
+        # printed form itself instead of left blank for hand-writing.
+        "departure_option": payload.get("departure_option", "current"),
+        "departure_detail": payload.get("departure_detail", ""),
+        "destination_option": payload.get("destination_option", "current"),
+        "destination_detail": payload.get("destination_detail", ""),
     }
     try:
         sync_service.supabase.table("bcp_reg_cards").insert({

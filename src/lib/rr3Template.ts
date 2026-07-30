@@ -26,6 +26,17 @@ export interface Rr3TokenData {
   GuestSign?: string;
   Departure?: string;
   Destination?: string;
+  // Filled in on the Reg Card screen before the guest signs (front desk
+  // input, not MEWS data) - "X" marks the ticked checkbox, the *Detail
+  // fields are the free-text ruled line under each section. Section 1/2 are
+  // each a two-way choice (current address vs. another one), so exactly one
+  // of the pair's Chk tokens is ever "X" at a time.
+  DepartureCurrentChk?: string;
+  DepartureOtherChk?: string;
+  DepartureDetail?: string;
+  DestinationCurrentChk?: string;
+  DestinationOtherChk?: string;
+  DestinationDetail?: string;
   // If set, rendered as an <img> in the <<GuestSign>> slot instead of the
   // plain-text GuestSign token above - a captured-on-screen signature
   // (see SignaturePad), not something MEWS itself ever provides.
@@ -170,6 +181,12 @@ export function renderRr3Template(template: string, d: Rr3TokenData): string {
     AlienBook: d.AlienBook || "",
     Departure: d.Departure || "",
     Destination: d.Destination || "",
+    DepartureCurrentChk: d.DepartureCurrentChk || "",
+    DepartureOtherChk: d.DepartureOtherChk || "",
+    DepartureDetail: d.DepartureDetail || "",
+    DestinationCurrentChk: d.DestinationCurrentChk || "",
+    DestinationOtherChk: d.DestinationOtherChk || "",
+    DestinationDetail: d.DestinationDetail || "",
   };
   let result = template;
   for (const [key, value] of Object.entries(tokens)) {
