@@ -443,6 +443,14 @@ async def create_action_log(payload: dict = Body(...)):
         "detail": payload.get("detail", ""),
         "reason": payload.get("reason"),
         "userEmail": payload.get("user_email", ""),
+        # Frozen copies of the reservation + matched guest profile as they
+        # stood at the moment of this action, so the Action Log Detail page
+        # can show full Reservation Detail/Guest Profile permanently, even
+        # after the booking changes or ages out of the live Timeline window.
+        # Nested objects are fine - the whole `fields` dict is one encrypted
+        # JSON blob already, no schema needed for either.
+        "reservationSnapshot": payload.get("reservation_snapshot"),
+        "guestProfileSnapshot": payload.get("guest_profile_snapshot"),
     }
     try:
         res = sync_service.supabase.table("bcp_action_logs").insert({

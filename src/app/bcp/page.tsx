@@ -127,6 +127,15 @@ interface OfflineAction {
   // Logs tab's outstanding-items badge. The row itself stays in the log
   // either way - this only changes how it's displayed, not the history.
   checked?: boolean;
+  // Frozen copies of the reservation + matched guest profile as they stood
+  // at the moment this action was logged - captured once, permanently,
+  // specifically so the Action Log Detail page can still show full
+  // Reservation Detail/Guest Profile for old entries even if the booking
+  // has since changed, checked out, or fallen outside the live Timeline's
+  // ±7 day window. Absent for actions with no associated reservation
+  // (e.g. a Room Status/Room Number change on a currently vacant room).
+  reservationSnapshot?: ReservationRow | null;
+  guestProfileSnapshot?: CustomerRow | null;
 }
 
 // Reservations tab (front-desk action list) status, distinct from the
@@ -781,6 +790,8 @@ export default function BcpPage() {
           detail: entry.detail,
           reason: entry.reason,
           user_email: currentUserEmail,
+          reservation_snapshot: entry.reservationSnapshot,
+          guest_profile_snapshot: entry.guestProfileSnapshot,
         }),
       });
       const result = await res.json();
@@ -792,6 +803,27 @@ export default function BcpPage() {
          the audit-trail write failed. Nothing to roll back here. */
     }
   };
+
+  // Same guest-matching rule used by the Manage view's detail panel (email
+  // first, falling back to exact name) - shared here so Action Log entries
+  // can freeze the matched profile at log time too.
+  const findGuestProfile = useCallback(
+    (r: ReservationRow | null | undefined): CustomerRow | null => {
+      if (!r || !snapshot) return null;
+      return snapshot.customers.find((c) => (r.email && c.email === r.email) || c.name === r.guest) || null;
+    },
+    [snapshot]
+  );
+
+  // The reservation currently checked into a room (if any) - used to attach
+  // Reservation Detail/Guest Profile to room-level actions (Room Status,
+  // Room Number) that have no reservation of their own, per explicit
+  // request: attach the occupant's info when the room happens to be
+  // occupied at the moment of the change.
+  const findOccupantReservation = useCallback(
+    (room: string): ReservationRow | undefined => (snapshot?.reservations || []).find((r) => r.room === room && r.state === "Started"),
+    [snapshot]
+  );
 
   const handleToggleActionChecked = async (id: string) => {
     const current = actions.find((a) => a.id === id);
@@ -873,9 +905,27 @@ export default function BcpPage() {
   };
 
   const handleCheckIn = (r: ReservationRow) =>
-    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check In", detail: `Room ${effectiveRoomNumber(r.room)}` });
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: r.number,
+      guest: r.guest,
+      room: r.room,
+      action: "Check In",
+      detail: `Room ${effectiveRoomNumber(r.room)}`,
+      reservationSnapshot: r,
+      guestProfileSnapshot: findGuestProfile(r),
+    });
   const handleCheckOut = (r: ReservationRow) =>
-    logOfflineAction({ at: new Date().toISOString(), reservationNumber: r.number, guest: r.guest, room: r.room, action: "Check Out", detail: `Room ${effectiveRoomNumber(r.room)}` });
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: r.number,
+      guest: r.guest,
+      room: r.room,
+      action: "Check Out",
+      detail: `Room ${effectiveRoomNumber(r.room)}`,
+      reservationSnapshot: r,
+      guestProfileSnapshot: findGuestProfile(r),
+    });
   const handleChgRoomSave = () => {
     if (!chgRoomFor || !newRoomValue.trim() || !snapshot?.property) return;
     const newRoom = newRoomValue.trim();
@@ -886,6 +936,8 @@ export default function BcpPage() {
       room: chgRoomFor.room,
       action: "Chg Room",
       detail: `${effectiveRoomNumber(chgRoomFor.room)} -> ${newRoom}`,
+      reservationSnapshot: chgRoomFor,
+      guestProfileSnapshot: findGuestProfile(chgRoomFor),
     });
     setRoomChangeOverrides((prev) => ({ ...prev, [chgRoomFor.number]: newRoom }));
     fetch("/api/bcp/room-changes", {
@@ -931,6 +983,8 @@ export default function BcpPage() {
           room: regCardFor.room,
           action: "Reg Card Saved",
           detail: guestSignature ? "Reg Card saved with signature" : "Reg Card saved (no signature)",
+          reservationSnapshot: regCardFor,
+          guestProfileSnapshot: findGuestProfile(regCardFor),
         });
       } else {
         setRegCardSaveResult({ ok: false, message: result.message || result.detail || "Save failed" });
@@ -1028,13 +1082,16 @@ export default function BcpPage() {
     }).catch(() => {
       /* logOfflineAction below still records the intent even if this write failed */
     });
+    const occupant = findOccupantReservation(room);
     logOfflineAction({
       at: new Date().toISOString(),
       guest: "-",
       room,
       action: "Room Status",
-      detail: `Room ${room}: ${previousStatus} -> ${newStatus}`,
+      detail: `Room ${effectiveRoomNumber(room)}: ${previousStatus} -> ${newStatus}`,
       reason,
+      reservationSnapshot: occupant,
+      guestProfileSnapshot: findGuestProfile(occupant),
     });
   };
 
@@ -1055,12 +1112,15 @@ export default function BcpPage() {
     }).catch(() => {
       /* logOfflineAction below still records the intent even if this write failed */
     });
+    const occupant = findOccupantReservation(room);
     logOfflineAction({
       at: new Date().toISOString(),
       guest: "-",
       room,
       action: "Room Number",
       detail: `Room ${previousDisplay}: renamed to ${trimmed}`,
+      reservationSnapshot: occupant,
+      guestProfileSnapshot: findGuestProfile(occupant),
     });
   };
 
@@ -1085,12 +1145,7 @@ export default function BcpPage() {
     setRoomStatusReasonText("");
   };
 
-  const matchedGuestProfile = useMemo(() => {
-    if (!selectedReservation || !snapshot) return null;
-    return snapshot.customers.find(
-      (c) => (selectedReservation.email && c.email === selectedReservation.email) || c.name === selectedReservation.guest
-    ) || null;
-  }, [selectedReservation, snapshot]);
+  const matchedGuestProfile = useMemo(() => findGuestProfile(selectedReservation), [selectedReservation, findGuestProfile]);
   const guestProfileNotes = matchedGuestProfile?.notes || "";
 
   // For the "Manage" detail view: the assigned room's today HK status
@@ -2326,6 +2381,122 @@ export default function BcpPage() {
                 <div className="text-[var(--text-primary)]/50">User</div>
                 <div>{selectedLogEntry.userEmail || "-"}</div>
               </div>
+
+              {/* Frozen at the moment this action was logged (see
+                  reservationSnapshot/guestProfileSnapshot on OfflineAction) -
+                  always shows what the booking/guest looked like back then,
+                  even if it's since checked out, moved rooms again, or aged
+                  out of the live Timeline's ±7 day window. Absent entirely
+                  for room-level actions logged while the room was vacant. */}
+              {selectedLogEntry.reservationSnapshot && (
+                <>
+                  <div className="font-display text-2xl mt-12 mb-5 max-w-2xl">Reservation Detail</div>
+                  <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
+                    <div className="text-[var(--text-primary)]/50">Reservation #</div>
+                    <div className="font-bold">{selectedLogEntry.reservationSnapshot.number || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Stay</div>
+                    <div>
+                      {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_in)} – {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_out)}
+                    </div>
+                    <div className="text-[var(--text-primary)]/50">Status</div>
+                    <div>{STATE_DISPLAY_LABEL[selectedLogEntry.reservationSnapshot.state] || selectedLogEntry.reservationSnapshot.state || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Room</div>
+                    <div>{effectiveRoomNumber(selectedLogEntry.reservationSnapshot.room) || "-"}</div>
+                    {selectedLogEntry.reservationSnapshot.category && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Category</div>
+                        <div>{selectedLogEntry.reservationSnapshot.category}</div>
+                      </>
+                    )}
+                    <div className="text-[var(--text-primary)]/50">Occupancy</div>
+                    <div>
+                      {selectedLogEntry.reservationSnapshot.adults} × Adults
+                      {selectedLogEntry.reservationSnapshot.children > 0 ? `, ${selectedLogEntry.reservationSnapshot.children} × Children` : ""}
+                    </div>
+                    {selectedLogEntry.reservationSnapshot.rate && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Rate</div>
+                        <div>{selectedLogEntry.reservationSnapshot.rate}</div>
+                      </>
+                    )}
+                    {typeof selectedLogEntry.reservationSnapshot.total_amount === "number" && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Total</div>
+                        <div>
+                          {selectedLogEntry.reservationSnapshot.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
+                          {selectedLogEntry.reservationSnapshot.currency}
+                        </div>
+                      </>
+                    )}
+                    {selectedLogEntry.reservationSnapshot.company && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Company</div>
+                        <div>{selectedLogEntry.reservationSnapshot.company}</div>
+                      </>
+                    )}
+                    {selectedLogEntry.reservationSnapshot.travel_agency && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Travel agency</div>
+                        <div>
+                          {selectedLogEntry.reservationSnapshot.travel_agency}
+                          {selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number
+                            ? ` (${selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number})`
+                            : ""}
+                        </div>
+                      </>
+                    )}
+                    {selectedLogEntry.reservationSnapshot.segment && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Segment</div>
+                        <div>{selectedLogEntry.reservationSnapshot.segment}</div>
+                      </>
+                    )}
+                    {(selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin) && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Source</div>
+                        <div>{selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin}</div>
+                      </>
+                    )}
+                    {selectedLogEntry.reservationSnapshot.notes.length > 0 && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Notes</div>
+                        <div className="space-y-1">
+                          {selectedLogEntry.reservationSnapshot.notes.map((n, i) => (
+                            <div key={i}>{n.text}</div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div className="font-display text-2xl mt-12 mb-5 max-w-2xl">Guest Profile</div>
+                  <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
+                    <div className="text-[var(--text-primary)]/50">Name</div>
+                    <div className="font-bold">
+                      {selectedLogEntry.guestProfileSnapshot?.name || selectedLogEntry.reservationSnapshot.guest || "-"}
+                    </div>
+                    <div className="text-[var(--text-primary)]/50">Nationality</div>
+                    <div>{selectedLogEntry.guestProfileSnapshot?.nationality || selectedLogEntry.reservationSnapshot.nationality || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Email</div>
+                    <div>{selectedLogEntry.guestProfileSnapshot?.email || selectedLogEntry.reservationSnapshot.email || "-"}</div>
+                    <div className="text-[var(--text-primary)]/50">Phone</div>
+                    <div>{selectedLogEntry.guestProfileSnapshot?.phone || selectedLogEntry.reservationSnapshot.phone || "-"}</div>
+                    {!!selectedLogEntry.guestProfileSnapshot?.tags?.length && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Tags</div>
+                        <div>{selectedLogEntry.guestProfileSnapshot.tags.join(", ")}</div>
+                      </>
+                    )}
+                    {selectedLogEntry.guestProfileSnapshot?.notes && (
+                      <>
+                        <div className="text-[var(--text-primary)]/50">Guest Notes</div>
+                        <div>{selectedLogEntry.guestProfileSnapshot.notes}</div>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-2xl">
                 Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
               </div>
