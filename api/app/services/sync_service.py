@@ -1861,6 +1861,25 @@ class SyncService:
             items_amount = items_amount_by_reservation.get(res_id, 0)
             origin_label, reservation_source = format_origin(res)
 
+            # Additional named guests on the same reservation (MEWS attaches
+            # them via CompanionIds, alongside the primary CustomerId/"Owner"
+            # surfaced as `guest` above) - already in customers_map since the
+            # Extent's Customers:True includes them (used below to build the
+            # Arrival/In-house/Departure customer list), just never resolved
+            # to names on the reservation itself before, so a reservation
+            # with more than 1 adult/child only ever showed its Owner.
+            companions = []
+            for cid in (res.get("CompanionIds") or []):
+                c = customers_map.get(cid)
+                if not c:
+                    continue
+                companions.append({
+                    "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+                    "nationality": c.get("NationalityCode", ""),
+                    "email": c.get("Email", ""),
+                    "phone": c.get("Phone", ""),
+                })
+
             # Same customer-profile extraction as get_rr3_cards - the Extent
             # here already includes Customers:True, so this is just reading
             # more fields off data already fetched for the Timeline, not an
@@ -1904,6 +1923,7 @@ class SyncService:
                 "state": res.get("State", ""),
                 "adults": res.get("AdultCount", 0),
                 "children": res.get("ChildCount", 0),
+                "companions": companions,
                 "products": items_by_reservation.get(res_id, []),
                 "notes": notes_by_reservation.get(res_id, []),
                 "group_name": group.get("Name", ""),

@@ -48,6 +48,12 @@ interface ReservationRow {
   purpose?: string;
   created_utc?: string;
   room_locked?: boolean;
+  // Other named guests MEWS attaches to this same reservation (its own
+  // CompanionIds) alongside the primary guest above (MEWS's "Owner") - e.g.
+  // a 2 Adults/1 Child reservation can have up to 2 more named profiles
+  // here. Absent/empty just means MEWS has no individual profile for the
+  // rest of the occupancy count, not that our data is missing them.
+  companions?: { name: string; nationality: string; email: string; phone: string }[];
 }
 
 interface CustomerRow {
@@ -2742,6 +2748,14 @@ export default function BcpPage() {
                           </div>
                         </div>
                       </div>
+                      {selectedReservation.companions?.map((c, i) => (
+                        <div key={i} className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                            {guestInitials(c.name || "?")}
+                          </div>
+                          <div className="font-bold">{c.name || "(no name)"}</div>
+                        </div>
+                      ))}
                       <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
                         <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
                         <div>{guestProfileNotes || "-"}</div>
