@@ -3108,145 +3108,174 @@ export default function BcpPage() {
           <div className="no-print fixed inset-0 z-50 bg-[var(--paper)] text-[var(--text-primary)] flex flex-col">
             <div className="flex-1 overflow-y-auto p-10 md:p-16">
               <div className="font-display text-4xl md:text-5xl mb-8">Action Log Detail</div>
-              <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
-                <div className="text-[var(--text-primary)]/50">Status</div>
-                <div className="font-bold text-red-700">● Updated in our system</div>
-                <div className="text-[var(--text-primary)]/50">Time</div>
-                <div>{fmtDateTime(selectedLogEntry.at)}</div>
-                <div className="text-[var(--text-primary)]/50">Guest</div>
-                <div>{selectedLogEntry.guest || "-"}</div>
-                <div className="text-[var(--text-primary)]/50">Room</div>
-                <div className="font-bold">{effectiveRoomNumber(selectedLogEntry.room)}</div>
-                <div className="text-[var(--text-primary)]/50">Action</div>
-                <div className="font-bold">{selectedLogEntry.action}</div>
-                <div className="text-[var(--text-primary)]/50">Detail</div>
-                <div>{selectedLogEntry.detail}</div>
-                {selectedLogEntry.reason && (
-                  <>
-                    <div className="text-[var(--text-primary)]/50">Reason</div>
-                    <div>{selectedLogEntry.reason}</div>
-                  </>
-                )}
-                <div className="text-[var(--text-primary)]/50">User</div>
-                <div>{selectedLogEntry.userEmail || "-"}</div>
+
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-6 max-w-2xl mb-10">
+                <div className="grid grid-cols-[140px_1fr] gap-y-4 text-[15px]">
+                  <div className="text-[var(--text-primary)]/50">Status</div>
+                  <div className="font-bold text-red-700">● Updated in our system</div>
+                  <div className="text-[var(--text-primary)]/50">Time</div>
+                  <div>{fmtDateTime(selectedLogEntry.at)}</div>
+                  <div className="text-[var(--text-primary)]/50">Guest</div>
+                  <div>{selectedLogEntry.guest || "-"}</div>
+                  <div className="text-[var(--text-primary)]/50">Room</div>
+                  <div className="font-bold">{effectiveRoomNumber(selectedLogEntry.room)}</div>
+                  <div className="text-[var(--text-primary)]/50">Action</div>
+                  <div className="font-bold">{selectedLogEntry.action}</div>
+                  <div className="text-[var(--text-primary)]/50">Detail</div>
+                  <div>{selectedLogEntry.detail}</div>
+                  {selectedLogEntry.reason && (
+                    <>
+                      <div className="text-[var(--text-primary)]/50">Reason</div>
+                      <div>{selectedLogEntry.reason}</div>
+                    </>
+                  )}
+                  <div className="text-[var(--text-primary)]/50">User</div>
+                  <div>{selectedLogEntry.userEmail || "-"}</div>
+                </div>
               </div>
 
               {/* Frozen at the moment this action was logged (see
-                  reservationSnapshot/guestProfileSnapshot on OfflineAction) -
-                  always shows what the booking/guest looked like back then,
-                  even if it's since checked out, moved rooms again, or aged
-                  out of the live Timeline's ±7 day window. Absent entirely
-                  for room-level actions logged while the room was vacant. */}
+                  reservationSnapshot on OfflineAction) - always shows what
+                  the booking/guests looked like back then, even if the stay
+                  has since checked out, moved rooms again, or aged out of
+                  the live Timeline's ±7 day window. Absent entirely for
+                  room-level actions logged while the room was vacant. */}
               {selectedLogEntry.reservationSnapshot && (
                 <>
-                  <div className="font-display text-2xl mt-12 mb-5 max-w-2xl">Reservation Detail</div>
-                  <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
-                    <div className="text-[var(--text-primary)]/50">Reservation #</div>
-                    <div className="font-bold">{selectedLogEntry.reservationSnapshot.number || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Stay</div>
-                    <div>
-                      {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_in)} – {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_out)}
-                    </div>
-                    <div className="text-[var(--text-primary)]/50">Status</div>
-                    <div>{STATE_DISPLAY_LABEL[selectedLogEntry.reservationSnapshot.state] || selectedLogEntry.reservationSnapshot.state || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Room</div>
-                    <div>{effectiveRoomNumber(selectedLogEntry.reservationSnapshot.room) || "-"}</div>
-                    {selectedLogEntry.reservationSnapshot.category && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Category</div>
-                        <div>{selectedLogEntry.reservationSnapshot.category}</div>
-                      </>
-                    )}
-                    <div className="text-[var(--text-primary)]/50">Occupancy</div>
-                    <div>
-                      {selectedLogEntry.reservationSnapshot.adults} × Adults
-                      {selectedLogEntry.reservationSnapshot.children > 0 ? `, ${selectedLogEntry.reservationSnapshot.children} × Children` : ""}
-                    </div>
-                    {selectedLogEntry.reservationSnapshot.rate && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Rate</div>
-                        <div>{selectedLogEntry.reservationSnapshot.rate}</div>
-                      </>
-                    )}
-                    {typeof selectedLogEntry.reservationSnapshot.total_amount === "number" && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Total</div>
-                        <div>
-                          {selectedLogEntry.reservationSnapshot.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
-                          {selectedLogEntry.reservationSnapshot.currency}
-                        </div>
-                      </>
-                    )}
-                    {selectedLogEntry.reservationSnapshot.company && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Company</div>
-                        <div>{selectedLogEntry.reservationSnapshot.company}</div>
-                      </>
-                    )}
-                    {selectedLogEntry.reservationSnapshot.travel_agency && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Travel agency</div>
-                        <div>
-                          {selectedLogEntry.reservationSnapshot.travel_agency}
-                          {selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number
-                            ? ` (${selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number})`
-                            : ""}
-                        </div>
-                      </>
-                    )}
-                    {selectedLogEntry.reservationSnapshot.segment && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Segment</div>
-                        <div>{selectedLogEntry.reservationSnapshot.segment}</div>
-                      </>
-                    )}
-                    {(selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin) && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Source</div>
-                        <div>{selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin}</div>
-                      </>
-                    )}
-                    {selectedLogEntry.reservationSnapshot.notes.length > 0 && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Notes</div>
-                        <div className="space-y-1">
-                          {selectedLogEntry.reservationSnapshot.notes.map((n, i) => (
-                            <div key={i}>{n.text}</div>
-                          ))}
-                        </div>
-                      </>
+                  <div className="flex items-center justify-between gap-3 mb-5 max-w-2xl">
+                    <div className="font-display text-2xl">Reservation Detail</div>
+                    {selectedLogEntry.reservationSnapshot.number && (
+                      <a
+                        href={`/data-mart?search=${encodeURIComponent(selectedLogEntry.reservationSnapshot.number)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="Opens this reservation in Data Mart - our permanent record, not the 1-hour snapshot history"
+                        className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
+                      >
+                        View in Data Mart ↗
+                      </a>
                     )}
                   </div>
-
-                  <div className="font-display text-2xl mt-12 mb-5 max-w-2xl">Guest Profile</div>
-                  <div className="grid grid-cols-[160px_1fr] md:grid-cols-[200px_1fr] gap-y-5 text-[16px] max-w-2xl">
-                    <div className="text-[var(--text-primary)]/50">Name</div>
-                    <div className="font-bold">
-                      {selectedLogEntry.guestProfileSnapshot?.name || selectedLogEntry.reservationSnapshot.guest || "-"}
+                  <div className="border border-[var(--text-primary)]/14 rounded-xl p-6 max-w-2xl mb-10">
+                    <div className="grid grid-cols-[140px_1fr] gap-y-4 text-[15px]">
+                      <div className="text-[var(--text-primary)]/50">Reservation #</div>
+                      <div className="font-bold">{selectedLogEntry.reservationSnapshot.number || "-"}</div>
+                      <div className="text-[var(--text-primary)]/50">Stay</div>
+                      <div>
+                        {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_in)} – {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_out)}
+                      </div>
+                      <div className="text-[var(--text-primary)]/50">Status</div>
+                      <div>{STATE_DISPLAY_LABEL[selectedLogEntry.reservationSnapshot.state] || selectedLogEntry.reservationSnapshot.state || "-"}</div>
+                      <div className="text-[var(--text-primary)]/50">Room</div>
+                      <div>{effectiveRoomNumber(selectedLogEntry.reservationSnapshot.room) || "-"}</div>
+                      {selectedLogEntry.reservationSnapshot.category && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Category</div>
+                          <div>{selectedLogEntry.reservationSnapshot.category}</div>
+                        </>
+                      )}
+                      <div className="text-[var(--text-primary)]/50">Occupancy</div>
+                      <div>
+                        {selectedLogEntry.reservationSnapshot.adults} × Adults
+                        {selectedLogEntry.reservationSnapshot.children > 0 ? `, ${selectedLogEntry.reservationSnapshot.children} × Children` : ""}
+                      </div>
+                      {selectedLogEntry.reservationSnapshot.rate && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Rate</div>
+                          <div>{selectedLogEntry.reservationSnapshot.rate}</div>
+                        </>
+                      )}
+                      {typeof selectedLogEntry.reservationSnapshot.total_amount === "number" && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Total</div>
+                          <div>
+                            {selectedLogEntry.reservationSnapshot.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
+                            {selectedLogEntry.reservationSnapshot.currency}
+                          </div>
+                        </>
+                      )}
+                      {selectedLogEntry.reservationSnapshot.company && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Company</div>
+                          <div>{selectedLogEntry.reservationSnapshot.company}</div>
+                        </>
+                      )}
+                      {selectedLogEntry.reservationSnapshot.travel_agency && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Travel agency</div>
+                          <div>
+                            {selectedLogEntry.reservationSnapshot.travel_agency}
+                            {selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number
+                              ? ` (${selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number})`
+                              : ""}
+                          </div>
+                        </>
+                      )}
+                      {selectedLogEntry.reservationSnapshot.segment && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Segment</div>
+                          <div>{selectedLogEntry.reservationSnapshot.segment}</div>
+                        </>
+                      )}
+                      {(selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin) && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Source</div>
+                          <div>{selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin}</div>
+                        </>
+                      )}
+                      {selectedLogEntry.reservationSnapshot.notes.length > 0 && (
+                        <>
+                          <div className="text-[var(--text-primary)]/50">Notes</div>
+                          <div className="space-y-1">
+                            {selectedLogEntry.reservationSnapshot.notes.map((n, i) => (
+                              <div key={i}>{n.text}</div>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </div>
-                    <div className="text-[var(--text-primary)]/50">Nationality</div>
-                    <div>{selectedLogEntry.guestProfileSnapshot?.nationality || selectedLogEntry.reservationSnapshot.nationality || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Email</div>
-                    <div>{selectedLogEntry.guestProfileSnapshot?.email || selectedLogEntry.reservationSnapshot.email || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Phone</div>
-                    <div>{selectedLogEntry.guestProfileSnapshot?.phone || selectedLogEntry.reservationSnapshot.phone || "-"}</div>
-                    {!!selectedLogEntry.guestProfileSnapshot?.tags?.length && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Tags</div>
-                        <div>{selectedLogEntry.guestProfileSnapshot.tags.join(", ")}</div>
-                      </>
-                    )}
-                    {selectedLogEntry.guestProfileSnapshot?.notes && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Guest Notes</div>
-                        <div>{selectedLogEntry.guestProfileSnapshot.notes}</div>
-                      </>
-                    )}
+                  </div>
+
+                  {/* Every guest frozen on this reservation at log time
+                      (Owner + companions) - each opens the same full Guest
+                      Profile page (Profile/Payments/Billing tabs) other
+                      guest-name buttons in BCP do, just sourced from this
+                      permanently-stored snapshot instead of the current
+                      live one, so it stays accurate to how the guest looked
+                      back then even after the live Timeline moves on. */}
+                  <div className="font-display text-2xl mb-5 max-w-2xl">Guests</div>
+                  <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden max-w-2xl mb-10">
+                    {allReservationGuests(selectedLogEntry.reservationSnapshot).map((g, i) => (
+                      <div key={i} className={`px-5 py-4 flex items-center justify-between gap-3 ${i > 0 ? "border-t border-[var(--text-primary)]/10" : ""}`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[12px] font-bold shrink-0">
+                            {guestInitials(g.name || "?")}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold truncate">{g.name || "(no name)"}</div>
+                            {i === 0 && <div className="text-[10px] text-[var(--text-primary)]/50">Owner</div>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const snap = selectedLogEntry.reservationSnapshot!;
+                            const group = allReservationGuests(snap);
+                            setSelectedGuestProfile(group[i]);
+                            setGuestProfileGroup(group);
+                            setGuestProfileReservation(snap);
+                            setGuestProfileTab("profile");
+                          }}
+                          className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                        >
+                          Guest Profile
+                        </button>
+                      </div>
+                    ))}
                   </div>
                 </>
               )}
 
-              <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-2xl">
+              <div className="pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-2xl">
                 Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
               </div>
             </div>

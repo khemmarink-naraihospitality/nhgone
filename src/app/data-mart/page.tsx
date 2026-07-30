@@ -1,8 +1,16 @@
 "use client";
 
+import { Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import DashboardView from "@/components/DashboardView";
 
-export default function DataMartPage() {
+function DataMartContent() {
+  // ?search= lets another page (BCP's Action Log Detail "View in Data
+  // Mart" button) deep-link straight to one reservation instead of
+  // landing on an unfiltered table.
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get("search") || undefined;
+
   return (
     <DashboardView
       title="Data Mart"
@@ -11,6 +19,15 @@ export default function DataMartPage() {
       defaultSection="reservations"
       allowToggleDataSource={true}
       showSectionTabs={true}
+      initialSearch={initialSearch}
     />
+  );
+}
+
+export default function DataMartPage() {
+  return (
+    <Suspense fallback={null}>
+      <DataMartContent />
+    </Suspense>
   );
 }

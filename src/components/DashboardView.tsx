@@ -17,6 +17,10 @@ interface DashboardViewProps {
   allowToggleDataSource?: boolean;
   showSectionTabs?: boolean;
   defaultDays?: number;
+  // Pre-fills the filter box - lets another page (e.g. BCP's Action Log
+  // Detail "View in Data Mart" button) deep-link straight to one
+  // reservation/record instead of landing on an unfiltered table.
+  initialSearch?: string;
 }
 
 const SECTION_COLUMNS: Record<Section, string[]> = {
@@ -51,14 +55,15 @@ const SECTION_COLUMNS: Record<Section, string[]> = {
   ]
 };
 
-export default function DashboardView({ 
-  title, 
-  subtitle, 
-  defaultDataSource, 
+export default function DashboardView({
+  title,
+  subtitle,
+  defaultDataSource,
   defaultSection,
   allowToggleDataSource = false,
   showSectionTabs = true,
-  defaultDays = 1
+  defaultDays = 1,
+  initialSearch
 }: DashboardViewProps) {
   const [activeSection, setActiveSection] = useState<Section>(defaultSection);
   const [dataSource, setDataSource] = useState<DataSource>(defaultDataSource);
@@ -91,7 +96,7 @@ export default function DashboardView({
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [data, setData] = useState<any[]>([]);
-  const [searchTerm, setSearchTerm] = useState("");
+  const [searchTerm, setSearchTerm] = useState(initialSearch || "");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
