@@ -926,6 +926,16 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
+  // MEWS's own "Started" state is one source of truth, but while MEWS is
+  // down a Check In logged just now only exists in our own actions list -
+  // the snapshot's state field can't reflect it. actions is always
+  // server-ordered newest-first, so the first Check In/Check Out match is
+  // the most recent one either way.
+  const isReservationCheckedIn = (r: ReservationRow): boolean => {
+    if (r.state === "Started") return true;
+    const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
+    return latest?.action === "Check In";
+  };
   const handleChgRoomSave = () => {
     if (!chgRoomFor || !newRoomValue.trim() || !snapshot?.property) return;
     const newRoom = newRoomValue.trim();
@@ -2795,13 +2805,28 @@ export default function BcpPage() {
               </div>
                 </>
               )}
-              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4">
+              <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4 flex gap-3">
                 <button
                   onClick={() => setShowManagePage(true)}
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
                   Manage
                 </button>
+                {isReservationCheckedIn(selectedReservation) ? (
+                  <button
+                    onClick={() => handleCheckOut(selectedReservation)}
+                    className="w-[30%] py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-sm font-bold hover:opacity-90 transition-opacity"
+                  >
+                    Check Out
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => handleCheckIn(selectedReservation)}
+                    className="w-[30%] py-2.5 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 transition-colors"
+                  >
+                    Check In
+                  </button>
+                )}
               </div>
             </div>
           </div>
