@@ -75,6 +75,12 @@ interface ReservationRow {
   alien_book?: string;
   mews_customer_id?: string;
   payments?: GuestPayment[];
+  // The bill's own display name (e.g. "LE-27-7-6043") - resolved from the
+  // BillId already present on this reservation's order items, via a
+  // dedicated bills/getAll lookup (MEWS's "Number" field stays null until
+  // a bill is formally issued/closed, so "Name" is used instead - confirmed
+  // live against this exact reservation's still-open bill).
+  bill_name?: string;
   room: string;
   check_in: string;
   check_out: string;
@@ -1734,55 +1740,105 @@ export default function BcpPage() {
               Manage view's charge breakdown already shows for this
               reservation (fetched from orderItems for the whole window,
               not just today), since a guest has no bill independent of the
-              stay they're attached to. Preview/Process payment/Issue
-              proforma/Close are disabled - decorative, matching every other
-              action button in BCP, since there's no live connection to
-              actually process anything from a stale snapshot. */}
+              stay they're attached to. Bill name (e.g. "LE-27-7-6043") is
+              resolved from the BillId already present on those same order
+              items via a dedicated bills/getAll lookup - MEWS's own
+              "Number" field stays null until a bill is formally issued/
+              closed (confirmed live against this exact still-open bill),
+              so "Name" is used instead. Preview/Process payment/Issue
+              proforma/Close (and the line-item/payment checkboxes) are
+              disabled - decorative, matching every other action button in
+              BCP, since there's no live connection to actually process
+              anything from a stale snapshot. The top toolbar MEWS shows
+              above "Owned bills" (grouping/search/Closed bills/Unpaid
+              invoices) is for browsing MULTIPLE bills - not recreated,
+              since this page only ever has the one bill for this stay. */}
           {guestProfileTab === "billing" && (
             <div>
-              <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Owned bills</div>
+              <div className="flex items-center justify-between mb-5">
+                <div className="font-display text-2xl text-[var(--text-primary)]">Owned bills</div>
+                {guestProfileReservation && (
+                  <span className="text-[12px] font-bold text-[var(--text-primary)]/50">
+                    {(guestProfileReservation.to_be_paid ?? 0) === 0 ? "Balanced" : "Unbalanced"}
+                  </span>
+                )}
+              </div>
               {guestProfileReservation ? (
                 <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
-                  <div className="p-5 flex items-center justify-between border-b border-[var(--text-primary)]/10">
-                    <div>
-                      <div className="font-bold text-[15px]">{guestProfileReservation.number}</div>
-                      <div className="text-[11px] text-[var(--text-primary)]/50 mt-0.5">Arrival {fmtDateOnly(guestProfileReservation.check_in)}</div>
+                  <div className="p-5 flex items-center justify-between border-b border-[var(--text-primary)]/10 gap-4">
+                    <div className="font-bold text-[15px]">{guestProfileReservation.bill_name || guestProfileReservation.number}</div>
+                    <div className="flex items-center gap-8">
+                      <div>
+                        <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Reservation status</div>
+                        <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[guestProfileReservation.state] || STATE_BADGE_CLS.Processed}`}>
+                          {STATE_DISPLAY_LABEL[guestProfileReservation.state] || guestProfileReservation.state}
+                        </span>
+                      </div>
+                      <div>
+                        <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Arrival</div>
+                        <div className="text-[13px] font-bold">{fmtDateOnly(guestProfileReservation.check_in)}</div>
+                      </div>
+                      <div className="px-4 py-2 rounded-lg bg-[var(--text-primary)]/5 text-right shrink-0">
+                        <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
+                        <div className="font-bold text-[14px]">
+                          {(guestProfileReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {guestProfileReservation.currency}
+                        </div>
+                      </div>
                     </div>
-                    <span className={`px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[guestProfileReservation.state] || STATE_BADGE_CLS.Processed}`}>
-                      {STATE_DISPLAY_LABEL[guestProfileReservation.state] || guestProfileReservation.state}
-                    </span>
                   </div>
-                  <div className="p-5 flex flex-col">
-                    {guestProfileReservation.rate_lines?.map((line, i) => (
-                      <div key={`r${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0">
-                        <span>{line.label}</span>
-                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+
+                  <div className="grid grid-cols-1 md:grid-cols-[1fr_220px]">
+                    <div className="p-5 border-b md:border-b-0 md:border-r border-[var(--text-primary)]/10">
+                      <div className="flex items-center gap-3 mb-4 text-[12px] text-[var(--text-primary)]/60">
+                        <input type="checkbox" disabled className="w-4 h-4" />
+                        <span>Select all ({(guestProfileReservation.rate_lines?.length || 0) + (guestProfileReservation.item_lines?.length || 0)})</span>
+                        <button disabled className="ml-auto px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">
+                          + Add product
+                        </button>
                       </div>
-                    ))}
-                    {guestProfileReservation.item_lines?.map((line, i) => (
-                      <div key={`i${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0">
-                        <span>{line.label}</span>
-                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      <div className="flex flex-col">
+                        {guestProfileReservation.rate_lines?.map((line, i) => (
+                          <div key={`r${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                            <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                            <span className="text-[var(--text-primary)]/70">{guestProfileReservation.guest} — {effectiveRoomNumber(guestProfileReservation.room)}</span>
+                            <span className="text-[var(--text-primary)]/50">— Stay {line.label}</span>
+                            <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                        {guestProfileReservation.item_lines?.map((line, i) => (
+                          <div key={`i${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                            <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                            <span className="text-[var(--text-primary)]/70">{line.label}</span>
+                            <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        ))}
+                        {!guestProfileReservation.rate_lines?.length && !guestProfileReservation.item_lines?.length && (
+                          <div className="text-[var(--text-primary)]/40 italic text-[13px] py-2">No charges recorded.</div>
+                        )}
                       </div>
-                    ))}
-                    {(g.payments || []).map((p, i) => (
-                      <div key={`p${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0 text-[var(--text-primary)]/70">
-                        <span>Payment — {fmtPaymentType(p)}{p.identifier ? ` (${p.identifier})` : ""}</span>
-                        <span>{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="p-5 border-t border-[var(--text-primary)]/10 flex items-center justify-between bg-[var(--text-primary)]/5">
-                    <span className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/60">To be paid</span>
-                    <span className="font-bold text-[15px]">
-                      {(guestProfileReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {guestProfileReservation.currency}
-                    </span>
-                  </div>
-                  <div className="p-5 flex flex-wrap gap-2 border-t border-[var(--text-primary)]/10">
-                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Preview</button>
-                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Process payment</button>
-                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Issue proforma</button>
-                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Close</button>
+
+                      {g.payments && g.payments.length > 0 && (
+                        <>
+                          <div className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50 mt-5 mb-2">Payments</div>
+                          <div className="flex flex-col">
+                            {g.payments.map((p, i) => (
+                              <div key={`p${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                                <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                                <span className="text-[var(--text-primary)]/70">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
+                                <span className="ml-auto font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="p-5 flex flex-col gap-2">
+                      <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Preview</button>
+                      <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Process payment</button>
+                      <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Issue proforma</button>
+                      <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Close</button>
+                    </div>
                   </div>
                 </div>
               ) : (

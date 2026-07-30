@@ -1615,6 +1615,11 @@ class SyncService:
         item_lines_by_reservation: dict = {}
         gross_amount_by_reservation: dict = {}
         currency_by_reservation: dict = {}
+        # One BillId per reservation (first one seen among its order items -
+        # a reservation's own charges all sit on the same bill in the simple,
+        # non-grouped case this page handles) - resolved to the bill's own
+        # display name below, for the Guest Profile's Billing tab.
+        bill_id_by_reservation: dict = {}
         all_res_ids = [r["Id"] for r in reservations]
         for i in range(0, len(all_res_ids), 100):
             chunk = all_res_ids[i:i + 100]
@@ -1628,6 +1633,8 @@ class SyncService:
                     if item.get("AccountingState") == "Canceled":
                         continue
                     order_id = item.get("ServiceOrderId")
+                    if order_id and item.get("BillId") and order_id not in bill_id_by_reservation:
+                        bill_id_by_reservation[order_id] = item.get("BillId")
                     item_type = item.get("Type")
                     item_amount = item.get("Amount") or {}
                     net = item_amount.get("NetValue") or 0
@@ -1663,6 +1670,29 @@ class SyncService:
                     )
             except Exception as e:
                 logger.warning(f"BCP order items fetch failed for {property_name}: {e}")
+
+        # Resolve each reservation's BillId to the bill's own display name
+        # (e.g. "LE-27-7-6043") for the Guest Profile's Billing tab - MEWS's
+        # "Number" field is only populated once a bill is formally issued/
+        # closed, staying null for an open one (confirmed live), so this
+        # reads "Name" instead, which bills/getAll returns regardless of
+        # State. Filtering by BillIds (not a date range) also works
+        # regardless of IssuedUtc being null.
+        bill_name_by_id: dict = {}
+        all_bill_ids = list({bid for bid in bill_id_by_reservation.values() if bid})
+        for i in range(0, len(all_bill_ids), 1000):
+            chunk = all_bill_ids[i:i + 1000]
+            try:
+                bill_res = await mews_client.post(
+                    "/api/connector/v1/bills/getAll",
+                    {"BillIds": chunk, "Limitation": {"Count": 1000}},
+                    property_name=property_name,
+                )
+                for b in bill_res.get("Bills", []):
+                    if b.get("Id"):
+                        bill_name_by_id[b["Id"]] = b.get("Name", "")
+            except Exception as e:
+                logger.warning(f"BCP bill name lookup failed for {property_name}: {e}")
 
         # orderItems/getAll doesn't return items in chronological order per
         # reservation (confirmed live: a 3-night stay came back as
@@ -2041,6 +2071,7 @@ class SyncService:
                 "alien_book": guest_identity["alien_book"],
                 "mews_customer_id": guest_identity["mews_customer_id"],
                 "payments": guest_identity["payments"],
+                "bill_name": bill_name_by_id.get(bill_id_by_reservation.get(res_id), ""),
                 "room": room.get("Name", ""),
                 "check_in": res.get("StartUtc", ""),
                 "check_out": res.get("EndUtc", ""),
