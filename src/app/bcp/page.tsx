@@ -2092,7 +2092,12 @@ export default function BcpPage() {
         <div className="text-right">{value}</div>
       </>
     );
-    const tabs = ["Status", "Properties", "Group", "Pricing", "Items", "Mailing", "Action log", "Summary", "Billing", "Contracting"];
+    // Only Properties is actually built - every other tab MEWS's own Manage
+    // screen has (Status/Group/Pricing/Items/Mailing/Action log/Summary/
+    // Billing/Contracting) had nothing behind it but a disabled placeholder,
+    // so they're removed entirely rather than left clickable-looking with
+    // no real content.
+    const tabs = ["Properties"];
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-6xl mx-auto">
