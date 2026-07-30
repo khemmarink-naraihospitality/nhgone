@@ -15,6 +15,15 @@ import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignatureP
 // Profile page regardless of which one it is.
 interface GuestIdentity {
   name: string;
+  first_name?: string;
+  last_name?: string;
+  second_last_name?: string;
+  title?: string;
+  sex?: string;
+  language?: string;
+  birth_date?: string;
+  birth_country_name?: string;
+  birth_place?: string;
   nationality: string;
   nationality_name?: string;
   email: string;
@@ -29,6 +38,15 @@ interface GuestIdentity {
 interface ReservationRow {
   number: string;
   guest: string;
+  first_name?: string;
+  last_name?: string;
+  second_last_name?: string;
+  title?: string;
+  sex?: string;
+  language?: string;
+  birth_date?: string;
+  birth_country_name?: string;
+  birth_place?: string;
   nationality: string;
   nationality_name?: string;
   email: string;
@@ -83,6 +101,15 @@ interface ReservationRow {
 function ownerGuestIdentity(r: ReservationRow): GuestIdentity {
   return {
     name: r.guest,
+    first_name: r.first_name,
+    last_name: r.last_name,
+    second_last_name: r.second_last_name,
+    title: r.title,
+    sex: r.sex,
+    language: r.language,
+    birth_date: r.birth_date,
+    birth_country_name: r.birth_country_name,
+    birth_place: r.birth_place,
     nationality: r.nationality,
     nationality_name: r.nationality_name,
     email: r.email,
@@ -93,6 +120,18 @@ function ownerGuestIdentity(r: ReservationRow): GuestIdentity {
     address_details: r.address_details,
     alien_book: r.alien_book,
   };
+}
+
+// MEWS's BirthDate is a plain YYYY-MM-DD calendar date (no time component,
+// unlike check-in/out instants) - reformatted directly rather than through
+// the Bangkok +7h shift helpers used elsewhere, which would risk flipping
+// the day near midnight for a value that was never a UTC instant to begin
+// with.
+function fmtBirthDate(isoDate?: string): string {
+  if (!isoDate) return "";
+  const [y, m, d] = isoDate.split("-");
+  if (!y || !m || !d) return isoDate;
+  return `${d}/${m}/${y}`;
 }
 
 interface CustomerRow {
@@ -1401,17 +1440,14 @@ export default function BcpPage() {
   // companion, see ownerGuestIdentity/selectedGuestProfile) - closing it
   // (back arrow) just clears selectedGuestProfile, which naturally falls
   // through back to the reservation panel below since selectedReservation
-  // itself is untouched. We only ever captured a handful of MEWS's own
-  // Profile fields (for the Reg Card/RR3 form) - Title, Sex, Date of birth,
-  // Country of birth, Loyalty, and Verification photo have no equivalent in
-  // our data at all, so unlike Room Properties' decorative-but-present
-  // fields, those are left out entirely rather than shown as fake blanks.
+  // itself is untouched. Every Profile field MEWS's own screen shows is
+  // captured now (Title/Sex/Date of birth/Country of birth/Place of birth,
+  // confirmed against a live Customer record) except Loyalty and
+  // Verification photo, which have no equivalent anywhere in our data -
+  // those are left out entirely rather than shown as fake blanks.
   if (selectedGuestProfile) {
     const g = selectedGuestProfile;
     const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px]";
-    const nameParts = (g.name || "").trim().split(/\s+/);
-    const firstName = nameParts[0] || "-";
-    const lastName = nameParts.slice(1).join(" ") || "-";
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-4xl mx-auto">
@@ -1431,12 +1467,22 @@ export default function BcpPage() {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">First name</div>
-                  <div className={fieldBoxCls}>{firstName}</div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Title</div>
+                  <div className={fieldBoxCls}>{g.title || "-"}</div>
                 </div>
                 <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">First name</div>
+                  <div className={fieldBoxCls}>{g.first_name || "-"}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Last name</div>
-                  <div className={fieldBoxCls}>{lastName}</div>
+                  <div className={fieldBoxCls}>{g.last_name || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Second last name</div>
+                  <div className={fieldBoxCls}>{g.second_last_name || "-"}</div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -1445,13 +1491,39 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.nationality_name || g.nationality || "-"}</div>
                 </div>
                 <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Language</div>
+                  <div className={fieldBoxCls}>{g.language || "-"}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Telephone</div>
                   <div className={fieldBoxCls}>{g.phone || "-"}</div>
                 </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Sex</div>
+                  <div className={fieldBoxCls}>{g.sex || "-"}</div>
+                </div>
               </div>
-              <div>
-                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Occupation</div>
-                <div className={fieldBoxCls}>{g.occupation || "-"}</div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Date of birth</div>
+                  <div className={fieldBoxCls}>{fmtBirthDate(g.birth_date) || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Country of birth</div>
+                  <div className={fieldBoxCls}>{g.birth_country_name || "-"}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Place of birth</div>
+                  <div className={fieldBoxCls}>{g.birth_place || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Occupation</div>
+                  <div className={fieldBoxCls}>{g.occupation || "-"}</div>
+                </div>
               </div>
             </div>
 
@@ -1496,7 +1568,7 @@ export default function BcpPage() {
           </div>
 
           <div className="mt-8 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic">
-            Read-only snapshot, captured for the Reg Card at check-in time - not a live MEWS profile. Title, Sex, Date of birth, Country of birth, Loyalty and Verification photo aren&apos;t captured here.
+            Read-only snapshot, captured for the Reg Card at check-in time - not a live MEWS profile. Loyalty and Verification photo aren&apos;t captured here.
           </div>
         </div>
       </div>

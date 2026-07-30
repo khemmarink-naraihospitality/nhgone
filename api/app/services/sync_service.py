@@ -97,6 +97,26 @@ def _rr3_country_name(code: str) -> str:
     return _RR3_COUNTRY_MAP.get(code, code or "")
 
 
+# MEWS's Customer.Title is an enum ("Mister", "Missis", ...) - MEWS's own
+# Profile screen displays these as the short form ("Mr.", "Mrs.", ...), so
+# the Guest Profile page matches that instead of showing the raw enum value.
+# Falls back to the raw value for anything not in this list, so an unmapped
+# title still shows something rather than silently disappearing.
+_MEWS_TITLE_DISPLAY = {
+    "Mister": "Mr.",
+    "Miss": "Miss",
+    "Missis": "Mrs.",
+    "Ms": "Ms.",
+    "Doctor": "Dr.",
+}
+
+
+def _mews_title_display(title) -> str:
+    if not title:
+        return ""
+    return _MEWS_TITLE_DISPLAY.get(title, title)
+
+
 _RR3_MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
 
@@ -1886,6 +1906,19 @@ class SyncService:
                 address_details = ""
             return {
                 "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+                # Real MEWS fields, not a guess split off the combined name
+                # above - a guest with a multi-word first OR last name (e.g.
+                # FirstName "Minh Dat", LastName "Le") would otherwise split
+                # wrong (confirmed against this exact guest live).
+                "first_name": c.get("FirstName", ""),
+                "last_name": c.get("LastName", ""),
+                "second_last_name": c.get("SecondLastName", ""),
+                "title": _mews_title_display(c.get("Title")),
+                "sex": c.get("Sex", ""),
+                "language": c.get("PreferredLanguageCode") or c.get("LanguageCode") or "",
+                "birth_date": c.get("BirthDate", ""),
+                "birth_country_name": _rr3_country_name(c.get("BirthCountryCode")) if c.get("BirthCountryCode") else "",
+                "birth_place": c.get("BirthPlace", ""),
                 "nationality": c.get("NationalityCode", ""),
                 "nationality_name": _rr3_country_name(c.get("NationalityCode")),
                 "email": c.get("Email", ""),
@@ -1936,6 +1969,15 @@ class SyncService:
             return {
                 "number": res.get("Number", ""),
                 "guest": guest_identity["name"],
+                "first_name": guest_identity["first_name"],
+                "last_name": guest_identity["last_name"],
+                "second_last_name": guest_identity["second_last_name"],
+                "title": guest_identity["title"],
+                "sex": guest_identity["sex"],
+                "language": guest_identity["language"],
+                "birth_date": guest_identity["birth_date"],
+                "birth_country_name": guest_identity["birth_country_name"],
+                "birth_place": guest_identity["birth_place"],
                 "nationality": guest_identity["nationality"],
                 "nationality_name": guest_identity["nationality_name"],
                 "email": guest_identity["email"],
