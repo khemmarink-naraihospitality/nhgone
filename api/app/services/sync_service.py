@@ -1703,6 +1703,46 @@ class SyncService:
         for notes_list in notes_by_reservation.values():
             notes_list.sort(key=lambda n: n["created_utc"], reverse=True)
 
+        # Per-guest payment history (Guest Profile's own Payments tab) -
+        # MEWS links a payment to the paying Customer's AccountId, not a
+        # ReservationId (confirmed live: every sampled payment - including
+        # one matched to a specific guest by AccountId - had
+        # ReservationId: null), so this is fetched per customer across the
+        # whole window instead of per reservation.
+        payments_by_customer: dict = {}
+        all_customer_ids = list(customers_map.keys())
+        for i in range(0, len(all_customer_ids), 100):
+            chunk = all_customer_ids[i:i + 100]
+            try:
+                pay_res = await mews_client.post(
+                    "/api/connector/v1/payments/getAll",
+                    {"AccountIds": chunk, "Limitation": {"Count": 1000}},
+                    property_name=property_name,
+                )
+                for p in pay_res.get("Payments", []):
+                    account_id = p.get("AccountId")
+                    if not account_id:
+                        continue
+                    amount = p.get("Amount") or {}
+                    external = (p.get("Data") or {}).get("External") or {}
+                    payments_by_customer.setdefault(account_id, []).append({
+                        "created": p.get("CreatedUtc", ""),
+                        # MEWS's own GrossValue is negative for money coming
+                        # in (a payment reducing what's owed) - flipped here
+                        # to the positive amount MEWS's own UI shows.
+                        "amount": -(amount.get("GrossValue") or 0),
+                        "currency": amount.get("Currency", ""),
+                        "type": p.get("Type", ""),
+                        "sub_type": external.get("Type", ""),
+                        "identifier": p.get("Identifier") or external.get("ExternalIdentifier", ""),
+                        "state": p.get("State", ""),
+                        "notes": (p.get("Notes") or "").strip(),
+                    })
+            except Exception as e:
+                logger.warning(f"BCP per-guest payments fetch failed for {property_name}: {e}")
+        for pays in payments_by_customer.values():
+            pays.sort(key=lambda x: x["created"], reverse=True)
+
         # Extra lookups for the "Manage" detail view (group name, requested
         # category, rate, company/travel agency) - IDs deduplicated across
         # the whole widened window so this stays a handful of calls per
@@ -1928,6 +1968,8 @@ class SyncService:
                 "occupation": c.get("Occupation", ""),
                 "address_details": address_details,
                 "alien_book": c.get("IdentityDocumentSupportNumber", ""),
+                "mews_customer_id": c.get("Id", ""),
+                "payments": payments_by_customer.get(c.get("Id", ""), []),
             }
 
         def reservation_row(res):
@@ -1987,6 +2029,8 @@ class SyncService:
                 "occupation": guest_identity["occupation"],
                 "address_details": guest_identity["address_details"],
                 "alien_book": guest_identity["alien_book"],
+                "mews_customer_id": guest_identity["mews_customer_id"],
+                "payments": guest_identity["payments"],
                 "room": room.get("Name", ""),
                 "check_in": res.get("StartUtc", ""),
                 "check_out": res.get("EndUtc", ""),

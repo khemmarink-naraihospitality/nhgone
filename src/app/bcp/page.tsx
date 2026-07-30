@@ -13,6 +13,21 @@ import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignatureP
 // ownerGuestIdentity below) and each companion (companions: GuestIdentity[]
 // on ReservationRow), so any guest name in the app can open the same Guest
 // Profile page regardless of which one it is.
+// MEWS links a payment to the paying Customer's AccountId, not a
+// reservation - fetched and attached per-guest (GuestIdentity.payments)
+// rather than per-reservation, matching how MEWS's own Guest Profile >
+// Payments tab is scoped to the guest, not the stay.
+interface GuestPayment {
+  created: string;
+  amount: number;
+  currency: string;
+  type: string;
+  sub_type?: string;
+  identifier?: string;
+  state: string;
+  notes?: string;
+}
+
 interface GuestIdentity {
   name: string;
   first_name?: string;
@@ -33,6 +48,8 @@ interface GuestIdentity {
   occupation?: string;
   address_details?: string;
   alien_book?: string;
+  mews_customer_id?: string;
+  payments?: GuestPayment[];
 }
 
 interface ReservationRow {
@@ -56,6 +73,8 @@ interface ReservationRow {
   occupation?: string;
   address_details?: string;
   alien_book?: string;
+  mews_customer_id?: string;
+  payments?: GuestPayment[];
   room: string;
   check_in: string;
   check_out: string;
@@ -119,6 +138,8 @@ function ownerGuestIdentity(r: ReservationRow): GuestIdentity {
     occupation: r.occupation,
     address_details: r.address_details,
     alien_book: r.alien_book,
+    mews_customer_id: r.mews_customer_id,
+    payments: r.payments,
   };
 }
 
@@ -500,6 +521,16 @@ export default function BcpPage() {
   // booking" and navigate between them without needing to reopen the
   // reservation panel each time.
   const [guestProfileGroup, setGuestProfileGroup] = useState<GuestIdentity[]>([]);
+  // The Guest Profile page's own tab bar (mirrors MEWS's Dashboard/Profile/
+  // Internals/Contracting/Payments/Billing/Action log tabs - we only have
+  // real data for three of those). Reset to "profile" every time a
+  // different guest is opened, matching MEWS always landing there first.
+  const [guestProfileTab, setGuestProfileTab] = useState<"profile" | "payments" | "billing">("profile");
+  // The reservation selectedGuestProfile was opened from - Billing reuses
+  // its already-fetched rate/item lines and total (same data the Manage
+  // view's charge breakdown uses), since a guest has no bill of their own
+  // independent of the stay they're attached to.
+  const [guestProfileReservation, setGuestProfileReservation] = useState<ReservationRow | null>(null);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -1463,16 +1494,40 @@ export default function BcpPage() {
   if (selectedGuestProfile) {
     const g = selectedGuestProfile;
     const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px]";
+    // MEWS's payment Type/sub-type are PascalCase enums ("ExternalPayment" +
+    // "Prepayment") - split into words rather than showing the raw enum,
+    // matching MEWS's own "External payment Prepayment" wording loosely.
+    const fmtPaymentType = (p: GuestPayment) => {
+      const base = p.type.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+      return p.sub_type ? `${base} ${p.sub_type}` : base;
+    };
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-3 mb-8">
+          <div className="flex items-center gap-3 mb-6">
             <button onClick={() => setSelectedGuestProfile(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
             </button>
             <h1 className="font-display text-4xl text-[var(--text-primary)]">{g.name || "(no name)"}</h1>
           </div>
 
+          <div className="flex gap-6 border-b border-[var(--text-primary)]/10 mb-8">
+            {(["profile", "payments", "billing"] as const).map((t) => (
+              <button
+                key={t}
+                onClick={() => setGuestProfileTab(t)}
+                className={`pb-3 text-[13px] font-bold capitalize border-b-2 -mb-px transition-all ${
+                  guestProfileTab === t
+                    ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                    : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+
+          {guestProfileTab === "profile" && (
           <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-6">
             <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
               <div className="font-display text-xl text-[var(--text-primary)]">Profile</div>
@@ -1590,7 +1645,7 @@ export default function BcpPage() {
                 {guestProfileGroup.filter((rg) => rg !== g).length > 0 ? (
                   <div className="flex flex-col gap-3">
                     {guestProfileGroup.filter((rg) => rg !== g).map((rg, i) => (
-                      <button key={i} onClick={() => setSelectedGuestProfile(rg)} className="flex items-center gap-3 text-left">
+                      <button key={i} onClick={() => { setSelectedGuestProfile(rg); setGuestProfileTab("profile"); }} className="flex items-center gap-3 text-left">
                         <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
                           {guestInitials(rg.name || "?")}
                         </div>
@@ -1616,9 +1671,128 @@ export default function BcpPage() {
               </div>
             </div>
           </div>
+          )}
+
+          {/* Payments - fetched per guest (see payments_by_customer in
+              get_bcp_snapshot), since MEWS links a payment to the paying
+              Customer's AccountId rather than a reservation. Preauthorizations
+              are a different MEWS concept (card holds) we don't fetch at all,
+              so that section is always the same empty state MEWS itself
+              shows when there are none. */}
+          {guestProfileTab === "payments" && (
+            <div>
+              <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Payments</div>
+              <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden mb-8">
+                {g.payments && g.payments.length > 0 ? (
+                  <table className="w-full text-[13px]">
+                    <thead>
+                      <tr className="text-left text-[11px] text-[var(--text-primary)]/50 border-b border-[var(--text-primary)]/10">
+                        <th className="p-3 font-normal">Type</th>
+                        <th className="p-3 font-normal">Identifier</th>
+                        <th className="p-3 font-normal">Created</th>
+                        <th className="p-3 font-normal">State</th>
+                        <th className="p-3 font-normal">Notes</th>
+                        <th className="p-3 font-normal text-right">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.payments.map((p, i) => (
+                        <tr key={i} className="border-b border-[var(--text-primary)]/10 last:border-0">
+                          <td className="p-3">{fmtPaymentType(p)}</td>
+                          <td className="p-3">{p.identifier || "-"}</td>
+                          <td className="p-3 whitespace-nowrap">{fmtDateTime(p.created)}</td>
+                          <td className="p-3">{p.state}</td>
+                          <td className="p-3">{p.notes || "-"}</td>
+                          <td className="p-3 text-right font-bold">
+                            {p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="border-t border-[var(--text-primary)]/10">
+                        <td colSpan={5} className="p-3 text-right font-bold">Total</td>
+                        <td className="p-3 text-right font-bold">
+                          {g.payments.reduce((s, p) => s + p.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {g.payments[0].currency}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                ) : (
+                  <div className="p-5 text-[var(--text-primary)]/40 italic text-[13px]">No payments recorded.</div>
+                )}
+              </div>
+
+              <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Preauthorizations</div>
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-10 text-center text-[var(--text-primary)]/40 italic text-[13px]">
+                No preauthorizations yet.
+              </div>
+            </div>
+          )}
+
+          {/* Billing - reuses the same rate/item lines and total the
+              Manage view's charge breakdown already shows for this
+              reservation (fetched from orderItems for the whole window,
+              not just today), since a guest has no bill independent of the
+              stay they're attached to. Preview/Process payment/Issue
+              proforma/Close are disabled - decorative, matching every other
+              action button in BCP, since there's no live connection to
+              actually process anything from a stale snapshot. */}
+          {guestProfileTab === "billing" && (
+            <div>
+              <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Owned bills</div>
+              {guestProfileReservation ? (
+                <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
+                  <div className="p-5 flex items-center justify-between border-b border-[var(--text-primary)]/10">
+                    <div>
+                      <div className="font-bold text-[15px]">{guestProfileReservation.number}</div>
+                      <div className="text-[11px] text-[var(--text-primary)]/50 mt-0.5">Arrival {fmtDateOnly(guestProfileReservation.check_in)}</div>
+                    </div>
+                    <span className={`px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[guestProfileReservation.state] || STATE_BADGE_CLS.Processed}`}>
+                      {STATE_DISPLAY_LABEL[guestProfileReservation.state] || guestProfileReservation.state}
+                    </span>
+                  </div>
+                  <div className="p-5 flex flex-col">
+                    {guestProfileReservation.rate_lines?.map((line, i) => (
+                      <div key={`r${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0">
+                        <span>{line.label}</span>
+                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                    {guestProfileReservation.item_lines?.map((line, i) => (
+                      <div key={`i${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0">
+                        <span>{line.label}</span>
+                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                    {(g.payments || []).map((p, i) => (
+                      <div key={`p${i}`} className="flex justify-between text-[13px] py-1.5 border-b border-[var(--text-primary)]/5 last:border-0 text-[var(--text-primary)]/70">
+                        <span>Payment — {fmtPaymentType(p)}{p.identifier ? ` (${p.identifier})` : ""}</span>
+                        <span>{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="p-5 border-t border-[var(--text-primary)]/10 flex items-center justify-between bg-[var(--text-primary)]/5">
+                    <span className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/60">To be paid</span>
+                    <span className="font-bold text-[15px]">
+                      {(guestProfileReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {guestProfileReservation.currency}
+                    </span>
+                  </div>
+                  <div className="p-5 flex flex-wrap gap-2 border-t border-[var(--text-primary)]/10">
+                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Preview</button>
+                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Process payment</button>
+                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Issue proforma</button>
+                    <button disabled className="px-4 py-2 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Close</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+              )}
+            </div>
+          )}
 
           <div className="mt-8 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic">
-            Read-only snapshot, captured for the Reg Card at check-in time - not a live MEWS profile. Loyalty and Verification photo aren&apos;t captured here.
+            Read-only snapshot - no live connection to MEWS, so nothing here can actually be changed.
           </div>
         </div>
       </div>
@@ -2293,7 +2467,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setRateLinesOpen(false); setItemLinesOpen(false); }}
+                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setGuestProfileReservation(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
@@ -2995,6 +3169,8 @@ export default function BcpPage() {
                                 const group = allReservationGuests(selectedReservation);
                                 setSelectedGuestProfile(group[0]);
                                 setGuestProfileGroup(group);
+                                setGuestProfileReservation(selectedReservation);
+                                setGuestProfileTab("profile");
                               }}
                               className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors"
                             >
@@ -3014,6 +3190,8 @@ export default function BcpPage() {
                               const group = allReservationGuests(selectedReservation);
                               setSelectedGuestProfile(group[i + 1]);
                               setGuestProfileGroup(group);
+                              setGuestProfileReservation(selectedReservation);
+                              setGuestProfileTab("profile");
                             }}
                             className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left"
                           >
