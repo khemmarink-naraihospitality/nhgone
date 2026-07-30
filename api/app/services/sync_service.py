@@ -2001,11 +2001,15 @@ class SyncService:
             # Arrival/In-house/Departure customer list), just never resolved
             # to full profiles on the reservation itself before, so a
             # reservation with more than 1 adult/child only ever showed its
-            # Owner.
+            # Owner. CompanionIds includes the Owner's own CustomerId as one
+            # of its entries (confirmed live: reservation 89110's
+            # CompanionIds started with its own CustomerId) - excluded here,
+            # or the Owner shows up a second time with no "Owner" label.
+            customer_id = res.get("CustomerId")
             companions = [
                 extract_guest_identity(customers_map[cid])
                 for cid in (res.get("CompanionIds") or [])
-                if customers_map.get(cid)
+                if cid != customer_id and customers_map.get(cid)
             ]
 
             return {
