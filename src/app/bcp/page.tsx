@@ -7,6 +7,25 @@ import PageHeader from "@/components/PageHeader";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
 import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignaturePad";
 
+// The guest-identity fields the Reg Card/RR3 form and the Guest Profile
+// page need - shared shape for both the reservation's primary guest
+// (spread across ReservationRow's own top-level fields, see
+// ownerGuestIdentity below) and each companion (companions: GuestIdentity[]
+// on ReservationRow), so any guest name in the app can open the same Guest
+// Profile page regardless of which one it is.
+interface GuestIdentity {
+  name: string;
+  nationality: string;
+  nationality_name?: string;
+  email: string;
+  phone: string;
+  identity_card_number?: string;
+  passport_number?: string;
+  occupation?: string;
+  address_details?: string;
+  alien_book?: string;
+}
+
 interface ReservationRow {
   number: string;
   guest: string;
@@ -53,7 +72,27 @@ interface ReservationRow {
   // a 2 Adults/1 Child reservation can have up to 2 more named profiles
   // here. Absent/empty just means MEWS has no individual profile for the
   // rest of the occupancy count, not that our data is missing them.
-  companions?: { name: string; nationality: string; email: string; phone: string }[];
+  companions?: GuestIdentity[];
+}
+
+// The primary guest's fields live flat on ReservationRow itself (kept for
+// every existing consumer - Reg Card, RR3 tokens, etc.) rather than nested
+// like companions are - this just re-packages them into the same
+// GuestIdentity shape so the Owner's name can open the same Guest Profile
+// page as any companion.
+function ownerGuestIdentity(r: ReservationRow): GuestIdentity {
+  return {
+    name: r.guest,
+    nationality: r.nationality,
+    nationality_name: r.nationality_name,
+    email: r.email,
+    phone: r.phone,
+    identity_card_number: r.identity_card_number,
+    passport_number: r.passport_number,
+    occupation: r.occupation,
+    address_details: r.address_details,
+    alien_book: r.alien_book,
+  };
 }
 
 interface CustomerRow {
@@ -397,7 +436,11 @@ export default function BcpPage() {
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
   const [itemLinesOpen, setItemLinesOpen] = useState(false);
-  const [showGuestProfile, setShowGuestProfile] = useState(false);
+  // Full-page Guest Profile view (mirrors MEWS's own Profile screen), opened
+  // by clicking ANY guest name - the reservation's Owner or a companion -
+  // set to that specific guest's GuestIdentity so each opens its own data,
+  // not always the reservation's primary guest.
+  const [selectedGuestProfile, setSelectedGuestProfile] = useState<GuestIdentity | null>(null);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -1347,6 +1390,114 @@ export default function BcpPage() {
     </div>
   );
 
+  // Guest Profile - a full page (not a drawer), same "replace the whole BCP
+  // view" pattern as Room Properties below, mirroring MEWS's own Profile
+  // screen. Opened by clicking any guest name (reservation Owner or a
+  // companion, see ownerGuestIdentity/selectedGuestProfile) - closing it
+  // (back arrow) just clears selectedGuestProfile, which naturally falls
+  // through back to the reservation panel below since selectedReservation
+  // itself is untouched. We only ever captured a handful of MEWS's own
+  // Profile fields (for the Reg Card/RR3 form) - Title, Sex, Date of birth,
+  // Country of birth, Loyalty, and Verification photo have no equivalent in
+  // our data at all, so unlike Room Properties' decorative-but-present
+  // fields, those are left out entirely rather than shown as fake blanks.
+  if (selectedGuestProfile) {
+    const g = selectedGuestProfile;
+    const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px]";
+    const nameParts = (g.name || "").trim().split(/\s+/);
+    const firstName = nameParts[0] || "-";
+    const lastName = nameParts.slice(1).join(" ") || "-";
+    return (
+      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-3 mb-8">
+            <button onClick={() => setSelectedGuestProfile(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+            </button>
+            <h1 className="font-display text-4xl text-[var(--text-primary)]">{g.name || "(no name)"}</h1>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-6">
+            <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
+              <div className="font-display text-xl text-[var(--text-primary)]">Profile</div>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Email</div>
+                <div className={fieldBoxCls}>{g.email || "-"}</div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">First name</div>
+                  <div className={fieldBoxCls}>{firstName}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Last name</div>
+                  <div className={fieldBoxCls}>{lastName}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Nationality</div>
+                  <div className={fieldBoxCls}>{g.nationality_name || g.nationality || "-"}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Telephone</div>
+                  <div className={fieldBoxCls}>{g.phone || "-"}</div>
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Occupation</div>
+                <div className={fieldBoxCls}>{g.occupation || "-"}</div>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-6">
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                <div className="font-display text-lg text-[var(--text-primary)] mb-3">Identity documents</div>
+                {g.passport_number || g.identity_card_number || g.alien_book ? (
+                  <div className="flex flex-col gap-3">
+                    {g.passport_number && (
+                      <div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Passport</div>
+                        <div className={fieldBoxCls}>{g.passport_number}</div>
+                      </div>
+                    )}
+                    {g.identity_card_number && (
+                      <div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">ID Card</div>
+                        <div className={fieldBoxCls}>{g.identity_card_number}</div>
+                      </div>
+                    )}
+                    {g.alien_book && (
+                      <div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Alien Book</div>
+                        <div className={fieldBoxCls}>{g.alien_book}</div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                )}
+              </div>
+
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                <div className="font-display text-lg text-[var(--text-primary)] mb-3">Addresses</div>
+                {g.address_details ? (
+                  <div className="text-[13px] text-[var(--text-primary)]">{g.address_details}</div>
+                ) : (
+                  <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-8 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic">
+            Read-only snapshot, captured for the Reg Card at check-in time - not a live MEWS profile. Title, Sex, Date of birth, Country of birth, Loyalty and Verification photo aren&apos;t captured here.
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Room Properties - a full page (not a drawer), replacing the whole BCP
   // view exactly like MEWS's own Room Properties screen does (their icon
   // rail stays, but everything to its right becomes this page). Read-only:
@@ -2015,7 +2166,7 @@ export default function BcpPage() {
                     return (
                       <button
                         key={res.number + i}
-                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setShowGuestProfile(false); setRateLinesOpen(false); setItemLinesOpen(false); }}
+                        onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
                         title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
@@ -2612,33 +2763,7 @@ export default function BcpPage() {
                 </button>
               </div>
 
-              {showGuestProfile ? (
-                <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
-                  <button
-                    onClick={() => setShowGuestProfile(false)}
-                    className="flex items-center gap-1.5 text-[12px] font-bold text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors self-start"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                    Back to reservation
-                  </button>
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[13px] font-bold shrink-0">
-                      {guestInitials(selectedReservation.guest || "?")}
-                    </div>
-                    <div className="font-display text-xl">{selectedReservation.guest || "(no name)"}</div>
-                  </div>
-                  <div className="border border-[var(--text-primary)]/14 rounded-lg grid grid-cols-2 gap-x-4 gap-y-2 px-4 py-3">
-                    <div className="text-[var(--text-primary)]/50">Nationality</div><div className="text-right">{matchedGuestProfile?.nationality || selectedReservation.nationality || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Email</div><div className="text-right">{matchedGuestProfile?.email || selectedReservation.email || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Phone</div><div className="text-right">{matchedGuestProfile?.phone || selectedReservation.phone || "-"}</div>
-                  </div>
-                  <div className="border border-[var(--text-primary)]/14 rounded-lg px-4 py-3">
-                    <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1">Guest Profile Notes</div>
-                    <div>{guestProfileNotes || "-"}</div>
-                  </div>
-                </div>
-              ) : (
-                <>
+              <>
                   <div className="px-6 flex gap-5 border-b border-[var(--text-primary)]/10">
                     {(["reservation", "group"] as const).map((t) => (
                       <button
@@ -2739,7 +2864,7 @@ export default function BcpPage() {
                           </div>
                           <div>
                             <button
-                              onClick={() => setShowGuestProfile(true)}
+                              onClick={() => setSelectedGuestProfile(ownerGuestIdentity(selectedReservation))}
                               className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors"
                             >
                               {selectedReservation.guest || "(no name)"}
@@ -2753,7 +2878,12 @@ export default function BcpPage() {
                           <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
                             {guestInitials(c.name || "?")}
                           </div>
-                          <div className="font-bold">{c.name || "(no name)"}</div>
+                          <button
+                            onClick={() => setSelectedGuestProfile(c)}
+                            className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left"
+                          >
+                            {c.name || "(no name)"}
+                          </button>
                         </div>
                       ))}
                       <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
@@ -2884,7 +3014,6 @@ export default function BcpPage() {
                 </div>
               </div>
                 </>
-              )}
               <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4 flex gap-3">
                 <button
                   onClick={() => setShowManagePage(true)}

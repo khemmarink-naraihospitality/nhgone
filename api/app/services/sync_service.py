@@ -1846,6 +1846,47 @@ class SyncService:
                     return f"{label} {source}", (origin_details or source)
             return raw, (origin_details or raw)
 
+        def extract_guest_identity(c):
+            """
+            MEWS Customer -> the guest-identity fields the Reg Card/RR3 form
+            and the Guest Profile page need. Shared by the primary guest
+            (CustomerId) and each companion (CompanionIds) below - same
+            extraction either way, just applied to a different Customer
+            record, so a reservation's companions get full profiles too
+            instead of just a bare name.
+            """
+            identity_card_value = ""
+            identity_card = c.get("IdentityCard")
+            identity_cards = c.get("IdentityCards")
+            if isinstance(identity_card, dict):
+                identity_card_value = identity_card.get("Number", "")
+            elif isinstance(identity_cards, list) and identity_cards:
+                identity_card_value = identity_cards[0].get("Number", "")
+            passport = c.get("Passport") or {}
+            cust_address = c.get("Address") or {}
+            addr_line1 = (cust_address.get("Line1") or "").strip()
+            addr_line2 = (cust_address.get("Line2") or "").strip()
+            if addr_line1 or addr_line2:
+                addr_parts = [cust_address.get("Line1"), cust_address.get("Line2"), cust_address.get("City"),
+                              cust_address.get("PostalCode"), cust_address.get("CountryCode")]
+                address_details = " ".join(p for p in addr_parts if p)
+            elif (c.get("BirthPlace") or "").strip():
+                address_details = c.get("BirthPlace")
+            else:
+                address_details = _rr3_country_name(c.get("NationalityCode"))
+            return {
+                "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
+                "nationality": c.get("NationalityCode", ""),
+                "nationality_name": _rr3_country_name(c.get("NationalityCode")),
+                "email": c.get("Email", ""),
+                "phone": c.get("Phone", ""),
+                "identity_card_number": identity_card_value,
+                "passport_number": passport.get("Number", ""),
+                "occupation": c.get("Occupation") or "นักธุรกิจ",
+                "address_details": address_details,
+                "alien_book": c.get("IdentityDocumentSupportNumber", ""),
+            }
+
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
             room = resources_map.get(res.get("AssignedResourceId"), {})
@@ -1861,62 +1902,39 @@ class SyncService:
             items_amount = items_amount_by_reservation.get(res_id, 0)
             origin_label, reservation_source = format_origin(res)
 
-            # Additional named guests on the same reservation (MEWS attaches
-            # them via CompanionIds, alongside the primary CustomerId/"Owner"
-            # surfaced as `guest` above) - already in customers_map since the
-            # Extent's Customers:True includes them (used below to build the
-            # Arrival/In-house/Departure customer list), just never resolved
-            # to names on the reservation itself before, so a reservation
-            # with more than 1 adult/child only ever showed its Owner.
-            companions = []
-            for cid in (res.get("CompanionIds") or []):
-                c = customers_map.get(cid)
-                if not c:
-                    continue
-                companions.append({
-                    "name": f"{c.get('FirstName', '')} {c.get('LastName', '')}".strip(),
-                    "nationality": c.get("NationalityCode", ""),
-                    "email": c.get("Email", ""),
-                    "phone": c.get("Phone", ""),
-                })
-
             # Same customer-profile extraction as get_rr3_cards - the Extent
             # here already includes Customers:True, so this is just reading
             # more fields off data already fetched for the Timeline, not an
             # extra live call. Captured into the snapshot at capture time, so
             # it's still there for the Reg Card even once MEWS is down.
-            identity_card_value = ""
-            identity_card = customer.get("IdentityCard")
-            identity_cards = customer.get("IdentityCards")
-            if isinstance(identity_card, dict):
-                identity_card_value = identity_card.get("Number", "")
-            elif isinstance(identity_cards, list) and identity_cards:
-                identity_card_value = identity_cards[0].get("Number", "")
-            passport = customer.get("Passport") or {}
-            cust_address = customer.get("Address") or {}
-            addr_line1 = (cust_address.get("Line1") or "").strip()
-            addr_line2 = (cust_address.get("Line2") or "").strip()
-            if addr_line1 or addr_line2:
-                addr_parts = [cust_address.get("Line1"), cust_address.get("Line2"), cust_address.get("City"),
-                              cust_address.get("PostalCode"), cust_address.get("CountryCode")]
-                address_details = " ".join(p for p in addr_parts if p)
-            elif (customer.get("BirthPlace") or "").strip():
-                address_details = customer.get("BirthPlace")
-            else:
-                address_details = _rr3_country_name(customer.get("NationalityCode"))
+            guest_identity = extract_guest_identity(customer)
+
+            # Additional named guests on the same reservation (MEWS attaches
+            # them via CompanionIds, alongside the primary CustomerId/"Owner"
+            # surfaced as `guest` below) - already in customers_map since the
+            # Extent's Customers:True includes them (used below to build the
+            # Arrival/In-house/Departure customer list), just never resolved
+            # to full profiles on the reservation itself before, so a
+            # reservation with more than 1 adult/child only ever showed its
+            # Owner.
+            companions = [
+                extract_guest_identity(customers_map[cid])
+                for cid in (res.get("CompanionIds") or [])
+                if customers_map.get(cid)
+            ]
 
             return {
                 "number": res.get("Number", ""),
-                "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
-                "nationality": customer.get("NationalityCode", ""),
-                "nationality_name": _rr3_country_name(customer.get("NationalityCode")),
-                "email": customer.get("Email", ""),
-                "phone": customer.get("Phone", ""),
-                "identity_card_number": identity_card_value,
-                "passport_number": passport.get("Number", ""),
-                "occupation": customer.get("Occupation") or "นักธุรกิจ",
-                "address_details": address_details,
-                "alien_book": customer.get("IdentityDocumentSupportNumber", ""),
+                "guest": guest_identity["name"],
+                "nationality": guest_identity["nationality"],
+                "nationality_name": guest_identity["nationality_name"],
+                "email": guest_identity["email"],
+                "phone": guest_identity["phone"],
+                "identity_card_number": guest_identity["identity_card_number"],
+                "passport_number": guest_identity["passport_number"],
+                "occupation": guest_identity["occupation"],
+                "address_details": guest_identity["address_details"],
+                "alien_book": guest_identity["alien_book"],
                 "room": room.get("Name", ""),
                 "check_in": res.get("StartUtc", ""),
                 "check_out": res.get("EndUtc", ""),
