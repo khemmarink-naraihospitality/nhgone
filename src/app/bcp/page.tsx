@@ -625,6 +625,30 @@ export default function BcpPage() {
   }, [selectedRoom, effectiveRoomNumber]);
   // Action Logs tab - clicking a logged row opens its own Detail view.
   const [selectedLogEntry, setSelectedLogEntry] = useState<OfflineAction | null>(null);
+  // Action Log Detail's own tab bar (Log/Properties/Guest Profile) - local
+  // and separate from showManagePage/selectedGuestProfile so opening these
+  // tabs never triggers the live Manage page or the live Guest Profile page
+  // navigation, and always reads selectedLogEntry.reservationSnapshot (the
+  // frozen copy from when the action was logged) rather than any live or
+  // rotating (bcp_snapshots) data.
+  const [logDetailTab, setLogDetailTab] = useState<"log" | "properties" | "guestProfile">("log");
+  // Which guest the embedded Guest Profile tab is showing - defaults to the
+  // reservation's Owner, switchable via that tab's own Related Guests list.
+  const [logGuestProfile, setLogGuestProfile] = useState<GuestIdentity | null>(null);
+  const [logGuestProfileTab, setLogGuestProfileTab] = useState<"profile" | "payments" | "billing">("profile");
+  useEffect(() => {
+    setLogDetailTab("log");
+    setLogGuestProfileTab("profile");
+    if (selectedLogEntry?.reservationSnapshot) {
+      const guests = allReservationGuests(selectedLogEntry.reservationSnapshot);
+      // Default to whichever guest this specific action was actually about
+      // (e.g. the companion a Reg Card was saved for), falling back to the
+      // Owner for room-level actions (guest === "-").
+      setLogGuestProfile(guests.find((gg) => gg.name === selectedLogEntry.guest) || guests[0]);
+    } else {
+      setLogGuestProfile(null);
+    }
+  }, [selectedLogEntry?.id]);
 
   // Reg Card prints on the exact same admin-editable ร.ร.๓ form as /rr3
   // (rr3_templates table) - fetched once, since it's one shared template
@@ -3103,193 +3127,602 @@ export default function BcpPage() {
         {/* Action Log Detail - every entry here is by definition a local-only
             change (there's nowhere to write these back to while MEWS is
             down), so the Status field always reads the same thing: it's a
-            record of something updated in our system, not MEWS. */}
-        {selectedLogEntry && (
-          <div className="no-print fixed inset-0 z-50 bg-[var(--paper)] text-[var(--text-primary)] flex flex-col">
-            <div className="flex-1 overflow-y-auto p-10 md:p-16">
-              <div className="font-display text-4xl md:text-5xl mb-8">Action Log Detail</div>
+            record of something updated in our system, not MEWS. Three tabs,
+            all built exclusively from selectedLogEntry.reservationSnapshot -
+            the copy frozen the instant this action was logged - never from
+            selectedReservation/bcp_snapshots (the 1-hour rotating history),
+            so this page keeps showing the booking exactly as it looked back
+            then even after the live Timeline moves on. Local logDetailTab/
+            logGuestProfile/logGuestProfileTab state (not showManagePage or
+            selectedGuestProfile) keeps this fully independent of the live
+            Manage/Guest Profile pages. */}
+        {selectedLogEntry && (() => {
+          const entry = selectedLogEntry;
+          const snap = entry.reservationSnapshot;
+          const fieldBoxCls = "px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px]";
+          const propRow = (label: string, value: ReactNode) => (
+            <>
+              <div className="text-[var(--text-primary)]/50">{label}</div>
+              <div className="text-right">{value}</div>
+            </>
+          );
+          // Re-derives a structured before/after out of the plain detail
+          // string each action already logs (see handleRoomStatusChange /
+          // handleChgRoomSave / handleRoomNumberChange / handleSaveRegCard)
+          // rather than adding new fields to OfflineAction - every existing
+          // log entry, old or new, benefits immediately.
+          let changeDetailNode: ReactNode = <div className={`${fieldBoxCls} whitespace-pre-line`}>{entry.detail}</div>;
+          if (entry.action === "Room Status") {
+            const m = entry.detail.match(/^Room (.+): (.+) -> (.+)$/);
+            if (m) {
+              changeDetailNode = (
+                <div className="flex items-center gap-3 text-[14px] flex-wrap">
+                  <span className="text-[11px] text-[var(--text-primary)]/50 tracked-caps">Room {m[1]}</span>
+                  <span className="px-2.5 py-1 rounded border border-[var(--text-primary)]/20">{m[2]}</span>
+                  <span className="text-[var(--text-primary)]/40">→</span>
+                  <span className="px-2.5 py-1 rounded bg-[#152A00] text-[#FFEFD2] font-bold">{m[3]}</span>
+                </div>
+              );
+            }
+          } else if (entry.action === "Chg Room") {
+            const m = entry.detail.match(/^(.+) -> (.+)$/);
+            if (m) {
+              changeDetailNode = (
+                <div className="flex items-center gap-3 text-[14px] flex-wrap">
+                  <span className="text-[11px] text-[var(--text-primary)]/50 tracked-caps">Room</span>
+                  <span className="px-2.5 py-1 rounded border border-[var(--text-primary)]/20">{m[1]}</span>
+                  <span className="text-[var(--text-primary)]/40">→</span>
+                  <span className="px-2.5 py-1 rounded bg-[#152A00] text-[#FFEFD2] font-bold">{m[2]}</span>
+                </div>
+              );
+            }
+          } else if (entry.action === "Room Number") {
+            const m = entry.detail.match(/^Room (.+): renamed to (.+)$/);
+            if (m) {
+              changeDetailNode = (
+                <div className="flex items-center gap-3 text-[14px] flex-wrap">
+                  <span className="text-[11px] text-[var(--text-primary)]/50 tracked-caps">Display number</span>
+                  <span className="px-2.5 py-1 rounded border border-[var(--text-primary)]/20">{m[1]}</span>
+                  <span className="text-[var(--text-primary)]/40">→</span>
+                  <span className="px-2.5 py-1 rounded bg-[#152A00] text-[#FFEFD2] font-bold">{m[2]}</span>
+                </div>
+              );
+            }
+          } else if (entry.action === "Reg Card Saved") {
+            const signed = entry.detail.includes("with signature");
+            changeDetailNode = (
+              <div className="flex items-center gap-2 text-[14px]">
+                <span>Signature</span>
+                <span className={`px-2.5 py-1 rounded text-[11px] font-bold ${signed ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  {signed ? "✓ Signed" : "Not signed"}
+                </span>
+              </div>
+            );
+          }
+          // Whoever this specific action was actually about (e.g. the
+          // companion a Reg Card was saved for) - falls back to the Owner
+          // for room-level actions (guest === "-") - shared by the Guest
+          // Profile tab's default guest and the header's Reg Card button.
+          const actionGuest = snap ? (allReservationGuests(snap).find((gg) => gg.name === entry.guest) || ownerGuestIdentity(snap)) : null;
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl items-start">
-                <div className="border border-[var(--text-primary)]/14 rounded-xl p-6">
-                  <div className="grid grid-cols-[140px_1fr] gap-y-4 text-[15px]">
-                    <div className="text-[var(--text-primary)]/50">Status</div>
-                    <div className="font-bold text-red-700">● Updated in our system</div>
-                    <div className="text-[var(--text-primary)]/50">Time</div>
-                    <div>{fmtDateTime(selectedLogEntry.at)}</div>
-                    <div className="text-[var(--text-primary)]/50">Guest</div>
-                    <div>{selectedLogEntry.guest || "-"}</div>
-                    <div className="text-[var(--text-primary)]/50">Room</div>
-                    <div className="font-bold">{effectiveRoomNumber(selectedLogEntry.room)}</div>
-                    <div className="text-[var(--text-primary)]/50">Action</div>
-                    <div className="font-bold">{selectedLogEntry.action}</div>
-                    <div className="text-[var(--text-primary)]/50">Detail</div>
-                    <div>{selectedLogEntry.detail}</div>
-                    {selectedLogEntry.reason && (
-                      <>
-                        <div className="text-[var(--text-primary)]/50">Reason</div>
-                        <div>{selectedLogEntry.reason}</div>
-                      </>
-                    )}
-                    <div className="text-[var(--text-primary)]/50">User</div>
-                    <div>{selectedLogEntry.userEmail || "-"}</div>
-                  </div>
+          return (
+            <div className="no-print fixed inset-0 z-50 bg-[var(--paper)] text-[var(--text-primary)] flex flex-col">
+              <div className="flex-1 overflow-y-auto p-10 md:p-16">
+                <div className="flex items-center justify-between gap-4 flex-wrap mb-6 max-w-5xl">
+                  <div className="font-display text-4xl md:text-5xl">Action Log Detail</div>
+                  {snap && actionGuest && (
+                    <button
+                      onClick={() => {
+                        handleOpenRegCard(snap, actionGuest);
+                        setSelectedLogEntry(null);
+                      }}
+                      title={`Open ${actionGuest.name || "this guest"}'s Reg Card`}
+                      className="shrink-0 px-4 py-2.5 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                    >
+                      Open Reg Card
+                    </button>
+                  )}
                 </div>
 
-                {/* Frozen at the moment this action was logged (see
-                    reservationSnapshot on OfflineAction) - always shows what
-                    the booking/guests looked like back then, even if the
-                    stay has since checked out, moved rooms again, or aged
-                    out of the live Timeline's ±7 day window. Absent
-                    entirely for room-level actions logged while the room
-                    was vacant. */}
-                {selectedLogEntry.reservationSnapshot && (
-                  <div>
-                    <div className="flex items-center justify-between gap-3 mb-5">
-                      <div className="font-display text-2xl">Reservation Detail</div>
-                      {selectedLogEntry.reservationSnapshot.number && (
-                        <a
-                          href={`/data-mart?search=${encodeURIComponent(selectedLogEntry.reservationSnapshot.number)}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          title="Opens this reservation in Data Mart - our permanent record, not the 1-hour snapshot history"
-                          className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
-                        >
-                          View in Data Mart ↗
-                        </a>
-                      )}
-                    </div>
-                    <div className="border border-[var(--text-primary)]/14 rounded-xl p-6 mb-10">
+                <div className="flex items-center gap-6 border-b border-[var(--text-primary)]/10 mb-8 max-w-5xl overflow-x-auto">
+                  {(["log", "properties", "guestProfile"] as const)
+                    .filter((t) => t === "log" || !!snap)
+                    .map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => setLogDetailTab(t)}
+                        className={`py-3 text-[13px] font-bold whitespace-nowrap border-b-2 -mb-px transition-all ${
+                          logDetailTab === t
+                            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                            : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        {t === "log" ? "Log" : t === "properties" ? "Properties" : "Guest Profile"}
+                      </button>
+                    ))}
+                </div>
+
+                {logDetailTab === "log" && (
+                  <div className="max-w-2xl">
+                    <div className="border border-[var(--text-primary)]/14 rounded-xl p-6 mb-6">
                       <div className="grid grid-cols-[140px_1fr] gap-y-4 text-[15px]">
-                        <div className="text-[var(--text-primary)]/50">Reservation #</div>
-                        <div className="font-bold">{selectedLogEntry.reservationSnapshot.number || "-"}</div>
-                        <div className="text-[var(--text-primary)]/50">Stay</div>
-                        <div>
-                          {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_in)} – {fmtDateOnly(selectedLogEntry.reservationSnapshot.check_out)}
-                        </div>
                         <div className="text-[var(--text-primary)]/50">Status</div>
-                        <div>{STATE_DISPLAY_LABEL[selectedLogEntry.reservationSnapshot.state] || selectedLogEntry.reservationSnapshot.state || "-"}</div>
+                        <div className="font-bold text-red-700">● Updated in our system</div>
+                        <div className="text-[var(--text-primary)]/50">Time</div>
+                        <div>{fmtDateTime(entry.at)}</div>
+                        <div className="text-[var(--text-primary)]/50">Guest</div>
+                        <div>{entry.guest || "-"}</div>
                         <div className="text-[var(--text-primary)]/50">Room</div>
-                        <div>{effectiveRoomNumber(selectedLogEntry.reservationSnapshot.room) || "-"}</div>
-                        {selectedLogEntry.reservationSnapshot.category && (
+                        <div className="font-bold">{effectiveRoomNumber(entry.room)}</div>
+                        <div className="text-[var(--text-primary)]/50">Action</div>
+                        <div className="font-bold">{entry.action}</div>
+                        {snap?.number && (
                           <>
-                            <div className="text-[var(--text-primary)]/50">Category</div>
-                            <div>{selectedLogEntry.reservationSnapshot.category}</div>
+                            <div className="text-[var(--text-primary)]/50">Reservation #</div>
+                            <div>{snap.number}</div>
                           </>
                         )}
-                        <div className="text-[var(--text-primary)]/50">Occupancy</div>
-                        <div>
-                          {selectedLogEntry.reservationSnapshot.adults} × Adults
-                          {selectedLogEntry.reservationSnapshot.children > 0 ? `, ${selectedLogEntry.reservationSnapshot.children} × Children` : ""}
-                        </div>
-                        {selectedLogEntry.reservationSnapshot.rate && (
+                        {snap && (
                           <>
-                            <div className="text-[var(--text-primary)]/50">Rate</div>
-                            <div>{selectedLogEntry.reservationSnapshot.rate}</div>
+                            <div className="text-[var(--text-primary)]/50">Stay</div>
+                            <div>{fmtDateOnly(snap.check_in)} – {fmtDateOnly(snap.check_out)}</div>
                           </>
                         )}
-                        {typeof selectedLogEntry.reservationSnapshot.total_amount === "number" && (
+                        {entry.reason && (
                           <>
-                            <div className="text-[var(--text-primary)]/50">Total</div>
-                            <div>
-                              {selectedLogEntry.reservationSnapshot.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}{" "}
-                              {selectedLogEntry.reservationSnapshot.currency}
-                            </div>
+                            <div className="text-[var(--text-primary)]/50">Reason</div>
+                            <div>{entry.reason}</div>
                           </>
                         )}
-                        {selectedLogEntry.reservationSnapshot.company && (
-                          <>
-                            <div className="text-[var(--text-primary)]/50">Company</div>
-                            <div>{selectedLogEntry.reservationSnapshot.company}</div>
-                          </>
-                        )}
-                        {selectedLogEntry.reservationSnapshot.travel_agency && (
-                          <>
-                            <div className="text-[var(--text-primary)]/50">Travel agency</div>
-                            <div>
-                              {selectedLogEntry.reservationSnapshot.travel_agency}
-                              {selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number
-                                ? ` (${selectedLogEntry.reservationSnapshot.travel_agency_confirmation_number})`
-                                : ""}
-                            </div>
-                          </>
-                        )}
-                        {selectedLogEntry.reservationSnapshot.segment && (
-                          <>
-                            <div className="text-[var(--text-primary)]/50">Segment</div>
-                            <div>{selectedLogEntry.reservationSnapshot.segment}</div>
-                          </>
-                        )}
-                        {(selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin) && (
-                          <>
-                            <div className="text-[var(--text-primary)]/50">Source</div>
-                            <div>{selectedLogEntry.reservationSnapshot.reservation_source || selectedLogEntry.reservationSnapshot.origin}</div>
-                          </>
-                        )}
-                        {selectedLogEntry.reservationSnapshot.notes.length > 0 && (
-                          <>
-                            <div className="text-[var(--text-primary)]/50">Notes</div>
-                            <div className="space-y-1">
-                              {selectedLogEntry.reservationSnapshot.notes.map((n, i) => (
-                                <div key={i}>{n.text}</div>
-                              ))}
-                            </div>
-                          </>
-                        )}
+                        <div className="text-[var(--text-primary)]/50">User</div>
+                        <div>{entry.userEmail || "-"}</div>
                       </div>
                     </div>
 
-                    {/* Every guest frozen on this reservation at log time
-                        (Owner + companions) - each opens the same full
-                        Guest Profile page (Profile/Payments/Billing tabs)
-                        other guest-name buttons in BCP do, just sourced
-                        from this permanently-stored snapshot instead of the
-                        current live one, so it stays accurate to how the
-                        guest looked back then even after the live Timeline
-                        moves on. */}
-                    <div className="font-display text-2xl mb-5">Guests</div>
-                    <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
-                      {allReservationGuests(selectedLogEntry.reservationSnapshot).map((g, i) => (
-                        <div key={i} className={`px-5 py-4 flex items-center justify-between gap-3 ${i > 0 ? "border-t border-[var(--text-primary)]/10" : ""}`}>
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[12px] font-bold shrink-0">
-                              {guestInitials(g.name || "?")}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="font-bold truncate">{g.name || "(no name)"}</div>
-                              {i === 0 && <div className="text-[10px] text-[var(--text-primary)]/50">Owner</div>}
-                            </div>
-                          </div>
-                          <button
-                            onClick={() => {
-                              const snap = selectedLogEntry.reservationSnapshot!;
-                              const group = allReservationGuests(snap);
-                              setSelectedGuestProfile(group[i]);
-                              setGuestProfileGroup(group);
-                              setGuestProfileReservation(snap);
-                              setGuestProfileTab("profile");
-                            }}
-                            className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
-                          >
-                            Guest Profile
-                          </button>
-                        </div>
-                      ))}
+                    <div className="border border-[var(--text-primary)]/14 rounded-xl p-6">
+                      <div className="font-display text-lg mb-3">Change Detail</div>
+                      {changeDetailNode}
                     </div>
                   </div>
                 )}
-              </div>
 
-              <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-5xl">
-                Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
+                {logDetailTab === "properties" && snap && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-10 max-w-5xl items-start">
+                    <div className="flex flex-col gap-6">
+                      <div>
+                        <div className="font-display text-xl mb-3">Notes</div>
+                        {snap.notes.length > 0 ? (
+                          <div className="flex flex-col gap-4">
+                            {snap.notes.map((n, i) => (
+                              <div key={i}>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Note ({n.type}), {fmtNoteTimestamp(n.created_utc)}</div>
+                                <div className={`${fieldBoxCls} whitespace-pre-line`}>{n.text}</div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-[var(--text-primary)]/40 italic text-[13px]">No notes recorded.</div>
+                        )}
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Arrival</div>
+                        <div className="flex gap-2">
+                          <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(snap.check_in)}</div>
+                          <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(snap.check_in).split(" ")[1]}</div>
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Departure</div>
+                        <div className="flex gap-2">
+                          <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(snap.check_out)}</div>
+                          <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(snap.check_out).split(" ")[1]}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="font-display text-xl mb-4">Reservation</div>
+                      <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 mb-5 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(snap.guest || "?")}</div>
+                          <div className="font-bold text-[14px] truncate">{snap.guest || "(no name)"}</div>
+                          <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[snap.state] || STATE_BADGE_CLS.Processed}`}>
+                            {STATE_DISPLAY_LABEL[snap.state] || snap.state}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="font-bold text-[13px]">{effectiveRoomNumber(snap.room)}</span>
+                          {typeof snap.room_locked === "boolean" && (
+                            <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${snap.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
+                              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+                        {propRow("Service", snap.service || "-")}
+                        {propRow("Confirmation number", snap.number || "-")}
+                        {snap.group_name && propRow("Group name", snap.group_name)}
+                        {propRow("Status", (
+                          <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[snap.state] || STATE_BADGE_CLS.Processed}`}>
+                            {STATE_DISPLAY_LABEL[snap.state] || snap.state}
+                          </span>
+                        ))}
+                        {propRow("Arrival", fmtFullDateTime(snap.check_in))}
+                        {propRow("Departure", fmtFullDateTime(snap.check_out))}
+                        {snap.purpose && propRow("Booking purpose", snap.purpose)}
+                        {snap.segment && propRow("Segment", snap.segment)}
+                        {propRow("Guests", `${snap.adults} × Adult${snap.adults !== 1 ? "s" : ""}${snap.children ? `, ${snap.children} × Child${snap.children !== 1 ? "ren" : ""}` : ""}`)}
+                        {typeof snap.total_amount === "number" && propRow("Total amount", `${snap.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${snap.currency || ""}`)}
+                        {typeof snap.total_amount_gross === "number" && propRow("Total amount (Gross)", snap.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                        {snap.category && propRow("Requested category", snap.category)}
+                        {propRow("Assigned space", <span className="font-bold">{snap.room ? effectiveRoomNumber(snap.room) : "-"}</span>)}
+                        {snap.rate && propRow("Rate", snap.rate)}
+                        {snap.travel_agency && propRow("Travel agency", <span className="underline decoration-1 underline-offset-2">{snap.travel_agency}</span>)}
+                        {snap.travel_agency_confirmation_number && propRow("Travel agency confirmation number", snap.travel_agency_confirmation_number)}
+                      </div>
+
+                      {!!snap.rate_lines?.length && (
+                        <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                          <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Nights</div>
+                          <div className="flex flex-col gap-1">
+                            {snap.rate_lines.map((line, i) => (
+                              <div key={i} className="flex items-center justify-between text-[13px]">
+                                <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                                <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {!!snap.item_lines?.length && (
+                        <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                          <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Products</div>
+                          <div className="flex flex-col gap-1">
+                            {snap.item_lines.map((line, i) => (
+                              <div key={i} className="flex items-center justify-between text-[13px]">
+                                <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                                <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px] mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+                        {snap.origin && propRow("Origin", snap.origin)}
+                        {snap.reservation_source && propRow("Reservation source", snap.reservation_source)}
+                        {snap.created_utc && propRow("Created", fmtDateTime(snap.created_utc))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {logDetailTab === "guestProfile" && snap && logGuestProfile && (() => {
+                  const g = logGuestProfile;
+                  const group = allReservationGuests(snap);
+                  const fmtPaymentType = (p: GuestPayment) => {
+                    const base = p.type.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+                    return p.sub_type ? `${base} ${p.sub_type}` : base;
+                  };
+                  return (
+                    <div className="max-w-5xl">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[13px] font-bold shrink-0">{guestInitials(g.name || "?")}</div>
+                        <div>
+                          <div className="font-display text-2xl">{g.name || "(no name)"}</div>
+                          {group[0] === g && <div className="text-[10px] text-[var(--text-primary)]/50">Owner</div>}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-6 border-b border-[var(--text-primary)]/10 mb-6">
+                        {(["profile", "payments", "billing"] as const).map((t) => (
+                          <button
+                            key={t}
+                            onClick={() => setLogGuestProfileTab(t)}
+                            className={`pb-3 text-[13px] font-bold capitalize border-b-2 -mb-px transition-all ${
+                              logGuestProfileTab === t
+                                ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                                : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                            }`}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+
+                      {logGuestProfileTab === "profile" && (
+                        <div className="grid grid-cols-1 md:grid-cols-[1fr_320px] gap-6">
+                          <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
+                            <div className="font-display text-xl text-[var(--text-primary)]">Profile</div>
+                            <div>
+                              <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Email</div>
+                              <div className={fieldBoxCls}>{g.email || "-"}</div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Title</div>
+                                <div className={fieldBoxCls}>{g.title || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">First name</div>
+                                <div className={fieldBoxCls}>{g.first_name || "-"}</div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Last name</div>
+                                <div className={fieldBoxCls}>{g.last_name || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Second last name</div>
+                                <div className={fieldBoxCls}>{g.second_last_name || "-"}</div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Nationality</div>
+                                <div className={fieldBoxCls}>{g.nationality_name || g.nationality || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Language</div>
+                                <div className={fieldBoxCls}>{g.language || "-"}</div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Telephone</div>
+                                <div className={fieldBoxCls}>{g.phone || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Sex</div>
+                                <div className={fieldBoxCls}>{g.sex || "-"}</div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Date of birth</div>
+                                <div className={fieldBoxCls}>{fmtBirthDate(g.birth_date) || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Country of birth</div>
+                                <div className={fieldBoxCls}>{g.birth_country_name || "-"}</div>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Place of birth</div>
+                                <div className={fieldBoxCls}>{g.birth_place || "-"}</div>
+                              </div>
+                              <div>
+                                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Occupation</div>
+                                <div className={fieldBoxCls}>{g.occupation || "-"}</div>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-6">
+                            <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                              <div className="font-display text-lg text-[var(--text-primary)] mb-3">Identity documents</div>
+                              {g.passport_number || g.identity_card_number || g.alien_book ? (
+                                <div className="flex flex-col gap-3">
+                                  {g.passport_number && (
+                                    <div>
+                                      <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Passport</div>
+                                      <div className={fieldBoxCls}>{g.passport_number}</div>
+                                    </div>
+                                  )}
+                                  {g.identity_card_number && (
+                                    <div>
+                                      <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">ID Card</div>
+                                      <div className={fieldBoxCls}>{g.identity_card_number}</div>
+                                    </div>
+                                  )}
+                                  {g.alien_book && (
+                                    <div>
+                                      <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Alien Book</div>
+                                      <div className={fieldBoxCls}>{g.alien_book}</div>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                              )}
+                            </div>
+
+                            <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                              <div className="font-display text-lg text-[var(--text-primary)] mb-3">Addresses</div>
+                              {g.address_details ? (
+                                <div className="text-[13px] text-[var(--text-primary)]">{g.address_details}</div>
+                              ) : (
+                                <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                              )}
+                            </div>
+
+                            <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                              <div className="font-display text-lg text-[var(--text-primary)] mb-3">Related guests</div>
+                              {group.filter((rg) => rg !== g).length > 0 ? (
+                                <div className="flex flex-col gap-3">
+                                  {group.filter((rg) => rg !== g).map((rg, i) => (
+                                    <button key={i} onClick={() => { setLogGuestProfile(rg); setLogGuestProfileTab("profile"); }} className="flex items-center gap-3 text-left">
+                                      <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                                        {guestInitials(rg.name || "?")}
+                                      </div>
+                                      <span className="font-bold text-[13px] underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors">
+                                        {rg.name || "(no name)"}
+                                      </span>
+                                    </button>
+                                  ))}
+                                </div>
+                              ) : (
+                                <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                              )}
+                            </div>
+
+                            <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                              <div className="font-display text-lg text-[var(--text-primary)] mb-3">Files</div>
+                              <div className="text-[var(--text-primary)]/40 italic text-[13px]">No data available.</div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {logGuestProfileTab === "payments" && (
+                        <div>
+                          <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Payments</div>
+                          <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden mb-8">
+                            {g.payments && g.payments.length > 0 ? (
+                              <table className="w-full text-[13px]">
+                                <thead>
+                                  <tr className="text-left text-[11px] text-[var(--text-primary)]/50 border-b border-[var(--text-primary)]/10">
+                                    <th className="p-3 font-normal">Type</th>
+                                    <th className="p-3 font-normal">Identifier</th>
+                                    <th className="p-3 font-normal">Created</th>
+                                    <th className="p-3 font-normal">State</th>
+                                    <th className="p-3 font-normal">Notes</th>
+                                    <th className="p-3 font-normal text-right">Value</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {g.payments.map((p, i) => (
+                                    <tr key={i} className="border-b border-[var(--text-primary)]/10 last:border-0">
+                                      <td className="p-3">{fmtPaymentType(p)}</td>
+                                      <td className="p-3">{p.identifier || "-"}</td>
+                                      <td className="p-3 whitespace-nowrap">{fmtDateTime(p.created)}</td>
+                                      <td className="p-3">{p.state}</td>
+                                      <td className="p-3">{p.notes || "-"}</td>
+                                      <td className="p-3 text-right font-bold">
+                                        {p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                                <tfoot>
+                                  <tr className="border-t border-[var(--text-primary)]/10">
+                                    <td colSpan={5} className="p-3 text-right font-bold">Total</td>
+                                    <td className="p-3 text-right font-bold">
+                                      {g.payments.reduce((s, p) => s + p.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {g.payments[0].currency}
+                                    </td>
+                                  </tr>
+                                </tfoot>
+                              </table>
+                            ) : (
+                              <div className="p-5 text-[var(--text-primary)]/40 italic text-[13px]">No payments recorded.</div>
+                            )}
+                          </div>
+
+                          <div className="font-display text-2xl text-[var(--text-primary)] mb-5">Preauthorizations</div>
+                          <div className="border border-[var(--text-primary)]/14 rounded-xl p-10 text-center text-[var(--text-primary)]/40 italic text-[13px]">
+                            No preauthorizations yet.
+                          </div>
+                        </div>
+                      )}
+
+                      {logGuestProfileTab === "billing" && (
+                        <div>
+                          <div className="flex items-center justify-between mb-5">
+                            <div className="font-display text-2xl text-[var(--text-primary)]">Owned bills</div>
+                            <span className="text-[12px] font-bold text-[var(--text-primary)]/50">
+                              {(snap.to_be_paid ?? 0) === 0 ? "Balanced" : "Unbalanced"}
+                            </span>
+                          </div>
+                          <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
+                            <div className="p-5 flex items-center justify-between border-b border-[var(--text-primary)]/10 gap-4">
+                              <div className="font-bold text-[15px]">{snap.bill_name || snap.number}</div>
+                              <div className="flex items-center gap-8">
+                                <div>
+                                  <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Reservation status</div>
+                                  <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[snap.state] || STATE_BADGE_CLS.Processed}`}>
+                                    {STATE_DISPLAY_LABEL[snap.state] || snap.state}
+                                  </span>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Arrival</div>
+                                  <div className="text-[13px] font-bold">{fmtDateOnly(snap.check_in)}</div>
+                                </div>
+                                <div className="px-4 py-2 rounded-lg bg-[var(--text-primary)]/5 text-right shrink-0">
+                                  <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
+                                  <div className="font-bold text-[14px]">
+                                    {(snap.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {snap.currency}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-[1fr_220px]">
+                              <div className="p-5 border-b md:border-b-0 md:border-r border-[var(--text-primary)]/10">
+                                <div className="flex items-center gap-3 mb-4 text-[12px] text-[var(--text-primary)]/60">
+                                  <input type="checkbox" disabled className="w-4 h-4" />
+                                  <span>Select all ({(snap.rate_lines?.length || 0) + (snap.item_lines?.length || 0)})</span>
+                                  <button disabled className="ml-auto px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">
+                                    + Add product
+                                  </button>
+                                </div>
+                                <div className="flex flex-col">
+                                  {snap.rate_lines?.map((line, i) => (
+                                    <div key={`r${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                                      <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                                      <span className="text-[var(--text-primary)]/70">{snap.guest} — {effectiveRoomNumber(snap.room)}</span>
+                                      <span className="text-[var(--text-primary)]/50">— Stay {line.label}</span>
+                                      <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                  ))}
+                                  {snap.item_lines?.map((line, i) => (
+                                    <div key={`i${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                                      <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                                      <span className="text-[var(--text-primary)]/70">{line.label}</span>
+                                      <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                  ))}
+                                  {!snap.rate_lines?.length && !snap.item_lines?.length && (
+                                    <div className="text-[var(--text-primary)]/40 italic text-[13px] py-2">No charges recorded.</div>
+                                  )}
+                                </div>
+
+                                {g.payments && g.payments.length > 0 && (
+                                  <>
+                                    <div className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50 mt-5 mb-2">Payments</div>
+                                    <div className="flex flex-col">
+                                      {g.payments.map((p, i) => (
+                                        <div key={`p${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
+                                          <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                                          <span className="text-[var(--text-primary)]/70">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
+                                          <span className="ml-auto font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </>
+                                )}
+                              </div>
+
+                              <div className="p-5 flex flex-col gap-2">
+                                <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Preview</button>
+                                <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Process payment</button>
+                                <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 opacity-50 cursor-not-allowed">Issue proforma</button>
+                                <button disabled className="w-full px-4 py-2.5 text-[11px] font-bold tracked-caps bg-blue-600 text-white opacity-50 cursor-not-allowed">Close</button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div className="mt-10 pt-6 border-t border-[var(--text-primary)]/10 text-[13px] text-[var(--text-primary)]/40 italic max-w-5xl">
+                  Not synced to MEWS — re-enter this change in MEWS once it&apos;s back online.
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 p-6 border-t border-[var(--text-primary)]/10">
+                <button onClick={() => setSelectedLogEntry(null)} className="px-6 py-3 text-[12px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Close
+                </button>
               </div>
             </div>
-            <div className="flex justify-end gap-2 p-6 border-t border-[var(--text-primary)]/10">
-              <button onClick={() => setSelectedLogEntry(null)} className="px-6 py-3 text-[12px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
-                Close
-              </button>
-            </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Reservation detail panel - mirrors MEWS's own reservation popup
             directly (Reservation/Group tabs, boxed stay+room+notes and guest
