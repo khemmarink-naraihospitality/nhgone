@@ -530,12 +530,19 @@ export default function BcpPage() {
   const [roomNumberDraft, setRoomNumberDraft] = useState("");
   const [showManagePage, setShowManagePage] = useState(false);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
-  // Manage page's own tab bar (Status/Properties, matching MEWS's own
-  // Status/Properties/Group/... order) - reset to "status" every time Manage
-  // is opened, matching MEWS always landing there first.
-  const [managePageTab, setManagePageTab] = useState<"status" | "properties">("status");
+  // Manage page's own tab bar (Status/Properties/Billing, matching MEWS's
+  // own Status/Properties/Group/.../Billing order) - reset to "status" every
+  // time Manage is opened, matching MEWS always landing there first.
+  const [managePageTab, setManagePageTab] = useState<"status" | "properties" | "billing">("status");
   const [undoCheckInReason, setUndoCheckInReason] = useState("");
   const [undoCheckOutReason, setUndoCheckOutReason] = useState("");
+  // Billing tab's own expand/collapse state (separate from rateLinesOpen/
+  // itemLinesOpen below, which belong to the reservation detail drawer's own
+  // Rate/Items breakdown) - one flag for the Night group, one per distinct
+  // item_lines product name (Service Charge, Room Adjustment, etc.) since
+  // each is its own independently-expandable group.
+  const [manageNightsOpen, setManageNightsOpen] = useState(false);
+  const [manageItemGroupsOpen, setManageItemGroupsOpen] = useState<Record<string, boolean>>({});
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
   const [itemLinesOpen, setItemLinesOpen] = useState(false);
@@ -2258,12 +2265,12 @@ export default function BcpPage() {
         <div className="text-right">{value}</div>
       </>
     );
-    // Status and Properties are the two tabs actually built - every other
-    // tab MEWS's own Manage screen has (Group/Pricing/Items/Mailing/Action
-    // log/Summary/Billing/Contracting) had nothing behind it but a disabled
+    // Status, Properties and Billing are the tabs actually built - every
+    // other tab MEWS's own Manage screen has (Group/Pricing/Items/Mailing/
+    // Action log/Summary/Contracting) had nothing behind it but a disabled
     // placeholder, so they're removed entirely rather than left
     // clickable-looking with no real content.
-    const tabs = ["Status", "Properties"] as const;
+    const tabs = ["Status", "Properties", "Billing"] as const;
     const checkStatus = effectiveCheckStatus(res);
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
@@ -2279,7 +2286,7 @@ export default function BcpPage() {
             {tabs.map((t) => (
               <button
                 key={t}
-                onClick={() => setManagePageTab(t.toLowerCase() as "status" | "properties")}
+                onClick={() => setManagePageTab(t.toLowerCase() as "status" | "properties" | "billing")}
                 className={`py-3 text-[13px] font-bold whitespace-nowrap border-b-2 -mb-px transition-all ${
                   managePageTab === t.toLowerCase()
                     ? "border-[var(--text-primary)] text-[var(--text-primary)]"
@@ -2558,6 +2565,138 @@ export default function BcpPage() {
           </div>
           </>
           )}
+
+          {/* Billing - same rate/item lines + payments every other bill view
+              in BCP already reads (orderItems for the whole window,
+              payments_by_customer), just grouped and expandable per product
+              the way MEWS's own Billing screen shows it (Night ×N, one
+              group per distinct item_lines product name). MEWS further
+              nests item groups under a "category" (e.g. Accomodation
+              Extras) our flat item_lines data has no equivalent field for,
+              so each product is its own top-level group here instead of
+              adding a fabricated middle tier. Process payment/Issue
+              proforma disabled - decorative, matching every other action
+              button in BCP, since there's nothing live to process from a
+              stale snapshot. */}
+          {managePageTab === "billing" && (() => {
+            const fmtPaymentType = (p: GuestPayment) => {
+              const base = p.type.replace(/([a-z0-9])([A-Z])/g, "$1 $2");
+              return p.sub_type ? `${base} ${p.sub_type}` : base;
+            };
+            const itemGroups: { label: string; lines: { label: string; amount: number }[]; total: number }[] = [];
+            (res.item_lines || []).forEach((line) => {
+              let group = itemGroups.find((g) => g.label === line.label);
+              if (!group) {
+                group = { label: line.label, lines: [], total: 0 };
+                itemGroups.push(group);
+              }
+              group.lines.push(line);
+              group.total += line.amount;
+            });
+            const nightsTotal = (res.rate_lines || []).reduce((s, l) => s + l.amount, 0);
+            const totalCount = (res.rate_lines?.length || 0) + (res.item_lines?.length || 0);
+
+            return (
+              <div className="max-w-3xl flex flex-col gap-6">
+                <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
+                  <div className="p-4 flex items-center justify-between gap-4 flex-wrap border-b border-[var(--text-primary)]/10">
+                    <div className="flex items-center gap-3 min-w-0 flex-wrap text-[12px]">
+                      <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
+                        {STATE_DISPLAY_LABEL[res.state] || res.state}
+                      </span>
+                      <span className="font-bold text-[13px]">{res.guest || "(no name)"}</span>
+                      <span className="text-[var(--text-primary)]/60">{effectiveRoomNumber(res.room)}</span>
+                      <span className="text-[var(--text-primary)]/50">{fmtDateOnly(res.check_in)} – {fmtDateOnly(res.check_out)}</span>
+                      <span className="text-[var(--text-primary)]/50">Stay (Accommodation) {res.number}</span>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <span className="text-[11px] text-[var(--text-primary)]/50">{totalCount}×</span>
+                      <span className="font-bold text-[14px]">
+                        {(res.total_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!!res.rate_lines?.length && (
+                    <div className="border-b border-[var(--text-primary)]/10">
+                      <button onClick={() => setManageNightsOpen((v) => !v)} className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--text-primary)]/5 transition-colors">
+                        <div className="flex items-center gap-1.5 text-[12px] font-bold">
+                          <svg className={`w-3 h-3 transition-transform ${manageNightsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          Night — {res.rate_lines.length}×
+                        </div>
+                        <div className="font-bold text-[13px]">{nightsTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                      </button>
+                      {manageNightsOpen && res.rate_lines.map((line, i) => (
+                        <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
+                          <div>Night — {line.label} — 1×</div>
+                          <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {itemGroups.map((group) => (
+                    <div key={group.label} className="border-b border-[var(--text-primary)]/10 last:border-0">
+                      <button
+                        onClick={() => setManageItemGroupsOpen((prev) => ({ ...prev, [group.label]: !prev[group.label] }))}
+                        className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-[var(--text-primary)]/5 transition-colors"
+                      >
+                        <div className="flex items-center gap-1.5 text-[12px] font-bold">
+                          <svg className={`w-3 h-3 transition-transform ${manageItemGroupsOpen[group.label] ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                          {group.label} — {group.lines.length}×
+                        </div>
+                        <div className="font-bold text-[13px]">{group.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                      </button>
+                      {manageItemGroupsOpen[group.label] && group.lines.map((line, i) => (
+                        <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
+                          <div>{group.label} — {line.label} — 1×</div>
+                          <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+
+                  {!res.rate_lines?.length && !itemGroups.length && (
+                    <div className="p-5 text-[var(--text-primary)]/40 italic text-[13px]">No charges recorded.</div>
+                  )}
+                </div>
+
+                <div>
+                  <div className="font-display text-lg mb-3">Payments</div>
+                  <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
+                    {res.payments && res.payments.length > 0 ? (
+                      res.payments.map((p, i) => (
+                        <div key={i} className={`px-4 py-3 flex items-center justify-between gap-3 text-[13px] ${i > 0 ? "border-t border-[var(--text-primary)]/10" : ""}`}>
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className="shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded bg-emerald-50 text-emerald-700 border-emerald-200">Charged</span>
+                            <span className="truncate">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
+                          </div>
+                          <div className="font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}</div>
+                        </div>
+                      ))
+                    ) : (
+                      <div className="p-5 text-[var(--text-primary)]/40 italic text-[13px]">No payments recorded.</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-4 flex-wrap pt-4 border-t border-[var(--text-primary)]/10">
+                  <div>
+                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
+                    <div className="font-bold text-[18px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-4 py-2.5 rounded-lg border border-[var(--text-primary)]/20 text-[12px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Process payment</button>
+                    <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-4 py-2.5 rounded-lg border border-[var(--text-primary)]/20 text-[12px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Issue proforma</button>
+                  </div>
+                </div>
+
+                <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
+                  Read-only snapshot - no live connection to MEWS, so nothing here can actually be processed.
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
     );
@@ -4322,6 +4461,8 @@ export default function BcpPage() {
                     setManagePageTab("status");
                     setUndoCheckInReason("");
                     setUndoCheckOutReason("");
+                    setManageNightsOpen(false);
+                    setManageItemGroupsOpen({});
                   }}
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
