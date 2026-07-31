@@ -1137,6 +1137,40 @@ export default function BcpPage() {
     return logSort.dir === "asc" ? " ▲" : " ▼";
   };
 
+  // CSV rather than a real .xlsx - Excel opens it natively with no extra
+  // library, matching the reused-browser-print-dialog precedent for Reg
+  // Card (prefer what the browser/Excel already does over adding a new
+  // dependency). Exports exactly what's currently visible - respects the
+  // search box and column sort already applied to the table.
+  const handleExportActionLogsToExcel = () => {
+    const headers = ["No.", "Time", "Guest", "Room", "Action", "Detail", "User", "BCP Check"];
+    const rows = displayedActions.map((a) => [
+      actionSeqNo.get(a.id) ?? "",
+      fmtDateTime(a.at),
+      a.guest,
+      effectiveRoomNumber(a.room),
+      a.action,
+      a.detail,
+      a.userEmail || "-",
+      a.checked ? "Yes" : "No",
+    ]);
+    const escapeCsv = (v: string | number) => {
+      const s = String(v);
+      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+    // BOM so Excel reads guest/user names with Thai or other non-ASCII
+    // characters as UTF-8 instead of guessing the wrong codepage.
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const safeProperty = (snapshot?.property || "property").replace(/[\\/:*?"<>|]/g, "").trim();
+    link.download = `bcp-action-logs-${safeProperty}-${fmtYMD(new Date())}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
   const handleCheckIn = (r: ReservationRow) =>
     logOfflineAction({
       at: new Date().toISOString(),
@@ -2887,13 +2921,23 @@ export default function BcpPage() {
                 />
               )}
               {mainTab === "logs" && (
-                <input
-                  type="text"
-                  value={logSearch}
-                  onChange={(e) => setLogSearch(e.target.value)}
-                  placeholder="Search guest, room, action, or user"
-                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
-                />
+                <div className="ml-auto flex items-center gap-2">
+                  <button
+                    onClick={handleExportActionLogsToExcel}
+                    disabled={displayedActions.length === 0}
+                    title="Export the rows currently shown (respects search and sort) to a .csv file Excel opens directly"
+                    className="px-3 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    Export to Excel
+                  </button>
+                  <input
+                    type="text"
+                    value={logSearch}
+                    onChange={(e) => setLogSearch(e.target.value)}
+                    placeholder="Search guest, room, action, or user"
+                    className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                  />
+                </div>
               )}
             </div>
 
@@ -3263,7 +3307,7 @@ export default function BcpPage() {
                         onClick={() => setSelectedLogEntry(a)}
                         className={`border-b last:border-0 cursor-pointer transition-colors ${
                           a.checked
-                            ? "border-[var(--text-primary)]/8 text-[var(--text-primary)] hover:bg-[var(--text-primary)]/[0.03]"
+                            ? "border-emerald-100 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
                             : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
                         }`}
                       >
