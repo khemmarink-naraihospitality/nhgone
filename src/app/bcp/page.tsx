@@ -236,7 +236,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added";
+  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -530,6 +530,12 @@ export default function BcpPage() {
   const [roomNumberDraft, setRoomNumberDraft] = useState("");
   const [showManagePage, setShowManagePage] = useState(false);
   const [manageTab, setManageTab] = useState<"reservation" | "group">("reservation");
+  // Manage page's own tab bar (Status/Properties, matching MEWS's own
+  // Status/Properties/Group/... order) - reset to "status" every time Manage
+  // is opened, matching MEWS always landing there first.
+  const [managePageTab, setManagePageTab] = useState<"status" | "properties">("status");
+  const [undoCheckInReason, setUndoCheckInReason] = useState("");
+  const [undoCheckOutReason, setUndoCheckOutReason] = useState("");
   const [manageNotesOpen, setManageNotesOpen] = useState(false);
   const [rateLinesOpen, setRateLinesOpen] = useState(false);
   const [itemLinesOpen, setItemLinesOpen] = useState(false);
@@ -1146,26 +1152,69 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
-  // MEWS's own "Started" state is one source of truth, but while MEWS is
-  // down a Check In logged just now only exists in our own actions list -
-  // the snapshot's state field can't reflect it. actions is always
-  // server-ordered newest-first, so the first Check In/Check Out match is
-  // the most recent one either way.
-  const isReservationCheckedIn = (r: ReservationRow): boolean => {
-    if (r.state === "Started") return true;
-    const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
-    return latest?.action === "Check In";
+  // Manage > Status tab's Undo Check In/Out - mirrors MEWS's own "Undo
+  // check-in"/"Undo check-out" (both require a typed reason before MEWS
+  // lets you proceed) - reason is required here the same way, and recorded
+  // as its own field so the Action Log Detail page can show it even though
+  // there's nowhere live to actually apply the undo while MEWS is down.
+  const handleUndoCheckIn = (r: ReservationRow, reason: string) => {
+    if (!reason.trim()) return;
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: r.number,
+      guest: r.guest,
+      room: r.room,
+      action: "Undo Check In",
+      detail: `Room ${effectiveRoomNumber(r.room)}`,
+      reason: reason.trim(),
+      reservationSnapshot: r,
+      guestProfileSnapshot: findGuestProfile(r),
+    });
+    setUndoCheckInReason("");
   };
+  const handleUndoCheckOut = (r: ReservationRow, reason: string) => {
+    if (!reason.trim()) return;
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: r.number,
+      guest: r.guest,
+      room: r.room,
+      action: "Undo Check Out",
+      detail: `Room ${effectiveRoomNumber(r.room)}`,
+      reason: reason.trim(),
+      reservationSnapshot: r,
+      guestProfileSnapshot: findGuestProfile(r),
+    });
+    setUndoCheckOutReason("");
+  };
+  // MEWS's own "Started"/"Processed" state is one source of truth, but while
+  // MEWS is down a Check In/Out (or an Undo of either) logged just now only
+  // exists in our own actions list - the snapshot's state field can't
+  // reflect it. actions is always server-ordered newest-first, so the first
+  // match among these four action types is the most recent one either way -
+  // whichever it is takes priority over the stale snapshot state.
+  const effectiveCheckStatus = (r: ReservationRow): "to_check_in" | "checked_in" | "checked_out" => {
+    const latest = actions.find(
+      (a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out" || a.action === "Undo Check In" || a.action === "Undo Check Out")
+    );
+    if (latest) {
+      if (latest.action === "Check In") return "checked_in";
+      if (latest.action === "Check Out") return "checked_out";
+      if (latest.action === "Undo Check In") return "to_check_in";
+      return "checked_in"; // Undo Check Out reverts back to checked in
+    }
+    if (r.state === "Started") return "checked_in";
+    if (r.state === "Processed") return "checked_out";
+    return "to_check_in";
+  };
+  const isReservationCheckedIn = (r: ReservationRow): boolean => effectiveCheckStatus(r) !== "to_check_in";
   // Whether Check Out has already been logged locally for this stay - r.state
   // stays "Started" until MEWS is reachable again to actually process the
   // checkout, so isReservationCheckedIn above never flips on its own and the
   // Check Out button would otherwise stay clickable forever (letting the
   // front desk log the same checkout repeatedly). Disabling it once logged
   // is the visible confirmation that it's been recorded.
-  const hasCheckedOutLocally = (r: ReservationRow): boolean => {
-    const latest = actions.find((a) => a.reservationNumber === r.number && (a.action === "Check In" || a.action === "Check Out"));
-    return latest?.action === "Check Out";
-  };
+  const hasCheckedOutLocally = (r: ReservationRow): boolean => effectiveCheckStatus(r) === "checked_out";
 
   const roomStateFor = (roomNumber: string): string => {
     const room = snapshot?.rooms.find((rm) => rm.room === roomNumber);
@@ -2209,12 +2258,13 @@ export default function BcpPage() {
         <div className="text-right">{value}</div>
       </>
     );
-    // Only Properties is actually built - every other tab MEWS's own Manage
-    // screen has (Status/Group/Pricing/Items/Mailing/Action log/Summary/
-    // Billing/Contracting) had nothing behind it but a disabled placeholder,
-    // so they're removed entirely rather than left clickable-looking with
-    // no real content.
-    const tabs = ["Properties"];
+    // Status and Properties are the two tabs actually built - every other
+    // tab MEWS's own Manage screen has (Group/Pricing/Items/Mailing/Action
+    // log/Summary/Billing/Contracting) had nothing behind it but a disabled
+    // placeholder, so they're removed entirely rather than left
+    // clickable-looking with no real content.
+    const tabs = ["Status", "Properties"] as const;
+    const checkStatus = effectiveCheckStatus(res);
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-6xl mx-auto">
@@ -2227,18 +2277,111 @@ export default function BcpPage() {
 
           <div className="flex items-center gap-5 border-b border-[var(--text-primary)]/10 mb-8 overflow-x-auto">
             {tabs.map((t) => (
-              <div
+              <button
                 key={t}
-                title={t === "Properties" ? undefined : "Not available in this snapshot"}
-                className={`py-3 text-[13px] font-bold whitespace-nowrap border-b-2 -mb-px ${
-                  t === "Properties" ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/25 cursor-not-allowed"
+                onClick={() => setManagePageTab(t.toLowerCase() as "status" | "properties")}
+                className={`py-3 text-[13px] font-bold whitespace-nowrap border-b-2 -mb-px transition-all ${
+                  managePageTab === t.toLowerCase()
+                    ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                    : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
                 }`}
               >
                 {t}
-              </div>
+              </button>
             ))}
           </div>
 
+          {/* Status - mirrors MEWS's own Status tab's Check in/Undo check-in/
+              Undo check-out actions (Undo requires a typed reason, same as
+              MEWS's own dialog) - everything here is local-only (see
+              logOfflineAction), re-entered into MEWS once it's reachable
+              again, same premise as every other BCP action. */}
+          {managePageTab === "status" && (
+            <div className="max-w-2xl flex flex-col gap-6">
+              <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
+                  <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
+                  <span
+                    className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${
+                      checkStatus === "checked_in" ? STATE_BADGE_CLS.Started : checkStatus === "checked_out" ? STATE_BADGE_CLS.Processed : STATE_BADGE_CLS.Confirmed
+                    }`}
+                  >
+                    {checkStatus === "checked_in" ? "Checked in" : checkStatus === "checked_out" ? "Checked out" : "To check in"}
+                  </span>
+                </div>
+                <span className="font-bold text-[13px]">{effectiveRoomNumber(res.room)}</span>
+              </div>
+
+              {checkStatus === "to_check_in" && (
+                <button
+                  onClick={() => requestCheckIn(res)}
+                  className="self-start px-6 py-2.5 rounded-lg bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors"
+                >
+                  Check In
+                </button>
+              )}
+
+              {checkStatus === "checked_in" && (
+                <>
+                  <button
+                    onClick={() => handleCheckOut(res)}
+                    className="self-start px-6 py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-[13px] font-bold hover:opacity-90 transition-opacity"
+                  >
+                    Check Out
+                  </button>
+                  <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                    <div className="font-display text-lg mb-3">Undo check-in</div>
+                    <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
+                    <div className="flex gap-2">
+                      <input
+                        value={undoCheckInReason}
+                        onChange={(e) => setUndoCheckInReason(e.target.value)}
+                        placeholder="Reason for undoing check-in"
+                        className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                      />
+                      <button
+                        onClick={() => handleUndoCheckIn(res, undoCheckInReason)}
+                        disabled={!undoCheckInReason.trim()}
+                        className="px-5 py-2 rounded-lg bg-amber-400 text-[#152A00] text-[12px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                      >
+                        Undo
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {checkStatus === "checked_out" && (
+                <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                  <div className="font-display text-lg mb-3">Undo check-out</div>
+                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
+                  <div className="flex gap-2">
+                    <input
+                      value={undoCheckOutReason}
+                      onChange={(e) => setUndoCheckOutReason(e.target.value)}
+                      placeholder="Reason for undoing check-out"
+                      className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                    />
+                    <button
+                      onClick={() => handleUndoCheckOut(res, undoCheckOutReason)}
+                      disabled={!undoCheckOutReason.trim()}
+                      className="px-5 py-2 rounded-lg bg-amber-400 text-[#152A00] text-[12px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                    >
+                      Undo
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
+                Recorded in our own system only - no live connection to MEWS, so re-enter this change there once it&apos;s back online.
+              </div>
+            </div>
+          )}
+
+          {managePageTab === "properties" && (
+          <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
             {/* Left column: Notes + Arrival/Departure */}
             <div className="flex flex-col gap-6">
@@ -2413,6 +2556,8 @@ export default function BcpPage() {
           <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
             Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS, so notes, dates, billing and unlock actions are disabled here.
           </div>
+          </>
+          )}
         </div>
       </div>
     );
@@ -4172,7 +4317,12 @@ export default function BcpPage() {
                 </>
               <div className="sticky bottom-0 bg-[var(--paper)] border-t border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
                 <button
-                  onClick={() => setShowManagePage(true)}
+                  onClick={() => {
+                    setShowManagePage(true);
+                    setManagePageTab("status");
+                    setUndoCheckInReason("");
+                    setUndoCheckOutReason("");
+                  }}
                   className="w-[30%] py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 transition-colors"
                 >
                   Manage
