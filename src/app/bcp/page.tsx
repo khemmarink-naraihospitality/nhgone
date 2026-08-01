@@ -236,7 +236,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed" | "Arrival Changed" | "Room Type Changed";
+  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed" | "Arrival Changed" | "Room Type Changed" | "Payment Processed";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -576,6 +576,14 @@ export default function BcpPage() {
   const [editRoomType, setEditRoomType] = useState("");
   const [roomTypeChangeReason, setRoomTypeChangeReason] = useState("");
   const [savingRoomTypeChange, setSavingRoomTypeChange] = useState(false);
+  // Billing tab's Process Payment modal - reads the reservation's own
+  // itemized breakdown (already computed there) plus a Payment Note, and on
+  // Save flips Billing Status permanently from "To be paid" to "Paid" (see
+  // billingProcessedOverrides below), same one-way "can't undo, matches
+  // MEWS's own Process payment" semantics as the rest of BCP.
+  const [showProcessPaymentModal, setShowProcessPaymentModal] = useState(false);
+  const [paymentNoteDraft, setPaymentNoteDraft] = useState("");
+  const [savingPaymentProcess, setSavingPaymentProcess] = useState(false);
   // Billing tab's own expand/collapse state (separate from rateLinesOpen/
   // itemLinesOpen below, which belong to the reservation detail drawer's own
   // Rate/Items breakdown) - one flag for the Night group, one per distinct
@@ -720,6 +728,11 @@ export default function BcpPage() {
   // Room type (category) override per reservation - persisted in
   // bcp_room_type_overrides, same (property, reservation_number) key.
   const [roomTypeOverrides, setRoomTypeOverrides] = useState<Record<string, string>>({});
+  // Whether the Billing tab's Process Payment has been used on this
+  // reservation - persisted in bcp_billing_overrides, same (property,
+  // reservation_number) key. Presence alone means "processed" (there's no
+  // un-process action, matching MEWS's own one-way behavior once paid).
+  const [billingProcessedOverrides, setBillingProcessedOverrides] = useState<Record<string, { note?: string; processedAt: string }>>({});
   // Current housekeeping status for a room - the override if housekeeping
   // has changed it via Rooms (HK), otherwise whatever MEWS last reported.
   // Used everywhere a room's status color/badge shows (Timeline dot, Manage
@@ -1557,6 +1570,8 @@ export default function BcpPage() {
     setArrivalChangeReason("");
     setEditRoomType(selectedReservation.category || "");
     setRoomTypeChangeReason("");
+    setShowProcessPaymentModal(false);
+    setPaymentNoteDraft("");
   }, [selectedReservation?.number]);
 
   // Properties tab's Arrival/Departure Save - requires a typed reason (same
@@ -1651,6 +1666,44 @@ export default function BcpPage() {
       })
       .finally(() => setSavingRoomTypeChange(false));
     setRoomTypeChangeReason("");
+  };
+
+  // Billing tab's Process Payment Save - one-way (no un-process), matching
+  // MEWS's own behavior once a bill is actually settled. Payment Note is
+  // optional (unlike the Arrival/Room Type reasons above, which are
+  // required) since there's nothing ambiguous being overridden here.
+  const handleProcessPayment = () => {
+    if (!selectedReservation || !snapshot?.property) return;
+    const note = paymentNoteDraft.trim();
+    const processedAt = new Date().toISOString();
+    setSavingPaymentProcess(true);
+    setBillingProcessedOverrides((prev) => ({ ...prev, [selectedReservation.number]: { note: note || undefined, processedAt } }));
+    logOfflineAction({
+      at: processedAt,
+      reservationNumber: selectedReservation.number,
+      guest: selectedReservation.guest,
+      room: selectedReservation.room,
+      action: "Payment Processed",
+      detail: `Processed: ${(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} ${selectedReservation.currency || ""}`,
+      reason: note || undefined,
+      reservationSnapshot: selectedReservation,
+      guestProfileSnapshot: findGuestProfile(selectedReservation),
+    });
+    fetch("/api/bcp/billing-overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        property_name: snapshot.property,
+        reservation_number: selectedReservation.number,
+        note: note || null,
+      }),
+    })
+      .catch(() => {
+        /* logOfflineAction above still records the intent even if this write failed */
+      })
+      .finally(() => setSavingPaymentProcess(false));
+    setShowProcessPaymentModal(false);
+    setPaymentNoteDraft("");
   };
 
   // Same fetch pattern as reservationNotes above, for the currently-open
@@ -1847,6 +1900,7 @@ export default function BcpPage() {
       setRoomNumberOverrides({});
       setArrivalOverrides({});
       setRoomTypeOverrides({});
+      setBillingProcessedOverrides({});
       return;
     }
     const params = new URLSearchParams({ property_name: snapshot.property });
@@ -1902,6 +1956,15 @@ export default function BcpPage() {
         setRoomTypeOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
         setRoomTypeOverrides({});
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/billing-overrides?${params.toString()}`);
+        const result = await res.json();
+        setBillingProcessedOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setBillingProcessedOverrides({});
       }
     })();
   }, [snapshot?.property]);
@@ -3095,6 +3158,8 @@ export default function BcpPage() {
             });
             const nightsTotal = (res.rate_lines || []).reduce((s, l) => s + l.amount, 0);
             const totalCount = (res.rate_lines?.length || 0) + (res.item_lines?.length || 0);
+            const processed = billingProcessedOverrides[res.number];
+            const isProcessed = !!processed;
 
             return (
               <div className="max-w-3xl flex flex-col gap-6">
@@ -3182,22 +3247,107 @@ export default function BcpPage() {
 
                 <div className="flex items-center justify-between gap-4 flex-wrap pt-4 border-t border-[var(--text-primary)]/10">
                   <div>
-                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
-                    <div className="font-bold text-[18px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Billing Status</div>
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${isProcessed ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                        {isProcessed ? "Paid" : "To be paid"}
+                      </span>
+                      <div className="font-bold text-[18px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                    </div>
+                    {isProcessed && processed.note && <div className="text-[11px] text-[var(--text-primary)]/50 mt-1">Note: {processed.note}</div>}
                   </div>
                   <div className="flex gap-2">
-                    <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-4 py-2.5 rounded-lg border border-[var(--text-primary)]/20 text-[12px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Process payment</button>
+                    <button
+                      onClick={() => { setPaymentNoteDraft(""); setShowProcessPaymentModal(true); }}
+                      disabled={isProcessed}
+                      title={isProcessed ? "Already processed" : undefined}
+                      className="px-4 py-2.5 rounded-lg bg-blue-600 text-white text-[12px] font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+                    >
+                      Process payment
+                    </button>
                     <button disabled title="No live connection to MEWS to manage this reservation from here" className="px-4 py-2.5 rounded-lg border border-[var(--text-primary)]/20 text-[12px] font-bold text-[var(--text-primary)]/50 opacity-50 cursor-not-allowed">Issue proforma</button>
                   </div>
                 </div>
 
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
-                  Read-only snapshot - no live connection to MEWS, so nothing here can actually be processed.
+                  Read-only snapshot - no live connection to MEWS. Process payment is recorded in our own system only - re-process it there once it&apos;s back online. Issue proforma stays disabled.
                 </div>
               </div>
             );
           })()}
         </div>
+
+        {managePageTab === "billing" && showProcessPaymentModal && selectedReservation && (() => {
+          const res = selectedReservation;
+          const itemGroups: { label: string; lines: { label: string; amount: number }[]; total: number }[] = [];
+          (res.item_lines || []).forEach((line) => {
+            let group = itemGroups.find((g) => g.label === line.label);
+            if (!group) {
+              group = { label: line.label, lines: [], total: 0 };
+              itemGroups.push(group);
+            }
+            group.lines.push(line);
+            group.total += line.amount;
+          });
+          return (
+            <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowProcessPaymentModal(false)}>
+              <div
+                className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="font-display text-xl mb-1">Process Payment</div>
+                <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">{res.guest || "(no name)"} — {effectiveRoomNumber(res.room)}</div>
+
+                <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden mb-4">
+                  {res.rate_lines?.map((line, i) => (
+                    <div key={`night-${i}`} className={`px-4 py-2 flex items-center justify-between text-[13px] ${i > 0 ? "border-t border-[var(--text-primary)]/10" : ""}`}>
+                      <div>Night — {line.label}</div>
+                      <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                    </div>
+                  ))}
+                  {itemGroups.map((group) =>
+                    group.lines.map((line, i) => (
+                      <div key={`${group.label}-${i}`} className="px-4 py-2 flex items-center justify-between text-[13px] border-t border-[var(--text-primary)]/10">
+                        <div>{group.label} — {line.label}</div>
+                        <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                      </div>
+                    ))
+                  )}
+                  {!res.rate_lines?.length && !itemGroups.length && (
+                    <div className="p-4 text-[var(--text-primary)]/40 italic text-[13px]">No charges recorded.</div>
+                  )}
+                  <div className="px-4 py-3 flex items-center justify-between text-[14px] font-bold border-t border-[var(--text-primary)]/20 bg-[var(--text-primary)]/5">
+                    <div>Total</div>
+                    <div>{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                  </div>
+                </div>
+
+                <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Payment Note</label>
+                <textarea
+                  autoFocus
+                  rows={3}
+                  value={paymentNoteDraft}
+                  onChange={(e) => setPaymentNoteDraft(e.target.value)}
+                  placeholder="e.g. Paid by cash at front desk"
+                  className="w-full mt-1 bg-[var(--bg-primary)] border border-[var(--text-primary)]/14 px-4 py-2 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none resize-none"
+                />
+
+                <div className="flex justify-end gap-2 mt-4">
+                  <button onClick={() => setShowProcessPaymentModal(false)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleProcessPayment}
+                    disabled={savingPaymentProcess}
+                    className="px-4 py-2 text-[11px] font-bold tracked-caps bg-blue-600 text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingPaymentProcess ? "Saving..." : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   }
@@ -4389,6 +4539,13 @@ export default function BcpPage() {
                 </div>
               );
             }
+          } else if (entry.action === "Payment Processed") {
+            changeDetailNode = (
+              <div className="flex items-center gap-2 text-[14px]">
+                <span className="px-2.5 py-1 rounded text-[11px] font-bold bg-emerald-100 text-emerald-700">Paid</span>
+                <span>{entry.detail}</span>
+              </div>
+            );
           }
           // Whoever this specific action was actually about (e.g. the
           // companion a Reg Card was saved for) - falls back to the Owner
