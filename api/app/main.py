@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
 from app.routers import reservations, members, payments, admin, bills, resources, rr3, st_files, bcp
@@ -23,6 +24,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+# BCP snapshot responses (the whole ±7-day Timeline as one JSON blob) run into
+# the multiple megabytes for busier properties - JSON compresses extremely
+# well (routinely 80-90% smaller), so gzipping every response over 500 bytes
+# cuts that transfer time proportionally with zero frontend changes (browsers
+# request/decode gzip automatically). Applies to every route, not just BCP,
+# so any other large JSON response benefits the same way.
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 app.include_router(reservations.router)
 app.include_router(members.router)

@@ -1,3 +1,5 @@
+import base64
+import gzip
 import json
 from datetime import datetime, timezone
 from typing import Optional
@@ -14,6 +16,29 @@ router = APIRouter(prefix="/bcp", tags=["BCP"])
 # cut Supabase disk usage - see project_bcp_disk_usage memory for the sizing
 # that drove this call).
 SNAPSHOTS_KEPT = 12
+
+
+def _encode_snapshot_blob(snapshot: dict) -> dict:
+    """Gzip the JSON before encrypting it - a whole ±7-day Timeline with every
+    reservation's guests/orderItems/notes/payments embedded runs into several
+    MB for busier properties (measured up to ~3.4MB decoded), and JSON
+    compresses 80-90% smaller. Cuts the Supabase row size and the time to
+    fetch/decrypt it back on every "Load Snapshot". The "gzip" flag lets the
+    still-current 1-hour history from before this change (uncompressed)
+    keep decoding correctly - see _decode_snapshot_blob - without needing a
+    migration; it prunes itself out within an hour regardless.
+    """
+    compressed = gzip.compress(json.dumps(snapshot).encode("utf-8"))
+    encoded = base64.b64encode(compressed).decode("ascii")
+    return {"blob": encryption_service.encrypt(encoded), "gzip": True}
+
+
+def _decode_snapshot_blob(data: Optional[dict]) -> dict:
+    blob = (data or {}).get("blob", "")
+    decrypted = encryption_service.decrypt(blob)
+    if (data or {}).get("gzip"):
+        decrypted = gzip.decompress(base64.b64decode(decrypted)).decode("utf-8")
+    return json.loads(decrypted)
 
 
 @router.get("/live")
@@ -57,7 +82,7 @@ async def capture_snapshot(property_name: str, captured_at_override: Optional[st
     sync_service.supabase.table("bcp_snapshots").insert({
         "property": property_name,
         "captured_at": captured,
-        "data": {"blob": encryption_service.encrypt(json.dumps(snapshot))},
+        "data": _encode_snapshot_blob(snapshot),
     }).execute()
 
     # Prune: keep only the newest SNAPSHOTS_KEPT rows for this property.
@@ -180,8 +205,7 @@ async def get_snapshot(id: str = Query(...)):
         res = sync_service.supabase.table("bcp_snapshots").select("data, captured_at").eq("id", id).limit(1).execute()
         if not res.data:
             return {"status": "success", "data": None}
-        blob = (res.data[0].get("data") or {}).get("blob", "")
-        snapshot = json.loads(encryption_service.decrypt(blob))
+        snapshot = _decode_snapshot_blob(res.data[0].get("data"))
         return {"status": "success", "data": snapshot}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
