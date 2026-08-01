@@ -597,6 +597,7 @@ export default function BcpPage() {
   const [editGuestFor, setEditGuestFor] = useState<{ guestKey: string; isNew: boolean } | null>(null);
   const [editGuestForm, setEditGuestForm] = useState<GuestIdentity | null>(null);
   const [savingGuestEdit, setSavingGuestEdit] = useState(false);
+  const [removeGuestFor, setRemoveGuestFor] = useState<{ guestKey: string; guest: GuestIdentity } | null>(null);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -3912,11 +3913,11 @@ export default function BcpPage() {
         {editGuestFor && editGuestForm && (
           <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); }}>
             <div
-              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl p-6"
+              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-display text-xl mb-4">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 {(
                   [
                     ["name", "Full name"],
@@ -3947,7 +3948,7 @@ export default function BcpPage() {
                     />
                   </div>
                 ))}
-                <div className="col-span-2">
+                <div className="col-span-3">
                   <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Address</div>
                   <input
                     value={editGuestForm.address_details || ""}
@@ -3969,6 +3970,31 @@ export default function BcpPage() {
                   className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingGuestEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {removeGuestFor && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRemoveGuestFor(null)}>
+            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="font-display text-xl mb-1">Remove Guest</div>
+              <div className="text-[13px] text-[var(--text-primary)]/70 mb-4">
+                Remove <span className="font-bold">{removeGuestFor.guest.name || "this guest"}</span> from this reservation&#39;s guest list? This only updates the list shown here - it does not change anything in MEWS.
+              </div>
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setRemoveGuestFor(null)} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    handleRemoveGuest(removeGuestFor.guestKey, removeGuestFor.guest);
+                    setRemoveGuestFor(null);
+                  }}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
+                >
+                  Remove
                 </button>
               </div>
             </div>
@@ -4755,7 +4781,7 @@ export default function BcpPage() {
                               Edit
                             </button>
                             <button
-                              onClick={() => handleRemoveGuest(guestKey, guest)}
+                              onClick={() => setRemoveGuestFor({ guestKey, guest })}
                               title={`Remove ${guest.name || "this guest"}`}
                               className="px-2.5 py-1.5 text-[10px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
                             >
