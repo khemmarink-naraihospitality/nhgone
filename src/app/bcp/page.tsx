@@ -592,6 +592,14 @@ export default function BcpPage() {
   // passport/etc and needs their own printed card and saved signature.
   const [regCardFor, setRegCardFor] = useState<ReservationRow | null>(null);
   const [regCardGuestFor, setRegCardGuestFor] = useState<GuestIdentity | null>(null);
+  // Set only when Reg Card is opened from Action Log Detail's "Open Reg
+  // Card" button (which closes that page first so Reg Card isn't hidden
+  // behind it - both are fixed inset-0 overlays) - Reg Card's own Close
+  // button restores it, so closing goes back to that same log entry
+  // instead of dropping straight to the bare Timeline. Left null (and so a
+  // no-op) for every other Reg Card entry point, which never closed
+  // anything to get here in the first place.
+  const [regCardReturnLogEntry, setRegCardReturnLogEntry] = useState<OfflineAction | null>(null);
   // Captured on-screen at print time (SignaturePad), reset per guest. Not
   // persisted automatically - the front desk chooses to via the Save button,
   // which unlike Check In/Out/Chg Room/Room Status actually writes to
@@ -1459,6 +1467,11 @@ export default function BcpPage() {
     setRegCardGuestFor(g);
     setGuestSignature(null);
     setRegCardSaveResult(null);
+    // Reset here, not just at declaration - every entry point calls this
+    // function, so a stale return target from a previous Action Log Detail
+    // visit can't leak into an unrelated Reg Card opened afterwards. The
+    // Action Log Detail button below sets it right back after this call.
+    setRegCardReturnLogEntry(null);
     setRegCardDepartureOption("current");
     setRegCardDepartureDetail("");
     setRegCardDestinationOption("current");
@@ -3425,7 +3438,17 @@ export default function BcpPage() {
           <div className="no-print fixed inset-0 z-50 overflow-auto" style={{ background: "#525659" }}>
             <div className="fixed top-4 right-4 z-10 flex flex-col items-end gap-2">
               <div className="flex items-center gap-2">
-                <button onClick={() => { setRegCardFor(null); setRegCardGuestFor(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors">
+                <button
+                  onClick={() => {
+                    setRegCardFor(null);
+                    setRegCardGuestFor(null);
+                    if (regCardReturnLogEntry) {
+                      setSelectedLogEntry(regCardReturnLogEntry);
+                      setRegCardReturnLogEntry(null);
+                    }
+                  }}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors"
+                >
                   Close
                 </button>
                 <button
@@ -3731,6 +3754,7 @@ export default function BcpPage() {
                               <button
                                 onClick={() => {
                                   handleOpenRegCard(snap, actionGuest);
+                                  setRegCardReturnLogEntry(entry);
                                   setSelectedLogEntry(null);
                                 }}
                                 title={`Open ${actionGuest.name || "this guest"}'s Reg Card`}
