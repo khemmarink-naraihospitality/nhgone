@@ -21,7 +21,7 @@ DEFAULT_RR3_TEMPLATE = """<style>
 .s2 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-weight:bold; font-size:15pt; line-height:1.12; }
 .s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:13pt; line-height:1; display:inline-block; width:14pt; height:15pt; text-align:center; border:1pt solid black; margin:0 1pt; vertical-align:middle; }
 .dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 1.5pt; vertical-align:middle; }
-.chk { display:inline-block; width:10pt; height:10pt; border:1pt solid black; vertical-align:-1pt; margin-right:4pt; text-align:center; line-height:9pt; font-size:9pt; font-weight:bold; }
+.chk { display:inline-flex; align-items:center; justify-content:center; overflow:hidden; width:10pt; height:10pt; border:1pt solid black; vertical-align:-1pt; margin-right:4pt; font-size:8pt; font-family:Arial,sans-serif; font-weight:bold; line-height:1; }
 .val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; line-height:1.3; display:inline-block; min-width:50pt; border-bottom:1pt solid black; text-align:center; }
 .val:empty { padding:0; }
 table, tbody { vertical-align:top; overflow:visible; }
@@ -99,7 +99,7 @@ table, tbody { vertical-align:top; overflow:visible; }
     <td style="width:33.33%; border-top:1pt solid black; padding: 10pt;">
       <p class="s1" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
       <p class="s1" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
-      <p class="s1" style="margin-top:26pt;"><span class="val" style="display:block; width:100%; text-align:left;"><<GuestSign>></span></p>
+      <p class="s1" style="margin-top:26pt;"><span class="val" style="display:block; width:100%;"><<GuestSign>></span></p>
     </td>
   </tr>
 </table>"""
