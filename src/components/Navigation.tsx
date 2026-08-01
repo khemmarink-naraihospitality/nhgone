@@ -50,6 +50,11 @@ function PendingApprovalScreen({ email }: { email: string }) {
   );
 }
 
+// Auto sign-out after 5 minutes with no mouse/keyboard/touch/scroll activity
+// anywhere in the app - a shared front-desk workstation left unattended
+// otherwise stays logged into whichever staff account opened it.
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -215,6 +220,32 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       router.push("/dashboard");
     }
   }, [onAdminPath, isSuperAdminRole, permissionsLoaded, menuPermissions, router]);
+
+  // Idle sign-out - only runs once actually signed in (not on the login page
+  // itself, and not for a still-Pending account, which already only shows
+  // its own waiting screen with a manual sign-out button). Hard redirect
+  // (window.location.href), same as the unauthorized-access path above, to
+  // be sure the session is actually dead rather than relying on client
+  // router state that a long-idle tab may have gone stale on.
+  useEffect(() => {
+    if (!isAuthorized || isLoginPage || pendingEmail) return;
+    let timer: ReturnType<typeof setTimeout>;
+    const handleIdleTimeout = async () => {
+      await supabase.auth.signOut();
+      window.location.href = "/?error=session_timeout";
+    };
+    const resetTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(handleIdleTimeout, IDLE_TIMEOUT_MS);
+    };
+    const activityEvents = ["mousedown", "mousemove", "keydown", "scroll", "touchstart"];
+    activityEvents.forEach((evt) => window.addEventListener(evt, resetTimer));
+    resetTimer();
+    return () => {
+      clearTimeout(timer);
+      activityEvents.forEach((evt) => window.removeEventListener(evt, resetTimer));
+    };
+  }, [isAuthorized, isLoginPage, pendingEmail]);
 
   // Loading state to prevent flicker
   if (isAuthorized === null && !isLoginPage) {
