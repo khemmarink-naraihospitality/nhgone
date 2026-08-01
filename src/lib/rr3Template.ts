@@ -37,6 +37,12 @@ export interface Rr3TokenData {
   DestinationCurrentChk?: string;
   DestinationOtherChk?: string;
   DestinationDetail?: string;
+  // Marketing opt-in checkbox next to the Email field - "X" when the guest
+  // ticks it, "" (unchecked) by default, matching the opt-in convention the
+  // other checkboxes above don't need (Departure/Destination always have a
+  // pre-selected default; this one starts blank since consent must be
+  // actively given, never assumed).
+  MarketingConsentChk?: string;
   // If set, rendered as an <img> in the <<GuestSign>> slot instead of the
   // plain-text GuestSign token above - a captured-on-screen signature
   // (see SignaturePad), not something MEWS itself ever provides.
@@ -187,6 +193,7 @@ export function renderRr3Template(template: string, d: Rr3TokenData): string {
     DestinationCurrentChk: d.DestinationCurrentChk || "",
     DestinationOtherChk: d.DestinationOtherChk || "",
     DestinationDetail: d.DestinationDetail || "",
+    MarketingConsentChk: d.MarketingConsentChk || "",
   };
   let result = template;
   for (const [key, value] of Object.entries(tokens)) {

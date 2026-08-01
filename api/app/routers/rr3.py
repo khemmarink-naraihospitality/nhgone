@@ -79,6 +79,11 @@ table, tbody { vertical-align:top; overflow:visible; }
         <p class="s1" style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;"><<DestinationDetail>></p>
         <p style="border-bottom:1pt solid black; height:16pt; margin:4pt 0;">&nbsp;</p>
       </div>
+
+      <div style="margin-top: 15pt;">
+        <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">ที่อยู่อีเมล (Email Address)</span><span class="val" style="display:table-cell; width:100%;"><<Email>></span></p>
+        <p class="s1" style="margin-top:10pt;"><span class="chk"><<MarketingConsentChk>></span> I&#39;d like to occasionally receive marketing updates from <<HotelName>></p>
+      </div>
     </td>
   </tr>
   <tr style="height:120pt">

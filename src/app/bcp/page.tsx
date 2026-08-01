@@ -636,6 +636,13 @@ export default function BcpPage() {
   // Pre-filled from MEWS when present (still editable/correctable), blank
   // otherwise - Save/Print are disabled until the front desk types one in.
   const [regCardOccupation, setRegCardOccupation] = useState("");
+  // Pre-filled from MEWS's own customer profile when present (still
+  // editable/correctable), same pattern as Occupation - but not required,
+  // since MEWS usually does have an email on file already. Marketing
+  // consent is a separate opt-in choice next to it - always starts
+  // unchecked (never assumed) regardless of what's pre-filled here.
+  const [regCardEmail, setRegCardEmail] = useState("");
+  const [regCardMarketingConsent, setRegCardMarketingConsent] = useState(false);
   const [chgRoomFor, setChgRoomFor] = useState<ReservationRow | null>(null);
   const [newRoomValue, setNewRoomValue] = useState("");
   // Rooms (HK) tab - housekeeping status can't be written back to MEWS
@@ -1354,6 +1361,8 @@ export default function BcpPage() {
           children: regCardFor.children,
           signature_data_url: guestSignature,
           occupation: regCardOccupation,
+          email: regCardEmail,
+          marketing_consent: regCardMarketingConsent,
           departure_option: regCardDepartureOption,
           departure_detail: regCardDepartureDetail,
           destination_option: regCardDestinationOption,
@@ -1490,6 +1499,8 @@ export default function BcpPage() {
     setRegCardDestinationOption("current");
     setRegCardDestinationDetail("");
     setRegCardOccupation(g.occupation || "");
+    setRegCardEmail(g.email || "");
+    setRegCardMarketingConsent(false);
     if (!snapshot) return;
     try {
       const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number, mews_customer_id: g.mews_customer_id || "" });
@@ -1507,6 +1518,8 @@ export default function BcpPage() {
         if (result.data.destination_option === "other") setRegCardDestinationOption("other");
         if (result.data.destination_detail) setRegCardDestinationDetail(result.data.destination_detail);
         if (result.data.occupation) setRegCardOccupation(result.data.occupation);
+        if (result.data.email) setRegCardEmail(result.data.email);
+        if (result.data.marketing_consent) setRegCardMarketingConsent(true);
       }
     } catch {
       /* no saved card yet, or fetch failed - start blank as before */
@@ -3477,6 +3490,8 @@ export default function BcpPage() {
               __html: renderRr3Template(rr3Template, {
                 ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                 Occupation: regCardOccupation,
+                Email: regCardEmail,
+                MarketingConsentChk: regCardMarketingConsent ? "X" : "",
                 DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
                 DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
                 DepartureDetail: regCardDepartureDetail,
@@ -3557,6 +3572,8 @@ export default function BcpPage() {
                     __html: renderRr3Template(rr3Template, {
                       ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
                       Occupation: regCardOccupation,
+                      Email: regCardEmail,
+                      MarketingConsentChk: regCardMarketingConsent ? "X" : "",
                       DepartureCurrentChk: regCardDepartureOption === "current" ? "X" : "",
                       DepartureOtherChk: regCardDepartureOption === "other" ? "X" : "",
                       DepartureDetail: regCardDepartureDetail,
@@ -3634,6 +3651,26 @@ export default function BcpPage() {
                 placeholder="House no., sub-district, district, province, country"
                 className="w-full mb-4 px-2 py-1.5 text-[12px] border border-black/15 rounded focus:outline-none focus:border-black/40"
               />
+
+              <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1.5 pt-3 border-t border-black/10">Email Address</div>
+              <input
+                value={regCardEmail}
+                onChange={(e) => setRegCardEmail(e.target.value)}
+                placeholder="guest@example.com"
+                className="w-full mb-2 px-2 py-1.5 text-[12px] border border-black/15 rounded focus:outline-none focus:border-black/40"
+              />
+              {/* Opt-in, never assumed - starts unchecked regardless of
+                  whether MEWS had an email on file, unlike Departure/
+                  Destination above which always have a default answer. */}
+              <label className="flex items-start gap-2 cursor-pointer text-[11px] mb-4">
+                <input
+                  type="checkbox"
+                  checked={regCardMarketingConsent}
+                  onChange={(e) => setRegCardMarketingConsent(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                I&apos;d like to occasionally receive marketing updates from {snapshot?.property || "this hotel"}
+              </label>
 
               <div className="text-[10px] font-bold tracked-caps text-black/50 mb-1 pt-3 border-t border-black/10">Guest Signature</div>
               <SignaturePad value={guestSignature} onChange={setGuestSignature} />

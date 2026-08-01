@@ -222,6 +222,11 @@ async def save_reg_card(payload: dict = Body(...)):
         # a fabricated default ("นักธุรกิจ") in that case; now it's whatever
         # was actually typed in (pre-filled from MEWS when present).
         "occupation": payload.get("occupation", ""),
+        # Pre-filled from MEWS's customer profile when present, same as
+        # Occupation, but not required - marketing_consent is a separate
+        # opt-in checkbox next to it, defaulting False (never assumed).
+        "email": payload.get("email", ""),
+        "marketing_consent": bool(payload.get("marketing_consent", False)),
         # ร.ร.๓ sections 1/2 (Place of Departure / Next Destination) - filled
         # in on the Reg Card screen before the guest signs so they're on the
         # printed form itself instead of left blank for hand-writing.
