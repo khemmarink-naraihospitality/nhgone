@@ -3457,7 +3457,11 @@ export default function BcpPage() {
               )}
             </div>
 
-            <div className="flex justify-center py-10">
+            {/* pr-[380px] reserves the fixed-position side panel's own
+                width (340px) + gap on the right, so centering the form in
+                the remaining space keeps it from sliding underneath the
+                panel instead of actually avoiding it. */}
+            <div className="flex justify-center py-10 pr-[380px]">
               {rr3Template ? (
                 <div
                   dangerouslySetInnerHTML={{
