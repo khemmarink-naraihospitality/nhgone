@@ -236,7 +236,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed";
+  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed" | "Arrival Changed" | "Room Type Changed";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -396,6 +396,27 @@ const fmtFullDateTime = (isoUtc: string) => {
   const weekday = d.toLocaleDateString("en-GB", { weekday: "long", timeZone: "UTC" });
   return `${fmtDateOnly(isoUtc)} ${time} ${weekday}`;
 };
+// Properties tab's Arrival/Departure editor needs plain <input type="date">/
+// <input type="time"> values (Bangkok-local) rather than any of the display
+// formats above, plus the reverse conversion back to a UTC instant on save -
+// same +7h shift as toBangkokDateTime, just inverted.
+const toBangkokInputDate = (isoUtc: string): string => {
+  if (!isoUtc) return "";
+  const d = toBangkokDateTime(isoUtc);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
+};
+const toBangkokInputTime = (isoUtc: string): string => {
+  if (!isoUtc) return "";
+  const d = toBangkokDateTime(isoUtc);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")}`;
+};
+const fromBangkokInput = (dateStr: string, timeStr: string): string | null => {
+  if (!dateStr || !timeStr) return null;
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [hh, mm] = timeStr.split(":").map(Number);
+  if (!y || !m || !d || isNaN(hh) || isNaN(mm)) return null;
+  return new Date(Date.UTC(y, m - 1, d, hh, mm, 0) - 7 * 3600_000).toISOString();
+};
 const guestInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "?";
@@ -540,6 +561,21 @@ export default function BcpPage() {
   const [managePageTab, setManagePageTab] = useState<"status" | "properties" | "billing">("status");
   const [undoCheckInReason, setUndoCheckInReason] = useState("");
   const [undoCheckOutReason, setUndoCheckOutReason] = useState("");
+  // Properties tab's Arrival/Departure + Room Type editors - both require a
+  // typed reason before Save enables, same "Reason *" pattern as Undo Check
+  // In/Out above. Seeded from the open reservation's current values by the
+  // useEffect near effectiveRoomNumber below (keyed on selectedReservation's
+  // number, not the whole object, so a later override-driven update to
+  // selectedReservation itself doesn't clobber in-progress edits).
+  const [editArrivalDate, setEditArrivalDate] = useState("");
+  const [editArrivalTime, setEditArrivalTime] = useState("");
+  const [editDepartureDate, setEditDepartureDate] = useState("");
+  const [editDepartureTime, setEditDepartureTime] = useState("");
+  const [arrivalChangeReason, setArrivalChangeReason] = useState("");
+  const [savingArrivalChange, setSavingArrivalChange] = useState(false);
+  const [editRoomType, setEditRoomType] = useState("");
+  const [roomTypeChangeReason, setRoomTypeChangeReason] = useState("");
+  const [savingRoomTypeChange, setSavingRoomTypeChange] = useState(false);
   // Billing tab's own expand/collapse state (separate from rateLinesOpen/
   // itemLinesOpen below, which belong to the reservation detail drawer's own
   // Rate/Items breakdown) - one flag for the Night group, one per distinct
@@ -677,6 +713,13 @@ export default function BcpPage() {
   // r.room (the table, sort, search, the detail panel, Reg Card tokens)
   // automatically shows the current room without each needing its own fix.
   const [roomChangeOverrides, setRoomChangeOverrides] = useState<Record<string, string>>({});
+  // Arrival/Departure override per reservation - persisted in
+  // bcp_arrival_overrides, keyed by (property, reservation_number). Applied
+  // the same transparent way as roomChangeOverrides in frontDeskRows below.
+  const [arrivalOverrides, setArrivalOverrides] = useState<Record<string, { check_in?: string; check_out?: string }>>({});
+  // Room type (category) override per reservation - persisted in
+  // bcp_room_type_overrides, same (property, reservation_number) key.
+  const [roomTypeOverrides, setRoomTypeOverrides] = useState<Record<string, string>>({});
   // Current housekeeping status for a room - the override if housekeeping
   // has changed it via Rooms (HK), otherwise whatever MEWS last reported.
   // Used everywhere a room's status color/badge shows (Timeline dot, Manage
@@ -967,14 +1010,24 @@ export default function BcpPage() {
         // consumer of r.room (this table, sort, search, the detail panel,
         // Reg Card tokens, Check In/Out log details) automatically shows
         // the room the guest is actually in instead of the stale
-        // pre-change one, without each needing its own fix.
+        // pre-change one, without each needing its own fix. Arrival/
+        // Departure and Room Type overrides (Properties tab) are merged the
+        // same way, for the same reason.
         const overriddenRoom = roomChangeOverrides[raw.number];
-        const r = overriddenRoom && overriddenRoom !== raw.room ? { ...raw, room: overriddenRoom } : raw;
+        const arrivalOverride = arrivalOverrides[raw.number];
+        const roomTypeOverride = roomTypeOverrides[raw.number];
+        const r = {
+          ...raw,
+          ...(overriddenRoom && overriddenRoom !== raw.room ? { room: overriddenRoom } : {}),
+          ...(arrivalOverride?.check_in ? { check_in: arrivalOverride.check_in } : {}),
+          ...(arrivalOverride?.check_out ? { check_out: arrivalOverride.check_out } : {}),
+          ...(roomTypeOverride ? { category: roomTypeOverride } : {}),
+        };
         return { r, status: frontDeskStatus(r, today) };
       })
       .filter((x): x is { r: ReservationRow; status: { label: string; cls: string } } => x.status !== null)
       .sort((a, b) => a.r.room.localeCompare(b.r.room, undefined, { numeric: true }));
-  }, [snapshot, roomChangeOverrides]);
+  }, [snapshot, roomChangeOverrides, arrivalOverrides, roomTypeOverrides]);
 
   // Search matches guest (covers first/last name together) + room + the
   // reservation/confirmation number; sort is column-driven via the table
@@ -1490,6 +1543,116 @@ export default function BcpPage() {
     }
   };
 
+  // Seeds the Properties tab's Arrival/Departure + Room Type editors from
+  // whichever reservation is currently open - keyed on just the number (not
+  // the whole object) so a later override-driven update to selectedReservation
+  // itself (see handleSaveArrivalChange/handleSaveRoomTypeChange below)
+  // doesn't stomp on an in-progress edit.
+  useEffect(() => {
+    if (!selectedReservation) return;
+    setEditArrivalDate(toBangkokInputDate(selectedReservation.check_in));
+    setEditArrivalTime(toBangkokInputTime(selectedReservation.check_in));
+    setEditDepartureDate(toBangkokInputDate(selectedReservation.check_out));
+    setEditDepartureTime(toBangkokInputTime(selectedReservation.check_out));
+    setArrivalChangeReason("");
+    setEditRoomType(selectedReservation.category || "");
+    setRoomTypeChangeReason("");
+  }, [selectedReservation?.number]);
+
+  // Properties tab's Arrival/Departure Save - requires a typed reason (same
+  // gating as Undo Check In/Out) and at least one of the two to have actually
+  // changed. Persists to bcp_arrival_overrides, mirrors the change onto
+  // selectedReservation immediately (so the open view reflects it without
+  // requiring the reservation to be reselected, same as every other override
+  // here), and logs it for the Action Log.
+  const handleSaveArrivalChange = () => {
+    if (!selectedReservation || !snapshot?.property || !arrivalChangeReason.trim()) return;
+    const newCheckIn = fromBangkokInput(editArrivalDate, editArrivalTime);
+    const newCheckOut = fromBangkokInput(editDepartureDate, editDepartureTime);
+    if (!newCheckIn || !newCheckOut) return;
+    // Compared at the input's own minute precision, not against the raw
+    // stored ISO value (which can carry seconds, e.g. "...:45") - otherwise
+    // every save would look "changed" purely from the round-trip's seconds
+    // getting zeroed out, even with the date/time fields untouched.
+    const arrivalChanged = editArrivalDate !== toBangkokInputDate(selectedReservation.check_in) || editArrivalTime !== toBangkokInputTime(selectedReservation.check_in);
+    const departureChanged = editDepartureDate !== toBangkokInputDate(selectedReservation.check_out) || editDepartureTime !== toBangkokInputTime(selectedReservation.check_out);
+    if (!arrivalChanged && !departureChanged) return;
+    const reason = arrivalChangeReason.trim();
+    const changes: string[] = [];
+    if (arrivalChanged) changes.push(`Arrival: ${fmtFullDateTime(selectedReservation.check_in)} -> ${fmtFullDateTime(newCheckIn)}`);
+    if (departureChanged) changes.push(`Departure: ${fmtFullDateTime(selectedReservation.check_out)} -> ${fmtFullDateTime(newCheckOut)}`);
+    setSavingArrivalChange(true);
+    setArrivalOverrides((prev) => ({ ...prev, [selectedReservation.number]: { check_in: newCheckIn, check_out: newCheckOut } }));
+    setSelectedReservation((prev) => (prev && prev.number === selectedReservation.number ? { ...prev, check_in: newCheckIn, check_out: newCheckOut } : prev));
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: selectedReservation.number,
+      guest: selectedReservation.guest,
+      room: selectedReservation.room,
+      action: "Arrival Changed",
+      detail: changes.join(" | "),
+      reason,
+      reservationSnapshot: selectedReservation,
+      guestProfileSnapshot: findGuestProfile(selectedReservation),
+    });
+    fetch("/api/bcp/arrival-overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        property_name: snapshot.property,
+        reservation_number: selectedReservation.number,
+        check_in: newCheckIn,
+        check_out: newCheckOut,
+        reason,
+      }),
+    })
+      .catch(() => {
+        /* logOfflineAction above still records the intent even if this write failed */
+      })
+      .finally(() => setSavingArrivalChange(false));
+    setArrivalChangeReason("");
+  };
+
+  // Properties tab's Room Type Save - same reason-gating pattern, populated
+  // from the property's own resource categories (snapshot.rooms) rather than
+  // free text, so it always matches a category the property actually has.
+  const handleSaveRoomTypeChange = () => {
+    if (!selectedReservation || !snapshot?.property || !roomTypeChangeReason.trim() || !editRoomType.trim()) return;
+    const previousCategory = selectedReservation.category || "-";
+    if (editRoomType === previousCategory) return;
+    const reason = roomTypeChangeReason.trim();
+    const newCategory = editRoomType;
+    setSavingRoomTypeChange(true);
+    setRoomTypeOverrides((prev) => ({ ...prev, [selectedReservation.number]: newCategory }));
+    setSelectedReservation((prev) => (prev && prev.number === selectedReservation.number ? { ...prev, category: newCategory } : prev));
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: selectedReservation.number,
+      guest: selectedReservation.guest,
+      room: selectedReservation.room,
+      action: "Room Type Changed",
+      detail: `Room Type: ${previousCategory} -> ${newCategory}`,
+      reason,
+      reservationSnapshot: selectedReservation,
+      guestProfileSnapshot: findGuestProfile(selectedReservation),
+    });
+    fetch("/api/bcp/room-type-overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        property_name: snapshot.property,
+        reservation_number: selectedReservation.number,
+        category: newCategory,
+        reason,
+      }),
+    })
+      .catch(() => {
+        /* logOfflineAction above still records the intent even if this write failed */
+      })
+      .finally(() => setSavingRoomTypeChange(false));
+    setRoomTypeChangeReason("");
+  };
+
   // Same fetch pattern as reservationNotes above, for the currently-open
   // reservation's guest edits/additions/removals.
   useEffect(() => {
@@ -1682,6 +1845,8 @@ export default function BcpPage() {
       setRoomStatusReasons({});
       setRoomChangeOverrides({});
       setRoomNumberOverrides({});
+      setArrivalOverrides({});
+      setRoomTypeOverrides({});
       return;
     }
     const params = new URLSearchParams({ property_name: snapshot.property });
@@ -1719,6 +1884,24 @@ export default function BcpPage() {
         setRoomNumberOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
         setRoomNumberOverrides({});
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/arrival-overrides?${params.toString()}`);
+        const result = await res.json();
+        setArrivalOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setArrivalOverrides({});
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/room-type-overrides?${params.toString()}`);
+        const result = await res.json();
+        setRoomTypeOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setRoomTypeOverrides({});
       }
     })();
   }, [snapshot?.property]);
@@ -1819,6 +2002,17 @@ export default function BcpPage() {
     const outDay = toBangkokDay(selectedReservation.check_out);
     return Math.max(1, daysBetween(inDay, outDay));
   }, [selectedReservation]);
+
+  // Distinct room categories at this property (e.g. "The Duo | King"),
+  // sourced from the room list itself so the Properties tab's Room Type
+  // picker only ever offers categories that actually exist here.
+  const availableCategories = useMemo(() => {
+    const set = new Set<string>();
+    (snapshot?.rooms || []).forEach((rm) => {
+      if (rm.category) set.add(rm.category);
+    });
+    return Array.from(set).sort();
+  }, [snapshot]);
 
   // Reset the toolbar's focused date to "today" whenever a different
   // snapshot loads (new property or a different capture picked from history).
@@ -2776,18 +2970,90 @@ export default function BcpPage() {
               <div>
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Arrival *</div>
                 <div className="flex gap-2">
-                  <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(res.check_in)}</div>
-                  <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(res.check_in).split(" ")[1]}</div>
+                  <input
+                    type="date"
+                    value={editArrivalDate}
+                    onChange={(e) => setEditArrivalDate(e.target.value)}
+                    className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                  />
+                  <input
+                    type="time"
+                    value={editArrivalTime}
+                    onChange={(e) => setEditArrivalTime(e.target.value)}
+                    className={`${fieldBoxCls} w-28 text-center focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                  />
                 </div>
               </div>
               <div>
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Departure *</div>
                 <div className="flex gap-2">
-                  <div className={`${fieldBoxCls} flex-1`}>{fmtDateOnly(res.check_out)}</div>
-                  <div className={`${fieldBoxCls} w-24 text-center`}>{fmtWeekdayTime(res.check_out).split(" ")[1]}</div>
+                  <input
+                    type="date"
+                    value={editDepartureDate}
+                    onChange={(e) => setEditDepartureDate(e.target.value)}
+                    className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                  />
+                  <input
+                    type="time"
+                    value={editDepartureTime}
+                    onChange={(e) => setEditDepartureTime(e.target.value)}
+                    className={`${fieldBoxCls} w-28 text-center focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                  />
                 </div>
               </div>
-              <button disabled title="No live connection to MEWS to manage this reservation from here" className={`self-start px-6 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/40 text-[13px] font-bold ${disabledBtnCls}`}>OK</button>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
+                <input
+                  value={arrivalChangeReason}
+                  onChange={(e) => setArrivalChangeReason(e.target.value)}
+                  placeholder="Reason for changing arrival/departure"
+                  className={`${fieldBoxCls} w-full focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                />
+              </div>
+              <button
+                onClick={handleSaveArrivalChange}
+                disabled={
+                  savingArrivalChange ||
+                  !arrivalChangeReason.trim() ||
+                  (editArrivalDate === toBangkokInputDate(res.check_in) &&
+                    editArrivalTime === toBangkokInputTime(res.check_in) &&
+                    editDepartureDate === toBangkokInputDate(res.check_out) &&
+                    editDepartureTime === toBangkokInputTime(res.check_out))
+                }
+                className="self-start px-6 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+              >
+                {savingArrivalChange ? "Saving..." : "OK"}
+              </button>
+
+              <div className="pt-2 border-t border-[var(--text-primary)]/10">
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Room Type</div>
+                <select
+                  value={editRoomType}
+                  onChange={(e) => setEditRoomType(e.target.value)}
+                  className={`${fieldBoxCls} w-full focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                >
+                  {!editRoomType && <option value="">-</option>}
+                  {availableCategories.map((cat) => (
+                    <option key={cat} value={cat}>{cat}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
+                <input
+                  value={roomTypeChangeReason}
+                  onChange={(e) => setRoomTypeChangeReason(e.target.value)}
+                  placeholder="Reason for changing room type"
+                  className={`${fieldBoxCls} w-full focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                />
+              </div>
+              <button
+                onClick={handleSaveRoomTypeChange}
+                disabled={savingRoomTypeChange || !roomTypeChangeReason.trim() || !editRoomType.trim() || editRoomType === (res.category || "")}
+                className="self-start px-6 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
+              >
+                {savingRoomTypeChange ? "Saving..." : "OK"}
+              </button>
             </div>
 
             {/* Right column: Reservations - shared with the Status tab above */}
@@ -2795,7 +3061,7 @@ export default function BcpPage() {
           </div>
 
           <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
-            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS, so notes, dates, billing and unlock actions are disabled here.
+            Read-only snapshot from {isLiveFallback ? "a live MEWS check" : "the last capture"} - no live connection to MEWS. Notes, Arrival/Departure and Room Type changes are recorded in our own system only - re-enter them there once it&apos;s back online. Billing and unlock actions stay disabled.
           </div>
           </>
           )}
@@ -4089,6 +4355,40 @@ export default function BcpPage() {
                 </span>
               </div>
             );
+          } else if (entry.action === "Arrival Changed") {
+            // detail can hold one or both of Arrival/Departure (only the
+            // field(s) actually changed - see handleSaveArrivalChange), so
+            // each " | "-separated segment gets its own before/after row.
+            const rows = entry.detail
+              .split(" | ")
+              .map((seg) => seg.match(/^(Arrival|Departure): (.+) -> (.+)$/))
+              .filter((m): m is RegExpMatchArray => !!m);
+            if (rows.length) {
+              changeDetailNode = (
+                <div className="flex flex-col gap-2">
+                  {rows.map((m, i) => (
+                    <div key={i} className="flex items-center gap-3 text-[13px] flex-wrap">
+                      <span className="text-[11px] text-[var(--text-primary)]/50 tracked-caps w-16 shrink-0">{m[1]}</span>
+                      <span className="px-2.5 py-1 rounded border border-[var(--text-primary)]/20">{m[2]}</span>
+                      <span className="text-[var(--text-primary)]/40">→</span>
+                      <span className="px-2.5 py-1 rounded bg-[#152A00] text-[#FFEFD2] font-bold">{m[3]}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            }
+          } else if (entry.action === "Room Type Changed") {
+            const m = entry.detail.match(/^Room Type: (.+) -> (.+)$/);
+            if (m) {
+              changeDetailNode = (
+                <div className="flex items-center gap-3 text-[14px] flex-wrap">
+                  <span className="text-[11px] text-[var(--text-primary)]/50 tracked-caps">Room Type</span>
+                  <span className="px-2.5 py-1 rounded border border-[var(--text-primary)]/20">{m[1]}</span>
+                  <span className="text-[var(--text-primary)]/40">→</span>
+                  <span className="px-2.5 py-1 rounded bg-[#152A00] text-[#FFEFD2] font-bold">{m[2]}</span>
+                </div>
+              );
+            }
           }
           // Whoever this specific action was actually about (e.g. the
           // companion a Reg Card was saved for) - falls back to the Owner

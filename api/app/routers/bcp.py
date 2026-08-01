@@ -437,6 +437,96 @@ async def set_room_number_override(payload: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/arrival-overrides")
+async def get_arrival_overrides(property_name: str = Query(...)):
+    """
+    Front desk's own Arrival/Departure correction from the Manage > Properties
+    tab, since MEWS is down and can't be edited there directly. Keyed by
+    (property, reservation_number), holding the latest check_in/check_out
+    permanently until changed again - same shape as room-changes above.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_arrival_overrides") \
+            .select("reservation_number, check_in, check_out") \
+            .eq("property", property_name) \
+            .execute()
+        return {
+            "status": "success",
+            "data": {r["reservation_number"]: {"check_in": r.get("check_in"), "check_out": r.get("check_out")} for r in (res.data or [])},
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/arrival-overrides")
+async def set_arrival_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    check_in = payload.get("check_in")
+    check_out = payload.get("check_out")
+    reason = payload.get("reason")
+    if not property_name or not reservation_number or not reason or not (check_in and check_out):
+        raise HTTPException(status_code=400, detail="property_name, reservation_number, check_in, check_out, and reason are required")
+    try:
+        sync_service.supabase.table("bcp_arrival_overrides").upsert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "check_in": check_in,
+            "check_out": check_out,
+            "reason": reason,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,reservation_number").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/room-type-overrides")
+async def get_room_type_overrides(property_name: str = Query(...)):
+    """
+    Front desk's own Room Type (requested category) correction from the
+    Manage > Properties tab - same reasoning and shape as arrival-overrides
+    above, keyed by (property, reservation_number).
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_room_type_overrides") \
+            .select("reservation_number, category") \
+            .eq("property", property_name) \
+            .execute()
+        return {"status": "success", "data": {r["reservation_number"]: r["category"] for r in (res.data or [])}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room-type-overrides")
+async def set_room_type_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    category = payload.get("category")
+    reason = payload.get("reason")
+    if not property_name or not reservation_number or not category or not reason:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number, category, and reason are required")
+    try:
+        sync_service.supabase.table("bcp_room_type_overrides").upsert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "category": category,
+            "reason": reason,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,reservation_number").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/reservation-notes")
 async def get_reservation_notes(property_name: str = Query(...), reservation_number: str = Query(...)):
     """
