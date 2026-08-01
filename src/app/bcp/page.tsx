@@ -2495,6 +2495,113 @@ export default function BcpPage() {
     // clickable-looking with no real content.
     const tabs = ["Status", "Properties", "Billing"] as const;
     const checkStatus = effectiveCheckStatus(res);
+    // Mirrors MEWS's own "Reservations" detail sidebar, which stays visible
+    // across every tab (Status/Properties/...) of its Manage screen - shared
+    // here between our Status and Properties tabs for the same reason,
+    // rather than only living inside Properties.
+    const reservationDetailPanel = (
+      <div>
+        <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
+          <h2 className="font-display text-xl text-[var(--text-primary)]">Reservations</h2>
+          <div className="flex gap-2">
+            <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Create billing automation</button>
+            <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Unlock</button>
+          </div>
+        </div>
+
+        <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 mb-5 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
+            <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
+            <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
+              {STATE_DISPLAY_LABEL[res.state] || res.state}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-bold text-[13px]">
+              {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{effectiveRoomNumber(res.room)}
+            </span>
+            {typeof res.room_locked === "boolean" && (
+              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${res.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
+          {detailRow("Service", res.service || "-")}
+          {detailRow("Confirmation number", res.number || "-")}
+          {res.group_name && detailRow("Group name", res.group_name)}
+          {detailRow("Status", (
+            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
+              {STATE_DISPLAY_LABEL[res.state] || res.state}
+            </span>
+          ))}
+          {detailRow("Arrival", fmtFullDateTime(res.check_in))}
+          {detailRow("Departure", fmtFullDateTime(res.check_out))}
+          {res.purpose && detailRow("Booking purpose", res.purpose)}
+          {res.segment && detailRow("Segment", res.segment)}
+          {detailRow("Guests", `${res.adults} × Adult${res.adults !== 1 ? "s" : ""}${res.children ? `, ${res.children} × Child${res.children !== 1 ? "ren" : ""}` : ""}`)}
+          {typeof res.total_amount === "number" && (
+            <>
+              {detailRow("Avg. rate (nightly)", ((res.rate_amount ?? 0) / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+              {detailRow("Avg. price with products (nightly)", (res.total_amount / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+              {detailRow("Total amount", `${res.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${res.currency || ""}`)}
+            </>
+          )}
+          {typeof res.total_amount_gross === "number" && detailRow("Total amount (Gross)", res.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+          {res.category && detailRow("Requested category", res.category)}
+          {detailRow("Assigned space", (
+            <span className="inline-flex items-center gap-1.5">
+              <span className="font-bold">{res.room ? effectiveRoomNumber(res.room) : "-"}</span>
+              {selectedRoomInfo && (
+                <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[effectiveRoomState(selectedRoomInfo)] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+                  {effectiveRoomState(selectedRoomInfo)}
+                </span>
+              )}
+            </span>
+          ))}
+          {res.rate && detailRow("Rate", res.rate)}
+          {res.travel_agency && detailRow("Travel agency", <span className="underline decoration-1 underline-offset-2">{res.travel_agency}</span>)}
+          {res.travel_agency_confirmation_number && detailRow("Travel agency confirmation number", res.travel_agency_confirmation_number)}
+        </div>
+
+        {!!res.rate_lines?.length && (
+          <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+            <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Nights</div>
+            <div className="flex flex-col gap-1">
+              {res.rate_lines.map((line, i) => (
+                <div key={i} className="flex items-center justify-between text-[13px]">
+                  <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                  <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {!!res.item_lines?.length && (
+          <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+            <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Products</div>
+            <div className="flex flex-col gap-1">
+              {res.item_lines.map((line, i) => (
+                <div key={i} className="flex items-center justify-between text-[13px]">
+                  <span className="text-[var(--text-primary)]/60">{line.label}</span>
+                  <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px] mt-4 pt-4 border-t border-[var(--text-primary)]/10">
+          {res.origin && detailRow("Origin", res.origin)}
+          {res.reservation_source && detailRow("Reservation source", res.reservation_source)}
+          {res.created_utc && detailRow("Created", fmtDateTime(res.created_utc))}
+        </div>
+      </div>
+    );
     return (
       <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-6xl mx-auto">
@@ -2527,86 +2634,90 @@ export default function BcpPage() {
               logOfflineAction), re-entered into MEWS once it's reachable
               again, same premise as every other BCP action. */}
           {managePageTab === "status" && (
-            <div className="max-w-2xl flex flex-col gap-6">
-              <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
-                  <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
-                  <span
-                    className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${
-                      checkStatus === "checked_in" ? STATE_BADGE_CLS.Started : checkStatus === "checked_out" ? STATE_BADGE_CLS.Processed : STATE_BADGE_CLS.Confirmed
-                    }`}
-                  >
-                    {checkStatus === "checked_in" ? "Checked in" : checkStatus === "checked_out" ? "Checked out" : "To check in"}
-                  </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+              <div className="flex flex-col gap-6">
+                <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
+                    <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
+                    <span
+                      className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${
+                        checkStatus === "checked_in" ? STATE_BADGE_CLS.Started : checkStatus === "checked_out" ? STATE_BADGE_CLS.Processed : STATE_BADGE_CLS.Confirmed
+                      }`}
+                    >
+                      {checkStatus === "checked_in" ? "Checked in" : checkStatus === "checked_out" ? "Checked out" : "To check in"}
+                    </span>
+                  </div>
+                  <span className="font-bold text-[13px]">{effectiveRoomNumber(res.room)}</span>
                 </div>
-                <span className="font-bold text-[13px]">{effectiveRoomNumber(res.room)}</span>
-              </div>
 
-              {checkStatus === "to_check_in" && (
-                <button
-                  onClick={() => requestCheckIn(res)}
-                  className="self-start px-6 py-2.5 rounded-lg bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors"
-                >
-                  Check In
-                </button>
-              )}
-
-              {checkStatus === "checked_in" && (
-                <>
+                {checkStatus === "to_check_in" && (
                   <button
-                    onClick={() => handleCheckOut(res)}
-                    className="self-start px-6 py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-[13px] font-bold hover:opacity-90 transition-opacity"
+                    onClick={() => requestCheckIn(res)}
+                    className="self-start px-6 py-2.5 rounded-lg bg-emerald-600 text-white text-[13px] font-bold hover:bg-emerald-700 transition-colors"
                   >
-                    Check Out
+                    Check In
                   </button>
+                )}
+
+                {checkStatus === "checked_in" && (
+                  <>
+                    <button
+                      onClick={() => handleCheckOut(res)}
+                      className="self-start px-6 py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-[13px] font-bold hover:opacity-90 transition-opacity"
+                    >
+                      Check Out
+                    </button>
+                    <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
+                      <div className="font-display text-lg mb-3">Undo check-in</div>
+                      <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
+                      <div className="flex gap-2">
+                        <input
+                          value={undoCheckInReason}
+                          onChange={(e) => setUndoCheckInReason(e.target.value)}
+                          placeholder="Reason for undoing check-in"
+                          className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
+                        />
+                        <button
+                          onClick={() => handleUndoCheckIn(res, undoCheckInReason)}
+                          disabled={!undoCheckInReason.trim()}
+                          className="px-5 py-2 rounded-lg bg-amber-400 text-[#152A00] text-[12px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
+                        >
+                          Undo
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {checkStatus === "checked_out" && (
                   <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
-                    <div className="font-display text-lg mb-3">Undo check-in</div>
+                    <div className="font-display text-lg mb-3">Undo check-out</div>
                     <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
                     <div className="flex gap-2">
                       <input
-                        value={undoCheckInReason}
-                        onChange={(e) => setUndoCheckInReason(e.target.value)}
-                        placeholder="Reason for undoing check-in"
+                        value={undoCheckOutReason}
+                        onChange={(e) => setUndoCheckOutReason(e.target.value)}
+                        placeholder="Reason for undoing check-out"
                         className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
                       />
                       <button
-                        onClick={() => handleUndoCheckIn(res, undoCheckInReason)}
-                        disabled={!undoCheckInReason.trim()}
+                        onClick={() => handleUndoCheckOut(res, undoCheckOutReason)}
+                        disabled={!undoCheckOutReason.trim()}
                         className="px-5 py-2 rounded-lg bg-amber-400 text-[#152A00] text-[12px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
                       >
                         Undo
                       </button>
                     </div>
                   </div>
-                </>
-              )}
+                )}
 
-              {checkStatus === "checked_out" && (
-                <div className="border border-[var(--text-primary)]/14 rounded-xl p-5">
-                  <div className="font-display text-lg mb-3">Undo check-out</div>
-                  <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
-                  <div className="flex gap-2">
-                    <input
-                      value={undoCheckOutReason}
-                      onChange={(e) => setUndoCheckOutReason(e.target.value)}
-                      placeholder="Reason for undoing check-out"
-                      className={`${fieldBoxCls} flex-1 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30`}
-                    />
-                    <button
-                      onClick={() => handleUndoCheckOut(res, undoCheckOutReason)}
-                      disabled={!undoCheckOutReason.trim()}
-                      className="px-5 py-2 rounded-lg bg-amber-400 text-[#152A00] text-[12px] font-bold disabled:opacity-40 disabled:cursor-not-allowed hover:opacity-90 transition-opacity"
-                    >
-                      Undo
-                    </button>
-                  </div>
+                <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
+                  Recorded in our own system only - no live connection to MEWS, so re-enter this change there once it&apos;s back online.
                 </div>
-              )}
-
-              <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
-                Recorded in our own system only - no live connection to MEWS, so re-enter this change there once it&apos;s back online.
               </div>
+
+              <div>{reservationDetailPanel}</div>
             </div>
           )}
 
@@ -2679,108 +2790,8 @@ export default function BcpPage() {
               <button disabled title="No live connection to MEWS to manage this reservation from here" className={`self-start px-6 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/40 text-[13px] font-bold ${disabledBtnCls}`}>OK</button>
             </div>
 
-            {/* Right column: Reservations */}
-            <div>
-              <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-                <h2 className="font-display text-xl text-[var(--text-primary)]">Reservations</h2>
-                <div className="flex gap-2">
-                  <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Create billing automation</button>
-                  <button disabled title="No live connection to MEWS to manage this reservation from here" className={`px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/20 text-[11px] font-bold text-[var(--text-primary)]/50 ${disabledBtnCls}`}>Unlock</button>
-                </div>
-              </div>
-
-              <div className="border border-[var(--text-primary)]/14 rounded-xl p-4 mb-5 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
-                  <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
-                  <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
-                    {STATE_DISPLAY_LABEL[res.state] || res.state}
-                  </span>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="font-bold text-[13px]">
-                    {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{effectiveRoomNumber(res.room)}
-                  </span>
-                  {typeof res.room_locked === "boolean" && (
-                    <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${res.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px]">
-                {detailRow("Service", res.service || "-")}
-                {detailRow("Confirmation number", res.number || "-")}
-                {res.group_name && detailRow("Group name", res.group_name)}
-                {detailRow("Status", (
-                  <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
-                    {STATE_DISPLAY_LABEL[res.state] || res.state}
-                  </span>
-                ))}
-                {detailRow("Arrival", fmtFullDateTime(res.check_in))}
-                {detailRow("Departure", fmtFullDateTime(res.check_out))}
-                {res.purpose && detailRow("Booking purpose", res.purpose)}
-                {res.segment && detailRow("Segment", res.segment)}
-                {detailRow("Guests", `${res.adults} × Adult${res.adults !== 1 ? "s" : ""}${res.children ? `, ${res.children} × Child${res.children !== 1 ? "ren" : ""}` : ""}`)}
-                {typeof res.total_amount === "number" && (
-                  <>
-                    {detailRow("Avg. rate (nightly)", ((res.rate_amount ?? 0) / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-                    {detailRow("Avg. price with products (nightly)", (res.total_amount / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-                    {detailRow("Total amount", `${res.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${res.currency || ""}`)}
-                  </>
-                )}
-                {typeof res.total_amount_gross === "number" && detailRow("Total amount (Gross)", res.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-                {res.category && detailRow("Requested category", res.category)}
-                {detailRow("Assigned space", (
-                  <span className="inline-flex items-center gap-1.5">
-                    <span className="font-bold">{res.room ? effectiveRoomNumber(res.room) : "-"}</span>
-                    {selectedRoomInfo && (
-                      <span className={`px-1.5 py-0.5 text-[9px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[effectiveRoomState(selectedRoomInfo)] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
-                        {effectiveRoomState(selectedRoomInfo)}
-                      </span>
-                    )}
-                  </span>
-                ))}
-                {res.rate && detailRow("Rate", res.rate)}
-                {res.travel_agency && detailRow("Travel agency", <span className="underline decoration-1 underline-offset-2">{res.travel_agency}</span>)}
-                {res.travel_agency_confirmation_number && detailRow("Travel agency confirmation number", res.travel_agency_confirmation_number)}
-              </div>
-
-              {!!res.rate_lines?.length && (
-                <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
-                  <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Nights</div>
-                  <div className="flex flex-col gap-1">
-                    {res.rate_lines.map((line, i) => (
-                      <div key={i} className="flex items-center justify-between text-[13px]">
-                        <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {!!res.item_lines?.length && (
-                <div className="mt-4 pt-4 border-t border-[var(--text-primary)]/10">
-                  <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">Products</div>
-                  <div className="flex flex-col gap-1">
-                    {res.item_lines.map((line, i) => (
-                      <div key={i} className="flex items-center justify-between text-[13px]">
-                        <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                        <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-[13px] mt-4 pt-4 border-t border-[var(--text-primary)]/10">
-                {res.origin && detailRow("Origin", res.origin)}
-                {res.reservation_source && detailRow("Reservation source", res.reservation_source)}
-                {res.created_utc && detailRow("Created", fmtDateTime(res.created_utc))}
-              </div>
-            </div>
+            {/* Right column: Reservations - shared with the Status tab above */}
+            <div>{reservationDetailPanel}</div>
           </div>
 
           <div className="mt-10 text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
