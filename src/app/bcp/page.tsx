@@ -724,10 +724,10 @@ export default function BcpPage() {
   // Arrival/Departure override per reservation - persisted in
   // bcp_arrival_overrides, keyed by (property, reservation_number). Applied
   // the same transparent way as roomChangeOverrides in frontDeskRows below.
-  const [arrivalOverrides, setArrivalOverrides] = useState<Record<string, { check_in?: string; check_out?: string }>>({});
+  const [arrivalOverrides, setArrivalOverrides] = useState<Record<string, { check_in?: string; check_out?: string; reason?: string }>>({});
   // Room type (category) override per reservation - persisted in
   // bcp_room_type_overrides, same (property, reservation_number) key.
-  const [roomTypeOverrides, setRoomTypeOverrides] = useState<Record<string, string>>({});
+  const [roomTypeOverrides, setRoomTypeOverrides] = useState<Record<string, { category: string; reason?: string }>>({});
   // Whether the Billing tab's Process Payment has been used on this
   // reservation - persisted in bcp_billing_overrides, same (property,
   // reservation_number) key. Presence alone means "processed" (there's no
@@ -1034,7 +1034,7 @@ export default function BcpPage() {
           ...(overriddenRoom && overriddenRoom !== raw.room ? { room: overriddenRoom } : {}),
           ...(arrivalOverride?.check_in ? { check_in: arrivalOverride.check_in } : {}),
           ...(arrivalOverride?.check_out ? { check_out: arrivalOverride.check_out } : {}),
-          ...(roomTypeOverride ? { category: roomTypeOverride } : {}),
+          ...(roomTypeOverride ? { category: roomTypeOverride.category } : {}),
         };
         return { r, status: frontDeskStatus(r, today) };
       })
@@ -1597,7 +1597,7 @@ export default function BcpPage() {
     if (arrivalChanged) changes.push(`Arrival: ${fmtFullDateTime(selectedReservation.check_in)} -> ${fmtFullDateTime(newCheckIn)}`);
     if (departureChanged) changes.push(`Departure: ${fmtFullDateTime(selectedReservation.check_out)} -> ${fmtFullDateTime(newCheckOut)}`);
     setSavingArrivalChange(true);
-    setArrivalOverrides((prev) => ({ ...prev, [selectedReservation.number]: { check_in: newCheckIn, check_out: newCheckOut } }));
+    setArrivalOverrides((prev) => ({ ...prev, [selectedReservation.number]: { check_in: newCheckIn, check_out: newCheckOut, reason } }));
     setSelectedReservation((prev) => (prev && prev.number === selectedReservation.number ? { ...prev, check_in: newCheckIn, check_out: newCheckOut } : prev));
     logOfflineAction({
       at: new Date().toISOString(),
@@ -1638,7 +1638,7 @@ export default function BcpPage() {
     const reason = roomTypeChangeReason.trim();
     const newCategory = editRoomType;
     setSavingRoomTypeChange(true);
-    setRoomTypeOverrides((prev) => ({ ...prev, [selectedReservation.number]: newCategory }));
+    setRoomTypeOverrides((prev) => ({ ...prev, [selectedReservation.number]: { category: newCategory, reason } }));
     setSelectedReservation((prev) => (prev && prev.number === selectedReservation.number ? { ...prev, category: newCategory } : prev));
     logOfflineAction({
       at: new Date().toISOString(),
@@ -3087,6 +3087,9 @@ export default function BcpPage() {
               >
                 {savingArrivalChange ? "Saving..." : "OK"}
               </button>
+              {arrivalOverrides[res.number]?.reason && (
+                <div className="text-[11px] text-[var(--text-primary)]/50 -mt-3">Last change reason: {arrivalOverrides[res.number]?.reason}</div>
+              )}
 
               <div className="pt-2 border-t border-[var(--text-primary)]/10">
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Room Type</div>
@@ -3117,6 +3120,9 @@ export default function BcpPage() {
               >
                 {savingRoomTypeChange ? "Saving..." : "OK"}
               </button>
+              {roomTypeOverrides[res.number]?.reason && (
+                <div className="text-[11px] text-[var(--text-primary)]/50 -mt-3">Last change reason: {roomTypeOverrides[res.number]?.reason}</div>
+              )}
             </div>
 
             {/* Right column: Reservations - shared with the Status tab above */}

@@ -449,12 +449,15 @@ async def get_arrival_overrides(property_name: str = Query(...)):
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
         res = sync_service.supabase.table("bcp_arrival_overrides") \
-            .select("reservation_number, check_in, check_out") \
+            .select("reservation_number, check_in, check_out, reason") \
             .eq("property", property_name) \
             .execute()
         return {
             "status": "success",
-            "data": {r["reservation_number"]: {"check_in": r.get("check_in"), "check_out": r.get("check_out")} for r in (res.data or [])},
+            "data": {
+                r["reservation_number"]: {"check_in": r.get("check_in"), "check_out": r.get("check_out"), "reason": r.get("reason")}
+                for r in (res.data or [])
+            },
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -496,10 +499,13 @@ async def get_room_type_overrides(property_name: str = Query(...)):
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
         res = sync_service.supabase.table("bcp_room_type_overrides") \
-            .select("reservation_number, category") \
+            .select("reservation_number, category, reason") \
             .eq("property", property_name) \
             .execute()
-        return {"status": "success", "data": {r["reservation_number"]: r["category"] for r in (res.data or [])}}
+        return {
+            "status": "success",
+            "data": {r["reservation_number"]: {"category": r["category"], "reason": r.get("reason")} for r in (res.data or [])},
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
