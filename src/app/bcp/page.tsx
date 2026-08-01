@@ -600,6 +600,13 @@ export default function BcpPage() {
   // no-op) for every other Reg Card entry point, which never closed
   // anything to get here in the first place.
   const [regCardReturnLogEntry, setRegCardReturnLogEntry] = useState<OfflineAction | null>(null);
+  // Same idea, for Reg Card opened from the reservation detail drawer's
+  // Guests box - the drawer never closed itself before (it's a right-side
+  // slide-over, not a full-page overlay), but it's declared later in the
+  // JSX than Reg Card and both are fixed inset-0, so the still-open drawer
+  // painted on top of Reg Card instead of Reg Card actually being visible.
+  // Now the drawer closes when Reg Card opens, and Close restores it.
+  const [regCardReturnReservation, setRegCardReturnReservation] = useState<ReservationRow | null>(null);
   // Captured on-screen at print time (SignaturePad), reset per guest. Not
   // persisted automatically - the front desk chooses to via the Save button,
   // which unlike Check In/Out/Chg Room/Room Status actually writes to
@@ -1467,11 +1474,13 @@ export default function BcpPage() {
     setRegCardGuestFor(g);
     setGuestSignature(null);
     setRegCardSaveResult(null);
-    // Reset here, not just at declaration - every entry point calls this
-    // function, so a stale return target from a previous Action Log Detail
-    // visit can't leak into an unrelated Reg Card opened afterwards. The
-    // Action Log Detail button below sets it right back after this call.
+    // Reset both here, not just at declaration - every entry point calls
+    // this function, so a stale return target from a previous Action Log
+    // Detail or reservation-drawer visit can't leak into an unrelated Reg
+    // Card opened afterwards. Whichever entry point actually applies sets
+    // its own return target right back after this call.
     setRegCardReturnLogEntry(null);
+    setRegCardReturnReservation(null);
     setRegCardDepartureOption("current");
     setRegCardDepartureDetail("");
     setRegCardDestinationOption("current");
@@ -3446,6 +3455,10 @@ export default function BcpPage() {
                       setSelectedLogEntry(regCardReturnLogEntry);
                       setRegCardReturnLogEntry(null);
                     }
+                    if (regCardReturnReservation) {
+                      setSelectedReservation(regCardReturnReservation);
+                      setRegCardReturnReservation(null);
+                    }
                   }}
                   className="px-4 py-2 text-[11px] font-bold tracked-caps border border-white/30 text-white bg-black/30 hover:bg-black/50 transition-colors"
                 >
@@ -4365,7 +4378,11 @@ export default function BcpPage() {
                           </div>
                         </div>
                         <button
-                          onClick={() => handleOpenRegCard(selectedReservation, ownerGuestIdentity(selectedReservation))}
+                          onClick={() => {
+                            handleOpenRegCard(selectedReservation, ownerGuestIdentity(selectedReservation));
+                            setRegCardReturnReservation(selectedReservation);
+                            setSelectedReservation(null);
+                          }}
                           className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                         >
                           Reg Card
@@ -4391,7 +4408,11 @@ export default function BcpPage() {
                             </button>
                           </div>
                           <button
-                            onClick={() => handleOpenRegCard(selectedReservation, c)}
+                            onClick={() => {
+                              handleOpenRegCard(selectedReservation, c);
+                              setRegCardReturnReservation(selectedReservation);
+                              setSelectedReservation(null);
+                            }}
                             className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
                           >
                             Reg Card
