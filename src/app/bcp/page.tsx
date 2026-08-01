@@ -236,7 +236,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added";
+  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -583,6 +583,20 @@ export default function BcpPage() {
   >([]);
   const [newNoteText, setNewNoteText] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+
+  // Local corrections to the currently-open reservation's guest list -
+  // editing a guest's profile, adding a walk-in MEWS never had, or removing
+  // one from the displayed list (permanent in bcp_guest_overrides, separate
+  // from bcp_snapshots). Keyed by guest_key: an existing guest's own
+  // mews_customer_id for an edit/removal, or a client-generated "local-..."
+  // id for one added here with no MEWS record at all.
+  const [guestOverrides, setGuestOverrides] = useState<Record<string, { removed: boolean; data: GuestIdentity }>>({});
+  // The guest currently being edited in the modal - null guestKey.startsWith
+  // isn't needed here since isNew already distinguishes "editing an existing
+  // guest" from "adding a brand new one" for the Save handler.
+  const [editGuestFor, setEditGuestFor] = useState<{ guestKey: string; isNew: boolean } | null>(null);
+  const [editGuestForm, setEditGuestForm] = useState<GuestIdentity | null>(null);
+  const [savingGuestEdit, setSavingGuestEdit] = useState(false);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
   // can't write back to MEWS (that's the whole premise of this page: MEWS
@@ -1472,6 +1486,141 @@ export default function BcpPage() {
       /* left in the textarea so the user can retry */
     } finally {
       setSavingNote(false);
+    }
+  };
+
+  // Same fetch pattern as reservationNotes above, for the currently-open
+  // reservation's guest edits/additions/removals.
+  useEffect(() => {
+    if (!selectedReservation || !snapshot?.property) {
+      setGuestOverrides({});
+      return;
+    }
+    const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: selectedReservation.number });
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/guest-overrides?${params.toString()}`);
+        const result = await res.json();
+        if (result.status === "success") {
+          const map: Record<string, { removed: boolean; data: GuestIdentity }> = {};
+          (result.data || []).forEach((row: { guest_key: string; removed: boolean; data: GuestIdentity }) => {
+            map[row.guest_key] = { removed: row.removed, data: row.data };
+          });
+          setGuestOverrides(map);
+        } else {
+          setGuestOverrides({});
+        }
+      } catch {
+        setGuestOverrides({});
+      }
+    })();
+  }, [selectedReservation?.number, snapshot?.property]);
+
+  // Every guest actually shown for the currently-open reservation: the
+  // Owner/companions from the frozen snapshot with any saved edits merged
+  // in and any removed ones filtered out, plus guests added here that MEWS
+  // never had at all. guest_key mirrors how overrides are stored - an
+  // existing guest's own mews_customer_id, or the "local-..." id a locally
+  // added guest was created with.
+  const effectiveDrawerGuests = useMemo(() => {
+    if (!selectedReservation) return [];
+    const base = allReservationGuests(selectedReservation).map((g, i) => ({
+      guestKey: g.mews_customer_id || `owner-${selectedReservation.number}`,
+      guest: g,
+      isOwner: i === 0,
+    }));
+    const merged = base
+      .map((entry) => {
+        const ov = guestOverrides[entry.guestKey];
+        return ov ? { ...entry, guest: ov.data, removed: ov.removed } : { ...entry, removed: false };
+      })
+      .filter((entry) => !entry.removed);
+    const added = Object.entries(guestOverrides)
+      .filter(([key, ov]) => key.startsWith("local-") && !ov.removed)
+      .map(([key, ov]) => ({ guestKey: key, guest: ov.data, isOwner: false }));
+    return [...merged, ...added];
+  }, [selectedReservation, guestOverrides]);
+
+  const handleOpenEditGuest = (guestKey: string, guest: GuestIdentity) => {
+    setEditGuestFor({ guestKey, isNew: false });
+    setEditGuestForm({ ...guest });
+  };
+
+  const handleAddGuest = () => {
+    const guestKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const blank: GuestIdentity = { name: "", nationality: "", email: "", phone: "" };
+    setEditGuestFor({ guestKey, isNew: true });
+    setEditGuestForm(blank);
+  };
+
+  const handleSaveGuestEdit = async () => {
+    if (!editGuestFor || !editGuestForm || !selectedReservation || !snapshot?.property) return;
+    setSavingGuestEdit(true);
+    try {
+      const res = await fetch("/api/bcp/guest-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: snapshot.property,
+          reservation_number: selectedReservation.number,
+          guest_key: editGuestFor.guestKey,
+          removed: false,
+          data: editGuestForm,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === "success") {
+        setGuestOverrides((prev) => ({ ...prev, [editGuestFor.guestKey]: { removed: false, data: editGuestForm } }));
+        logOfflineAction({
+          at: new Date().toISOString(),
+          reservationNumber: selectedReservation.number,
+          guest: editGuestForm.name,
+          room: selectedReservation.room,
+          action: editGuestFor.isNew ? "Guest Added" : "Guest Edited",
+          detail: editGuestFor.isNew ? `Added guest ${editGuestForm.name || "(no name)"}` : `Edited guest ${editGuestForm.name || "(no name)"}`,
+          reservationSnapshot: selectedReservation,
+          guestProfileSnapshot: findGuestProfile(selectedReservation),
+        });
+        setEditGuestFor(null);
+        setEditGuestForm(null);
+      }
+    } catch {
+      /* modal stays open so the front desk can retry */
+    } finally {
+      setSavingGuestEdit(false);
+    }
+  };
+
+  const handleRemoveGuest = async (guestKey: string, guest: GuestIdentity) => {
+    if (!selectedReservation || !snapshot?.property) return;
+    try {
+      const res = await fetch("/api/bcp/guest-overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: snapshot.property,
+          reservation_number: selectedReservation.number,
+          guest_key: guestKey,
+          removed: true,
+          data: guest,
+        }),
+      });
+      const result = await res.json();
+      if (result.status === "success") {
+        setGuestOverrides((prev) => ({ ...prev, [guestKey]: { removed: true, data: guest } }));
+        logOfflineAction({
+          at: new Date().toISOString(),
+          reservationNumber: selectedReservation.number,
+          guest: guest.name,
+          room: selectedReservation.room,
+          action: "Guest Removed",
+          detail: `Removed guest ${guest.name || "(no name)"}`,
+          reservationSnapshot: selectedReservation,
+          guestProfileSnapshot: findGuestProfile(selectedReservation),
+        });
+      }
+    } catch {
+      /* no local state change on failure - front desk sees it's still there and can retry */
     }
   };
 
@@ -3709,6 +3858,76 @@ export default function BcpPage() {
           </div>
         )}
 
+        {/* Edit/Add Guest - editGuestFor.isNew distinguishes a brand new
+            guest (blank form, no MEWS record at all) from correcting an
+            existing one; both save to the same bcp_guest_overrides upsert
+            (see handleSaveGuestEdit), local-only like everything else here. */}
+        {editGuestFor && editGuestForm && (
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); }}>
+            <div
+              className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="font-display text-xl mb-4">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
+              <div className="grid grid-cols-2 gap-3">
+                {(
+                  [
+                    ["name", "Full name"],
+                    ["title", "Title"],
+                    ["first_name", "First name"],
+                    ["last_name", "Last name"],
+                    ["second_last_name", "Second last name"],
+                    ["nationality_name", "Nationality"],
+                    ["language", "Language"],
+                    ["phone", "Telephone"],
+                    ["sex", "Sex"],
+                    ["birth_date", "Date of birth (YYYY-MM-DD)"],
+                    ["birth_country_name", "Country of birth"],
+                    ["birth_place", "Place of birth"],
+                    ["occupation", "Occupation"],
+                    ["passport_number", "Passport"],
+                    ["identity_card_number", "ID Card"],
+                    ["alien_book", "Alien Book"],
+                    ["email", "Email"],
+                  ] as [keyof GuestIdentity, string][]
+                ).map(([field, label]) => (
+                  <div key={field}>
+                    <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">{label}</div>
+                    <input
+                      value={(editGuestForm[field] as string) || ""}
+                      onChange={(e) => setEditGuestForm((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
+                      className="w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/5 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30"
+                    />
+                  </div>
+                ))}
+                <div className="col-span-2">
+                  <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Address</div>
+                  <input
+                    value={editGuestForm.address_details || ""}
+                    onChange={(e) => setEditGuestForm((prev) => (prev ? { ...prev, address_details: e.target.value } : prev))}
+                    className="w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/5 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30"
+                  />
+                </div>
+              </div>
+              <div className="text-[10px] text-[var(--text-primary)]/40 italic mt-3">
+                This only updates the guest list shown here (Guest Profile, Reg Card) - it does not change anything in MEWS.
+              </div>
+              <div className="flex justify-end gap-2 mt-4">
+                <button onClick={() => { setEditGuestFor(null); setEditGuestForm(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveGuestEdit}
+                  disabled={savingGuestEdit || !editGuestForm.name.trim()}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {savingGuestEdit ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {roomStatusReasonModal}
         {checkInDirtyModal}
 
@@ -4438,75 +4657,74 @@ export default function BcpPage() {
                       )}
                     </div>
 
-                    {/* Box 2: guests */}
+                    {/* Box 2: guests - editing/adding/removing is local-only
+                        (bcp_guest_overrides), same premise as everything else
+                        in BCP: nothing here can push back to MEWS while it's
+                        down, but it's recorded permanently (see Action Logs)
+                        and reflected everywhere this guest list is used
+                        (Guest Profile, Reg Card) from this point on. */}
                     <div className="border border-[var(--text-primary)]/14 rounded-lg overflow-hidden">
-                      <div className="px-4 py-3 flex items-center justify-between">
+                      <div className="px-4 py-3 flex items-center justify-between gap-2">
                         <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Guests</div>
-                        <div className="text-[11px] text-[var(--text-primary)]/50">
-                          {selectedReservation.adults} × Adults{selectedReservation.children > 0 ? `, ${selectedReservation.children} × Children` : ""}
-                        </div>
-                      </div>
-                      <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between">
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
-                            {guestInitials(selectedReservation.guest || "?")}
-                          </div>
-                          <div>
-                            <button
-                              onClick={() => {
-                                const group = allReservationGuests(selectedReservation);
-                                setSelectedGuestProfile(group[0]);
-                                setGuestProfileGroup(group);
-                                setGuestProfileReservation(selectedReservation);
-                                setGuestProfileTab("profile");
-                              }}
-                              className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors"
-                            >
-                              {selectedReservation.guest || "(no name)"}
-                            </button>
-                            <span className="text-[10px] text-[var(--text-primary)]/50"> Owner</span>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => {
-                            handleOpenRegCard(selectedReservation, ownerGuestIdentity(selectedReservation));
-                            setRegCardReturnReservation(selectedReservation);
-                            setSelectedReservation(null);
-                          }}
-                          className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
-                        >
-                          Reg Card
-                        </button>
-                      </div>
-                      {selectedReservation.companions?.map((c, i) => (
-                        <div key={i} className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
-                              {guestInitials(c.name || "?")}
-                            </div>
-                            <button
-                              onClick={() => {
-                                const group = allReservationGuests(selectedReservation);
-                                setSelectedGuestProfile(group[i + 1]);
-                                setGuestProfileGroup(group);
-                                setGuestProfileReservation(selectedReservation);
-                                setGuestProfileTab("profile");
-                              }}
-                              className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left truncate"
-                            >
-                              {c.name || "(no name)"}
-                            </button>
+                          <div className="text-[11px] text-[var(--text-primary)]/50">
+                            {selectedReservation.adults} × Adults{selectedReservation.children > 0 ? `, ${selectedReservation.children} × Children` : ""}
                           </div>
                           <button
-                            onClick={() => {
-                              handleOpenRegCard(selectedReservation, c);
-                              setRegCardReturnReservation(selectedReservation);
-                              setSelectedReservation(null);
-                            }}
-                            className="shrink-0 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                            onClick={handleAddGuest}
+                            className="shrink-0 px-2.5 py-1 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
                           >
-                            Reg Card
+                            + Add Guest
                           </button>
+                        </div>
+                      </div>
+                      {effectiveDrawerGuests.map(({ guestKey, guest, isOwner }) => (
+                        <div key={guestKey} className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between gap-3 flex-wrap">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">
+                              {guestInitials(guest.name || "?")}
+                            </div>
+                            <div className="min-w-0">
+                              <button
+                                onClick={() => {
+                                  const group = effectiveDrawerGuests.map((e) => e.guest);
+                                  setSelectedGuestProfile(guest);
+                                  setGuestProfileGroup(group);
+                                  setGuestProfileReservation(selectedReservation);
+                                  setGuestProfileTab("profile");
+                                }}
+                                className="font-bold underline decoration-1 underline-offset-2 hover:text-blue-600 transition-colors text-left truncate"
+                              >
+                                {guest.name || "(no name)"}
+                              </button>
+                              {isOwner && <span className="text-[10px] text-[var(--text-primary)]/50"> Owner</span>}
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              onClick={() => handleOpenEditGuest(guestKey, guest)}
+                              className="px-2.5 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleRemoveGuest(guestKey, guest)}
+                              title={`Remove ${guest.name || "this guest"}`}
+                              className="px-2.5 py-1.5 text-[10px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
+                            >
+                              −
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleOpenRegCard(selectedReservation, guest);
+                                setRegCardReturnReservation(selectedReservation);
+                                setSelectedReservation(null);
+                              }}
+                              className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+                            >
+                              Reg Card
+                            </button>
+                          </div>
                         </div>
                       ))}
                       <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">

@@ -492,6 +492,68 @@ async def add_reservation_note(payload: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/guest-overrides")
+async def get_guest_overrides(property_name: str = Query(...), reservation_number: str = Query(...)):
+    """
+    Local corrections to a reservation's guest list - editing a guest's
+    profile (name, nationality, passport, etc.), adding a walk-in guest MEWS
+    never had, or removing one from the displayed list - captured while
+    there's no live MEWS connection to actually change any of this. Permanent
+    (never pruned, unlike bcp_snapshots), keyed by (property, reservation_number,
+    guest_key): guest_key is the guest's own mews_customer_id for an edit/
+    removal of an existing MEWS guest, or a client-generated "local-..." id
+    for a guest added here that has no MEWS record at all.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_guest_overrides") \
+            .select("guest_key, removed, data") \
+            .eq("property", property_name) \
+            .eq("reservation_number", reservation_number) \
+            .execute()
+        rows = []
+        for row in res.data or []:
+            blob = (row.get("data") or {}).get("blob", "")
+            guest = json.loads(encryption_service.decrypt(blob)) if blob else {}
+            rows.append({"guest_key": row["guest_key"], "removed": bool(row.get("removed")), "data": guest})
+        return {"status": "success", "data": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/guest-overrides")
+async def save_guest_override(payload: dict = Body(...)):
+    """
+    Upserts one guest override - editing an existing guest's profile fields,
+    adding a brand new guest, or marking one removed all go through this same
+    endpoint (removed is just a flag, so "un-removing" is possible by saving
+    again with removed: false, though the UI doesn't currently expose that).
+    data is whatever GuestIdentity-shaped fields the front desk has for this
+    guest - stored as the guest's full current profile, not a diff against
+    MEWS, so a later read never needs to re-merge it against the snapshot.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    guest_key = payload.get("guest_key")
+    if not property_name or not reservation_number or not guest_key:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number, and guest_key are required")
+    try:
+        sync_service.supabase.table("bcp_guest_overrides").upsert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "guest_key": guest_key,
+            "removed": bool(payload.get("removed", False)),
+            "data": {"blob": encryption_service.encrypt(json.dumps(payload.get("data") or {}))},
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,reservation_number,guest_key").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 def _action_log_row_to_json(row: dict) -> dict:
     blob = (row.get("data") or {}).get("blob", "")
     fields = json.loads(encryption_service.decrypt(blob)) if blob else {}
