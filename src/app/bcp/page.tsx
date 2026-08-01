@@ -522,7 +522,7 @@ export default function BcpPage() {
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
   // English each session.
-  const [readmeLang, setReadmeLang] = useState<"en" | "th">("en");
+  const [readmeLang, setReadmeLang] = useState<"en" | "th" | "fil">("en");
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -2962,14 +2962,25 @@ export default function BcpPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between gap-3">
-                <div className="font-display text-2xl">{readmeLang === "en" ? "What is BCP / How to use it" : "BCP คืออะไร / วิธีใช้งาน"}</div>
+                <div className="font-display text-2xl">
+                  {readmeLang === "en" ? "What is BCP / How to use it" : readmeLang === "th" ? "BCP คืออะไร / วิธีใช้งาน" : "Ano ang BCP / Paano Gamitin"}
+                </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    onClick={() => setReadmeLang((l) => (l === "en" ? "th" : "en"))}
-                    className="px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
-                  >
-                    {readmeLang === "en" ? "ไทย" : "English"}
-                  </button>
+                  <div className="flex items-center border border-[var(--text-primary)]/20 overflow-hidden">
+                    {(["en", "th", "fil"] as const).map((l) => (
+                      <button
+                        key={l}
+                        onClick={() => setReadmeLang(l)}
+                        className={`px-2.5 py-1.5 text-[10px] font-bold tracked-caps transition-colors ${
+                          readmeLang === l
+                            ? "bg-[var(--text-primary)] text-[var(--paper)]"
+                            : "hover:bg-[var(--text-primary)]/5"
+                        }`}
+                      >
+                        {l === "en" ? "English" : l === "th" ? "ไทย" : "Filipino"}
+                      </button>
+                    ))}
+                  </div>
                   <button onClick={() => setShowReadme(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                   </button>
@@ -3011,7 +3022,7 @@ export default function BcpPage() {
                   <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">Close</button>
                 </div>
               </div>
-              ) : (
+              ) : readmeLang === "th" ? (
               <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
                 <div>
                   <div className="font-bold mb-1">BCP (Business Continuity Plan) คืออะไร</div>
@@ -3045,6 +3056,42 @@ export default function BcpPage() {
                 </div>
                 <div className="pt-2 border-t border-[var(--text-primary)]/10 flex justify-end">
                   <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">ปิด</button>
+                </div>
+              </div>
+              ) : (
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                <div>
+                  <div className="font-bold mb-1">Ano ang BCP (Business Continuity Plan)</div>
+                  <p>Isang backup system para sa front desk kapag <b>bumagsak ang MEWS</b> — awtomatikong nagse-save ang system ng kopya ng 15-araw na reservation timeline (7 araw nakaraan + 7 araw susunod) mula sa MEWS <b>tuwing 5 minuto</b> (huling 48 oras lang ang naka-save bawat property), kasama ang housekeeping status ng mga kuwarto at listahan ng payments ngayong araw</p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">Normal na operasyon (gumagana ang MEWS)</div>
+                  <p>Walang kailangang gawin — awtomatikong nagse-save ang system ng snapshot tuwing 5 minuto. Kung kailangan agad ng pinakabagong kopya, pindutin ang <b>Capture Now</b>. Puwede ring piliin ang mga nakaraang snapshot sa <b>Snapshot</b> dropdown</p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">Kapag bumagsak ang MEWS, sundin ang mga hakbang na ito</div>
+                  <ol className="list-decimal list-inside flex flex-col gap-1">
+                    <li>Buksan ang page na ito, piliin ang property, pagkatapos ang <b>pinakabagong snapshot</b> (tingnan ang oras na &quot;Data as of&quot; — kung mas matagal na sa 2 oras, magpapakita ng babalang kulay-orange ang system)</li>
+                    <li>Tingnan ang <b>Timeline</b> tulad ng karaniwang MEWS — i-click ang reservation bar para makita ang detalye/notes ng bisita: kumuha muna ng litrato ng pasaporte / i-scan ang mga dokumento at i-save sa computer, pagkatapos mag-rehistro gamit ang papel o PDF sa iPad</li>
+                    <li>Tingnan ang kulay na tuldok sa bandang numero ng kuwarto para malaman ng housekeeping kung aling kuwarto ang gagamitin ng bisita — puwedeng i-print ang housekeeping worksheet gamit ang Print command ng browser (Ctrl/Cmd+P) habang nasa tab na Timeline o Rooms (HK) (may checkbox na Cleaned ✓ para tsekan sa papel)</li>
+                    <li>Pananalapi: puwedeng i-record na muna ang mga singil, pero <b>hindi pa puwedeng i-process</b> hangga&#39;t hindi bumabalik ang MEWS — gamitin ang tab na <b>Payments</b> para itugma sa mga entry na naipasok na ngayong araw</li>
+                    <li><b>Check In/Check Out/Undo Check In/Undo Check Out</b>: buksan ang reservation → pindutin ang <b>Manage</b> → tab na <b>Status</b> — lahat ng aksyon dito ay permanenteng naka-log sa system (tingnan ang Action Logs sa ibaba). Kailangan munang magsulat ng dahilan bago maisagawa ang Undo</li>
+                    <li><b>Reg Card</b>: buksan ang reservation, pindutin ang button na <b>Reg Card</b> sa tabi ng pangalan ng kahit sinong bisita (Owner man o kasama) para punan at i-print ang ร.ร.๓ lodger registration card ng bisitang iyon — kailangang punan ang <b>Occupation</b> (trabaho) bago makapag-save/i-print. Ang Place of Departure/Next Destination ay naka-default na sa &quot;kasalukuyang address&quot; (puwedeng palitan sa Other accommodation at i-type ang address kung kailangan), at puwedeng pumirma agad ang bisita sa screen bago i-print. Pindutin ang Save para ma-imbak ang kopya sa system. Ang button na Delete Signature ay para burahin ang maling pirma</li>
+                    <li><b>Isulat ang lahat ng ginawa</b> habang bumabagsak ang MEWS (check in/check out/paglipat ng kuwarto/singil) — awtomatiko nang naka-log ang mga aksyon sa itaas (tingnan ang Action Logs); isulat sa papel o Activity report ng branch ang iba pang bagay na wala rito</li>
+                    <li>Kapag bumalik na ang MEWS: ipasok pabalik sa MEWS ang lahat ng naitala (kapwa nasa system at nasa papel) (ang mga branch na may AdriaScan ay puwede nang direktang i-scan ang mga dokumento papunta sa MEWS)</li>
+                  </ol>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">Mahalagang malaman</div>
+                  <ul className="list-disc list-inside flex flex-col gap-1">
+                    <li>Ang datos sa page na ito ay &quot;kopya noong huling na-save&quot;, hindi live data — lalabas lang ang berdeng <b>LIVE</b> badge kapag matagumpay na nakakakuha ang system ng live data mula sa MEWS (ibig sabihin, hindi bumabagsak ang MEWS)</li>
+                    <li>Ang Vouch kiosk ay dumadaan sa MEWS para mag-check in — kung bumagsak ang MEWS, ituring na hindi rin gumagana ang kiosk</li>
+                    <li>Kung matagal bumagsak ang MEWS ng mahigit isang oras, hindi na mag-a-update ang snapshot (hindi na makakakuha ng bagong datos dahil bumagsak ang pinagmumulan) — gamitin ang pinakabagong meron</li>
+                    <li>Ang <b>Action Logs</b> (ika-3 tab) ay permanenteng talaan ng lahat ng ginawa mula sa page na ito (check in/out, Undo, paglipat ng kuwarto, pag-save ng Reg Card, notes) — tsekan ang <b>BCP Check</b> kapag naipasok na ang entry na iyon sa MEWS, at gamitin ang button na <b>Export to Excel</b> para i-save o ipasa ang buong listahan</li>
+                  </ul>
+                </div>
+                <div className="pt-2 border-t border-[var(--text-primary)]/10 flex justify-end">
+                  <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">Isara</button>
                 </div>
               </div>
               )}
