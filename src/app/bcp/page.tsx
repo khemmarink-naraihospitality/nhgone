@@ -519,6 +519,10 @@ export default function BcpPage() {
   // created_at desc), so leaving headers unclicked looks unchanged.
   const [logSort, setLogSort] = useState<{ key: ActionLogSortKey; dir: "asc" | "desc" }>({ key: "time", dir: "desc" });
   const [showReadme, setShowReadme] = useState(false);
+  // English by default (matching every other label in the app), with a
+  // toggle button in the modal itself for Thai - not persisted, resets to
+  // English each session.
+  const [readmeLang, setReadmeLang] = useState<"en" | "th">("en");
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -2795,12 +2799,57 @@ export default function BcpPage() {
               className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-2xl w-full max-h-[85vh] overflow-y-auto shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between">
-                <div className="font-display text-2xl">BCP คืออะไร / วิธีใช้งาน</div>
-                <button onClick={() => setShowReadme(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                </button>
+              <div className="sticky top-0 bg-[var(--paper)] border-b border-[var(--text-primary)]/10 px-6 py-4 flex items-center justify-between gap-3">
+                <div className="font-display text-2xl">{readmeLang === "en" ? "What is BCP / How to use it" : "BCP คืออะไร / วิธีใช้งาน"}</div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setReadmeLang((l) => (l === "en" ? "th" : "en"))}
+                    className="px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors"
+                  >
+                    {readmeLang === "en" ? "ไทย" : "English"}
+                  </button>
+                  <button onClick={() => setShowReadme(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
               </div>
+              {readmeLang === "en" ? (
+              <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
+                <div>
+                  <div className="font-bold mb-1">What is BCP (Business Continuity Plan)</div>
+                  <p>A front-desk backup system for when <b>MEWS goes down</b> — it saves a copy of the 15-day reservation timeline (7 days back + 7 days forward) from MEWS <b>automatically every 5 minutes</b> (keeping the latest 48 hours per property), along with housekeeping room status and today&apos;s payments.</p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">Normal operation (MEWS still working)</div>
+                  <p>Nothing to do — snapshots save automatically every 5 minutes. Need the very latest copy right now? Click <b>Capture Now</b>. Browse older copies from the <b>Snapshot</b> dropdown.</p>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">When MEWS goes down, follow these steps</div>
+                  <ol className="list-decimal list-inside flex flex-col gap-1">
+                    <li>Open this page, pick the property, then pick the <b>latest snapshot</b> (check the &quot;Data as of&quot; time - if it&apos;s older than 2 hours, the page shows an orange warning).</li>
+                    <li>Browse the <b>Timeline</b> table just like the normal MEWS screen - click a reservation bar for guest details/notes. Take photos of passports / scan documents to your computer first, then register guests on paper or a PDF on an iPad instead.</li>
+                    <li>Check the color dot next to each room number to tell housekeeping which rooms are occupied - print a housekeeping worksheet from your browser&apos;s Print command (Ctrl/Cmd+P) while on the Timeline or Rooms (HK) tab (has a Cleaned ✓ box to tick on paper).</li>
+                    <li>Money: you can record a <b>charge</b> now, but it <b>can&apos;t be processed</b> until MEWS is back - use the <b>Payments</b> tab to compare against what&apos;s already gone through today.</li>
+                    <li><b>Check In / Check Out / Undo Check In / Undo Check Out</b>: open a reservation → <b>Manage</b> → <b>Status</b> tab. Every action here is recorded permanently in this system (see Action Logs below) - Undo actions require typing a reason first.</li>
+                    <li><b>Reg Card</b>: open a reservation, click the <b>Reg Card</b> button next to any guest&apos;s name (Owner or a companion) to fill in and print their ร.ร.๓ Lodger Registration Card - Occupation is required before it can be saved or printed, Place of Departure/Next Destination default to &quot;current address&quot; (switch to Other accommodation and type the address if needed), and the guest can sign right on screen. Save keeps a copy here; Delete Signature clears a mistaken one.</li>
+                    <li><b>Write down everything</b> done while MEWS is down (check-in/out, room change, charges) - the actions above are already recorded automatically (see Action Logs), so note anything else on paper or your branch&apos;s Activity report.</li>
+                    <li>Once MEWS is back: re-enter everything recorded (here and on paper) back into MEWS (branches with AdriaScan can scan documents straight into MEWS).</li>
+                  </ol>
+                </div>
+                <div>
+                  <div className="font-bold mb-1">Good to know</div>
+                  <ul className="list-disc list-inside flex flex-col gap-1">
+                    <li>Everything on this page is &quot;a copy from when it was captured,&quot; not live data - the green <b>LIVE</b> badge only appears when the system can actually reach MEWS right now (meaning MEWS isn&apos;t down).</li>
+                    <li>Vouch kiosk check-in goes through MEWS - if MEWS is down, assume the kiosk is down too.</li>
+                    <li>If MEWS stays down for more than an hour, snapshots stop updating (can&apos;t capture from a source that&apos;s down) - just use the latest one you have.</li>
+                    <li><b>Action Logs</b> (the third tab) keeps a permanent record of everything done from this page (Check In/Out, Undo, room changes, Reg Card saves, notes) - tick <b>BCP Check</b> once that action has been re-entered into MEWS, and use <b>Export to Excel</b> to save or share the list.</li>
+                  </ul>
+                </div>
+                <div className="pt-2 border-t border-[var(--text-primary)]/10 flex justify-end">
+                  <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">Close</button>
+                </div>
+              </div>
+              ) : (
               <div className="px-6 py-5 text-[13px] leading-relaxed flex flex-col gap-4">
                 <div>
                   <div className="font-bold mb-1">BCP (Business Continuity Plan) คืออะไร</div>
@@ -2817,8 +2866,10 @@ export default function BcpPage() {
                     <li>ดูตาราง <b>Timeline</b> เหมือนหน้า MEWS ปกติ — คลิกที่แถบการจองเพื่อดูรายละเอียดแขก/โน้ต: ถ่ายรูปพาสปอร์ต / สแกนเอกสารเก็บเข้าคอมไว้ก่อน แล้วลงทะเบียนผ่านกระดาษ / PDF บน iPad แทน</li>
                     <li>ดูจุดสีหน้าเลขห้องเพื่อประสานแม่บ้านว่าให้แขกเข้าห้องไหน — พิมพ์ใบงานแจกแม่บ้านได้จากคำสั่ง Print ของเบราว์เซอร์ (Ctrl/Cmd+P) ตอนอยู่แท็บ Timeline หรือ Rooms (HK) (มีช่อง Cleaned ✓ ให้ติ๊กบนกระดาษ)</li>
                     <li>การเงิน: ชาร์จ Payment ไว้ก่อนได้ แต่<b>ยังตัดจ่ายไม่ได้</b>จนกว่า MEWS จะกลับมา — ใช้แท็บ <b>Payments</b> เทียบรายการที่เข้าแล้ววันนี้</li>
-                    <li><b>จดบันทึกทุกรายการ</b>ที่ทำระหว่าง MEWS ล่ม (เช็คอิน/เช็คเอาท์/ย้ายห้อง/ชาร์จเงิน) ลงกระดาษหรือไฟล์ Activity report ของสาขา</li>
-                    <li>เมื่อ MEWS กลับมาใช้ได้: นำบันทึกทั้งหมดไปคีย์ย้อนเข้า MEWS ให้ครบ (สาขาที่มี AdriaScan ใช้สแกนเอกสารเข้า MEWS ได้เลย)</li>
+                    <li><b>เช็คอิน/เช็คเอาท์/ยกเลิกเช็คอิน/ยกเลิกเช็คเอาท์</b>: เปิดการจอง → กด <b>Manage</b> → แท็บ <b>Status</b> — ทุกการกระทำที่นี่ถูกบันทึกถาวรในระบบ (ดู Action Logs ด้านล่าง) การยกเลิก (Undo) ต้องพิมพ์เหตุผลก่อนถึงจะกดได้</li>
+                    <li><b>Reg Card</b>: เปิดการจอง กดปุ่ม <b>Reg Card</b> ข้างชื่อแขกคนใดก็ได้ (Owner หรือผู้ติดตาม) เพื่อกรอกและพิมพ์บัตร ร.ร.๓ ของแขกคนนั้น — ต้องกรอก <b>Occupation</b> (อาชีพ) ก่อนถึงจะบันทึก/พิมพ์ได้ ส่วน Place of Departure/Next Destination ตั้งค่าเริ่มต้นเป็น &quot;ที่อยู่ปัจจุบัน&quot; ไว้ให้แล้ว (เปลี่ยนเป็น Other accommodation แล้วพิมพ์ที่อยู่ได้ถ้าจำเป็น) และให้แขกเซ็นชื่อบนหน้าจอก่อนพิมพ์ได้เลย กด Save เพื่อเก็บสำเนาไว้ในระบบ ปุ่ม Delete Signature ใช้ลบลายเซ็นต์ที่เซ็นผิด</li>
+                    <li><b>จดบันทึกทุกรายการ</b>ที่ทำระหว่าง MEWS ล่ม (เช็คอิน/เช็คเอาท์/ย้ายห้อง/ชาร์จเงิน) — รายการข้างต้นระบบบันทึกให้อัตโนมัติแล้ว (ดู Action Logs) ส่วนอย่างอื่นให้จดลงกระดาษหรือไฟล์ Activity report ของสาขา</li>
+                    <li>เมื่อ MEWS กลับมาใช้ได้: นำบันทึกทั้งหมด (ทั้งในระบบและบนกระดาษ) ไปคีย์ย้อนเข้า MEWS ให้ครบ (สาขาที่มี AdriaScan ใช้สแกนเอกสารเข้า MEWS ได้เลย)</li>
                   </ol>
                 </div>
                 <div>
@@ -2827,12 +2878,14 @@ export default function BcpPage() {
                     <li>ข้อมูลในหน้านี้เป็น &quot;สำเนา ณ เวลาที่เก็บ&quot; ไม่ใช่ข้อมูลสด — ป้าย <b>LIVE</b> สีเขียวจะขึ้นเฉพาะตอนที่ระบบดึงสดจาก MEWS ได้ (แปลว่า MEWS ยังไม่ล่ม)</li>
                     <li>Vouch kiosk เช็คอินผ่าน MEWS — ถ้า MEWS ล่ม ให้ถือว่า kiosk ใช้ไม่ได้ไปด้วย</li>
                     <li>หาก MEWS ล่มนานข้ามชั่วโมง snapshot จะไม่อัปเดตเพิ่ม (เก็บไม่ได้เพราะต้นทางล่ม) — ใช้อันล่าสุดที่มีเป็นหลัก</li>
+                    <li><b>Action Logs</b> (แท็บที่ 3) เก็บบันทึกถาวรของทุกอย่างที่ทำจากหน้านี้ (เช็คอิน/เอาท์, Undo, ย้ายห้อง, บันทึก Reg Card, โน้ต) — ติ๊ก <b>BCP Check</b> เมื่อคีย์รายการนั้นเข้า MEWS แล้ว และใช้ปุ่ม <b>Export to Excel</b> เพื่อบันทึก/ส่งต่อรายการทั้งหมดได้</li>
                   </ul>
                 </div>
                 <div className="pt-2 border-t border-[var(--text-primary)]/10 flex justify-end">
                   <button onClick={() => setShowReadme(false)} className="btn-brand btn-primary">ปิด</button>
                 </div>
               </div>
+              )}
             </div>
           </div>
         )}
