@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 interface ManagedPayment {
   mews_id: string;
@@ -21,7 +22,7 @@ export default function ManagedPaymentsPage() {
       // env var points at a stale API deployment lacking newer endpoints/
       // behavior (see admin/users' identical fix).
       const apiUrl = "/api";
-      const response = await fetch(`${apiUrl}/payments/managed`);
+      const response = await apiFetch(`${apiUrl}/payments/managed`);
       const result = await response.json();
       if (result.status === "success") {
         setPayments(result.data);

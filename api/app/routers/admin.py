@@ -1,12 +1,20 @@
 import secrets
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, Depends, HTTPException, Body
 from pydantic import BaseModel
 from app.config import settings, get_supabase_client
+from app.deps import get_current_active_user, get_current_user, require_admin
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+# Every admin.py endpoint manages accounts, MEWS credentials, or SMTP
+# credentials - all admin-only - except self_register (a just-signed-in
+# user with no profile row yet must be able to call it for themselves) and
+# sync/logs (Log Import is visible to every role, not just admins, per
+# Navigation.tsx's nav links - see the two routers below).
+admin_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
+active_router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(get_current_active_user)])
 
 class UserCreateRequest(BaseModel):
     email: str
@@ -44,7 +52,7 @@ class SmtpSettingsUpdate(BaseModel):
 class SmtpTestRequest(BaseModel):
     to_email: str
 
-@router.post("/users")
+@admin_router.post("/users")
 async def create_user(request: UserCreateRequest):
     """
     Pre-register a user by email + role. A random password is generated internally
@@ -95,7 +103,7 @@ async def create_user(request: UserCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/self-register")
-async def self_register(request: SelfRegisterRequest):
+async def self_register(request: SelfRegisterRequest, user=Depends(get_current_user)):
     """
     Auto-provisions a pending profile the first time someone logs in (Google or
     email/password) with no existing profiles row, instead of Navigation.tsx's
@@ -104,7 +112,14 @@ async def self_register(request: SelfRegisterRequest):
     approve_user below. Role/status are fixed here ("User"/"Pending")
     regardless of what's posted - only the Approve action can grant Active
     status (or change the role away from the Role Settings grid's default).
+
+    Requires a valid session (get_current_user) rather than admin, since the
+    caller has no profiles row yet to check a role against - but the id being
+    registered must be the caller's own, so a valid session can't be used to
+    plant a profile row for a different user id.
     """
+    if request.id != user.id:
+        raise HTTPException(status_code=403, detail="Cannot self-register on behalf of another account")
     try:
         admin_supabase = get_supabase_client()
         existing = admin_supabase.table("profiles").select("id").eq("id", request.id).limit(1).execute()
@@ -121,7 +136,7 @@ async def self_register(request: SelfRegisterRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/users/{user_id}/approve")
+@admin_router.post("/users/{user_id}/approve")
 async def approve_user(user_id: str, request: ApproveUserRequest):
     """
     Super Admin approval step for a pending self-registered user: sets their
@@ -142,7 +157,7 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/users/{user_id}")
+@admin_router.delete("/users/{user_id}")
 async def delete_user(user_id: str):
     """
     Removes a user's profile (Pending or Active) and emails them that access
@@ -174,7 +189,7 @@ async def delete_user(user_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/sync/properties")
+@admin_router.get("/sync/properties")
 async def get_sync_properties():
     """
     Fetch all properties and their sync schedule settings.
@@ -190,7 +205,7 @@ async def get_sync_properties():
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/sync/properties")
+@admin_router.post("/sync/properties")
 async def create_property_settings(request: PropertyApiSettingsUpdate):
     try:
         admin_supabase = get_supabase_client()
@@ -202,7 +217,7 @@ async def create_property_settings(request: PropertyApiSettingsUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.put("/sync/properties/{property_id}")
+@admin_router.put("/sync/properties/{property_id}")
 async def update_property_settings(property_id: str, request: PropertyApiSettingsUpdate):
     try:
         admin_supabase = get_supabase_client()
@@ -214,7 +229,7 @@ async def update_property_settings(property_id: str, request: PropertyApiSetting
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.delete("/sync/properties/{property_id}")
+@admin_router.delete("/sync/properties/{property_id}")
 async def delete_property_settings(property_id: str):
     try:
         admin_supabase = get_supabase_client()
@@ -223,7 +238,7 @@ async def delete_property_settings(property_id: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/sync/logs")
+@active_router.get("/sync/logs")
 async def get_sync_logs(
     property: str = None,
     limit: int = 200
@@ -252,7 +267,7 @@ async def get_sync_logs(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/smtp")
+@admin_router.get("/smtp")
 async def get_smtp_settings():
     """
     Fetch the single global SMTP settings row. The real password is never
@@ -271,7 +286,7 @@ async def get_smtp_settings():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/smtp")
+@admin_router.post("/smtp")
 async def save_smtp_settings(request: SmtpSettingsUpdate):
     """
     Upsert the single global SMTP settings row. If password is omitted/blank,
@@ -296,7 +311,7 @@ async def save_smtp_settings(request: SmtpSettingsUpdate):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/smtp/test")
+@admin_router.post("/smtp/test")
 async def test_smtp_settings(request: SmtpTestRequest):
     try:
         email_service.send_email(

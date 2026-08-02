@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from app.deps import get_current_active_user
 from pydantic import BaseModel
 from app.services.sync_service import sync_service
 from app.config import get_supabase_client
 from typing import Optional
 
-router = APIRouter(prefix="/rr3", tags=["RR3"])
+router = APIRouter(prefix="/rr3", tags=["RR3"], dependencies=[Depends(get_current_active_user)])
 
 # Default ร.ร.๓ Lodger Registration Card layout, matched to the official blank
 # form. One card's full HTML including its <style> block, so the admin editor

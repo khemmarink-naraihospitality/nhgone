@@ -1,5 +1,6 @@
 import re
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from app.deps import get_current_active_user
 from pydantic import BaseModel
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
@@ -7,7 +8,7 @@ from app.config import get_supabase_client
 from typing import Optional
 from datetime import datetime, timezone
 
-router = APIRouter(prefix="/bills", tags=["Bills"])
+router = APIRouter(prefix="/bills", tags=["Bills"], dependencies=[Depends(get_current_active_user)])
 
 _GUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
 

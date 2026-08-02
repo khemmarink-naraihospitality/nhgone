@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { useSearchParams } from "next/navigation";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
 
@@ -31,7 +32,7 @@ export default function PrintRr3Page() {
           start_date: startDate,
           end_date: endDate,
         });
-        const res = await fetch(`/api/rr3/cards?${params.toString()}`);
+        const res = await apiFetch(`/api/rr3/cards?${params.toString()}`);
         const result = await res.json();
         if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to load RR3 cards");
         let data: Rr3Card[] = result.data || [];
@@ -56,7 +57,7 @@ export default function PrintRr3Page() {
     const fetchTemplate = async () => {
       try {
         // No property_name - the RR3 card is one shared template for every property.
-        const res = await fetch(`/api/rr3/template`);
+        const res = await apiFetch(`/api/rr3/template`);
         const result = await res.json();
         if (result.status === "success") {
           setTemplate(result.data.html_template);

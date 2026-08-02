@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/lib/supabase";
@@ -84,7 +85,7 @@ export default function Dashboard() {
       try {
         const params = new URLSearchParams();
         if (allowedProperties.length > 0) params.set("properties", allowedProperties.join(","));
-        const response = await fetch(`/api/bcp/last-capture?${params.toString()}`);
+        const response = await apiFetch(`/api/bcp/last-capture?${params.toString()}`);
         const result = await response.json();
         setBcpLastCapture(result.status === "success" ? result.captured_at : null);
       } catch (err) {
@@ -119,7 +120,7 @@ export default function Dashboard() {
         const apiUrl = "/api";
         const params = new URLSearchParams();
         if (allowedProperties.length > 0) params.set("properties", allowedProperties.join(","));
-        const response = await fetch(`${apiUrl}/stats?${params.toString()}`);
+        const response = await apiFetch(`${apiUrl}/stats?${params.toString()}`);
         const result = await response.json();
         if (result.status === "success") {
           setStats(result.data);
@@ -222,7 +223,7 @@ export default function Dashboard() {
       return next;
     });
     try {
-      const response = await fetch("/api/sync/property", {
+      const response = await apiFetch("/api/sync/property", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ property_name: property }),

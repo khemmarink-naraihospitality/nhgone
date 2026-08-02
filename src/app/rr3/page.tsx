@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -84,7 +85,7 @@ export default function Rr3Page() {
         start_date: `${startDate}T00:00:00Z`,
         end_date: `${endDate}T23:59:59Z`,
       });
-      const res = await fetch(`/api/rr3/cards?${params.toString()}`);
+      const res = await apiFetch(`/api/rr3/cards?${params.toString()}`);
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to fetch RR3 cards");
       setCards(result.data || []);

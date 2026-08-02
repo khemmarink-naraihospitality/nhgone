@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from app.deps import get_current_active_user
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from typing import Optional
 from datetime import datetime, timezone
 
-router = APIRouter(prefix="/resources", tags=["Resources"])
+router = APIRouter(prefix="/resources", tags=["Resources"], dependencies=[Depends(get_current_active_user)])
 
 @router.get("/live")
 async def get_live_resources(

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -63,7 +64,7 @@ export default function ApiSettingsPage() {
       // env var points at a stale API deployment lacking newer endpoints/
       // behavior (see admin/users' identical fix).
       const apiUrl = "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties`, {
+      const response = await apiFetch(`${apiUrl}/admin/sync/properties`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newForm)
@@ -90,7 +91,7 @@ export default function ApiSettingsPage() {
       // env var points at a stale API deployment lacking newer endpoints/
       // behavior (see admin/users' identical fix).
       const apiUrl = "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties/${editForm.id}`, {
+      const response = await apiFetch(`${apiUrl}/admin/sync/properties/${editForm.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -120,7 +121,7 @@ export default function ApiSettingsPage() {
       // env var points at a stale API deployment lacking newer endpoints/
       // behavior (see admin/users' identical fix).
       const apiUrl = "/api";
-      const response = await fetch(`${apiUrl}/admin/sync/properties/${id}`, {
+      const response = await apiFetch(`${apiUrl}/admin/sync/properties/${id}`, {
         method: "DELETE"
       });
       const res = await response.json();

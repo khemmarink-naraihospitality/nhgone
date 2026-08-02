@@ -2,12 +2,13 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from app.deps import get_current_active_user
 
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 
-router = APIRouter(prefix="/st-files", tags=["ST Files"])
+router = APIRouter(prefix="/st-files", tags=["ST Files"], dependencies=[Depends(get_current_active_user)])
 
 
 @router.get("/report")

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -68,7 +69,7 @@ export default function LogImportPage() {
       }
       params.append("limit", "100");
 
-      const response = await fetch(`/api/admin/sync/logs?${params.toString()}`);
+      const response = await apiFetch(`/api/admin/sync/logs?${params.toString()}`);
       const result = await response.json();
 
       if (result.status === "success") {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -123,7 +124,7 @@ export default function StFilesPage() {
     try {
       const params = new URLSearchParams({ property_name: selectedProperty, date });
       const endpoint = dataSource === "database" ? "managed" : "report";
-      const res = await fetch(`/api/st-files/${endpoint}?${params.toString()}`);
+      const res = await apiFetch(`/api/st-files/${endpoint}?${params.toString()}`);
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to fetch ST Files report");
       if (dataSource === "database" && !result.data) {
@@ -143,7 +144,7 @@ export default function StFilesPage() {
     setImporting(true);
     setError(null);
     try {
-      const res = await fetch(`/api/st-files/sync-manual`, {
+      const res = await apiFetch(`/api/st-files/sync-manual`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ property_name: selectedProperty, start_date: date, end_date: date }),

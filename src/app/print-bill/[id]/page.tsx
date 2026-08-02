@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { useParams, useSearchParams } from "next/navigation";
 import { Invoice, renderInvoiceTemplate, INVOICE_PRINT_CSS } from "@/lib/invoiceTemplate";
 
@@ -61,7 +62,7 @@ export default function PrintBillPage() {
           // backend builds every invoice in a single pass (one cache lookup,
           // one payments/getAll call for the whole batch).
           const params = new URLSearchParams({ ids: billIds.join(","), property_name: property });
-          const res = await fetch(`/api/bills/invoices-batch?${params.toString()}`);
+          const res = await apiFetch(`/api/bills/invoices-batch?${params.toString()}`);
           const result = await res.json();
           if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to load invoices");
           const byId = result.data as Record<string, Invoice>;
@@ -70,7 +71,7 @@ export default function PrintBillPage() {
         } else {
           const settled = await Promise.allSettled(
             billIds.map(async (id) => {
-              const res = await fetch(`/api/bills/${id}/invoice?property_name=${encodeURIComponent(property)}`);
+              const res = await apiFetch(`/api/bills/${id}/invoice?property_name=${encodeURIComponent(property)}`);
               const result = await res.json();
               if (result.status !== "success") throw new Error(result.message || result.detail || `Failed to load invoice ${id}`);
               return result.data as Invoice;
@@ -100,7 +101,7 @@ export default function PrintBillPage() {
   useEffect(() => {
     const fetchTemplate = async () => {
       try {
-        const res = await fetch(`/api/bills/template?property_name=${encodeURIComponent(property)}`);
+        const res = await apiFetch(`/api/bills/template?property_name=${encodeURIComponent(property)}`);
         const result = await res.json();
         if (result.status === "success") {
           setTemplate(result.data.html_template);

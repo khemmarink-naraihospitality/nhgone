@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -301,7 +302,7 @@ export default function AdminUsersPage() {
       // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
       // env var points at a stale API deployment lacking newer endpoints (see
       // the Templates editor's identical fix).
-      const response = await fetch(`/api/admin/users`, {
+      const response = await apiFetch(`/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newUser)
@@ -351,7 +352,7 @@ export default function AdminUsersPage() {
     if (!deletingUser) return;
     setDeleting(true);
     try {
-      const res = await fetch(`/api/admin/users/${deletingUser.id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/admin/users/${deletingUser.id}`, { method: "DELETE" });
       const result = await res.json();
       if (result.status === "success") {
         setUsers(users.filter(u => u.id !== deletingUser.id));
@@ -369,7 +370,7 @@ export default function AdminUsersPage() {
     if (!approvingUser) return;
     setApproving(true);
     try {
-      const res = await fetch(`/api/admin/users/${approvingUser.id}/approve`, {
+      const res = await apiFetch(`/api/admin/users/${approvingUser.id}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role: approveRole }),

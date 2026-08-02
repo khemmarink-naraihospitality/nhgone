@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import UserHeader from "./UserHeader";
@@ -138,7 +139,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         // Users (with a real role) rather than having to pre-register every
         // email in advance.
         try {
-          const res = await fetch("/api/admin/self-register", {
+          const res = await apiFetch("/api/admin/self-register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({

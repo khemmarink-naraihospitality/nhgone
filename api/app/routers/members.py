@@ -1,10 +1,11 @@
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from app.deps import get_current_active_user
 from app.services.mews_client import mews_client
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from typing import List, Optional
 
-router = APIRouter(prefix="/members", tags=["Members"])
+router = APIRouter(prefix="/members", tags=["Members"], dependencies=[Depends(get_current_active_user)])
 
 @router.get("/live")
 async def get_live_members(

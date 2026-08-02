@@ -21,17 +21,24 @@ class EncryptionService:
     def __init__(self):
         key = settings.ENCRYPTION_KEY
         if not key:
-            # Fallback for development ONLY - DO NOT USE IN PRODUCTION
-            # This is a dummy key: Fernet.generate_key().decode()
-            key = "dV9YenE2X2pUeDVPZzZfX1ZfX1ZfX1ZfX1ZfX1ZfX1ZfX1ZfX1o=" 
-            logger.warning("ENCRYPTION_KEY not set in environment. Using fallback key.")
-        
+            # A hardcoded fallback key used to live here - anyone with read
+            # access to this source file (or a leaked copy of it) could
+            # decrypt every guest PII field and MEWS API token ever encrypted
+            # under it, in any deployment that forgot to set the real env
+            # var. Failing loudly is safer: a misconfigured deployment
+            # should refuse to silently protect sensitive data with a
+            # publicly-known key.
+            raise RuntimeError(
+                "ENCRYPTION_KEY environment variable is not set. Refusing to "
+                "start with no encryption key configured - this key protects "
+                "guest PII and MEWS API tokens."
+            )
+
         try:
             self.fernet = Fernet(key.encode())
         except Exception as e:
             logger.error(f"Invalid ENCRYPTION_KEY: {e}")
-            # Ensure it's a valid 32-byte b64 encoded key
-            self.fernet = None
+            raise RuntimeError(f"Invalid ENCRYPTION_KEY: {e}")
 
     def encrypt(self, text: str) -> str:
         if not text or not self.fernet:

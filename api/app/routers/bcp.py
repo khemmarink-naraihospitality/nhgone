@@ -4,12 +4,17 @@ import json
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Body
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Body
 
+from app.deps import get_current_active_user
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 
-router = APIRouter(prefix="/bcp", tags=["BCP"])
+# Every BCP endpoint needs a logged-in session except /auto-capture, which is
+# Vercel Cron's own trigger (no user ever signs in for that request) - see
+# public_router below, kept dependency-free specifically for that one route.
+router = APIRouter(prefix="/bcp", tags=["BCP"], dependencies=[Depends(get_current_active_user)])
+public_router = APIRouter(prefix="/bcp", tags=["BCP"])
 
 # Snapshots kept per property, pruned on every capture. Captures run every 5
 # minutes, so 12 = 1 hour of history (reduced from the original 576/48h to
@@ -160,7 +165,7 @@ async def capture_all_bcp_snapshots():
                 pass
 
 
-@router.get("/auto-capture")
+@public_router.get("/auto-capture")
 async def trigger_auto_capture(background_tasks: BackgroundTasks):
     """Dedicated Vercel Cron entry point (every 5 minutes) for BCP snapshots -
     separate from /sync/auto so this can run on its own fast cadence without

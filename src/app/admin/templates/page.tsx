@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -128,7 +129,7 @@ export default function TemplatesPage() {
       setLoading(true);
       try {
         const query = config.perProperty ? `?property_name=${encodeURIComponent(selectedProperty)}` : "";
-        const res = await fetch(`${apiUrl}${config.endpoint}${query}`);
+        const res = await apiFetch(`${apiUrl}${config.endpoint}${query}`);
         const result = await res.json();
         if (result.status === "success") {
           setHtml(result.data.html_template);
@@ -152,7 +153,7 @@ export default function TemplatesPage() {
     try {
       const body: Record<string, string> = { html_template: html };
       if (config.perProperty) body.property_name = selectedProperty;
-      const res = await fetch(`${apiUrl}${config.endpoint}`, {
+      const res = await apiFetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

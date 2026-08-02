@@ -1,7 +1,8 @@
-from fastapi import FastAPI, Query, BackgroundTasks
+from fastapi import Depends, FastAPI, Query, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
+from app.deps import get_current_active_user, require_admin
 from app.services.mews_client import mews_client
 from app.routers import reservations, members, payments, admin, bills, resources, rr3, st_files, bcp
 from app.services.sync_service import sync_service
@@ -20,7 +21,12 @@ scheduler = AsyncIOScheduler(timezone=ZoneInfo("Asia/Bangkok"))
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # No cookie/session-based auth crosses this boundary - the frontend
+    # attaches a Supabase Bearer token per request (src/lib/api.ts) instead,
+    # so credentialed CORS isn't needed. allow_credentials=True combined with
+    # a wildcard origin is also invalid per the fetch spec / disallowed by
+    # browsers, so this pairing was silently never doing what it looked like.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -36,11 +42,14 @@ app.include_router(reservations.router)
 app.include_router(members.router)
 app.include_router(payments.router)
 app.include_router(admin.router)
+app.include_router(admin.admin_router)
+app.include_router(admin.active_router)
 app.include_router(bills.router)
 app.include_router(resources.router)
 app.include_router(rr3.router)
 app.include_router(st_files.router)
 app.include_router(bcp.router)
+app.include_router(bcp.public_router)
 
 # Shared by daily_auto_sync and retry_failed_syncs (below) - avoids Supabase's
 # ~60s statement timeout on bulk writes by chunking, with a retry-at-half-size
@@ -444,7 +453,7 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     return {"status": "accepted", "message": f"Sync job started in background (force={force})"}
 
 @app.post("/sync/property")
-async def sync_property_now(payload: dict):
+async def sync_property_now(payload: dict, _user=Depends(get_current_active_user)):
     """
     Manual "Import Latest" trigger from the Dashboard's per-property import
     status card - re-runs exactly what the scheduled daily_auto_sync would
@@ -506,7 +515,7 @@ async def health_check():
     return {"status": "healthy", "service": "NHGOne"}
 
 @app.get("/stats")
-async def get_stats(properties: str = None):
+async def get_stats(properties: str = None, _user=Depends(get_current_active_user)):
     """
     Get summary stats from Supabase sync tables. `properties` is an optional
     comma-separated list of property names - the frontend passes this
@@ -550,7 +559,7 @@ async def root():
     return {"message": "Welcome to NHGOne API"}
 
 @app.get("/test-mews")
-async def test_mews():
+async def test_mews(_user=Depends(require_admin)):
     try:
         # Simple call to /api/services/getAll as a smoke test
         # Note: In production environment this might return different services

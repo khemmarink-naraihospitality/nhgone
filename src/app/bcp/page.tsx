@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -805,7 +806,7 @@ export default function BcpPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch(`/api/rr3/template`);
+        const res = await apiFetch(`/api/rr3/template`);
         const result = await res.json();
         if (result.status === "success") setRr3Template(result.data.html_template);
       } catch {
@@ -840,7 +841,7 @@ export default function BcpPage() {
 
   const loadSnapshotList = async (property: string): Promise<SnapshotMeta[]> => {
     try {
-      const res = await fetch(`/api/bcp/snapshots?property_name=${encodeURIComponent(property)}`);
+      const res = await apiFetch(`/api/bcp/snapshots?property_name=${encodeURIComponent(property)}`);
       const result = await res.json();
       if (result.status === "success") return result.data || [];
     } catch {
@@ -857,10 +858,10 @@ export default function BcpPage() {
     try {
       let res: Response;
       if (snapshotId) {
-        res = await fetch(`/api/bcp/snapshot?id=${encodeURIComponent(snapshotId)}`);
+        res = await apiFetch(`/api/bcp/snapshot?id=${encodeURIComponent(snapshotId)}`);
       } else {
         // Nothing stored yet: build live from MEWS so the page still works.
-        res = await fetch(`/api/bcp/live?property_name=${encodeURIComponent(property)}`);
+        res = await apiFetch(`/api/bcp/live?property_name=${encodeURIComponent(property)}`);
       }
       const result = await res.json();
       if (result.status !== "success" || !result.data) {
@@ -900,7 +901,7 @@ export default function BcpPage() {
     setCapturing(true);
     setError(null);
     try {
-      const res = await fetch(`/api/bcp/capture`, {
+      const res = await apiFetch(`/api/bcp/capture`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ property_name: selectedProperty }),
@@ -1125,7 +1126,7 @@ export default function BcpPage() {
     (async () => {
       try {
         const params = new URLSearchParams({ property_name: snapshot.property });
-        const res = await fetch(`/api/bcp/action-logs?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/action-logs?${params.toString()}`);
         const result = await res.json();
         setActions(result.status === "success" ? result.data || [] : []);
       } catch {
@@ -1137,7 +1138,7 @@ export default function BcpPage() {
   const logOfflineAction = async (entry: Omit<OfflineAction, "id" | "checked" | "userEmail">) => {
     if (!snapshot) return;
     try {
-      const res = await fetch("/api/bcp/action-logs", {
+      const res = await apiFetch("/api/bcp/action-logs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1191,7 +1192,7 @@ export default function BcpPage() {
     const nextChecked = !current.checked;
     setActions((prev) => prev.map((a) => (a.id === id ? { ...a, checked: nextChecked } : a)));
     try {
-      await fetch("/api/bcp/action-logs/toggle", {
+      await apiFetch("/api/bcp/action-logs/toggle", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, checked: nextChecked }),
@@ -1425,7 +1426,7 @@ export default function BcpPage() {
       guestProfileSnapshot: findGuestProfile(chgRoomFor),
     });
     setRoomChangeOverrides((prev) => ({ ...prev, [chgRoomFor.number]: newRoom }));
-    fetch("/api/bcp/room-changes", {
+    apiFetch("/api/bcp/room-changes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ property_name: snapshot.property, reservation_number: chgRoomFor.number, new_room: newRoom }),
@@ -1442,7 +1443,7 @@ export default function BcpPage() {
     setSavingRegCard(true);
     setRegCardSaveResult(null);
     try {
-      const res = await fetch("/api/bcp/reg-card", {
+      const res = await apiFetch("/api/bcp/reg-card", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1525,7 +1526,7 @@ export default function BcpPage() {
     const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: selectedReservation.number });
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/reservation-notes?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/reservation-notes?${params.toString()}`);
         const result = await res.json();
         setReservationNotes(result.status === "success" ? result.data || [] : []);
       } catch {
@@ -1543,7 +1544,7 @@ export default function BcpPage() {
     const text = newNoteText.trim();
     setSavingNote(true);
     try {
-      const res = await fetch("/api/bcp/reservation-notes", {
+      const res = await apiFetch("/api/bcp/reservation-notes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1630,7 +1631,7 @@ export default function BcpPage() {
       reservationSnapshot: selectedReservation,
       guestProfileSnapshot: findGuestProfile(selectedReservation),
     });
-    fetch("/api/bcp/arrival-overrides", {
+    apiFetch("/api/bcp/arrival-overrides", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1671,7 +1672,7 @@ export default function BcpPage() {
       reservationSnapshot: selectedReservation,
       guestProfileSnapshot: findGuestProfile(selectedReservation),
     });
-    fetch("/api/bcp/room-type-overrides", {
+    apiFetch("/api/bcp/room-type-overrides", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1709,7 +1710,7 @@ export default function BcpPage() {
       reservationSnapshot: selectedReservation,
       guestProfileSnapshot: findGuestProfile(selectedReservation),
     });
-    fetch("/api/bcp/billing-overrides", {
+    apiFetch("/api/bcp/billing-overrides", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -1736,7 +1737,7 @@ export default function BcpPage() {
     const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: selectedReservation.number });
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/guest-overrides?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/guest-overrides?${params.toString()}`);
         const result = await res.json();
         if (result.status === "success") {
           const map: Record<string, { removed: boolean; data: GuestIdentity }> = {};
@@ -1794,7 +1795,7 @@ export default function BcpPage() {
     if (!editGuestFor || !editGuestForm || !selectedReservation || !snapshot?.property) return;
     setSavingGuestEdit(true);
     try {
-      const res = await fetch("/api/bcp/guest-overrides", {
+      const res = await apiFetch("/api/bcp/guest-overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1831,7 +1832,7 @@ export default function BcpPage() {
   const handleRemoveGuest = async (guestKey: string, guest: GuestIdentity) => {
     if (!selectedReservation || !snapshot?.property) return;
     try {
-      const res = await fetch("/api/bcp/guest-overrides", {
+      const res = await apiFetch("/api/bcp/guest-overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1890,7 +1891,7 @@ export default function BcpPage() {
     if (!snapshot) return;
     try {
       const params = new URLSearchParams({ property_name: snapshot.property, reservation_number: r.number, mews_customer_id: g.mews_customer_id || "" });
-      const res = await fetch(`/api/bcp/reg-card?${params.toString()}`);
+      const res = await apiFetch(`/api/bcp/reg-card?${params.toString()}`);
       const result = await res.json();
       if (result.status === "success" && result.data?.signature_data_url) {
         // Signatures saved before signature capture cropped to ink are still
@@ -1926,7 +1927,7 @@ export default function BcpPage() {
     const params = new URLSearchParams({ property_name: snapshot.property });
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/room-status?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/room-status?${params.toString()}`);
         const result = await res.json();
         const data: Record<string, { status: string; reason?: string | null }> = result.status === "success" ? result.data || {} : {};
         const statuses: Record<string, string> = {};
@@ -1944,7 +1945,7 @@ export default function BcpPage() {
     })();
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/room-changes?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/room-changes?${params.toString()}`);
         const result = await res.json();
         setRoomChangeOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
@@ -1953,7 +1954,7 @@ export default function BcpPage() {
     })();
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/room-numbers?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/room-numbers?${params.toString()}`);
         const result = await res.json();
         setRoomNumberOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
@@ -1962,7 +1963,7 @@ export default function BcpPage() {
     })();
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/arrival-overrides?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/arrival-overrides?${params.toString()}`);
         const result = await res.json();
         setArrivalOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
@@ -1971,7 +1972,7 @@ export default function BcpPage() {
     })();
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/room-type-overrides?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/room-type-overrides?${params.toString()}`);
         const result = await res.json();
         setRoomTypeOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
@@ -1980,7 +1981,7 @@ export default function BcpPage() {
     })();
     (async () => {
       try {
-        const res = await fetch(`/api/bcp/billing-overrides?${params.toString()}`);
+        const res = await apiFetch(`/api/bcp/billing-overrides?${params.toString()}`);
         const result = await res.json();
         setBillingProcessedOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
@@ -1998,7 +1999,7 @@ export default function BcpPage() {
       delete next[room];
       return next;
     });
-    fetch("/api/bcp/room-status", {
+    apiFetch("/api/bcp/room-status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ property_name: snapshot.property, room, status: newStatus, reason: reason || null }),
@@ -2028,7 +2029,7 @@ export default function BcpPage() {
     const previousDisplay = effectiveRoomNumber(room);
     if (!trimmed || trimmed === previousDisplay) return;
     setRoomNumberOverrides((prev) => ({ ...prev, [room]: trimmed }));
-    fetch("/api/bcp/room-numbers", {
+    apiFetch("/api/bcp/room-numbers", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ property_name: snapshot.property, room, display_number: trimmed }),

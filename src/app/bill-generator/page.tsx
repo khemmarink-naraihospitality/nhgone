@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -83,14 +84,14 @@ export default function BillGeneratorPage() {
           start_date: `${startDate}T00:00:00Z`,
           end_date: `${endDate}T23:59:59Z`,
         });
-        res = await fetch(`/api/bills/managed?${params.toString()}`);
+        res = await apiFetch(`/api/bills/managed?${params.toString()}`);
       } else {
         const params = new URLSearchParams({
           property_name: selectedProperty,
           start_date: `${startDate}T00:00:00Z`,
           end_date: `${endDate}T23:59:59Z`,
         });
-        res = await fetch(`/api/bills/live?${params.toString()}`);
+        res = await apiFetch(`/api/bills/live?${params.toString()}`);
       }
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || "Failed to fetch bills");
@@ -113,7 +114,7 @@ export default function BillGeneratorPage() {
       const existingEventId = pdfEventIds[bill.mews_id];
       if (existingEventId) params.append("bill_print_event_id", existingEventId);
 
-      const res = await fetch(`/api/bills/${bill.mews_id}/pdf?${params.toString()}`);
+      const res = await apiFetch(`/api/bills/${bill.mews_id}/pdf?${params.toString()}`);
       const result = await res.json();
 
       if (result.status === "success" && result.pdf_base64) {

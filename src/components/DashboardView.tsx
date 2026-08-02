@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
+import { apiFetch } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "./PageHeader";
 import * as XLSX from 'xlsx';
@@ -203,7 +204,7 @@ export default function DashboardView({
           const timeoutId = setTimeout(() => controller.abort(), 60000);
           let response: Response;
           try {
-            response = await fetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
+            response = await apiFetch(`${apiUrl}${endpoint}?${queryParams.toString()}`, {
               signal: controller.signal
             });
           } finally {
@@ -247,7 +248,7 @@ export default function DashboardView({
                      : activeSection === "resources"      ? "/resources/sync-manual"
                      : activeSection === "bills"          ? "/bills/sync-manual"
                      :                                    "/payments/sync-manual";
-      const response = await fetch(`${apiUrl}${endpoint}`, {
+      const response = await apiFetch(`${apiUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -281,7 +282,7 @@ export default function DashboardView({
                     :                                    "/members/managed";
     setLoading(true);
     try {
-      const response = await fetch(`/api${endpoint}`, {
+      const response = await apiFetch(`/api${endpoint}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mews_ids: selectedIds })

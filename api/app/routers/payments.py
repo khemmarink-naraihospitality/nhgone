@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Body, HTTPException, Query
+from fastapi import APIRouter, Depends, Body, HTTPException, Query
+from app.deps import get_current_active_user
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from typing import Optional
 from datetime import datetime, timezone
 
-router = APIRouter(prefix="/payments", tags=["Payments"])
+router = APIRouter(prefix="/payments", tags=["Payments"], dependencies=[Depends(get_current_active_user)])
 
 @router.get("/live")
 async def get_live_payments(

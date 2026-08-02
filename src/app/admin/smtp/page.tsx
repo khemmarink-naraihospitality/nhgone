@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 
 interface SmtpSettings {
@@ -39,7 +40,7 @@ export default function SMTPPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/smtp`);
+      const res = await apiFetch(`${apiUrl}/admin/smtp`);
       const result = await res.json();
       if (result.status === "success" && result.data) {
         const d: SmtpSettings = result.data;
@@ -73,7 +74,7 @@ export default function SMTPPage() {
     }
     setSaving(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/smtp`, {
+      const res = await apiFetch(`${apiUrl}/admin/smtp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),
@@ -100,7 +101,7 @@ export default function SMTPPage() {
     }
     setTesting(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/smtp/test`, {
+      const res = await apiFetch(`${apiUrl}/admin/smtp/test`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ to_email: testEmail }),
