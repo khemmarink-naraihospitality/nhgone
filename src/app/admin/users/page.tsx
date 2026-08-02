@@ -448,13 +448,12 @@ export default function AdminUsersPage() {
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Log-in</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Joined</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={7} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                <tr><td colSpan={6} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : filteredUsers.map((user) => (
                 <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors group ${user.status === 'Pending' ? 'bg-amber-50/50' : ''}`}>
                   <td className="px-6 py-5 text-sm font-bold text-slate-700">{user.full_name}</td>
@@ -478,9 +477,6 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-5 text-xs text-slate-500 font-medium">
                     {user.last_login ? new Date(user.last_login).toLocaleString() : "Never"}
-                  </td>
-                  <td className="px-6 py-5 text-xs text-slate-500 font-medium">
-                    {new Date(user.created_at || user.joined_at).toLocaleDateString()}
                   </td>
                   <td className="px-6 py-5 text-center relative overflow-visible">
                      <button
@@ -691,7 +687,7 @@ export default function AdminUsersPage() {
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
            <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200">
               <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                 <h2 className="text-xl font-bold text-slate-800">Edit User Profile</h2>
+                 <h2 className="text-xl font-bold text-slate-800">Detail Profile</h2>
                  <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600">
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                  </button>
@@ -705,6 +701,21 @@ export default function AdminUsersPage() {
                       value={editingUser.full_name}
                       onChange={(e) => setEditingUser({...editingUser, full_name: e.target.value})}
                     />
+                 </div>
+
+                 <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Join Date</label>
+                       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-500">
+                         {new Date(editingUser.created_at || editingUser.joined_at).toLocaleDateString()}
+                       </div>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Last Login</label>
+                       <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-500">
+                         {editingUser.last_login ? new Date(editingUser.last_login).toLocaleString() : "Never"}
+                       </div>
+                    </div>
                  </div>
 
                  <div className="grid grid-cols-2 gap-4">
