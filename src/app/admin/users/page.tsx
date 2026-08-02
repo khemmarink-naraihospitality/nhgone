@@ -494,9 +494,10 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-5 text-center relative overflow-visible">
                      <button
                        onClick={(e) => { e.stopPropagation(); setOpenUserMenuId(openUserMenuId === user.id ? null : user.id); }}
-                       className="text-slate-300 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100"
+                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-all"
                      >
-                       <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                       Action
+                       <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                      </button>
 
                      {/* Action Dropdown Menu */}
