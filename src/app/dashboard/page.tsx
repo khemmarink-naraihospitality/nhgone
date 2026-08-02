@@ -347,14 +347,26 @@ export default function Dashboard() {
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[var(--text-primary)]/10 pt-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 border-t border-[var(--text-primary)]/10 pt-6">
              <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Strategic integration</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Secure server-side token injection with POST-only pattern. No MEWS credentials are exposed to the browser, ensuring absolute security for the Narai portfolio.</p>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Data Mart</h3>
+                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Synced Reservations, Members, and Payments from MEWS, kept up to date automatically and searchable/exportable at any time.</p>
              </div>
              <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Synchronization pattern</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Local-first management layer in Supabase with RLS. Preserves enriched data while staying synced with PMS, building a lasting digital legacy.</p>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Business Continuity Plan</h3>
+                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Captures a backup of the reservation timeline, room status, and payments every 5 minutes, so front desk can keep working if MEWS goes down.</p>
+             </div>
+             <div>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">RR3</h3>
+                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Generates the Thai Hotel Act ร.ร.๓ lodger registration card for each checking-in guest, ready to print.</p>
+             </div>
+             <div>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Bills</h3>
+                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Lists and prints guest invoices per property and date range, either live from MEWS or from the synced database.</p>
+             </div>
+             <div>
+                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Log Import</h3>
+                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Permanent history of every automated data sync - which property, which table, when, and whether it succeeded.</p>
              </div>
           </div>
         </section>
