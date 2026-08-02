@@ -2972,6 +2972,43 @@ export default function BcpPage() {
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-4 border-t border-[var(--text-primary)]/10">
                   Recorded in our own system only - no live connection to MEWS, so re-enter this change there once it&apos;s back online.
                 </div>
+
+                {(() => {
+                  const history = actions
+                    .filter(
+                      (a) =>
+                        a.reservationNumber === res.number &&
+                        (a.action === "Check In" || a.action === "Check Out" || a.action === "Undo Check In" || a.action === "Undo Check Out")
+                    )
+                    .sort((a, b) => b.at.localeCompare(a.at));
+                  if (!history.length) return null;
+                  return (
+                    <div className="pt-4 border-t border-[var(--text-primary)]/10">
+                      <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">History</div>
+                      <div className="flex flex-col gap-2">
+                        {history.map((a) => (
+                          <div key={a.id} className="flex items-start justify-between gap-3 text-[12px] pb-2 border-b border-[var(--text-primary)]/10 last:border-0 last:pb-0">
+                            <div>
+                              <span
+                                className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${
+                                  a.action === "Check In"
+                                    ? "bg-emerald-100 text-emerald-700 border-emerald-300"
+                                    : a.action === "Check Out"
+                                    ? "bg-slate-800 text-white border-slate-800"
+                                    : "bg-amber-100 text-amber-700 border-amber-300"
+                                }`}
+                              >
+                                {a.action}
+                              </span>
+                              {a.reason && <div className="text-[var(--text-primary)]/60 mt-1">Reason: {a.reason}</div>}
+                            </div>
+                            <div className="text-[var(--text-primary)]/40 shrink-0 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               <div>{reservationDetailPanel}</div>
