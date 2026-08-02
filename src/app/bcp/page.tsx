@@ -2239,7 +2239,7 @@ export default function BcpPage() {
       return p.sub_type ? `${base} ${p.sub_type}` : base;
     };
     return (
-      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+      <div className="flex-1 p-4 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center gap-3 mb-6">
             <button onClick={() => setSelectedGuestProfile(null)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
@@ -2609,7 +2609,7 @@ export default function BcpPage() {
       <svg className="w-4 h-4 text-[var(--text-primary)]/30 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
     );
     return (
-      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+      <div className="flex-1 p-4 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
@@ -2860,7 +2860,7 @@ export default function BcpPage() {
       </div>
     );
     return (
-      <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+      <div className="flex-1 p-4 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 mb-6">
             <button onClick={() => setShowManagePage(false)} className="p-1 text-[var(--text-primary)]/50 hover:text-[var(--text-primary)] transition-colors shrink-0">
@@ -3645,7 +3645,7 @@ export default function BcpPage() {
             </CollapsibleSection>
 
             <div className="no-print flex flex-wrap items-center gap-4 mb-4">
-              <div className="flex border-b border-[var(--text-primary)]/14">
+              <div className="flex border-b border-[var(--text-primary)]/14 overflow-x-auto max-w-full">
                 {(
                   [
                     ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
@@ -3656,7 +3656,7 @@ export default function BcpPage() {
                   <button
                     key={t}
                     onClick={() => setMainTab(t)}
-                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all ${
+                    className={`px-3 sm:px-5 py-2.5 sm:py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all whitespace-nowrap ${
                       mainTab === t
                         ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                         : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
@@ -3672,11 +3672,11 @@ export default function BcpPage() {
                   value={roomSearch}
                   onChange={(e) => setRoomSearch(e.target.value)}
                   placeholder="Search room or occupant"
-                  className="ml-auto px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                  className="w-full sm:w-80 sm:ml-auto px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12px] border border-[var(--text-primary)]/20 bg-white text-black focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                 />
               )}
               {mainTab === "logs" && (
-                <div className="ml-auto flex items-center gap-2">
+                <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap items-center gap-2">
                   <button
                     onClick={handleExportActionLogsToExcel}
                     disabled={displayedActions.length === 0}
@@ -3690,7 +3690,7 @@ export default function BcpPage() {
                     value={logSearch}
                     onChange={(e) => setLogSearch(e.target.value)}
                     placeholder="Search guest, room, action, or user"
-                    className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black w-80 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
+                    className="flex-1 min-w-[200px] sm:flex-none sm:w-80 px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                   />
                 </div>
               )}
@@ -3966,7 +3966,7 @@ export default function BcpPage() {
               <div className="no-print text-[10px] text-[var(--text-primary)]/40 italic mb-3">
                 Changing a status below only updates our own system — it is never sent to MEWS.
               </div>
-              <div className="no-print grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
+              <div className="no-print grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 mb-8">
                 {displayedHousekeepingRows.length === 0 && (
                   <div className="col-span-full p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">No matching rooms.</div>
                 )}
@@ -3979,34 +3979,34 @@ export default function BcpPage() {
                   return (
                     <div
                       key={rm.room + i}
-                      className={`border p-4 flex flex-col gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"} ${
+                      className={`border p-5 sm:p-4 flex flex-col gap-1.5 sm:gap-1 ${ROOM_STATUS_CARD_CLS[effectiveState] || "bg-[var(--paper)] border-[var(--text-primary)]/14"} ${
                         lastRoomLog ? "ring-2 ring-red-500 ring-offset-1" : ""
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="text-xl font-display text-[var(--text-primary)]">{effectiveRoomNumber(rm.room)}</div>
+                        <div className="text-2xl sm:text-xl font-display text-[var(--text-primary)]">{effectiveRoomNumber(rm.room)}</div>
                         {lastRoomLog && (
                           <button
                             onClick={() => setSelectedLogEntry(lastRoomLog)}
-                            className="text-[9px] font-bold tracked-caps text-red-700 underline decoration-dotted hover:decoration-solid shrink-0 mt-1"
+                            className="text-[10px] sm:text-[9px] font-bold tracked-caps text-red-700 underline decoration-dotted hover:decoration-solid shrink-0 mt-1"
                           >
                             ● Updated
                           </button>
                         )}
                       </div>
-                      <div className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{occupancy}</div>
-                      {rm.occupant && <div className="text-[11px] text-[var(--text-primary)]/70 truncate">{rm.occupant}</div>}
+                      <div className="text-[12px] sm:text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{occupancy}</div>
+                      {rm.occupant && <div className="text-[13px] sm:text-[11px] text-[var(--text-primary)]/70 truncate">{rm.occupant}</div>}
                       <select
                         value={effectiveState}
                         onChange={(e) => handleRoomStatusSelect(rm.room, effectiveState, e.target.value)}
-                        className="mt-2 w-full bg-white border border-black/10 px-2 py-1.5 text-[12px] font-bold text-[var(--text-primary)] cursor-pointer focus:outline-none"
+                        className="mt-2 w-full bg-white border border-black/10 px-3 sm:px-2 py-3 sm:py-1.5 text-[15px] sm:text-[12px] font-bold text-[var(--text-primary)] cursor-pointer focus:outline-none"
                       >
                         {ROOM_STATUS_OPTIONS.map((opt) => (
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
                       {roomStatusReasons[rm.room] && (
-                        <div className="text-[11px] text-[var(--text-primary)]/70 italic">{roomStatusReasons[rm.room]}</div>
+                        <div className="text-[12px] sm:text-[11px] text-[var(--text-primary)]/70 italic">{roomStatusReasons[rm.room]}</div>
                       )}
                     </div>
                   );

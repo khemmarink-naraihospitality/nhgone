@@ -68,6 +68,19 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // guard below couldn't tell when it's safe to make a final allow/deny
   // decision and would spin forever on a failed fetch instead of redirecting.
   const [permissionsLoaded, setPermissionsLoaded] = useState(false);
+  // Mobile-only slide-in drawer - the desktop <aside> sidebar is `hidden` below
+  // the md breakpoint, so without this there was no way to navigate at all on
+  // a phone. Closes automatically on every route change (see the effect
+  // below) rather than staying open across a Link click.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Closes the drawer on every route change - adjusted during render (React's
+  // documented pattern for "reset state when a prop changes") rather than a
+  // useEffect, which would fire a wasted extra render after every navigation.
+  const [mobileNavPathname, setMobileNavPathname] = useState(pathname);
+  if (pathname !== mobileNavPathname) {
+    setMobileNavPathname(pathname);
+    setMobileNavOpen(false);
+  }
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -302,14 +315,109 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const showTopDivider = perms.dashboard && midSection;
   const showBottomDivider = midSection && perms.log_import;
 
+  // Shared between the desktop <aside> (always visible at md+) and the
+  // mobile slide-in drawer below - written once so the two never drift out
+  // of sync with each other.
+  const navLinks = (
+    <nav className="flex flex-col gap-1">
+      {pathname.startsWith("/admin") ? (
+        <>
+          <Link href="/admin" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+          <Link href="/admin/users" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
+          <Link href="/admin/smtp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
+          <Link href="/admin/sync" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Auto Sync</Link>
+          <Link href="/admin/api-settings" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
+          <Link href="/admin/templates" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
+          <Link href="/admin/logs" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
+        </>
+      ) : (
+        <>
+          {perms.dashboard && (
+            <Link href="/dashboard" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+          )}
+          {showTopDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
+          {perms.data_mart && (
+            <Link href="/data-mart" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
+          )}
+          {perms.bills && (
+            <Link href="/bill-generator" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
+          )}
+          {perms.rr3 && (
+            <Link href="/rr3" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
+          )}
+          {perms.st_files && (
+            <Link href="/st-files" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>ST Files</Link>
+          )}
+          {perms.bcp && (
+            <Link href="/bcp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
+          )}
+          {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
+          {perms.log_import && (
+            <Link href="/log-import" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
+          )}
+        </>
+      )}
+    </nav>
+  );
+
+  const exitAdminLink = pathname.startsWith("/admin") && (
+    <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 text-[11px] font-bold tracked-caps text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all group">
+      <svg className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+      </svg>
+      EXIT ADMIN
+    </Link>
+  );
+
   return (
-    <div className="min-h-full flex bg-background text-foreground w-full transition-colors duration-300">
+    <div className="min-h-full flex flex-col md:flex-row bg-background text-foreground w-full transition-colors duration-300">
+      {/* Mobile top bar - the desktop <aside> below is hidden under md, so
+          this is the only way to reach the hamburger drawer (and therefore
+          any other page) on a phone. */}
+      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#152A00] border-b border-[#FFEFD2]/10 sticky top-0 z-40 shrink-0">
+        <button
+          onClick={() => setMobileNavOpen(true)}
+          aria-label="Open menu"
+          className="p-2 -ml-2 text-white/80 hover:text-white"
+        >
+          <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
+        </button>
+        <div className="flex items-center gap-2">
+          <div className="bg-white p-1 rounded-sm">
+            <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-6 h-6 object-contain" />
+          </div>
+          <div className="text-lg font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
+        </div>
+        <div className="w-9" />
+      </div>
+
+      {mobileNavOpen && (
+        <div className="md:hidden fixed inset-0 z-50 flex">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
+          <div className="relative w-72 max-w-[82vw] h-full bg-[#152A00] p-4 flex flex-col gap-6 overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-white p-1.5 rounded-sm">
+                  <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
+                </div>
+                <div className="text-xl font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
+              </div>
+              <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" className="p-2 text-white/60 hover:text-white">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            {navLinks}
+            <div className="mt-auto pb-2">{exitAdminLink}</div>
+          </div>
+        </div>
+      )}
+
       <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
-            <img 
-              src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" 
-              alt="NHG Logo" 
+            <img
+              src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
+              alt="NHG Logo"
               className="w-8 h-8 object-contain"
             />
           </div>
@@ -317,58 +425,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
             NHGOne
           </div>
         </div>
-        <nav className="flex flex-col gap-1">
-          {pathname.startsWith("/admin") ? (
-            <>
-              <Link href="/admin" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-              <Link href="/admin/users" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
-              <Link href="/admin/smtp" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
-              <Link href="/admin/sync" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Auto Sync</Link>
-              <Link href="/admin/api-settings" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API Setting</Link>
-              <Link href="/admin/templates" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
-              <Link href="/admin/logs" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
-            </>
-          ) : (
-            <>
-              {perms.dashboard && (
-                <Link href="/dashboard" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-              )}
-              {showTopDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
-              {perms.data_mart && (
-                <Link href="/data-mart" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
-              )}
-              {perms.bills && (
-                <Link href="/bill-generator" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
-              )}
-              {perms.rr3 && (
-                <Link href="/rr3" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
-              )}
-              {perms.st_files && (
-                <Link href="/st-files" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>ST Files</Link>
-              )}
-              {perms.bcp && (
-                <Link href="/bcp" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
-              )}
-              {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
-              {perms.log_import && (
-                <Link href="/log-import" className={`px-4 py-2 border-l-2 transition-all text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
-              )}
-            </>
-          )}
-        </nav>
+        {navLinks}
 
-        <div className="mt-auto pb-4">
-           {pathname.startsWith("/admin") && (
-             <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 text-[11px] font-bold tracked-caps text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all group">
-                <svg className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                </svg>
-                EXIT ADMIN
-             </Link>
-           )}
-        </div>
+        <div className="mt-auto pb-4">{exitAdminLink}</div>
       </aside>
-      <main className="flex-1 flex flex-col h-screen overflow-hidden relative">
+      <main className="flex-1 flex flex-col md:h-screen overflow-hidden relative min-h-0">
         <div className="flex-1 overflow-y-auto w-full">
           {children}
         </div>
