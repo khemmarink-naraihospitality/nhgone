@@ -82,14 +82,11 @@ export default function Dashboard() {
     if (allowedProperties === null) return;
     const fetchBcpHealth = async () => {
       try {
-        let query = supabase
-          .from("bcp_snapshots")
-          .select("captured_at")
-          .order("captured_at", { ascending: false })
-          .limit(1);
-        if (allowedProperties.length > 0) query = query.in("property", allowedProperties);
-        const { data } = await query;
-        setBcpLastCapture(data?.[0]?.captured_at || null);
+        const params = new URLSearchParams();
+        if (allowedProperties.length > 0) params.set("properties", allowedProperties.join(","));
+        const response = await fetch(`/api/bcp/last-capture?${params.toString()}`);
+        const result = await response.json();
+        setBcpLastCapture(result.status === "success" ? result.captured_at : null);
       } catch (err) {
         console.warn("Could not fetch BCP capture health:", err instanceof Error ? err.message : err);
       } finally {

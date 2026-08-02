@@ -199,6 +199,34 @@ async def list_snapshots(property_name: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/last-capture")
+async def get_last_capture(properties: Optional[str] = Query(None)):
+    """
+    Most recent bcp_snapshots.captured_at across the given properties (an
+    optional comma-separated list; every property if omitted) - powers the
+    Dashboard's "Business Continuity Plan Health" indicator.
+
+    A dedicated endpoint (service role key, same as every other
+    bcp_snapshots access) rather than a direct frontend Supabase query -
+    this table has no anon-read policy, since normally only the backend
+    ever reads it (it holds whole-blob Fernet-encrypted guest PII). The
+    browser querying it directly with the anon key silently returns zero
+    rows rather than an error, the same RLS pitfall already documented for
+    role_permissions/profiles elsewhere in this codebase.
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        property_list = [p.strip() for p in properties.split(",") if p.strip()] if properties else None
+        query = sync_service.supabase.table("bcp_snapshots").select("captured_at").order("captured_at", desc=True).limit(1)
+        if property_list:
+            query = query.in_("property", property_list)
+        res = query.execute()
+        return {"status": "success", "captured_at": res.data[0]["captured_at"] if res.data else None}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/snapshot")
 async def get_snapshot(id: str = Query(...)):
     try:
