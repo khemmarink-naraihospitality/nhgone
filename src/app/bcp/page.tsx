@@ -2889,7 +2889,7 @@ export default function BcpPage() {
             <h1 className="font-display text-3xl text-[var(--text-primary)] truncate">{res.group_name || res.guest || "(no name)"}</h1>
           </div>
 
-          <div className="flex items-center gap-5 border-b border-[var(--text-primary)]/10 mb-8 overflow-x-auto">
+          <div className="flex items-center gap-5 border-b border-[var(--text-primary)]/10 mb-8 overflow-x-auto overflow-y-hidden">
             {tabs.map((t) => (
               <button
                 key={t}
@@ -3665,7 +3665,7 @@ export default function BcpPage() {
             </CollapsibleSection>
 
             <div className="no-print flex flex-wrap items-center gap-4 mb-4">
-              <div className="flex border-b border-[var(--text-primary)]/14 overflow-x-auto max-w-full">
+              <div className="flex border-b border-[var(--text-primary)]/14 overflow-x-auto overflow-y-hidden max-w-full">
                 {(
                   [
                     ["timeline", `Timeline (${snapshot.window?.start} – ${snapshot.window?.end})`],
@@ -4623,7 +4623,7 @@ export default function BcpPage() {
               <div className="flex-1 overflow-y-auto p-10 md:p-16">
                 <div className="font-display text-4xl md:text-5xl mb-6 max-w-6xl">Action Log Detail</div>
 
-                <div className="flex items-center gap-6 border-b border-[var(--text-primary)]/10 mb-8 max-w-6xl overflow-x-auto">
+                <div className="flex items-center gap-6 border-b border-[var(--text-primary)]/10 mb-8 max-w-6xl overflow-x-auto overflow-y-hidden">
                   {(["log", "properties", "guestProfile"] as const)
                     .filter((t) => t === "log" || !!snap)
                     .map((t) => (
