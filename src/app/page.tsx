@@ -82,7 +82,7 @@ function LoginContent() {
           </div>
 
           <h1 className="text-4xl font-black font-display mb-2 tracking-tight text-[#152A00]">NHGOne</h1>
-          <p className="text-[#152A00] text-[10px] mb-8 text-center font-bold tracked-caps opacity-60">Enterprise Narai Hospitality Group Data Assets</p>
+          <p className="text-[#152A00] text-[9px] mb-8 text-center font-bold tracked-caps opacity-60">Enterprise Narai Hospitality Group Data Assets</p>
 
           {/* Google Button */}
           <button 
