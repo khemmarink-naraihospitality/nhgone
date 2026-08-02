@@ -324,12 +324,10 @@ export default function Dashboard() {
           </section>
         )}
 
-        <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
-          
+        <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 mb-6">
           <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Business Continuity Plan Health</h2>
 
-          <div className="flex items-center gap-4 mb-6">
+          <div className="flex items-center gap-4">
             <div
               className={`h-2 w-2 rounded-full ${
                 bcpHealthLevel === "green" ? "bg-emerald-600" : bcpHealthLevel === "amber" ? "bg-amber-500" : "bg-red-600"
@@ -343,8 +341,14 @@ export default function Dashboard() {
               {bcpHealthMessage}
             </span>
           </div>
+        </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 border-t border-[var(--text-primary)]/10 pt-6">
+        <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
+
+          <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Sub System</h2>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
              <div>
                 <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Data Mart</h3>
                 <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Synced Reservations, Members, and Payments from MEWS, kept up to date automatically and searchable/exportable at any time.</p>
