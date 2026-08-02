@@ -521,6 +521,26 @@ export default function BcpPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
+  // Housekeeping roles (Admin > Users > Role Settings, "House Keeping"
+  // checkbox) only ever see the BCP link in the sidebar (see Navigation.tsx)
+  // and, once inside, only the Rooms (HK) tab - Timeline/Action Logs are
+  // hidden below and mainTab is forced there the moment this resolves true,
+  // since housekeeping staff have no use for the rest of BCP.
+  const [isHousekeepingRole, setIsHousekeepingRole] = useState(false);
+  useEffect(() => {
+    (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+      const role = profile?.role;
+      if (!role || role === "Super Admin" || role === "super_admin") return;
+      const { data: permRow } = await supabase.from("role_permissions").select("housekeeping").eq("role", role).single();
+      if (permRow?.housekeeping) {
+        setIsHousekeepingRole(true);
+        setMainTab("rooms");
+      }
+    })();
+  }, []);
   // Reservations used to be a 4th tab alongside Timeline/Rooms/Logs, but the
   // reservation table stayed expanded by default whichever of those 3 was
   // active - now its own collapsed-by-default section (same show/hide
@@ -3652,7 +3672,9 @@ export default function BcpPage() {
                     ["rooms", "Rooms (HK)"],
                     ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
                   ] as [MainTab, string][]
-                ).map(([t, label]) => (
+                )
+                  .filter(([t]) => !isHousekeepingRole || t === "rooms")
+                  .map(([t, label]) => (
                   <button
                     key={t}
                     onClick={() => setMainTab(t)}

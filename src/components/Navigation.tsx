@@ -13,6 +13,10 @@ interface MenuPermissions {
   rr3: boolean;
   st_files: boolean;
   bcp: boolean;
+  // Housekeeping roles (Admin > Users > Role Settings, "House Keeping"
+  // checkbox) see only the BCP link below, regardless of every other flag
+  // here - BCP itself then opens straight to Rooms (HK) for them.
+  housekeeping: boolean;
   log_import: boolean;
   admin: boolean;
 }
@@ -308,6 +312,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     rr3: !isFinanceRole,
     st_files: !isFinanceRole,
     bcp: !isFinanceRole,
+    housekeeping: false,
     log_import: !isFinanceRole,
     admin: false,
   };
@@ -330,6 +335,12 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           <Link href="/admin/templates" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
           <Link href="/admin/logs" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
         </>
+      ) : perms.housekeeping ? (
+        // Housekeeping roles (Admin > Users > Role Settings) only ever see
+        // this one link, regardless of every other checkbox above - BCP
+        // itself opens straight to Rooms (HK) with Timeline/Action Logs
+        // hidden for them (see bcp/page.tsx).
+        <Link href="/bcp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
       ) : (
         <>
           {perms.dashboard && (
