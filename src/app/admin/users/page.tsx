@@ -567,12 +567,12 @@ export default function AdminUsersPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[240px]">Role</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Role</th>
                   {MENU_ITEMS.map((item) => (
-                    <th key={item.key} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
+                    <th key={item.key} className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
                   ))}
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property</th>
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property</th>
+                  <th className="sticky top-0 z-10 bg-slate-50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -584,7 +584,7 @@ export default function AdminUsersPage() {
                   const isLocked = row.role === "Super Admin";
                   return (
                     <tr key={row.role} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-5 whitespace-nowrap">
+                      <td className="px-4 py-5 whitespace-nowrap">
                         <span className={`inline-flex items-center gap-2 pl-2.5 pr-3.5 py-1.5 rounded-full text-[11px] font-bold border shadow-sm whitespace-nowrap ${
                           row.role === 'Super Admin'
                           ? 'bg-[#AAA024]/10 text-[#AAA024] border-[#AAA024]/20'
@@ -595,7 +595,7 @@ export default function AdminUsersPage() {
                         </span>
                       </td>
                       {MENU_ITEMS.map((item) => (
-                        <td key={item.key} className="px-6 py-5 text-center">
+                        <td key={item.key} className="px-2 py-5 text-center">
                           <input
                             type="checkbox"
                             checked={isLocked ? true : row[item.key]}
@@ -605,7 +605,7 @@ export default function AdminUsersPage() {
                           />
                         </td>
                       ))}
-                      <td className="px-6 py-5 relative overflow-visible">
+                      <td className="px-3 py-5 relative overflow-visible">
                         {(() => {
                           const selected = row.restricted_properties || [];
                           const summary =
@@ -618,7 +618,7 @@ export default function AdminUsersPage() {
                                 type="button"
                                 disabled={isLocked}
                                 onClick={(e) => { e.stopPropagation(); setOpenPropertyMenu(openPropertyMenu === row.role ? null : row.role); }}
-                                className={`flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 outline-none min-w-[160px] justify-between ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-100"}`}
+                                className={`flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-xs text-slate-700 outline-none min-w-[140px] justify-between ${isLocked ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:bg-slate-100"}`}
                               >
                                 <span className="truncate">{summary}</span>
                                 <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -653,7 +653,7 @@ export default function AdminUsersPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-6 py-5 text-center relative overflow-visible group/actions">
+                      <td className="px-3 py-5 text-center relative overflow-visible group/actions">
                         {isLocked ? (
                           <span className="text-slate-300 text-xs">—</span>
                         ) : (
