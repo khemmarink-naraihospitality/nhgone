@@ -506,25 +506,40 @@ async def health_check():
     return {"status": "healthy", "service": "NHGOne"}
 
 @app.get("/stats")
-async def get_stats():
+async def get_stats(properties: str = None):
     """
-    Get summary stats from Supabase sync tables.
+    Get summary stats from Supabase sync tables. `properties` is an optional
+    comma-separated list of property names - the frontend passes this
+    whenever the signed-in user's role is property-restricted
+    (role_permissions.restricted_properties, see src/lib/allowedProperties.ts)
+    so the dashboard's totals only ever reflect properties that role can
+    actually see, not a portfolio-wide count. Omitted entirely for an
+    unrestricted role, matching getAllowedProperties() already resolving to
+    "every property" in that case.
     """
     try:
         if not sync_service.supabase:
             return {"status": "error", "message": "Supabase not connected"}
-        
+
+        property_list = [p.strip() for p in properties.split(",") if p.strip()] if properties else None
+
+        def scoped_count(table: str, id_column: str) -> int:
+            query = sync_service.supabase.table(table).select(id_column, count="exact")
+            if property_list:
+                query = query.in_("property", property_list)
+            return query.execute().count or 0
+
         # Use sync tables which are actually populated
-        res_count = sync_service.supabase.table("reservations_sync").select("mews_id", count="exact").execute().count
-        mem_count = sync_service.supabase.table("members_sync").select("mews_id", count="exact").execute().count
-        pay_count = sync_service.supabase.table("payments").select("id", count="exact").execute().count
-        
+        res_count = scoped_count("reservations_sync", "mews_id")
+        mem_count = scoped_count("members_sync", "mews_id")
+        pay_count = scoped_count("payments", "id")
+
         return {
             "status": "success",
             "data": {
-                "reservations": res_count or 0,
-                "members": mem_count or 0,
-                "payments": pay_count or 0
+                "reservations": res_count,
+                "members": mem_count,
+                "payments": pay_count
             }
         }
     except Exception as e:

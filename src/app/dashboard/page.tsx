@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/lib/supabase";
+import { getAllowedProperties } from "@/lib/allowedProperties";
 
 interface Stats {
   reservations: number;
@@ -60,12 +61,25 @@ export default function Dashboard() {
   const [importStatus, setImportStatus] = useState<PropertyImportStatus[]>([]);
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [importResults, setImportResults] = useState<Record<string, { ok: boolean; message: string }>>({});
+  // Resolves to every property for an unrestricted role (Super Admin, or any
+  // role with no restricted_properties set) - null until resolved, so the
+  // stats/import-status fetches below can wait for it instead of firing a
+  // portfolio-wide query first and then narrowing, which would flash the
+  // wrong (too-large) numbers for a property-restricted role.
+  const [allowedProperties, setAllowedProperties] = useState<string[] | null>(null);
 
   useEffect(() => {
+    getAllowedProperties().then(({ properties }) => setAllowedProperties(properties));
+  }, []);
+
+  useEffect(() => {
+    if (allowedProperties === null) return;
     const fetchStats = async () => {
       try {
         const apiUrl = "/api";
-        const response = await fetch(`${apiUrl}/stats`);
+        const params = new URLSearchParams();
+        if (allowedProperties.length > 0) params.set("properties", allowedProperties.join(","));
+        const response = await fetch(`${apiUrl}/stats?${params.toString()}`);
         const result = await response.json();
         if (result.status === "success") {
           setStats(result.data);
@@ -77,15 +91,19 @@ export default function Dashboard() {
       }
     };
     fetchStats();
-  }, []);
+  }, [allowedProperties]);
 
   const fetchImportStatus = async () => {
       try {
+        let propertiesQuery = supabase
+          .from("property_api_settings")
+          .select("property_name, sync_enabled, sync_reservations, sync_members, sync_payments, sync_resources, sync_bills")
+          .order("property_name");
+        if (allowedProperties && allowedProperties.length > 0) {
+          propertiesQuery = propertiesQuery.in("property_name", allowedProperties);
+        }
         const [propsRes, logsRes, latestRes] = await Promise.all([
-          supabase
-            .from("property_api_settings")
-            .select("property_name, sync_enabled, sync_reservations, sync_members, sync_payments, sync_resources, sync_bills")
-            .order("property_name"),
+          propertiesQuery,
           supabase
             .from("sync_logs")
             .select("property, target_table, status")
@@ -147,8 +165,10 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    if (allowedProperties === null) return;
     fetchImportStatus();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allowedProperties]);
 
   // Manual "Import Latest" from a property's card - reruns exactly what its
   // scheduled sync would have done (see POST /sync/property in api/app/main.py),
