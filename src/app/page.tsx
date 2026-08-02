@@ -158,7 +158,7 @@ function LoginContent() {
             </form>
           )}
           
-          <div className="mt-8 text-center text-sm text-red-600 font-bold tracked-caps leading-relaxed max-w-[280px]">
+          <div className="mt-8 text-center text-sm text-[#152A00] font-light italic tracked-caps leading-relaxed max-w-[280px]">
             AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.
           </div>
         </div>
