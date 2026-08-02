@@ -67,10 +67,53 @@ export default function Dashboard() {
   // portfolio-wide query first and then narrowing, which would flash the
   // wrong (too-large) numbers for a property-restricted role.
   const [allowedProperties, setAllowedProperties] = useState<string[] | null>(null);
+  // Most recent bcp_snapshots.captured_at across whichever properties this
+  // user can see - the honest signal for "is the every-5-minute BCP auto
+  // capture actually still running", as opposed to the old static
+  // "FastAPI Backend: Synchronized" line which never reflected anything real.
+  const [bcpLastCapture, setBcpLastCapture] = useState<string | null>(null);
+  const [bcpCaptureChecked, setBcpCaptureChecked] = useState(false);
 
   useEffect(() => {
     getAllowedProperties().then(({ properties }) => setAllowedProperties(properties));
   }, []);
+
+  useEffect(() => {
+    if (allowedProperties === null) return;
+    const fetchBcpHealth = async () => {
+      try {
+        let query = supabase
+          .from("bcp_snapshots")
+          .select("captured_at")
+          .order("captured_at", { ascending: false })
+          .limit(1);
+        if (allowedProperties.length > 0) query = query.in("property", allowedProperties);
+        const { data } = await query;
+        setBcpLastCapture(data?.[0]?.captured_at || null);
+      } catch (err) {
+        console.warn("Could not fetch BCP capture health:", err instanceof Error ? err.message : err);
+      } finally {
+        setBcpCaptureChecked(true);
+      }
+    };
+    fetchBcpHealth();
+  }, [allowedProperties]);
+
+  // Auto capture runs every 5 minutes - green allows a little slack for
+  // cron/scheduling lag, amber covers "clearly running late", red covers
+  // "hasn't run in a long time or ever".
+  const bcpMinutesSinceCapture = bcpLastCapture ? (Date.now() - new Date(bcpLastCapture).getTime()) / 60_000 : null;
+  const bcpHealthLevel: "green" | "amber" | "red" =
+    bcpMinutesSinceCapture === null ? "red" : bcpMinutesSinceCapture <= 10 ? "green" : bcpMinutesSinceCapture <= 30 ? "amber" : "red";
+  const bcpHealthMessage = !bcpCaptureChecked
+    ? "Checking BCP auto capture status…"
+    : bcpMinutesSinceCapture === null
+    ? "BCP Auto Capture: no snapshot recorded yet"
+    : bcpHealthLevel === "green"
+    ? `BCP Auto Capture: running (last capture ${Math.round(bcpMinutesSinceCapture)} min ago)`
+    : bcpHealthLevel === "amber"
+    ? `BCP Auto Capture: delayed (last capture ${Math.round(bcpMinutesSinceCapture)} min ago)`
+    : `BCP Auto Capture: not running (last capture ${Math.round(bcpMinutesSinceCapture)} min ago)`;
 
   useEffect(() => {
     if (allowedProperties === null) return;
@@ -233,7 +276,7 @@ export default function Dashboard() {
         {importStatus.length > 0 && (
           <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 mb-6">
             <div className="flex items-baseline justify-between mb-6">
-              <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 tracked-caps">Import Status — Today</h2>
+              <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 tracked-caps">Data Mart Status — Today</h2>
               <div className="flex items-center gap-4 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/50">
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-emerald-500"></span> All tables</span>
                 <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-amber-500"></span> Partial</span>
@@ -287,11 +330,21 @@ export default function Dashboard() {
         <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
           <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
           
-          <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Operational Health</h2>
-          
+          <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Business Continuity Plan Health</h2>
+
           <div className="flex items-center gap-4 mb-6">
-            <div className="h-2 w-2 rounded-full bg-emerald-600"></div>
-            <span className="text-emerald-700 font-bold text-[13px] tracked-caps">FastAPI Backend: Synchronized</span>
+            <div
+              className={`h-2 w-2 rounded-full ${
+                bcpHealthLevel === "green" ? "bg-emerald-600" : bcpHealthLevel === "amber" ? "bg-amber-500" : "bg-red-600"
+              }`}
+            ></div>
+            <span
+              className={`font-bold text-[13px] tracked-caps ${
+                bcpHealthLevel === "green" ? "text-emerald-700" : bcpHealthLevel === "amber" ? "text-amber-700" : "text-red-700"
+              }`}
+            >
+              {bcpHealthMessage}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[var(--text-primary)]/10 pt-6">
