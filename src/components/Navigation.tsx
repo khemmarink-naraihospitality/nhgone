@@ -17,7 +17,6 @@ interface MenuPermissions {
   // checkbox) see only the BCP link below, regardless of every other flag
   // here - BCP itself then opens straight to Rooms (HK) for them.
   housekeeping: boolean;
-  log_import: boolean;
   admin: boolean;
 }
 
@@ -313,12 +312,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     st_files: !isFinanceRole,
     bcp: !isFinanceRole,
     housekeeping: false,
-    log_import: !isFinanceRole,
     admin: false,
   };
   const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.bcp;
   const showTopDivider = perms.dashboard && midSection;
-  const showBottomDivider = midSection && perms.log_import;
+  // Log Import is no longer an individually-gated menu (used to be
+  // perms.log_import) - it shows unconditionally for every non-Housekeeping
+  // role, since its own page/API already show every property to whoever can
+  // reach it, so per-role toggling never actually restricted anything.
+  const showBottomDivider = midSection;
 
   // Shared between the desktop <aside> (always visible at md+) and the
   // mobile slide-in drawer below - written once so the two never drift out
@@ -363,9 +365,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
             <Link href="/bcp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
           )}
           {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
-          {perms.log_import && (
-            <Link href="/log-import" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
-          )}
+          <Link href="/log-import" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
         </>
       )}
     </nav>

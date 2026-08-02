@@ -23,7 +23,6 @@ interface RolePermissionRow {
   rr3: boolean;
   st_files: boolean;
   bcp: boolean;
-  log_import: boolean;
   admin: boolean;
   // Marks this role as Housekeeping - overrides every other menu checkbox
   // in Navigation.tsx (the sidebar shows only BCP, nothing else) and tells
@@ -42,7 +41,6 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "st_files", label: "ST Files" },
   { key: "bcp", label: "BCP" },
   { key: "housekeeping", label: "House Keeping" },
-  { key: "log_import", label: "Log Import" },
   { key: "admin", label: "Admin" },
 ];
 
@@ -64,6 +62,7 @@ export default function AdminUsersPage() {
   const [deletingRoleBusy, setDeletingRoleBusy] = useState(false);
   const [properties, setProperties] = useState<string[]>([]);
   const [openPropertyMenu, setOpenPropertyMenu] = useState<string | null>(null);
+  const [openRoleActionMenu, setOpenRoleActionMenu] = useState<string | null>(null);
 
 
   const fetchUsers = async () => {
@@ -120,7 +119,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, housekeeping: false, log_import: false, admin: false, restricted_properties: null,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, housekeeping: false, admin: false, restricted_properties: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {
@@ -284,6 +283,13 @@ export default function AdminUsersPage() {
     document.addEventListener("click", closeMenu);
     return () => document.removeEventListener("click", closeMenu);
   }, [openPropertyMenu]);
+
+  useEffect(() => {
+    if (!openRoleActionMenu) return;
+    const closeMenu = () => setOpenRoleActionMenu(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [openRoleActionMenu]);
 
   const handleCreateUser = async () => {
     if (!newUser.email) {
@@ -653,30 +659,39 @@ export default function AdminUsersPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-3 py-5 text-center relative overflow-visible group/actions">
+                      <td className="px-3 py-5 text-center relative overflow-visible">
                         {isLocked ? (
                           <span className="text-slate-300 text-xs">—</span>
                         ) : (
                           <>
-                            <button className="text-slate-300 hover:text-slate-600 transition-colors p-2 rounded-lg hover:bg-slate-100">
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20"><path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM18 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setOpenRoleActionMenu(openRoleActionMenu === row.role ? null : row.role); }}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-all"
+                            >
+                              Action
+                              <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                             </button>
-                            <div className="absolute right-0 top-12 w-40 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] hidden group-hover/actions:block animate-in fade-in zoom-in-95 duration-100 p-1.5">
-                              <button
-                                onClick={() => { setRenamingRole(row); setRenameValue(row.role); }}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                            {openRoleActionMenu === row.role && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-12 w-40 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100 p-1.5"
                               >
-                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                                Rename
-                              </button>
-                              <button
-                                onClick={() => setDeletingRole(row)}
-                                className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
-                              >
-                                <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                Delete
-                              </button>
-                            </div>
+                                <button
+                                  onClick={() => { setRenamingRole(row); setRenameValue(row.role); setOpenRoleActionMenu(null); }}
+                                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                                  Rename
+                                </button>
+                                <button
+                                  onClick={() => { setDeletingRole(row); setOpenRoleActionMenu(null); }}
+                                  className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                                >
+                                  <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                  Delete
+                                </button>
+                              </div>
+                            )}
                           </>
                         )}
                       </td>
