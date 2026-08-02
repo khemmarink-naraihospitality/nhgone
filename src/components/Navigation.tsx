@@ -37,10 +37,10 @@ function PendingApprovalScreen({ email }: { email: string }) {
         <h1 className="text-xl font-black font-display mb-2 tracking-tight">Waiting for Approval</h1>
         <p className="text-[10px] font-bold tracked-caps text-[#152A00]/50 mb-6">รอการอนุมัติจากผู้ดูแลระบบ</p>
         <p className="text-sm text-[#152A00]/70 leading-relaxed mb-1">
-          Your account (<span className="font-bold">{email}</span>) has been created and is pending approval from a Super Admin.
+          Your account (<span className="font-bold">{email}</span>) is still pending approval. Please contact the IT Department if you need this expedited.
         </p>
         <p className="text-xs text-[#152A00]/50 leading-relaxed mb-8">
-          บัญชีของคุณถูกสร้างแล้ว กรุณารอ Super Admin อนุมัติสิทธิ์การใช้งานก่อนเข้าสู่ระบบ
+          บัญชีของคุณยังรอการอนุมัติอยู่ กรุณาติดต่อฝ่าย IT หากต้องการเร่งดำเนินการ
         </p>
         <button
           onClick={handleSignOut}

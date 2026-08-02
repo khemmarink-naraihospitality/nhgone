@@ -23,7 +23,7 @@ function LoginContent() {
     : isSessionTimeout
     ? "You were signed out due to inactivity. Please sign in again."
     : isInactive
-    ? "Your account has been deactivated. Please contact a Super Admin if you believe this is a mistake."
+    ? "Your account has been deactivated. Please contact the IT Department."
     : errorMsg;
 
   const handleEmailLogin = async (e: React.FormEvent) => {
@@ -110,39 +110,45 @@ function LoginContent() {
             <div className="flex-grow border-t border-[#152A00]/10"></div>
           </div>
 
+          {/* Redirect-driven errors (unauthorized/session_timeout/inactive) must
+              show regardless of whether Internal Auth is expanded - this used
+              to live inside the form below, so it silently never rendered
+              for anyone who landed here without already having clicked
+              "Internal Auth" (i.e. everyone redirected here from Google
+              sign-in, which is the common case). */}
+          {displayError && (
+            <p className="w-full text-red-600 text-[11px] font-bold leading-relaxed bg-red-50 p-3 border-l-2 border-red-600 mb-2">
+              {displayError}
+            </p>
+          )}
+
           {/* Conditional Email Input */}
           {showEmailLogin && (
             <form onSubmit={handleEmailLogin} className="w-full space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Work Email</label>
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com" 
+                  placeholder="name@company.com"
                   required
                   className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
                 />
               </div>
               <div className="space-y-2">
                 <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Password</label>
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••" 
+                  placeholder="••••••••"
                   required
                   className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
                 />
               </div>
-              
-              {displayError && (
-                <p className="text-red-600 text-[11px] font-bold leading-relaxed bg-red-50 p-3 border-l-2 border-red-600">
-                  {displayError}
-                </p>
-              )}
 
-              <button 
+              <button
                 type="submit"
                 disabled={loading}
                 className="w-full py-3 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
