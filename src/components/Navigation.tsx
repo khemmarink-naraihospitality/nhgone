@@ -34,13 +34,9 @@ function PendingApprovalScreen({ email }: { email: string }) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h1 className="text-xl font-black font-display mb-2 tracking-tight">Waiting for Approval</h1>
-        <p className="text-[10px] font-bold tracked-caps text-[#152A00]/50 mb-6">รอการอนุมัติจากผู้ดูแลระบบ</p>
-        <p className="text-sm text-[#152A00]/70 leading-relaxed mb-1">
+        <h1 className="text-xl font-black font-display mb-6 tracking-tight">Waiting for Approval</h1>
+        <p className="text-sm text-[#152A00]/70 leading-relaxed mb-8">
           Your account (<span className="font-bold">{email}</span>) is still pending approval. Please contact the IT Department if you need this expedited.
-        </p>
-        <p className="text-xs text-[#152A00]/50 leading-relaxed mb-8">
-          บัญชีของคุณยังรอการอนุมัติอยู่ กรุณาติดต่อฝ่าย IT หากต้องการเร่งดำเนินการ
         </p>
         <button
           onClick={handleSignOut}
