@@ -17,10 +17,13 @@ function LoginContent() {
   
   const isUnauthorized = searchParams.get("error") === "unauthorized";
   const isSessionTimeout = searchParams.get("error") === "session_timeout";
+  const isInactive = searchParams.get("error") === "inactive";
   const displayError = isUnauthorized
     ? "Unauthorized access. Your account is not registered in the system. Please contact BusinessTech Team"
     : isSessionTimeout
     ? "You were signed out due to inactivity. Please sign in again."
+    : isInactive
+    ? "Your account has been deactivated. Please contact a Super Admin if you believe this is a mistake."
     : errorMsg;
 
   const handleEmailLogin = async (e: React.FormEvent) => {

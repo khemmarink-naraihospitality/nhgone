@@ -177,6 +177,18 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         // the normal app shell/menus (see PendingApprovalScreen above).
         setPendingEmail(finalProfile.email || user.email || "");
         setIsAuthorized(true);
+      } else if (finalProfile.status === "Inactive") {
+        // A Super Admin deactivating a user (Admin > Users) must actually
+        // revoke access, not just change a label - this used to fall through
+        // to the "else" branch below and sign the account straight into the
+        // full app with its normal role permissions. Hard redirect (not
+        // router.push) for the same reason as the unauthorized/idle-timeout
+        // paths above: be certain the session is actually dead rather than
+        // leaving stale client state around sensitive data.
+        console.warn("Inactive account attempted access:", user.email, user.id);
+        await supabase.auth.signOut();
+        window.location.href = "/?error=inactive";
+        setIsAuthorized(false);
       } else {
         // Authorized!
         setPendingEmail(null);
@@ -261,6 +273,27 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       clearTimeout(timer);
       activityEvents.forEach((evt) => window.removeEventListener(evt, resetTimer));
     };
+  }, [isAuthorized, isLoginPage, pendingEmail]);
+
+  // Deactivation poll - the Inactive check in checkAuth above only re-runs on
+  // navigation (the effect is keyed on pathname), so a Super Admin flipping
+  // someone to Inactive mid-session wouldn't actually revoke access until
+  // that tab happened to navigate somewhere. Given the sensitive data behind
+  // this login, poll the row directly every minute so a still-open,
+  // never-navigated tab loses access within that window too.
+  useEffect(() => {
+    if (!isAuthorized || isLoginPage || pendingEmail) return;
+    const checkStillActive = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase.from("profiles").select("status").eq("id", user.id).single();
+      if (profile?.status === "Inactive") {
+        await supabase.auth.signOut();
+        window.location.href = "/?error=inactive";
+      }
+    };
+    const interval = setInterval(checkStillActive, 60_000);
+    return () => clearInterval(interval);
   }, [isAuthorized, isLoginPage, pendingEmail]);
 
   // Loading state to prevent flicker
