@@ -3704,14 +3704,14 @@ export default function BcpPage() {
                   onChange={(e) => setSpaceSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSpaceSearch(); }}
                   placeholder="Search space (press Enter)"
-                  className="px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-transparent w-44 focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
+                  className="w-full sm:w-44 px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12px] border border-[var(--text-primary)]/20 bg-transparent focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
                 />
-                <div className="flex items-center border border-[var(--text-primary)]/20 divide-x divide-[var(--text-primary)]/20">
-                  <button onClick={goToWindowStart} title={`First day with data (${snapshot.window.start})`} className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">«</button>
-                  <button onClick={() => shiftFocusedDate(-1)} title="Previous day" className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">‹</button>
-                  <button onClick={goToToday} title="Today" className="px-4 py-2 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 transition-colors">Today</button>
-                  <button onClick={() => shiftFocusedDate(1)} title="Next day" className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">›</button>
-                  <button onClick={goToWindowEnd} title={`Last day with data (${snapshot.window.end})`} className="px-3 py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">»</button>
+                <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start border border-[var(--text-primary)]/20 divide-x divide-[var(--text-primary)]/20">
+                  <button onClick={goToWindowStart} title={`First day with data (${snapshot.window.start})`} className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">«</button>
+                  <button onClick={() => shiftFocusedDate(-1)} title="Previous day" className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">‹</button>
+                  <button onClick={goToToday} title="Today" className="flex-1 sm:flex-none px-4 py-2.5 sm:py-2 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap">Today</button>
+                  <button onClick={() => shiftFocusedDate(1)} title="Next day" className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">›</button>
+                  <button onClick={goToWindowEnd} title={`Last day with data (${snapshot.window.end})`} className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">»</button>
                 </div>
               </div>
             )}
