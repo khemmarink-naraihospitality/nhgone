@@ -762,6 +762,7 @@ export default function AdminUsersPage() {
                        >
                           <option value="Active">Active</option>
                           <option value="Inactive">Inactive</option>
+                          <option value="Pending">Pending</option>
                        </select>
                     </div>
                  </div>

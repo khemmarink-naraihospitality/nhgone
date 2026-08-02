@@ -275,12 +275,16 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     };
   }, [isAuthorized, isLoginPage, pendingEmail]);
 
-  // Deactivation poll - the Inactive check in checkAuth above only re-runs on
-  // navigation (the effect is keyed on pathname), so a Super Admin flipping
-  // someone to Inactive mid-session wouldn't actually revoke access until
-  // that tab happened to navigate somewhere. Given the sensitive data behind
-  // this login, poll the row directly every minute so a still-open,
-  // never-navigated tab loses access within that window too.
+  // Status poll - the Inactive/Pending checks in checkAuth above only re-run
+  // on navigation (the effect is keyed on pathname), so a Super Admin
+  // changing someone's status mid-session (Inactive, or reverting them to
+  // Pending via Detail Profile's Status dropdown) wouldn't actually take
+  // effect until that tab happened to navigate somewhere. Given the
+  // sensitive data behind this login, poll the row directly every minute so
+  // a still-open, never-navigated tab is caught within that window too.
+  // Pending reloads rather than signing out, matching checkAuth's own
+  // non-destructive handling (the waiting screen keeps its own manual
+  // sign-out button) - only Inactive forces a hard sign-out.
   useEffect(() => {
     if (!isAuthorized || isLoginPage || pendingEmail) return;
     const checkStillActive = async () => {
@@ -290,6 +294,8 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       if (profile?.status === "Inactive") {
         await supabase.auth.signOut();
         window.location.href = "/?error=inactive";
+      } else if (profile?.status === "Pending") {
+        window.location.reload();
       }
     };
     const interval = setInterval(checkStillActive, 60_000);
