@@ -564,7 +564,7 @@ export default function AdminUsersPage() {
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
+                  <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[240px]">Role</th>
                   {MENU_ITEMS.map((item) => (
                     <th key={item.key} className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">{item.label}</th>
                   ))}
@@ -581,12 +581,13 @@ export default function AdminUsersPage() {
                   const isLocked = row.role === "Super Admin";
                   return (
                     <tr key={row.role} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-6 py-5">
-                        <span className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
+                      <td className="px-6 py-5 whitespace-nowrap">
+                        <span className={`inline-flex items-center gap-2 pl-2.5 pr-3.5 py-1.5 rounded-full text-[11px] font-bold border shadow-sm whitespace-nowrap ${
                           row.role === 'Super Admin'
                           ? 'bg-[#AAA024]/10 text-[#AAA024] border-[#AAA024]/20'
                           : 'bg-slate-100 text-slate-600 border-slate-200'
                         }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${row.role === 'Super Admin' ? 'bg-[#AAA024]' : 'bg-slate-400'}`} />
                           {row.role}
                         </span>
                       </td>
