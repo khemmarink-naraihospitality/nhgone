@@ -570,7 +570,7 @@ export default function AdminUsersPage() {
                 </button>
              </div>
           </div>
-          <div className="overflow-x-auto">
+          <div className="max-h-[65vh] overflow-y-auto overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
