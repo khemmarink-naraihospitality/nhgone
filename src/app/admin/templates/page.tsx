@@ -294,7 +294,7 @@ export default function TemplatesPage() {
         </div>
       </PageHeader>
 
-      <div className="mt-8 max-w-6xl grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+      <div className="mt-8 flex flex-col gap-6">
         <div className="bg-white border border-slate-200/80 rounded-[28px] p-8 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">
           {config.perProperty && (
             <div className="space-y-1.5 mb-6 max-w-sm">
@@ -382,17 +382,17 @@ export default function TemplatesPage() {
           )}
         </div>
 
-        <div className="bg-white border border-slate-200/80 rounded-[28px] p-6 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)] h-fit">
+        <div className="bg-white border border-slate-200/80 rounded-[28px] p-6 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">
           <div className="flex items-center gap-2.5 mb-3">
             <div className="w-8 h-8 rounded-xl bg-[#AAA024]/10 flex items-center justify-center shrink-0">
               <svg className="w-4 h-4 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16M6 8l-4 4 4 4M18 8l4 4-4 4" /></svg>
             </div>
             <h3 className="text-sm font-bold text-slate-700">Available Tokens — {config.label}</h3>
           </div>
-          <p className="text-xs text-slate-500 mb-4 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-3 leading-relaxed">
+          <p className="text-xs text-slate-500 mb-4 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-3 leading-relaxed max-w-2xl">
             Use <code className="bg-white border border-slate-200 px-1 rounded text-[#152A00] font-semibold">{"<<Variable>>"}</code> anywhere in the HTML - it&apos;s replaced with the real data when printed. {config.tokenNote}
           </p>
-          <div className="space-y-0.5 max-h-[460px] overflow-y-auto -mx-2 pr-1">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6">
             {config.tokens.map((t) => (
               <div key={t.name} className="flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors">
                 <code className="shrink-0 bg-[#152A00]/[0.06] text-[#152A00] px-1.5 py-0.5 rounded-md font-mono text-[11px] font-bold">{`<<${t.name}>>`}</code>
