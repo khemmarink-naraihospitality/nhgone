@@ -5,9 +5,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "NHGOne | Narai Hospitality Group",
   description: "Unified admin dashboard and PMS managed layer.",
-  icons: {
-    icon: "https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128-1.png",
-  },
+  // No explicit `icons` field - favicon.ico/icon.png/apple-icon.png in this
+  // same app/ directory are Next.js's own file-based icon convention and get
+  // picked up automatically. Declaring both this field (previously pointing
+  // at an external, third-party-hosted URL) and the file convention produced
+  // duplicate/competing <link rel="icon"> tags, which is why the browser tab
+  // wasn't reliably showing the real logo.
 };
 
 import Navigation from "@/components/Navigation";
