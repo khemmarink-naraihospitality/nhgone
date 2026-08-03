@@ -434,7 +434,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           </div>
           <div className="text-lg font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
         </div>
-        <div className="w-9" />
+        <UserHeader />
       </div>
 
       {mobileNavOpen && (
