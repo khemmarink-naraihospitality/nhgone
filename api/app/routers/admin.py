@@ -4,7 +4,7 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
-from app.services.email_service import email_service
+from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -43,6 +43,10 @@ class SmtpSettingsUpdate(BaseModel):
 
 class SmtpTestRequest(BaseModel):
     to_email: str
+
+class EmailTemplateUpdate(BaseModel):
+    subject: str
+    html_template: str
 
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
@@ -306,5 +310,33 @@ async def test_smtp_settings(request: SmtpTestRequest):
             "This is a test email from NHGOne. If you received this, your SMTP settings are working.",
         )
         return {"status": "success", "message": f"Test email sent to {request.to_email}"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/email-template")
+async def get_email_template():
+    """
+    Returns the admin-edited welcome email (Admin > Templates > Email), or
+    the built-in default (is_default=True) if none saved yet - same
+    editable-template pattern as GET /bills/template and GET /rr3/template.
+    """
+    return {"status": "success", "data": email_service.get_welcome_template()}
+
+@router.post("/email-template")
+async def save_email_template(request: EmailTemplateUpdate):
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", WELCOME_TEMPLATE_KEY).limit(1).execute()
+        payload = {
+            "template_key": WELCOME_TEMPLATE_KEY,
+            "subject": request.subject,
+            "html_template": request.html_template,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": "Email template saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

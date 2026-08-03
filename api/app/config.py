@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     MEWS_ACCESS_TOKEN: str = ""
     MEWS_BASE_URL: str = "https://api.mews-demo.com"
     ENCRYPTION_KEY: str = ""
+    # The link sent in emails (e.g. the welcome email's "Open NHGOne" button) -
+    # the backend has no window.location to fall back on like the frontend's
+    # getBaseUrl(), so this is a fixed setting instead.
+    APP_BASE_URL: str = "https://one.naraihospitalitygroup.com"
     
     class Config:
         env_file = ".env"

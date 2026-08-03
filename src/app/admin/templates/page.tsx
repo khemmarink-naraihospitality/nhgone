@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
-type TemplateType = "billing" | "rr3";
+type TemplateType = "billing" | "rr3" | "email";
 
 interface TokenDoc {
   name: string;
@@ -65,6 +65,12 @@ const RR3_TOKENS: TokenDoc[] = [
   { name: "ReservationsNumber", description: "MEWS reservation/confirmation number" },
 ];
 
+const EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "New user's full name (falls back to their email if blank)" },
+  { name: "Email", description: "New user's email - also the Google account they should sign in with" },
+  { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
+];
+
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
   endpoint: string;
@@ -72,6 +78,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   defaultNote: string;
   tokenNote: string;
   perProperty: boolean;
+  hasSubject?: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -92,6 +99,15 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     // invoice design.
     perProperty: false,
   },
+  email: {
+    label: "Email",
+    endpoint: "/admin/email-template",
+    tokens: EMAIL_TOKENS,
+    defaultNote: "No welcome email template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent when a new user is created (Admin > Users > Create New User).",
+    perProperty: false,
+    hasSubject: true,
+  },
 };
 
 export default function TemplatesPage() {
@@ -99,6 +115,7 @@ export default function TemplatesPage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [html, setHtml] = useState("");
+  const [subject, setSubject] = useState("");
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -132,6 +149,7 @@ export default function TemplatesPage() {
         const result = await res.json();
         if (result.status === "success") {
           setHtml(result.data.html_template);
+          setSubject(result.data.subject || "");
           setIsDefault(!!result.data.is_default);
         } else {
           alert("Error loading template: " + (result.detail || result.message));
@@ -148,10 +166,12 @@ export default function TemplatesPage() {
 
   const handleSave = async () => {
     if ((config.perProperty && !selectedProperty) || !html.trim()) return;
+    if (config.hasSubject && !subject.trim()) return;
     setSaving(true);
     try {
       const body: Record<string, string> = { html_template: html };
       if (config.perProperty) body.property_name = selectedProperty;
+      if (config.hasSubject) body.subject = subject;
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -175,7 +195,7 @@ export default function TemplatesPage() {
     <div className="p-8 bg-white min-h-screen text-slate-900 font-sans">
       <PageHeader
         title="Templates"
-        description="Edit the printable HTML templates per property: the Billing tax invoice/receipt and the RR3 (ร.ร.๓) lodger registration card."
+        description="Edit the printable HTML templates per property (Billing, RR3), and the welcome email sent when a new user is created."
       >
         <div className="flex border border-slate-300 rounded-xl overflow-hidden">
           {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
@@ -219,6 +239,17 @@ export default function TemplatesPage() {
             </div>
           ) : (
             <>
+              {config.hasSubject && (
+                <div className="space-y-1.5 mb-4">
+                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Subject</label>
+                  <input
+                    type="text"
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                  />
+                </div>
+              )}
               <textarea
                 value={html}
                 onChange={(e) => setHtml(e.target.value)}
