@@ -79,6 +79,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   tokenNote: string;
   perProperty: boolean;
   hasSubject?: boolean;
+  previewable?: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -107,8 +108,26 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     tokenNote: "Sent when a new user is created (Admin > Users > Create New User).",
     perProperty: false,
     hasSubject: true,
+    previewable: true,
   },
 };
+
+// Sample values so the Preview tab shows something readable instead of the
+// literal <<Token>> placeholders - real sends substitute the actual new
+// user's name/email and the configured APP_BASE_URL (see email_service.py).
+const EMAIL_PREVIEW_SAMPLE: Record<string, string> = {
+  FullName: "John Doe",
+  Email: "john.doe@example.com",
+  AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+};
+
+function renderEmailPreviewHtml(template: string): string {
+  let result = template;
+  for (const [key, value] of Object.entries(EMAIL_PREVIEW_SAMPLE)) {
+    result = result.split(`<<${key}>>`).join(value);
+  }
+  return result;
+}
 
 export default function TemplatesPage() {
   const [templateType, setTemplateType] = useState<TemplateType>("billing");
@@ -119,6 +138,7 @@ export default function TemplatesPage() {
   const [isDefault, setIsDefault] = useState(false);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
 
   // Same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env var is set
   // (in Vercel) to a stale API deployment that predates the template endpoints,
@@ -163,6 +183,10 @@ export default function TemplatesPage() {
     fetchTemplate();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty, templateType]);
+
+  useEffect(() => {
+    setViewMode("preview");
+  }, [templateType]);
 
   const handleSave = async () => {
     if ((config.perProperty && !selectedProperty) || !html.trim()) return;
@@ -250,12 +274,35 @@ export default function TemplatesPage() {
                   />
                 </div>
               )}
-              <textarea
-                value={html}
-                onChange={(e) => setHtml(e.target.value)}
-                spellCheck={false}
-                className="w-full h-[520px] bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
-              />
+
+              {config.previewable && (
+                <div className="flex border border-slate-200 rounded-xl overflow-hidden mb-4 w-fit">
+                  {(["preview", "code"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={`px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${viewMode === mode ? "bg-[#AAA024] text-white" : "bg-white text-slate-400 hover:text-slate-700"}`}
+                    >
+                      {mode === "preview" ? "Preview" : "HTML Code"}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {config.previewable && viewMode === "preview" ? (
+                <iframe
+                  title="Email preview"
+                  srcDoc={renderEmailPreviewHtml(html)}
+                  className="w-full h-[520px] bg-white border border-slate-200 rounded-xl"
+                />
+              ) : (
+                <textarea
+                  value={html}
+                  onChange={(e) => setHtml(e.target.value)}
+                  spellCheck={false}
+                  className="w-full h-[520px] bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                />
+              )}
               <button
                 onClick={handleSave}
                 disabled={saving}
