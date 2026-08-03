@@ -281,12 +281,12 @@ export default function TemplatesPage() {
         title="Templates"
         description="Edit the printable HTML templates per property (Billing, RR3), and the welcome email sent when a new user is created."
       >
-        <div className="flex border border-slate-300 rounded-xl overflow-hidden">
+        <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
           {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
             <button
               key={t}
               onClick={() => setTemplateType(t)}
-              className={`px-6 py-2 text-xs font-bold uppercase tracking-wider transition-all ${templateType === t ? "bg-[#AAA024] text-white" : "text-slate-400 hover:text-slate-700"}`}
+              className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${templateType === t ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
             >
               {TEMPLATE_CONFIG[t].label}
             </button>
@@ -294,15 +294,15 @@ export default function TemplatesPage() {
         </div>
       </PageHeader>
 
-      <div className="mt-8 max-w-6xl grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-6">
-        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-8 shadow-sm">
+      <div className="mt-8 max-w-6xl grid grid-cols-1 lg:grid-cols-[1fr_340px] gap-6">
+        <div className="bg-white border border-slate-200/80 rounded-[28px] p-8 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">
           {config.perProperty && (
             <div className="space-y-1.5 mb-6 max-w-sm">
               <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property</label>
               <select
                 value={selectedProperty}
                 onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
               >
                 {properties.map((p) => (
                   <option key={p} value={p}>{p}</option>
@@ -312,8 +312,9 @@ export default function TemplatesPage() {
           )}
 
           {isDefault && !loading && (
-            <div className="mb-4 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-              {config.defaultNote}
+            <div className="mb-6 flex items-start gap-2.5 text-xs text-amber-800 bg-amber-50 border border-amber-200/70 rounded-2xl px-4 py-3">
+              <svg className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+              <span>{config.defaultNote}</span>
             </div>
           )}
 
@@ -324,43 +325,50 @@ export default function TemplatesPage() {
           ) : (
             <>
               {config.hasSubject && (
-                <div className="space-y-1.5 mb-4">
+                <div className="space-y-1.5 mb-6">
                   <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Subject</label>
                   <input
                     type="text"
                     value={subject}
                     onChange={(e) => setSubject(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
                   />
                 </div>
               )}
 
               {config.previewable && (
-                <div className="flex border border-slate-200 rounded-xl overflow-hidden mb-4 w-fit">
-                  {(["preview", "code"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      onClick={() => setViewMode(mode)}
-                      className={`px-5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${viewMode === mode ? "bg-[#AAA024] text-white" : "bg-white text-slate-400 hover:text-slate-700"}`}
-                    >
-                      {mode === "preview" ? "Preview" : "HTML Code"}
-                    </button>
-                  ))}
+                <div className="flex bg-slate-100 rounded-xl p-1 gap-1 mb-4 w-fit">
+                  <button
+                    onClick={() => setViewMode("preview")}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${viewMode === "preview" ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Preview
+                  </button>
+                  <button
+                    onClick={() => setViewMode("code")}
+                    className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${viewMode === "code" ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4-4 4M7 8l-4 4 4 4M14 4l-4 16" /></svg>
+                    HTML Code
+                  </button>
                 </div>
               )}
 
               {config.previewable && viewMode === "preview" ? (
-                <iframe
-                  title={`${config.label} preview`}
-                  srcDoc={renderPreviewHtml(html, PREVIEW_SAMPLE_BUILDERS[templateType]())}
-                  className="w-full h-[520px] bg-white border border-slate-200 rounded-xl"
-                />
+                <div className="bg-slate-100 rounded-2xl p-5 border border-slate-200/70">
+                  <iframe
+                    title={`${config.label} preview`}
+                    srcDoc={renderPreviewHtml(html, PREVIEW_SAMPLE_BUILDERS[templateType]())}
+                    className="w-full h-[540px] bg-white rounded-xl border border-slate-200/70 shadow-md"
+                  />
+                </div>
               ) : (
                 <textarea
                   value={html}
                   onChange={(e) => setHtml(e.target.value)}
                   spellCheck={false}
-                  className="w-full h-[520px] bg-white border border-slate-200 rounded-xl px-4 py-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                  className="w-full h-[540px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
                 />
               )}
               <button
@@ -374,16 +382,21 @@ export default function TemplatesPage() {
           )}
         </div>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm h-fit">
-          <h3 className="text-sm font-bold text-slate-700 mb-1">Available Tokens — {config.label}</h3>
-          <p className="text-xs text-slate-500 mb-4">
-            Use <code className="bg-slate-200 px-1 rounded">{"<<Variable>>"}</code> anywhere in the HTML - it&apos;s replaced with the real data when printed. {config.tokenNote}
+        <div className="bg-white border border-slate-200/80 rounded-[28px] p-6 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)] h-fit">
+          <div className="flex items-center gap-2.5 mb-3">
+            <div className="w-8 h-8 rounded-xl bg-[#AAA024]/10 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 20l4-16M6 8l-4 4 4 4M18 8l4 4-4 4" /></svg>
+            </div>
+            <h3 className="text-sm font-bold text-slate-700">Available Tokens — {config.label}</h3>
+          </div>
+          <p className="text-xs text-slate-500 mb-4 bg-slate-50 border border-slate-100 rounded-xl px-3.5 py-3 leading-relaxed">
+            Use <code className="bg-white border border-slate-200 px-1 rounded text-[#152A00] font-semibold">{"<<Variable>>"}</code> anywhere in the HTML - it&apos;s replaced with the real data when printed. {config.tokenNote}
           </p>
-          <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
+          <div className="space-y-0.5 max-h-[460px] overflow-y-auto -mx-2 pr-1">
             {config.tokens.map((t) => (
-              <div key={t.name} className="text-xs">
-                <code className="bg-slate-200 px-1.5 py-0.5 rounded font-mono text-slate-800">{`<<${t.name}>>`}</code>
-                <span className="text-slate-500 ml-2">{t.description}</span>
+              <div key={t.name} className="flex items-start gap-2.5 px-2 py-2 rounded-lg hover:bg-slate-50 transition-colors">
+                <code className="shrink-0 bg-[#152A00]/[0.06] text-[#152A00] px-1.5 py-0.5 rounded-md font-mono text-[11px] font-bold">{`<<${t.name}>>`}</code>
+                <span className="text-slate-500 text-[11px] leading-relaxed pt-0.5">{t.description}</span>
               </div>
             ))}
           </div>
