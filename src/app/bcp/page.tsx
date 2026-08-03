@@ -527,13 +527,21 @@ export default function BcpPage() {
   // hidden below and mainTab is forced there the moment this resolves true,
   // since housekeeping staff have no use for the rest of BCP.
   const [isHousekeepingRole, setIsHousekeepingRole] = useState(false);
+  // Capture Now forces an out-of-cycle snapshot (the automatic one already
+  // runs every 5 minutes) - gated to Super Admin only so front-desk/finance
+  // roles aren't tempted to spam it.
+  const [isSuperAdminRole, setIsSuperAdminRole] = useState(false);
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       const role = profile?.role;
-      if (!role || role === "Super Admin" || role === "super_admin") return;
+      if (!role) return;
+      if (role === "Super Admin" || role === "super_admin") {
+        setIsSuperAdminRole(true);
+        return;
+      }
       const { data: permRow } = await supabase.from("role_permissions").select("housekeeping").eq("role", role).single();
       if (permRow?.housekeeping) {
         setIsHousekeepingRole(true);
@@ -3617,13 +3625,15 @@ export default function BcpPage() {
                 ))}
               </select>
             </div>
-            <button
-              onClick={handleCapture}
-              disabled={capturing || !selectedProperty}
-              className="btn-brand btn-primary h-[46px] disabled:opacity-60"
-            >
-              {capturing ? "Capturing..." : "Capture Now"}
-            </button>
+            {isSuperAdminRole && (
+              <button
+                onClick={handleCapture}
+                disabled={capturing || !selectedProperty}
+                className="btn-brand btn-primary h-[46px] disabled:opacity-60"
+              >
+                {capturing ? "Capturing..." : "Capture Now"}
+              </button>
+            )}
           </div>
         </CollapsibleSection>
 
