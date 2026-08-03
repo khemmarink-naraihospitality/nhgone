@@ -1306,7 +1306,12 @@ export default function BcpPage() {
     URL.revokeObjectURL(url);
   };
 
-  const handleCheckIn = (r: ReservationRow) =>
+  // knownRoomState lets a caller that just changed the room's status in this
+  // same synchronous call (handleConfirmCheckIn below) pass the new value
+  // directly - roomStateFor would otherwise re-read roomStatusOverrides
+  // before React has applied that setState, seeing the stale pre-change
+  // status instead.
+  const handleCheckIn = (r: ReservationRow, knownRoomState?: string) => {
     logOfflineAction({
       at: new Date().toISOString(),
       reservationNumber: r.number,
@@ -1317,6 +1322,17 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
+    // Check-in occupies the room - MEWS marks it Dirty (needs housekeeping
+    // service during the stay), distinct from Clean/Inspected which only
+    // describe a vacant, ready-for-the-next-guest room. Skipped for
+    // OutOfService/OutOfOrder so a genuine maintenance flag isn't silently
+    // overwritten by a check-in that shouldn't be happening on that room
+    // anyway.
+    const currentRoomState = knownRoomState ?? roomStateFor(r.room);
+    if (currentRoomState !== "Dirty" && currentRoomState !== "OutOfService" && currentRoomState !== "OutOfOrder") {
+      handleRoomStatusChange(r.room, currentRoomState, "Dirty");
+    }
+  };
   const handleCheckOut = (r: ReservationRow) =>
     logOfflineAction({
       at: new Date().toISOString(),
@@ -1391,6 +1407,20 @@ export default function BcpPage() {
   // front desk log the same checkout repeatedly). Disabling it once logged
   // is the visible confirmation that it's been recorded.
   const hasCheckedOutLocally = (r: ReservationRow): boolean => effectiveCheckStatus(r) === "checked_out";
+  // Every live badge/Timeline-bar color that reads STATE_BADGE_CLS/
+  // STATE_DISPLAY_LABEL should key off this instead of the raw r.state -
+  // r.state can never actually change while MEWS is unreachable (that's the
+  // whole premise of BCP), so a locally-logged Check In/Out used to leave
+  // the badge/bar showing the stale pre-action state (e.g. still
+  // "Confirmed"/grey after Check In). Action Log Detail's own `snap.state`
+  // usages are deliberately NOT routed through this - those show the frozen
+  // historical state at the time that log entry was recorded, not "now".
+  const effectiveReservationState = (r: ReservationRow): string => {
+    const status = effectiveCheckStatus(r);
+    if (status === "checked_in") return "Started";
+    if (status === "checked_out") return "Processed";
+    return r.state;
+  };
 
   const roomStateFor = (roomNumber: string): string => {
     const room = snapshot?.rooms.find((rm) => rm.room === roomNumber);
@@ -1415,7 +1445,7 @@ export default function BcpPage() {
   const handleConfirmCheckIn = () => {
     if (!checkInFor || !checkInMakeInspected) return;
     handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
-    handleCheckIn(checkInFor);
+    handleCheckIn(checkInFor, "Inspected");
     setCheckInFor(null);
   };
 
@@ -2529,8 +2559,8 @@ export default function BcpPage() {
                     <div className="flex items-center gap-8">
                       <div>
                         <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">Reservation status</div>
-                        <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[guestProfileReservation.state] || STATE_BADGE_CLS.Processed}`}>
-                          {STATE_DISPLAY_LABEL[guestProfileReservation.state] || guestProfileReservation.state}
+                        <span className={`inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(guestProfileReservation)] || STATE_BADGE_CLS.Processed}`}>
+                          {STATE_DISPLAY_LABEL[effectiveReservationState(guestProfileReservation)] || effectiveReservationState(guestProfileReservation)}
                         </span>
                       </div>
                       <div>
@@ -2798,8 +2828,8 @@ export default function BcpPage() {
           <div className="flex items-center gap-3 min-w-0">
             <div className="w-8 h-8 rounded-full bg-[var(--text-primary)]/10 flex items-center justify-center text-[11px] font-bold shrink-0">{guestInitials(res.guest || "?")}</div>
             <div className="font-bold text-[14px] truncate">{res.guest || "(no name)"}</div>
-            <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
-              {STATE_DISPLAY_LABEL[res.state] || res.state}
+            <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(res)] || STATE_BADGE_CLS.Processed}`}>
+              {STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}
             </span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -2819,8 +2849,8 @@ export default function BcpPage() {
           {detailRow("Confirmation number", res.number || "-")}
           {res.group_name && detailRow("Group name", res.group_name)}
           {detailRow("Status", (
-            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
-              {STATE_DISPLAY_LABEL[res.state] || res.state}
+            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(res)] || STATE_BADGE_CLS.Processed}`}>
+              {STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}
             </span>
           ))}
           {detailRow("Arrival", fmtFullDateTime(res.check_in))}
@@ -3237,8 +3267,8 @@ export default function BcpPage() {
                 <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
                   <div className="p-4 flex items-center justify-between gap-4 flex-wrap border-b border-[var(--text-primary)]/10">
                     <div className="flex items-center gap-3 min-w-0 flex-wrap text-[12px]">
-                      <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed}`}>
-                        {STATE_DISPLAY_LABEL[res.state] || res.state}
+                      <span className={`shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(res)] || STATE_BADGE_CLS.Processed}`}>
+                        {STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}
                       </span>
                       <span className="font-bold text-[13px]">{res.guest || "(no name)"}</span>
                       <span className="text-[var(--text-primary)]/60">{effectiveRoomNumber(res.room)}</span>
@@ -3861,15 +3891,15 @@ export default function BcpPage() {
 
                   {/* Reservation bars */}
                   {bars.map(({ res, roomIdx, colStart, colSpan }, i) => {
-                    const started = res.state === "Started";
-                    const cls = STATE_BADGE_CLS[res.state] || STATE_BADGE_CLS.Processed;
+                    const started = effectiveReservationState(res) === "Started";
+                    const cls = STATE_BADGE_CLS[effectiveReservationState(res)] || STATE_BADGE_CLS.Processed;
                     return (
                       <button
                         key={res.number + i}
                         onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setGuestProfileReservation(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
-                        title={`${res.guest} — ${res.state}${res.room_locked ? " (room locked)" : ""}`}
+                        title={`${res.guest} — ${STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}${res.room_locked ? " (room locked)" : ""}`}
                       >
                         {res.room_locked && (
                           <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -5219,8 +5249,8 @@ export default function BcpPage() {
                           </div>
                           <div className="text-[11px] text-[var(--text-primary)]/50 mt-0.5">{selectedReservation.number}</div>
                         </div>
-                        <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[selectedReservation.state] || STATE_BADGE_CLS.Processed}`}>
-                          {STATE_DISPLAY_LABEL[selectedReservation.state] || selectedReservation.state}
+                        <span className={`shrink-0 inline-block px-2.5 py-1 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(selectedReservation)] || STATE_BADGE_CLS.Processed}`}>
+                          {STATE_DISPLAY_LABEL[effectiveReservationState(selectedReservation)] || effectiveReservationState(selectedReservation)}
                         </span>
                       </div>
 
