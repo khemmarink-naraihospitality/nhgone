@@ -88,6 +88,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     defaultNote: "This property has no saved billing template yet - showing the generic default. Edit the placeholder company details below and save.",
     tokenNote: "Company name/address/Tax ID are not tokens - type them directly since they're fixed per property.",
     perProperty: true,
+    previewable: true,
   },
   rr3: {
     label: "RR3",
@@ -99,6 +100,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     // no per-property selector, unlike Billing where each property has its own
     // invoice design.
     perProperty: false,
+    previewable: true,
   },
   email: {
     label: "Email",
@@ -113,17 +115,75 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
 };
 
 // Sample values so the Preview tab shows something readable instead of the
-// literal <<Token>> placeholders - real sends substitute the actual new
-// user's name/email and the configured APP_BASE_URL (see email_service.py).
-const EMAIL_PREVIEW_SAMPLE: Record<string, string> = {
-  FullName: "John Doe",
-  Email: "john.doe@example.com",
-  AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+// literal <<Token>> placeholders - real prints/sends substitute the actual
+// reservation/guest/user data. IdBoxes mirrors src/lib/rr3Template.ts's own
+// digit-box HTML since real templates insert it unescaped, not through
+// <<Token>> text substitution.
+const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>> = {
+  billing: () => ({
+    InvoiceNoF: "INV-2026-001234",
+    DateF: "03/08/2026",
+    OwnerName: "John Doe",
+    AddressLine1: "123 Sukhumvit Road, Khlong Toei",
+    AddressLine2: "", AddressLine3: "", AddressLine4: "", AddressLine5: "",
+    PostCode: "10110",
+    TAXID: "1-2345-67890-12-3",
+    No1: "1", Description1: "Room Charge - Deluxe Room", AmountP1: "2,500.00",
+    No2: "2", Description2: "Breakfast", AmountP2: "300.00",
+    No3: "", Description3: "", AmountP3: "",
+    No4: "", Description4: "", AmountP4: "",
+    No5: "", Description5: "", AmountP5: "",
+    BahtTextE: "สองพันแปดร้อยบาทถ้วน",
+    SubTotal: "2,616.82",
+    VATC: "7%",
+    VAT: "183.18",
+    PTC: "1%",
+    PT: "26.17",
+    NetAmount: "2,800.00",
+    CH: "☑", CD: "☐", BT: "☐", CK: "☐",
+    BankTransferDateF: "", BankTransferRef: "",
+    BankName: "", Branch: "", CNo: "", CDateF: "",
+  }),
+  rr3: () => ({
+    HotelName: "ลับ ดี กรุงเทพ ไชน่าทาวน์",
+    FirstName: "John",
+    LastName: "Doe",
+    IdBoxes: "1234567890123".split("").map((d) => `<span class="s4">${d}</span>`).join(""),
+    IdentityCardNumber: "1234567890123",
+    AlienBook: "",
+    PassportNumber: "AA1234567",
+    Occupation: "นักธุรกิจ",
+    NationalityName: "อังกฤษ",
+    NationalityCode: "GB",
+    AddressDetails: "123 Sukhumvit Road, Bangkok",
+    Telephone: "081-234-5678",
+    Email: "john.doe@example.com",
+    Departure: "",
+    Destination: "",
+    CheckIn: "03/08/2026", CheckInTime: "14:00",
+    CheckOut: "05/08/2026", CheckOutTime: "12:00",
+    RoomNumber: "306",
+    GuestSign: "John Doe",
+    ReservationsNumber: "10234567",
+    // Not in RR3_TOKENS above (that list documents the guest-data tokens an
+    // admin would want to reference) but the real template also uses these
+    // checkbox tokens, filled in by the print page's own regCard state, not
+    // by a simple <<Token>> lookup - included here purely so Preview doesn't
+    // show leftover literal placeholders for them.
+    DepartureCurrentChk: "X", DepartureOtherChk: "", DepartureDetail: "",
+    DestinationCurrentChk: "X", DestinationOtherChk: "", DestinationDetail: "",
+    MarketingConsentChk: "X",
+  }),
+  email: () => ({
+    FullName: "John Doe",
+    Email: "john.doe@example.com",
+    AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+  }),
 };
 
-function renderEmailPreviewHtml(template: string): string {
+function renderPreviewHtml(template: string, sample: Record<string, string>): string {
   let result = template;
-  for (const [key, value] of Object.entries(EMAIL_PREVIEW_SAMPLE)) {
+  for (const [key, value] of Object.entries(sample)) {
     result = result.split(`<<${key}>>`).join(value);
   }
   return result;
@@ -291,8 +351,8 @@ export default function TemplatesPage() {
 
               {config.previewable && viewMode === "preview" ? (
                 <iframe
-                  title="Email preview"
-                  srcDoc={renderEmailPreviewHtml(html)}
+                  title={`${config.label} preview`}
+                  srcDoc={renderPreviewHtml(html, PREVIEW_SAMPLE_BUILDERS[templateType]())}
                   className="w-full h-[520px] bg-white border border-slate-200 rounded-xl"
                 />
               ) : (
