@@ -3872,6 +3872,7 @@ export default function BcpPage() {
               </div>
             )}
 
+            {mainTab === "timeline" && (
             <CollapsibleSection
               label={`Reservations (${frontDeskRows.length})`}
               open={reservationsOpen}
@@ -3982,6 +3983,7 @@ export default function BcpPage() {
                 </table>
               </div>
             </CollapsibleSection>
+            )}
 
             {mainTab === "rooms" && (
               <>
