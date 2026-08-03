@@ -669,6 +669,7 @@ export default function BcpPage() {
   const [editGuestFor, setEditGuestFor] = useState<{ guestKey: string; isNew: boolean } | null>(null);
   const [editGuestForm, setEditGuestForm] = useState<GuestIdentity | null>(null);
   const [savingGuestEdit, setSavingGuestEdit] = useState(false);
+  const [guestEditError, setGuestEditError] = useState<string | null>(null);
   const [removeGuestFor, setRemoveGuestFor] = useState<{ guestKey: string; guest: GuestIdentity } | null>(null);
 
   // Reservations tab (front-desk action list) - Check In/Out and Chg Room
@@ -1819,6 +1820,7 @@ export default function BcpPage() {
   const handleOpenEditGuest = (guestKey: string, guest: GuestIdentity) => {
     setEditGuestFor({ guestKey, isNew: false });
     setEditGuestForm({ ...guest });
+    setGuestEditError(null);
   };
 
   const handleAddGuest = () => {
@@ -1826,11 +1828,13 @@ export default function BcpPage() {
     const blank: GuestIdentity = { name: "", nationality: "", email: "", phone: "" };
     setEditGuestFor({ guestKey, isNew: true });
     setEditGuestForm(blank);
+    setGuestEditError(null);
   };
 
   const handleSaveGuestEdit = async () => {
     if (!editGuestFor || !editGuestForm || !selectedReservation || !snapshot?.property) return;
     setSavingGuestEdit(true);
+    setGuestEditError(null);
     try {
       const res = await fetch("/api/bcp/guest-overrides", {
         method: "POST",
@@ -1858,9 +1862,14 @@ export default function BcpPage() {
         });
         setEditGuestFor(null);
         setEditGuestForm(null);
+      } else {
+        // Previously silent (empty catch, no status check) - a failed save
+        // just left the modal sitting there with no sign anything went
+        // wrong, indistinguishable from Save not working at all.
+        setGuestEditError(result.detail || result.message || "Could not save this guest. Please try again.");
       }
     } catch {
-      /* modal stays open so the front desk can retry */
+      setGuestEditError("Could not reach the server. Check your connection and try again.");
     } finally {
       setSavingGuestEdit(false);
     }
@@ -4445,36 +4454,41 @@ export default function BcpPage() {
             existing one; both save to the same bcp_guest_overrides upsert
             (see handleSaveGuestEdit), local-only like everything else here. */}
         {editGuestFor && editGuestForm && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); }}>
+          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }}>
             <div
               className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="font-display text-xl mb-4">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
+              <div className="font-display text-xl mb-1">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
+              <div className="text-[11px] text-[var(--text-primary)]/50 mb-4">
+                <span className="text-red-600 font-bold">*</span> Required
+              </div>
               <div className="grid grid-cols-3 gap-3">
                 {(
                   [
-                    ["name", "Full name"],
-                    ["title", "Title"],
-                    ["first_name", "First name"],
-                    ["last_name", "Last name"],
-                    ["second_last_name", "Second last name"],
-                    ["nationality_name", "Nationality"],
-                    ["language", "Language"],
-                    ["phone", "Telephone"],
-                    ["sex", "Sex"],
-                    ["birth_date", "Date of birth (YYYY-MM-DD)"],
-                    ["birth_country_name", "Country of birth"],
-                    ["birth_place", "Place of birth"],
-                    ["occupation", "Occupation"],
-                    ["passport_number", "Passport"],
-                    ["identity_card_number", "ID Card"],
-                    ["alien_book", "Alien Book"],
-                    ["email", "Email"],
-                  ] as [keyof GuestIdentity, string][]
-                ).map(([field, label]) => (
+                    ["name", "Full name", true],
+                    ["title", "Title", false],
+                    ["first_name", "First name", false],
+                    ["last_name", "Last name", false],
+                    ["second_last_name", "Second last name", false],
+                    ["nationality_name", "Nationality", false],
+                    ["language", "Language", false],
+                    ["phone", "Telephone", false],
+                    ["sex", "Sex", false],
+                    ["birth_date", "Date of birth (YYYY-MM-DD)", false],
+                    ["birth_country_name", "Country of birth", false],
+                    ["birth_place", "Place of birth", false],
+                    ["occupation", "Occupation", false],
+                    ["passport_number", "Passport", false],
+                    ["identity_card_number", "ID Card", false],
+                    ["alien_book", "Alien Book", false],
+                    ["email", "Email", false],
+                  ] as [keyof GuestIdentity, string, boolean][]
+                ).map(([field, label, required]) => (
                   <div key={field}>
-                    <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">{label}</div>
+                    <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">
+                      {label}{required && <span className="text-red-600 font-bold ml-0.5">*</span>}
+                    </div>
                     <input
                       value={(editGuestForm[field] as string) || ""}
                       onChange={(e) => setEditGuestForm((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
@@ -4494,8 +4508,13 @@ export default function BcpPage() {
               <div className="text-[10px] text-[var(--text-primary)]/40 italic mt-3">
                 This only updates the guest list shown here (Guest Profile, Reg Card) - it does not change anything in MEWS.
               </div>
+              {guestEditError && (
+                <div className="mt-3 px-3 py-2 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] font-bold">
+                  {guestEditError}
+                </div>
+              )}
               <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => { setEditGuestFor(null); setEditGuestForm(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                <button onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
                   Cancel
                 </button>
                 <button
