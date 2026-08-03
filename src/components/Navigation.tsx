@@ -201,13 +201,20 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
             .eq("role", finalProfile.role)
             .single();
           setMenuPermissions((permRow as MenuPermissions | null) || null);
+          if (isLoginPage && pathname === "/") {
+            // Housekeeping roles only ever see the BCP link (navLinks below) -
+            // land them straight on it (which itself opens to Rooms (HK), see
+            // bcp/page.tsx) instead of a Dashboard they have no other reason
+            // to visit.
+            router.push((permRow as MenuPermissions | null)?.housekeeping ? "/bcp" : "/dashboard");
+          }
         } else {
           setMenuPermissions(null);
+          if (isLoginPage && pathname === "/") {
+            router.push("/dashboard");
+          }
         }
         setPermissionsLoaded(true);
-        if (isLoginPage && pathname === "/") {
-          router.push("/dashboard");
-        }
         setIsAuthorized(true);
       }
     };
