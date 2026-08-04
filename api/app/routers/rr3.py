@@ -29,8 +29,11 @@ table, tbody { vertical-align:top; overflow:visible; }
    row to fill an explicit table height - that distribution is
    implementation-defined and isn't guaranteed identical across print
    engines (Chrome stretches the footer row correctly; not every engine
-   does, leaving blank space at the page bottom instead). flex-grow is a
-   standardized layout algorithm that renders the same everywhere. */
+   does, leaving blank space at the page bottom instead). The footer row
+   below uses margin-top:auto to anchor itself to the bottom of the page
+   instead - it stays at its own natural/compact size (matching the
+   official form's look) while the auto margin absorbs whatever's left
+   over above it, rather than stretching the footer's own box taller. */
 .center-table { box-sizing:border-box; margin:0 auto; width:210mm; height:297mm; display:flex; flex-direction:column; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; page-break-after:always; break-after:page; overflow:visible; }
 .center-table p { margin:4pt 0; }
 .indent-1 { padding-left: 30pt; }
@@ -92,7 +95,7 @@ table, tbody { vertical-align:top; overflow:visible; }
       <p class="s1" style="margin-top:10pt;"><span class="chk"><<MarketingConsentChk>></span> I&#39;d like to occasionally receive marketing updates from <<HotelName>></p>
     </div>
   </div>
-  <div style="display:flex; flex:1 0 auto; min-height:120pt;">
+  <div style="display:flex; flex-shrink:0; margin-top:auto; min-height:120pt;">
     <div class="footer-col">
       <p class="s1 third" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p>
       <p class="s1 third" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckIn>></span></p>
