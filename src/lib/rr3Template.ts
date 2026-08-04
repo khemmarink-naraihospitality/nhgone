@@ -75,10 +75,14 @@ function fitFontSizePt(text: string, maxWidthPt: number, basePt: number, minPt: 
 }
 
 // .center-table is 210mm wide with 15mm left/right padding (see the
-// template's own <style>) - 180mm of usable width, in pt (1mm = 2.83465pt),
-// with a small safety margin since Canvas metrics only approximate the
-// actual print font.
-const PAGE_CONTENT_WIDTH_PT = 180 * 2.83465 * 0.96;
+// template's own <style>) - 180mm of usable width, in pt (1mm = 2.83465pt).
+// The safety margin here is deliberately generous (not just a rounding
+// buffer): Canvas measurement uses whatever font the browser substitutes
+// when "Angsana New"/"TH Sarabun New" aren't installed, which can render
+// visibly wider than what gets measured - confirmed in practice on a real
+// device where the Departure/Destination lines still overflowed the card's
+// border at the old 0.96 factor despite fitting fine in testing.
+const PAGE_CONTENT_WIDTH_PT = 180 * 2.83465 * 0.85;
 
 // A line like "1.2 ...(Place of Departure) <span class="val">...</span>"
 // carries a trailing fill-in blank whose CSS reserves min-width:50pt even

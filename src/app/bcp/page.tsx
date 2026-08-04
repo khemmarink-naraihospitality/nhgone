@@ -4469,8 +4469,11 @@ export default function BcpPage() {
                   // silently cropped to whatever scrolls into view, which
                   // reads as "not actually A4 shaped". zoom (not transform)
                   // shrinks the reserved layout space too, so the whole
-                  // page fits on screen with no scrolling needed.
-                  style={{ zoom: "min(1, calc((100vh - 160px) / 1122.52px))" }}
+                  // page fits on screen with no scrolling needed. Floored
+                  // at 85% (was uncapped) - shrinking further to fit very
+                  // short viewports made fine print/borders unreadably
+                  // small; a little scrolling is a better tradeoff than that.
+                  style={{ zoom: "max(0.85, min(1, calc((100vh - 160px) / 1122.52px)))" }}
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
                       ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
