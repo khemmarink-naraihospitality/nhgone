@@ -92,23 +92,23 @@ table, tbody { vertical-align:top; overflow:visible; }
   </div>
   <div style="display:flex; flex:1 0 auto; min-height:120pt;">
     <div style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt; box-sizing:border-box;">
-      <p class="s1" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p>
-      <p class="s1" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckIn>></span></p>
+      <p class="s1 third" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p>
+      <p class="s1 third" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckIn>></span></p>
       <div style="margin-top: 15pt; padding-left: 10pt;">
-        <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckInTime>></span></p>
+        <p class="s1 third" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckInTime>></span></p>
       </div>
     </div>
     <div style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt; box-sizing:border-box;">
-      <p class="s1" style="text-align:center;">วัน เดือน ปี ที่ออกไป (Expected Departure)</p>
-      <p class="s1" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckOut>></span></p>
+      <p class="s1 third" style="text-align:center;">วัน เดือน ปี ที่ออกไป (Expected Departure)</p>
+      <p class="s1 third" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckOut>></span></p>
       <div style="margin-top: 15pt; padding-left: 10pt;">
-        <p class="s1" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckOutTime>></span></p>
+        <p class="s1 third" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckOutTime>></span></p>
       </div>
     </div>
     <div style="width:33.33%; border-top:1pt solid black; padding: 10pt; box-sizing:border-box;">
-      <p class="s1" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
-      <p class="s1" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
-      <p class="s1" style="margin-top:26pt;"><span class="val" style="display:block; width:100%;"><<GuestSign>></span></p>
+      <p class="s1 third" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
+      <p class="s1 third" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
+      <p class="s1 third" style="margin-top:26pt;"><span class="val" style="display:block; width:100%;"><<GuestSign>></span></p>
     </div>
   </div>
 </div>"""

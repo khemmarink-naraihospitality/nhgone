@@ -111,8 +111,20 @@ const PARAGRAPH_RE = /<p((?:\s+[^>]*)?)>([\s\S]*?)<\/p>/g;
 // regardless of how long the first name is) only has half the page's usable
 // width to render in - it must fit against that narrower budget, not the
 // full-page one every other s1/s2 line uses.
+//
+// class="third" (the footer's date/room/signature columns, ~1/3 of the
+// page) is excluded entirely rather than given its own narrower budget -
+// those columns have always relied on their short, mostly-static labels
+// wrapping onto their own line or two, and folding them into this
+// function's *uniform* shrink-to-one-line sizing would either drag the
+// whole form down to match whichever footer line needs the most shrinking
+// (a label that only has ~1/3 the width can need a much smaller font than
+// anything else on the page), or - if it were given its own separate
+// minimum - still be the wrong fix, since these labels were never meant to
+// be forced onto one line in the first place.
 function eligibleParagraphFontSize(attrs: string): { tier: "s1" | "s2"; basePt: number; maxWidthPt: number } | null {
   if (/font-size\s*:/.test(attrs)) return null;
+  if (/class="[^"]*\bthird\b[^"]*"/.test(attrs)) return null;
   const maxWidthPt = /class="[^"]*\bhalf\b[^"]*"/.test(attrs) ? PAGE_CONTENT_WIDTH_PT / 2 : PAGE_CONTENT_WIDTH_PT;
   if (/class="[^"]*\bs2\b[^"]*"/.test(attrs)) return { tier: "s2", basePt: 15, maxWidthPt };
   if (/class="[^"]*\bs1\b[^"]*"/.test(attrs)) return { tier: "s1", basePt: 14, maxWidthPt };
