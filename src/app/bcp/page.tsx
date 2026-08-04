@@ -3954,9 +3954,8 @@ export default function BcpPage() {
                     <div
                       key={"parentcol" + room.room + i}
                       ref={room.is_child ? undefined : (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); }}
-                      onClick={room.is_child ? undefined : () => setSelectedRoom(room)}
                       title={!room.is_child ? (room.category ? `Room ${effectiveRoomNumber(room.room)}\n${room.category}` : `Room ${effectiveRoomNumber(room.room)}`) : undefined}
-                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${!room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      className={`sticky left-[28px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] font-bold text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 2, gridRow: i + 2 }}
                     >
                       {!room.is_child && (
@@ -3971,9 +3970,8 @@ export default function BcpPage() {
                     <div
                       key={"childcol" + room.room + i}
                       ref={room.is_child ? (el) => { if (el) roomRowRefs.current.set(room.room, el); else roomRowRefs.current.delete(room.room); } : undefined}
-                      onClick={room.is_child ? () => setSelectedRoom(room) : undefined}
                       title={room.is_child ? (room.category ? `Room ${effectiveRoomNumber(room.room)}\n${room.category}` : `Room ${effectiveRoomNumber(room.room)}`) : undefined}
-                      className={`sticky left-[98px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${room.is_child ? "cursor-pointer hover:bg-[var(--text-primary)]/5" : ""} ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
+                      className={`sticky left-[98px] z-10 border-b border-r border-[var(--text-primary)]/10 p-2 text-[12px] text-[var(--text-primary)] flex items-center gap-2 whitespace-nowrap transition-colors ${highlightedRoom === room.room ? "bg-amber-200" : "bg-[var(--paper)]"}`}
                       style={{ gridColumn: 3, gridRow: i + 2 }}
                     >
                       {room.is_child && (
