@@ -137,6 +137,12 @@ h1, h2, h3, .h-display {
 }
 
 @media print {
+  /* Page bodies deep inside the app (e.g. bcp/page.tsx's own root wrapper)
+     paint their own bg-[var(--bg-primary)]/bg-[var(--paper)] rather than
+     relying on <body>'s background, so resetting body alone leaves their
+     cream/dark theme color showing around print-only content. Overriding
+     the variables themselves reaches every such element in one place. */
+  :root { --bg-primary: #fff !important; --paper: #fff !important; }
   body { background: #fff !important; }
   aside { display: none !important; }
   /* main is the shell's outer flex column, but the element that actually
