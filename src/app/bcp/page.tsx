@@ -500,6 +500,16 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
 // a typed reason (see roomStatusReasonFor below) before they're applied.
 const ROOM_STATUS_OPTIONS = ["Inspected", "Clean", "Dirty", "OutOfService", "OutOfOrder"] as const;
 const ROOM_STATUS_REQUIRES_REASON = new Set(["OutOfService", "OutOfOrder"]);
+// Display-only labels for the values above (kept as unspaced values
+// everywhere else - stored state, overrides, badge/dot class lookups - so
+// only what's actually shown to the user needs this mapping).
+const ROOM_STATUS_LABELS: Record<string, string> = {
+  Inspected: "Inspected",
+  Clean: "Clean",
+  Dirty: "Dirty",
+  OutOfService: "Out Of Service",
+  OutOfOrder: "Out Of Order",
+};
 const ROOM_STATUS_CARD_CLS: Record<string, string> = {
   Clean: "bg-sky-50 border-sky-200",
   Inspected: "bg-emerald-50 border-emerald-200",
@@ -2325,7 +2335,7 @@ export default function BcpPage() {
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="font-display text-xl mb-1">Reason Required</div>
         <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
-          Room {effectiveRoomNumber(roomStatusReasonFor.room)} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out of Order" : "Out of Service"}
+          Room {effectiveRoomNumber(roomStatusReasonFor.room)} — marking as {roomStatusReasonFor.newStatus === "OutOfOrder" ? "Out Of Order" : "Out Of Service"}
         </div>
         <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Reason</label>
         <textarea
@@ -2806,7 +2816,7 @@ export default function BcpPage() {
                 <h2 className="font-display text-2xl text-[var(--text-primary)]">Properties</h2>
                 <div className="flex gap-2">
                   <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-bold ${disabledBtnCls}`}>Clean</button>
-                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/60 text-[13px] font-bold ${disabledBtnCls}`}>Out of service</button>
+                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg border border-[var(--text-primary)]/20 text-[var(--text-primary)]/60 text-[13px] font-bold ${disabledBtnCls}`}>Out Of Service</button>
                 </div>
               </div>
               <div className="border border-[var(--text-primary)]/14 rounded-xl p-5 flex flex-col gap-4">
@@ -2834,7 +2844,7 @@ export default function BcpPage() {
                     className="w-full px-3 py-2.5 rounded-lg bg-[var(--text-primary)]/5 text-[var(--text-primary)] text-[13px] cursor-pointer focus:outline-none"
                   >
                     {ROOM_STATUS_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt}>{opt}</option>
+                      <option key={opt} value={opt}>{ROOM_STATUS_LABELS[opt] || opt}</option>
                     ))}
                   </select>
                 </div>
@@ -2869,8 +2879,8 @@ export default function BcpPage() {
             <div className="flex flex-col gap-8">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="font-display text-2xl text-[var(--text-primary)]">Out of order</h2>
-                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg bg-indigo-500 text-white text-[13px] font-bold ${disabledBtnCls}`}>Out of order</button>
+                  <h2 className="font-display text-2xl text-[var(--text-primary)]">Out Of Order</h2>
+                  <button disabled title="No live connection to MEWS to manage this room from here" className={`px-4 py-2 rounded-lg bg-indigo-500 text-white text-[13px] font-bold ${disabledBtnCls}`}>Out Of Order</button>
                 </div>
               </div>
               <div>
@@ -4162,7 +4172,7 @@ export default function BcpPage() {
                 {displayedHousekeepingRows.map((rm, i) => {
                   const effectiveState = effectiveRoomState(rm);
                   const occupancy = effectiveState === "OutOfOrder" || effectiveState === "OutOfService"
-                    ? "Out of Order"
+                    ? "Out Of Order"
                     : rm.occupant ? "Occupied" : "Vacant";
                   const lastRoomLog = actions.find((a) => a.action === "Room Status" && a.room === rm.room && !a.checked);
                   return (
@@ -4191,7 +4201,7 @@ export default function BcpPage() {
                         className="mt-2 w-full bg-white border border-black/10 px-3 sm:px-2 py-3 sm:py-1.5 text-[15px] sm:text-[12px] font-bold text-[var(--text-primary)] cursor-pointer focus:outline-none"
                       >
                         {ROOM_STATUS_OPTIONS.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
+                          <option key={opt} value={opt}>{ROOM_STATUS_LABELS[opt] || opt}</option>
                         ))}
                       </select>
                       {roomStatusReasons[rm.room] && (
