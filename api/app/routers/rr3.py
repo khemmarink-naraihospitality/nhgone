@@ -22,7 +22,7 @@ DEFAULT_RR3_TEMPLATE = """<style>
 .s4 { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:13pt; line-height:1; display:inline-block; width:14pt; height:15pt; text-align:center; border:1pt solid black; margin:0 1pt; vertical-align:middle; }
 .dash { color:black; font-family:"Angsana New","TH Sarabun New",serif; font-size:14pt; margin:0 1.5pt; vertical-align:middle; }
 .chk { display:inline-flex; align-items:center; justify-content:center; width:10pt; height:12pt; vertical-align:-1pt; margin-right:4pt; font-size:10pt; font-family:Arial,sans-serif; font-weight:bold; line-height:1; }
-.val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; line-height:1.3; display:inline-block; min-width:50pt; min-height:14pt; border-bottom:1pt solid black; text-align:center; }
+.val { font-weight:bold; padding:0 4pt; font-family:"Angsana New","TH Sarabun New",serif; line-height:1.3; display:inline-block; min-width:50pt; min-height:14pt; border-bottom:2pt solid black; text-align:center; }
 .val:empty { padding:0; }
 table, tbody { vertical-align:top; overflow:visible; }
 /* Flexbox instead of a <table> relying on the browser to stretch its last
@@ -31,17 +31,29 @@ table, tbody { vertical-align:top; overflow:visible; }
    engines (Chrome stretches the footer row correctly; not every engine
    does, leaving blank space at the page bottom instead). flex-grow is a
    standardized layout algorithm that renders the same everywhere. */
-.center-table { box-sizing:border-box; margin:0 auto; width:210mm; height:297mm; display:flex; flex-direction:column; box-shadow:0 4px 24px rgba(0,0,0,.30); border:1pt solid black; background:#fff; page-break-after:always; break-after:page; overflow:visible; }
+.center-table { box-sizing:border-box; margin:0 auto; width:210mm; height:297mm; display:flex; flex-direction:column; box-shadow:0 4px 24px rgba(0,0,0,.30); border:2pt solid black; background:#fff; page-break-after:always; break-after:page; overflow:visible; }
 .center-table p { margin:4pt 0; }
 .indent-1 { padding-left: 30pt; }
 .indent-2 { padding-left: 45pt; }
 .indent-3 { padding-left: 60pt; }
 .indent-4 { padding-left: 80pt; }
+/* The on-screen preview scales the whole card down via CSS zoom to fit the
+   viewport (see bcp/page.tsx) - at a fractional zoom factor, a 1pt (~1.3px)
+   border rounds down to a sub-pixel width and can render as invisible,
+   even though it's crisp at true size when actually printed (print doesn't
+   go through that zoom). 2pt survives the scaling; @media print below
+   brings every border back to the official form's real 1pt for the actual
+   printed page. */
+.footer-col { width:33.33%; box-sizing:border-box; padding:10pt; border-top:2pt solid black; }
+.footer-col:not(:last-child) { border-right:2pt solid black; }
 @page { size:A4 portrait; margin:0mm; }
 @media print {
   html, body { width:210mm; height:297mm; margin:0; padding:0; background:none; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
   .center-table { box-shadow:none; border:1pt solid black; margin:0; }
   .center-table:last-of-type { page-break-after:auto; break-after:auto; }
+  .val { border-bottom:1pt solid black; }
+  .footer-col { border-top:1pt solid black; }
+  .footer-col:not(:last-child) { border-right:1pt solid black; }
 }
 </style>
 <div class="center-table">
@@ -91,21 +103,21 @@ table, tbody { vertical-align:top; overflow:visible; }
     </div>
   </div>
   <div style="display:flex; flex:1 0 auto; min-height:120pt;">
-    <div style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt; box-sizing:border-box;">
+    <div class="footer-col">
       <p class="s1 third" style="text-align:center;">วัน เดือน ปี ที่เข้าพัก (Date of Arrival)</p>
       <p class="s1 third" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckIn>></span></p>
       <div style="margin-top: 15pt; padding-left: 10pt;">
         <p class="s1 third" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckInTime>></span></p>
       </div>
     </div>
-    <div style="width:33.33%; border-top:1pt solid black; border-right:1pt solid black; padding: 10pt; box-sizing:border-box;">
+    <div class="footer-col">
       <p class="s1 third" style="text-align:center;">วัน เดือน ปี ที่ออกไป (Expected Departure)</p>
       <p class="s1 third" style="margin-top: 10pt;"><span class="val" style="display:block; width:100%;"><<CheckOut>></span></p>
       <div style="margin-top: 15pt; padding-left: 10pt;">
         <p class="s1 third" style="display:table; width:100%;"><span style="display:table-cell; white-space:nowrap; padding-right:4pt;">เวลา (Time)</span><span class="val" style="display:table-cell; width:100%;"><<CheckOutTime>></span></p>
       </div>
     </div>
-    <div style="width:33.33%; border-top:1pt solid black; padding: 10pt; box-sizing:border-box;">
+    <div class="footer-col">
       <p class="s1 third" style="padding-left:10pt;">ห้องพักเลขที่ (Room No.)&nbsp;&nbsp;&nbsp;&nbsp;<span class="val"><<RoomNumber>></span></p>
       <p class="s1 third" style="text-align:center; margin-top: 20pt;">ลายมือชื่อผู้พัก (Guest Signature)</p>
       <p class="s1 third" style="margin-top:26pt;"><span class="val" style="display:block; width:100%;"><<GuestSign>></span></p>
