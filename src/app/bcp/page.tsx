@@ -513,6 +513,40 @@ export default function BcpPage() {
 
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
+  // Same green/amber/red BCP Auto Capture health check as the Dashboard
+  // (GET /bcp/last-capture), scoped to just the property being viewed here
+  // rather than every allowed property - front desk staff on this page
+  // specifically want to know "is auto capture working for THIS hotel".
+  const [bcpLastCapture, setBcpLastCapture] = useState<string | null>(null);
+  const [bcpCaptureChecked, setBcpCaptureChecked] = useState(false);
+  useEffect(() => {
+    if (!selectedProperty) return;
+    setBcpCaptureChecked(false);
+    const fetchBcpHealth = async () => {
+      try {
+        const response = await fetch(`/api/bcp/last-capture?properties=${encodeURIComponent(selectedProperty)}`);
+        const result = await response.json();
+        setBcpLastCapture(result.status === "success" ? result.captured_at : null);
+      } catch (err) {
+        console.warn("Could not fetch BCP capture health:", err instanceof Error ? err.message : err);
+      } finally {
+        setBcpCaptureChecked(true);
+      }
+    };
+    fetchBcpHealth();
+  }, [selectedProperty]);
+  const bcpMinutesSinceCapture = bcpLastCapture ? (Date.now() - new Date(bcpLastCapture).getTime()) / 60_000 : null;
+  const bcpHealthLevel: "green" | "amber" | "red" =
+    bcpMinutesSinceCapture === null ? "red" : bcpMinutesSinceCapture <= 10 ? "green" : bcpMinutesSinceCapture <= 30 ? "amber" : "red";
+  const bcpHealthLabel = !bcpCaptureChecked
+    ? "Checking…"
+    : bcpMinutesSinceCapture === null
+    ? "No snapshot yet"
+    : bcpHealthLevel === "green"
+    ? `Running (${Math.round(bcpMinutesSinceCapture)} min ago)`
+    : bcpHealthLevel === "amber"
+    ? `Delayed (${Math.round(bcpMinutesSinceCapture)} min ago)`
+    : `Not running (${Math.round(bcpMinutesSinceCapture)} min ago)`;
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [snapshot, setSnapshot] = useState<BcpSnapshot | null>(null);
@@ -3479,7 +3513,19 @@ export default function BcpPage() {
               </button>
             </span>
           }
-        />
+        >
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-[var(--text-primary)]/14 bg-[var(--paper)]"
+            title="BCP Auto Capture runs every 5 minutes - this shows whether the last one for this property landed on time"
+          >
+            <div className={`w-2 h-2 rounded-full shrink-0 ${
+              bcpHealthLevel === "green" ? "bg-emerald-600" : bcpHealthLevel === "amber" ? "bg-amber-500" : "bg-red-600"
+            }`} />
+            <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/70 whitespace-nowrap">
+              Auto Capture: {bcpHealthLabel}
+            </span>
+          </div>
+        </PageHeader>
 
         <CollapsibleSection
           open={headerOpen}
