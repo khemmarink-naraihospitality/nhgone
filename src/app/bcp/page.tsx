@@ -2250,7 +2250,7 @@ export default function BcpPage() {
   // bypasses entirely) so choosing OutOfService/OutOfOrder from the Status
   // dropdown on this page can open the same required-reason modal.
   const roomStatusReasonModal = roomStatusReasonFor && (
-    <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRoomStatusReasonFor(null)}>
+    <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setRoomStatusReasonFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="font-display text-xl mb-1">Reason Required</div>
         <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">
@@ -2285,7 +2285,7 @@ export default function BcpPage() {
   // disabled until "Make inspected" is ticked, which both flips the room to
   // Inspected and completes the check-in on confirm (see handleConfirmCheckIn).
   const checkInDirtyModal = checkInFor && (
-    <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
+    <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
         <div className="font-display text-xl mb-4">Check in</div>
         <div className="text-[13px] mb-3">Please inspect room before check in</div>
@@ -3434,7 +3434,7 @@ export default function BcpPage() {
             group.total += line.amount;
           });
           return (
-            <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowProcessPaymentModal(false)}>
+            <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowProcessPaymentModal(false)}>
               <div
                 className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-lg w-full max-h-[85vh] overflow-y-auto shadow-2xl p-6"
                 onClick={(e) => e.stopPropagation()}
@@ -4468,7 +4468,7 @@ export default function BcpPage() {
         )}
 
         {chgRoomFor && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setChgRoomFor(null)}>
+          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setChgRoomFor(null)}>
             <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
               <div className="font-display text-xl mb-1">Change Room</div>
               <div className="text-[12px] text-[var(--text-primary)]/60 mb-4">{chgRoomFor.guest} — currently in {effectiveRoomNumber(chgRoomFor.room)}</div>
@@ -4500,7 +4500,7 @@ export default function BcpPage() {
             existing one; both save to the same bcp_guest_overrides upsert
             (see handleSaveGuestEdit), local-only like everything else here. */}
         {editGuestFor && editGuestForm && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }}>
+          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }}>
             <div
               className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6"
               onClick={(e) => e.stopPropagation()}
@@ -4576,7 +4576,7 @@ export default function BcpPage() {
         )}
 
         {removeGuestFor && (
-          <div className="no-print fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setRemoveGuestFor(null)}>
+          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setRemoveGuestFor(null)}>
             <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
               <div className="font-display text-xl mb-1">Remove Guest</div>
               <div className="text-[13px] text-[var(--text-primary)]/70 mb-4">
