@@ -610,12 +610,6 @@ export default function BcpPage() {
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mainTab, setMainTab] = useState<MainTab>("timeline");
-  // Housekeeping roles (Admin > Users > Role Settings, "House Keeping"
-  // checkbox) only ever see the BCP link in the sidebar (see Navigation.tsx)
-  // and, once inside, only the Rooms (HK) tab - Timeline/Action Logs are
-  // hidden below and mainTab is forced there the moment this resolves true,
-  // since housekeeping staff have no use for the rest of BCP.
-  const [isHousekeepingRole, setIsHousekeepingRole] = useState(false);
   // Capture Now forces an out-of-cycle snapshot (the automatic one already
   // runs every 5 minutes) - gated to Super Admin only so front-desk/finance
   // roles aren't tempted to spam it.
@@ -626,15 +620,8 @@ export default function BcpPage() {
       if (!user) return;
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       const role = profile?.role;
-      if (!role) return;
       if (role === "Super Admin" || role === "super_admin") {
         setIsSuperAdminRole(true);
-        return;
-      }
-      const { data: permRow } = await supabase.from("role_permissions").select("housekeeping").eq("role", role).single();
-      if (permRow?.housekeeping) {
-        setIsHousekeepingRole(true);
-        setMainTab("rooms");
       }
     })();
   }, []);
@@ -3849,7 +3836,6 @@ export default function BcpPage() {
                     ["logs", `Action Logs${unresolvedActionsCount ? ` (${unresolvedActionsCount})` : ""}`],
                   ] as [MainTab, string][]
                 )
-                  .filter(([t]) => !isHousekeepingRole || t === "rooms")
                   .map(([t, label]) => (
                   <button
                     key={t}

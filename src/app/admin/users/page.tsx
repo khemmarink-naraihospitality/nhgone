@@ -24,12 +24,6 @@ interface RolePermissionRow {
   st_files: boolean;
   bcp: boolean;
   admin: boolean;
-  // Marks this role as Housekeeping - overrides every other menu checkbox
-  // in Navigation.tsx (the sidebar shows only BCP, nothing else) and tells
-  // the BCP page itself to open straight to Rooms (HK) with the Timeline/
-  // Action Logs tabs hidden, since that's the only thing housekeeping staff
-  // need from BCP.
-  housekeeping: boolean;
   restricted_properties: string[] | null;
 }
 
@@ -40,7 +34,6 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "rr3", label: "RR3" },
   { key: "st_files", label: "ST Files" },
   { key: "bcp", label: "BCP" },
-  { key: "housekeeping", label: "House Keeping" },
   { key: "admin", label: "Admin" },
 ];
 
@@ -119,7 +112,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, housekeeping: false, admin: false, restricted_properties: null,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, admin: false, restricted_properties: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {
