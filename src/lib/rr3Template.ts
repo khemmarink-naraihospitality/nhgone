@@ -80,6 +80,19 @@ function fitFontSizePt(text: string, maxWidthPt: number, basePt: number, minPt: 
 // actual print font.
 const PAGE_CONTENT_WIDTH_PT = 180 * 2.83465 * 0.96;
 
+// A line like "1.2 ...(Place of Departure) <span class="val">...</span>"
+// carries a trailing fill-in blank whose CSS reserves min-width:50pt even
+// when the token substituted into it is empty - stripTagsToText discards
+// that span down to (at most) a few characters of guest data, so the
+// measured text width never accounts for the blank's own reserved space.
+// Subtracting it from the budget up front (rather than trying to measure
+// the span itself) keeps the fit conservative regardless of what ends up
+// in the blank.
+const VAL_RESERVED_WIDTH_PT = 50;
+function hasTrailingVal(inner: string): boolean {
+  return /class="[^"]*\bval\b[^"]*"/.test(inner);
+}
+
 function stripTagsToText(html: string): string {
   return html
     .replace(/<[^>]+>/g, "")
@@ -142,7 +155,8 @@ function fitParagraphsToOneLine(html: string): string {
     if (!eligible) continue;
     const text = stripTagsToText(inner);
     if (!text) continue;
-    const fitted = fitFontSizePt(text, eligible.maxWidthPt, eligible.basePt, 9);
+    const maxWidthPt = hasTrailingVal(inner) ? eligible.maxWidthPt - VAL_RESERVED_WIDTH_PT : eligible.maxWidthPt;
+    const fitted = fitFontSizePt(text, maxWidthPt, eligible.basePt, 9);
     if (eligible.tier === "s2") minS2 = Math.min(minS2, fitted);
     else minS1 = Math.min(minS1, fitted);
   }
