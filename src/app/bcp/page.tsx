@@ -595,13 +595,9 @@ export default function BcpPage() {
     bcpMinutesSinceCapture === null ? "red" : bcpMinutesSinceCapture <= 10 ? "green" : bcpMinutesSinceCapture <= 30 ? "amber" : "red";
   const bcpHealthLabel = !bcpCaptureChecked
     ? "Checking…"
-    : bcpMinutesSinceCapture === null
-    ? "No snapshot yet"
-    : bcpHealthLevel === "green"
-    ? `Running (${Math.round(bcpMinutesSinceCapture)} min ago)`
-    : bcpHealthLevel === "amber"
-    ? `Delayed (${Math.round(bcpMinutesSinceCapture)} min ago)`
-    : `Not running (${Math.round(bcpMinutesSinceCapture)} min ago)`;
+    : bcpHealthLevel === "red"
+    ? "MEWS Offline"
+    : "MEWS Online";
   const [snapshots, setSnapshots] = useState<SnapshotMeta[]>([]);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>("");
   const [snapshot, setSnapshot] = useState<BcpSnapshot | null>(null);
@@ -3590,7 +3586,7 @@ export default function BcpPage() {
               bcpHealthLevel === "green" ? "bg-emerald-600" : bcpHealthLevel === "amber" ? "bg-amber-500" : "bg-red-600"
             }`} />
             <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/70 whitespace-nowrap">
-              Auto Capture: {bcpHealthLabel}
+              {bcpHealthLabel}
             </span>
           </div>
         </PageHeader>
