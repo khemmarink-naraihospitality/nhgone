@@ -4409,11 +4409,6 @@ export default function BcpPage() {
                   {regCardSaveResult.ok ? "✓ " : "✕ "}{regCardSaveResult.message}
                 </span>
               )}
-              {!regCardOccupation.trim() && (
-                <span className="px-3 py-1.5 text-[11px] font-bold tracked-caps bg-black/50 rounded text-amber-300">
-                  Occupation is required before saving or printing
-                </span>
-              )}
             </div>
 
             {/* pr-[380px] reserves the fixed-position side panel's own
@@ -4532,6 +4527,11 @@ export default function BcpPage() {
               <div className="mt-2 text-[10px] text-black/40 italic">
                 ID/passport, address, occupation and telephone come from MEWS&apos;s customer profile, cached at capture time - prints blank only if the guest&apos;s own MEWS profile is missing that field.
               </div>
+              {!regCardOccupation.trim() && (
+                <div className="mt-3 px-3 py-2 text-[11px] font-bold tracked-caps bg-amber-50 border border-amber-200 rounded text-amber-700">
+                  Occupation is required before saving or printing
+                </div>
+              )}
             </div>
           </div>
         )}
