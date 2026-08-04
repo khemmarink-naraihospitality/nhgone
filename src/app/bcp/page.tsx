@@ -4411,6 +4411,14 @@ export default function BcpPage() {
             <div className="flex justify-center py-10 pr-[380px]">
               {rr3Template ? (
                 <div
+                  // The card's own CSS fixes it at true A4 (210x297mm =
+                  // 793.7x1122.5px) so it prints correctly, but that's
+                  // taller than most laptop viewports - without this it's
+                  // silently cropped to whatever scrolls into view, which
+                  // reads as "not actually A4 shaped". zoom (not transform)
+                  // shrinks the reserved layout space too, so the whole
+                  // page fits on screen with no scrolling needed.
+                  style={{ zoom: "min(1, calc((100vh - 160px) / 1122.52px))" }}
                   dangerouslySetInnerHTML={{
                     __html: renderRr3Template(rr3Template, {
                       ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
