@@ -2292,19 +2292,15 @@ export default function BcpPage() {
     scrollToRoom(room);
     setTimeout(() => setHighlightedRoom((cur) => (cur === room ? null : cur)), 1500);
   };
-  // Room number first (matches the existing behavior exactly), then falls
-  // back to reservation/confirmation number, travel agency confirmation
-  // number, and guest name - same fields the Reservations list's own search
-  // already matches on (see displayedFrontDeskRows above) - landing on
-  // whichever room that reservation is in.
+  // Checked in this exact order per the placeholder/tooltip: confirmation
+  // number, travel agency confirmation number, guest name (incl.
+  // companions), then room number - same reservation fields the
+  // Reservations list's own search already matches on (see
+  // displayedFrontDeskRows above), landing on whichever room that
+  // reservation is in.
   const handleSpaceSearch = () => {
     const query = spaceSearch.trim().toLowerCase();
     if (!query || !snapshot) return;
-    const roomMatch = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query) || effectiveRoomNumber(r.room).toLowerCase().includes(query));
-    if (roomMatch) {
-      highlightAndScrollToRoom(roomMatch.room);
-      return;
-    }
     const resMatch = (snapshot.reservations || []).find(
       (r) =>
         r.number.toLowerCase().includes(query) ||
@@ -2312,7 +2308,12 @@ export default function BcpPage() {
         r.guest.toLowerCase().includes(query) ||
         (r.companions || []).some((c) => (c.name || "").toLowerCase().includes(query))
     );
-    if (resMatch?.room) highlightAndScrollToRoom(resMatch.room);
+    if (resMatch?.room) {
+      highlightAndScrollToRoom(resMatch.room);
+      return;
+    }
+    const roomMatch = snapshot.rooms.find((r) => r.room.toLowerCase().includes(query) || effectiveRoomNumber(r.room).toLowerCase().includes(query));
+    if (roomMatch) highlightAndScrollToRoom(roomMatch.room);
   };
 
 
@@ -3890,9 +3891,9 @@ export default function BcpPage() {
                   value={spaceSearch}
                   onChange={(e) => setSpaceSearch(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") handleSpaceSearch(); }}
-                  placeholder="Search room, guest, or confirmation # (press Enter)"
-                  title="Matches room number, guest name, confirmation number, or travel agency confirmation number"
-                  className="w-full sm:w-64 px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12px] border border-[var(--text-primary)]/20 bg-transparent focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
+                  placeholder="Search: Confirmation #, Travel Agency #, Guest Name, or Room Number (press Enter)"
+                  title="Matches confirmation number, travel agency confirmation number, guest name, or room number"
+                  className="w-full sm:w-[560px] px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12px] border border-[var(--text-primary)]/20 bg-transparent focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-[var(--text-primary)]/40"
                 />
                 <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start border border-[var(--text-primary)]/20 divide-x divide-[var(--text-primary)]/20">
                   <button onClick={goToWindowStart} title={`First day with data (${snapshot.window.start})`} className="flex-1 sm:flex-none px-3 py-2.5 sm:py-2 text-[14px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors">«</button>
