@@ -492,6 +492,12 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
   OutOfOrder: "bg-red-50 text-red-700 border-red-200",
 };
 
+// Reg Card preview scale factor (see the transform:scale usage below) -
+// shrinks the true-A4-sized card to fit the viewport height, floored at 85%
+// so fine print/thin borders don't get shrunk past legibility on short
+// screens (a little scrolling there is a better tradeoff than that).
+const REG_CARD_SCALE_EXPR = "max(0.85, min(1, calc((100vh - 160px) / 1122.52px)))";
+
 // Manually adjustable HK status options for the Rooms (HK) card grid.
 // Overriding one here persists to our own database (see
 // bcp_room_status_overrides / roomStatusOverrides below) but is NEVER sent
@@ -4462,34 +4468,38 @@ export default function BcpPage() {
                 panel instead of actually avoiding it. */}
             <div className="flex justify-center py-10 pr-[380px]">
               {rr3Template ? (
-                <div
-                  // The card's own CSS fixes it at true A4 (210x297mm =
-                  // 793.7x1122.5px) so it prints correctly, but that's
-                  // taller than most laptop viewports - without this it's
-                  // silently cropped to whatever scrolls into view, which
-                  // reads as "not actually A4 shaped". zoom (not transform)
-                  // shrinks the reserved layout space too, so the whole
-                  // page fits on screen with no scrolling needed. Floored
-                  // at 85% (was uncapped) - shrinking further to fit very
-                  // short viewports made fine print/borders unreadably
-                  // small; a little scrolling is a better tradeoff than that.
-                  style={{ zoom: "max(0.85, min(1, calc((100vh - 160px) / 1122.52px)))" }}
-                  dangerouslySetInnerHTML={{
-                    __html: renderRr3Template(rr3Template, {
-                      ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
-                      Occupation: regCardOccupation,
-                      Email: regCardEmail,
-                      MarketingConsentChk: regCardMarketingConsent ? "✓" : "",
-                      DepartureCurrentChk: regCardDepartureOption === "current" ? "✓" : "",
-                      DepartureOtherChk: regCardDepartureOption === "other" ? "✓" : "",
-                      DepartureDetail: regCardDepartureDetail,
-                      DestinationCurrentChk: regCardDestinationOption === "current" ? "✓" : "",
-                      DestinationOtherChk: regCardDestinationOption === "other" ? "✓" : "",
-                      DestinationDetail: regCardDestinationDetail,
-                      GuestSignatureDataUrl: guestSignature || undefined,
-                    }),
-                  }}
-                />
+                // The card's own CSS fixes it at true A4 (210x297mm =
+                // 793.7x1122.5px) so it prints correctly, but that's taller
+                // than most laptop viewports - without shrinking it, it's
+                // silently cropped to whatever scrolls into view, which
+                // reads as "not actually A4 shaped". transform:scale (not
+                // the zoom property, which was tried first here) shrinks it
+                // visually without recomputing layout at a fractional pixel
+                // ratio - zoom rounds a 1pt border down to sub-pixel width
+                // at fractional scale and can render it as invisible, which
+                // transform doesn't do. The outer div reserves the already-
+                // scaled space (matching REG_CARD_SCALE_EXPR) so there's no
+                // leftover blank gap where the unscaled size would've been.
+                <div style={{ width: `calc(793.7px * ${REG_CARD_SCALE_EXPR})`, height: `calc(1122.52px * ${REG_CARD_SCALE_EXPR})` }}>
+                  <div
+                    style={{ transform: `scale(${REG_CARD_SCALE_EXPR})`, transformOrigin: "top left", width: "793.7px" }}
+                    dangerouslySetInnerHTML={{
+                      __html: renderRr3Template(rr3Template, {
+                        ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),
+                        Occupation: regCardOccupation,
+                        Email: regCardEmail,
+                        MarketingConsentChk: regCardMarketingConsent ? "✓" : "",
+                        DepartureCurrentChk: regCardDepartureOption === "current" ? "✓" : "",
+                        DepartureOtherChk: regCardDepartureOption === "other" ? "✓" : "",
+                        DepartureDetail: regCardDepartureDetail,
+                        DestinationCurrentChk: regCardDestinationOption === "current" ? "✓" : "",
+                        DestinationOtherChk: regCardDestinationOption === "other" ? "✓" : "",
+                        DestinationDetail: regCardDestinationDetail,
+                        GuestSignatureDataUrl: guestSignature || undefined,
+                      }),
+                    }}
+                  />
+                </div>
               ) : (
                 <div className="text-white/70 text-sm italic mt-20">Loading the ร.ร.๓ template...</div>
               )}
