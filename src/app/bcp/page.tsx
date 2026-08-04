@@ -162,6 +162,51 @@ function allReservationGuests(r: ReservationRow): GuestIdentity[] {
   return [ownerGuestIdentity(r), ...(r.companions || [])];
 }
 
+// Keep in sync with the Edit/Add Guest modal's own field list further down -
+// used only to build a human-readable Action Log detail string, not to
+// render the form itself, so there's no single shared source of truth to
+// import from without a bigger refactor.
+const GUEST_FIELD_LABELS: [keyof GuestIdentity, string][] = [
+  ["name", "Full name"],
+  ["title", "Title"],
+  ["first_name", "First name"],
+  ["last_name", "Last name"],
+  ["second_last_name", "Second last name"],
+  ["nationality_name", "Nationality"],
+  ["language", "Language"],
+  ["phone", "Telephone"],
+  ["sex", "Sex"],
+  ["birth_date", "Date of birth"],
+  ["birth_country_name", "Country of birth"],
+  ["birth_place", "Place of birth"],
+  ["occupation", "Occupation"],
+  ["passport_number", "Passport"],
+  ["identity_card_number", "ID Card"],
+  ["alien_book", "Alien Book"],
+  ["email", "Email"],
+  ["address_details", "Address"],
+];
+
+// Builds the Action Log's Detail string for Guest Added/Edited/Removed -
+// added/removed list every filled-in field (so the log itself is the full
+// record of what was there), edited lists only the fields that actually
+// changed, old -> new, same "before -> after" pattern as Room Status/Chg
+// Room/Arrival Changed/Room Type Changed elsewhere in this file.
+function summarizeGuestChanges(before: GuestIdentity | null, after: GuestIdentity, mode: "added" | "edited" | "removed"): string {
+  const val = (g: GuestIdentity | null, field: keyof GuestIdentity) => ((g?.[field] as string) || "").trim();
+  if (mode === "edited") {
+    const changes = GUEST_FIELD_LABELS
+      .filter(([field]) => val(before, field) !== val(after, field))
+      .map(([field, label]) => `${label}: ${val(before, field) || "(blank)"} -> ${val(after, field) || "(blank)"}`);
+    return changes.length ? changes.join(" | ") : "No fields changed";
+  }
+  const filled = GUEST_FIELD_LABELS
+    .filter(([field]) => val(after, field))
+    .map(([field, label]) => `${label}: ${val(after, field)}`);
+  const verb = mode === "added" ? "Added" : "Removed";
+  return filled.length ? `${verb}: ${filled.join(" | ")}` : `${verb} guest with no details entered`;
+}
+
 // MEWS's BirthDate is a plain YYYY-MM-DD calendar date (no time component,
 // unlike check-in/out instants) - reformatted directly rather than through
 // the Bangkok +7h shift helpers used elsewhere, which would risk flipping
@@ -702,6 +747,11 @@ export default function BcpPage() {
   // guest" from "adding a brand new one" for the Save handler.
   const [editGuestFor, setEditGuestFor] = useState<{ guestKey: string; isNew: boolean } | null>(null);
   const [editGuestForm, setEditGuestForm] = useState<GuestIdentity | null>(null);
+  // The guest's fields exactly as they were before this modal opened - kept
+  // purely so handleSaveGuestEdit can log a field-by-field diff (Action Log
+  // detail) instead of just "Edited guest X" with no indication of what
+  // actually changed.
+  const [editGuestOriginal, setEditGuestOriginal] = useState<GuestIdentity | null>(null);
   const [savingGuestEdit, setSavingGuestEdit] = useState(false);
   const [guestEditError, setGuestEditError] = useState<string | null>(null);
   const [removeGuestFor, setRemoveGuestFor] = useState<{ guestKey: string; guest: GuestIdentity } | null>(null);
@@ -1854,6 +1904,7 @@ export default function BcpPage() {
   const handleOpenEditGuest = (guestKey: string, guest: GuestIdentity) => {
     setEditGuestFor({ guestKey, isNew: false });
     setEditGuestForm({ ...guest });
+    setEditGuestOriginal({ ...guest });
     setGuestEditError(null);
   };
 
@@ -1890,12 +1941,13 @@ export default function BcpPage() {
           guest: editGuestForm.name,
           room: selectedReservation.room,
           action: editGuestFor.isNew ? "Guest Added" : "Guest Edited",
-          detail: editGuestFor.isNew ? `Added guest ${editGuestForm.name || "(no name)"}` : `Edited guest ${editGuestForm.name || "(no name)"}`,
+          detail: summarizeGuestChanges(editGuestFor.isNew ? null : editGuestOriginal, editGuestForm, editGuestFor.isNew ? "added" : "edited"),
           reservationSnapshot: selectedReservation,
           guestProfileSnapshot: findGuestProfile(selectedReservation),
         });
         setEditGuestFor(null);
         setEditGuestForm(null);
+        setEditGuestOriginal(null);
       } else {
         // Previously silent (empty catch, no status check) - a failed save
         // just left the modal sitting there with no sign anything went
@@ -1932,7 +1984,7 @@ export default function BcpPage() {
           guest: guest.name,
           room: selectedReservation.room,
           action: "Guest Removed",
-          detail: `Removed guest ${guest.name || "(no name)"}`,
+          detail: summarizeGuestChanges(null, guest, "removed"),
           reservationSnapshot: selectedReservation,
           guestProfileSnapshot: findGuestProfile(selectedReservation),
         });
@@ -4500,7 +4552,7 @@ export default function BcpPage() {
             existing one; both save to the same bcp_guest_overrides upsert
             (see handleSaveGuestEdit), local-only like everything else here. */}
         {editGuestFor && editGuestForm && (
-          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }}>
+          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setEditGuestOriginal(null); setGuestEditError(null); }}>
             <div
               className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-3xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6"
               onClick={(e) => e.stopPropagation()}
@@ -4560,7 +4612,7 @@ export default function BcpPage() {
                 </div>
               )}
               <div className="flex justify-end gap-2 mt-4">
-                <button onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setGuestEditError(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
+                <button onClick={() => { setEditGuestFor(null); setEditGuestForm(null); setEditGuestOriginal(null); setGuestEditError(null); }} className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors">
                   Cancel
                 </button>
                 <button
