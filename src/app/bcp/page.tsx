@@ -281,7 +281,7 @@ interface OfflineAction {
   reservationNumber?: string;
   guest: string;
   room: string;
-  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed" | "Arrival Changed" | "Room Type Changed" | "Payment Processed";
+  action: "Check In" | "Check Out" | "Undo Check In" | "Undo Check Out" | "Chg Room" | "Room Status" | "Room Number" | "Reg Card Saved" | "Note Added" | "Guest Added" | "Guest Edited" | "Guest Removed" | "Arrival Changed" | "Room Type Changed" | "Payment Processed" | "Room Lock";
   detail: string;
   // Required reason for OutOfService/OutOfOrder (see the reason modal) - its
   // own field, not folded into detail's text, so the Action Log Detail page
@@ -839,6 +839,14 @@ export default function BcpPage() {
   // reservation_number) key. Presence alone means "processed" (there's no
   // un-process action, matching MEWS's own one-way behavior once paid).
   const [billingProcessedOverrides, setBillingProcessedOverrides] = useState<Record<string, { note?: string; processedAt: string }>>({});
+  // Room-assignment lock toggle - persisted in bcp_room_lock_overrides, same
+  // (property, reservation_number) key as billingProcessedOverrides above.
+  // Never pushed to MEWS (front desk re-keys it there once back online,
+  // same as every other BCP override); this just overrides what the padlock
+  // badge shows so it doesn't silently disagree with itself across the page.
+  const [roomLockOverrides, setRoomLockOverrides] = useState<Record<string, boolean>>({});
+  const effectiveRoomLocked = (r: { number: string; room_locked?: boolean }): boolean | undefined =>
+    r.number in roomLockOverrides ? roomLockOverrides[r.number] : r.room_locked;
   // Current housekeeping status for a room - the override if housekeeping
   // has changed it via Rooms (HK), otherwise whatever MEWS last reported.
   // Used everywhere a room's status color/badge shows (Timeline dot, Manage
@@ -1842,6 +1850,37 @@ export default function BcpPage() {
     setPaymentNoteDraft("");
   };
 
+  // Padlock badge next to a reservation's room - toggles our own recorded
+  // lock state (never MEWS itself, same as every other BCP override).
+  // Immediate on click, no confirmation, same as flipping any other
+  // non-Out-of-Service room status.
+  const handleToggleRoomLock = (r: ReservationRow) => {
+    if (!snapshot?.property) return;
+    const nextLocked = !effectiveRoomLocked(r);
+    setRoomLockOverrides((prev) => ({ ...prev, [r.number]: nextLocked }));
+    logOfflineAction({
+      at: new Date().toISOString(),
+      reservationNumber: r.number,
+      guest: r.guest,
+      room: r.room,
+      action: "Room Lock",
+      detail: `Room ${effectiveRoomNumber(r.room)}: ${nextLocked ? "Locked" : "Unlocked"}`,
+      reservationSnapshot: r,
+      guestProfileSnapshot: findGuestProfile(r),
+    });
+    fetch("/api/bcp/room-lock-overrides", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        property_name: snapshot.property,
+        reservation_number: r.number,
+        locked: nextLocked,
+      }),
+    }).catch(() => {
+      /* logOfflineAction above still records the intent even if this write failed */
+    });
+  };
+
   // Same fetch pattern as reservationNotes above, for the currently-open
   // reservation's guest edits/additions/removals.
   useEffect(() => {
@@ -2047,6 +2086,7 @@ export default function BcpPage() {
       setArrivalOverrides({});
       setRoomTypeOverrides({});
       setBillingProcessedOverrides({});
+      setRoomLockOverrides({});
       return;
     }
     const params = new URLSearchParams({ property_name: snapshot.property });
@@ -2111,6 +2151,15 @@ export default function BcpPage() {
         setBillingProcessedOverrides(result.status === "success" ? result.data || {} : {});
       } catch {
         setBillingProcessedOverrides({});
+      }
+    })();
+    (async () => {
+      try {
+        const res = await fetch(`/api/bcp/room-lock-overrides?${params.toString()}`);
+        const result = await res.json();
+        setRoomLockOverrides(result.status === "success" ? result.data || {} : {});
+      } catch {
+        setRoomLockOverrides({});
       }
     })();
   }, [snapshot?.property]);
@@ -2943,8 +2992,11 @@ export default function BcpPage() {
             <span className="font-bold text-[13px]">
               {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{effectiveRoomNumber(res.room)}
             </span>
-            {typeof res.room_locked === "boolean" && (
-              <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${res.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}>
+            {typeof effectiveRoomLocked(res) === "boolean" && (
+              <span
+                title={effectiveRoomLocked(res) ? "Room assignment locked" : "Room assignment not locked"}
+                className={`inline-flex items-center justify-center w-5 h-5 rounded-full ${effectiveRoomLocked(res) ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}
+              >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
               </span>
             )}
@@ -4016,9 +4068,9 @@ export default function BcpPage() {
                         onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setGuestProfileReservation(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
-                        title={`${res.guest} — ${STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}${res.room_locked ? " (room locked)" : ""}`}
+                        title={`${res.guest} — ${STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}${effectiveRoomLocked(res) ? " (room locked)" : ""}`}
                       >
-                        {res.room_locked && (
+                        {effectiveRoomLocked(res) && (
                           <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         )}
                         <span className="truncate">{res.guest || "(no name)"}</span>
@@ -5397,10 +5449,11 @@ export default function BcpPage() {
                           <div className={`font-bold ${selectedRoomInfo ? "underline decoration-1 underline-offset-2" : ""}`}>
                             {selectedRoomInfo?.category_short ? `${selectedRoomInfo.category_short} ` : ""}{selectedReservation.room ? effectiveRoomNumber(selectedReservation.room) : "-"}
                           </div>
-                          {typeof selectedReservation.room_locked === "boolean" && (
+                          {typeof effectiveRoomLocked(selectedReservation) === "boolean" && (
                             <span
-                              title={selectedReservation.room_locked ? "Room assignment locked" : "Room assignment not locked"}
-                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 ${selectedReservation.room_locked ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}
+                              onClick={(e) => { e.stopPropagation(); handleToggleRoomLock(selectedReservation); }}
+                              title={effectiveRoomLocked(selectedReservation) ? "Room assignment locked - click to unlock" : "Room assignment not locked - click to lock"}
+                              className={`inline-flex items-center justify-center w-5 h-5 rounded-full shrink-0 cursor-pointer hover:opacity-75 transition-opacity ${effectiveRoomLocked(selectedReservation) ? "bg-indigo-500 text-white" : "bg-slate-200 text-slate-400"}`}
                             >
                               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                             </span>

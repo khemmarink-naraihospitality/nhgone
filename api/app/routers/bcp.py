@@ -605,6 +605,51 @@ async def set_billing_override(payload: dict = Body(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/room-lock-overrides")
+async def get_room_lock_overrides(property_name: str = Query(...)):
+    """
+    Whether front desk has locally flipped a reservation's room-assignment
+    lock while MEWS is unreachable (never pushed to MEWS itself - see
+    effectiveRoomLocked in bcp/page.tsx, which overrides the raw snapshot's
+    room_locked with the latest value here). Keyed by (property,
+    reservation_number).
+    """
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    try:
+        res = sync_service.supabase.table("bcp_room_lock_overrides") \
+            .select("reservation_number, locked") \
+            .eq("property", property_name) \
+            .execute()
+        return {
+            "status": "success",
+            "data": {r["reservation_number"]: r["locked"] for r in (res.data or [])},
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/room-lock-overrides")
+async def set_room_lock_override(payload: dict = Body(...)):
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    property_name = payload.get("property_name")
+    reservation_number = payload.get("reservation_number")
+    locked = payload.get("locked")
+    if not property_name or not reservation_number or not isinstance(locked, bool):
+        raise HTTPException(status_code=400, detail="property_name, reservation_number and locked (bool) are required")
+    try:
+        sync_service.supabase.table("bcp_room_lock_overrides").upsert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "locked": locked,
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }, on_conflict="property,reservation_number").execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/reservation-notes")
 async def get_reservation_notes(property_name: str = Query(...), reservation_number: str = Query(...)):
     """
