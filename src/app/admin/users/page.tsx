@@ -719,7 +719,7 @@ export default function AdminUsersPage() {
                     />
                  </div>
 
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Join Date</label>
                        <div className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-500">
@@ -734,7 +734,7 @@ export default function AdminUsersPage() {
                     </div>
                  </div>
 
-                 <div className="grid grid-cols-2 gap-4">
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-1">
                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Role</label>
                        <select 

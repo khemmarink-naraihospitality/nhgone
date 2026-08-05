@@ -163,7 +163,7 @@ export default function Rr3Page() {
   };
 
   return (
-    <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+    <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <PageHeader title="RR3" description="ร.ร.๓ - Thai Hotel Act lodger registration cards, generated from MEWS check-ins for a date range." />
 

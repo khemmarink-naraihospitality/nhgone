@@ -493,12 +493,12 @@ export default function DashboardView({
 
         <div className="flex flex-wrap items-center justify-between gap-4 mb-1 bg-[var(--paper)] p-4 border border-[var(--text-primary)]/14 border-b-0">
           {showSectionTabs && (
-            <div className="flex gap-8 border-b border-[var(--text-primary)]/10">
+            <div className="flex gap-6 sm:gap-8 border-b border-[var(--text-primary)]/10 overflow-x-auto max-w-full">
               {(["reservations", "members", "payments", "bills", "resources"] as Section[]).map((s) => (
-                <button 
-                  key={s} 
-                  onClick={() => setActiveSection(s)} 
-                  className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 ${activeSection === s ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]"}`}
+                <button
+                  key={s}
+                  onClick={() => setActiveSection(s)}
+                  className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 whitespace-nowrap shrink-0 ${activeSection === s ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]"}`}
                 >
                   {s}
                 </button>
@@ -603,7 +603,7 @@ export default function DashboardView({
 
         {showSyncModal && syncStatus && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[var(--text-primary)]/40 backdrop-blur-sm">
-            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-12 shadow-[40px_40px_100px_rgba(21,42,0,0.1)] max-w-md w-full text-center relative overflow-hidden">
+            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 sm:p-12 shadow-[40px_40px_100px_rgba(21,42,0,0.1)] max-w-md w-full text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-[#152A00]"></div>
               <h3 className="font-display text-3xl text-[var(--text-primary)] mb-2 text-left">Synchronization Complete</h3>
               <p className="text-[var(--text-primary)]/60 text-sm mb-10 text-left">Portfolio data has been successfully imported to the management layer.</p>

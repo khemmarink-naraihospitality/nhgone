@@ -82,7 +82,7 @@ export default function ActivityLogPage() {
   }, []);
 
   return (
-    <div className="flex-1 p-8 bg-[#f8f9fa] font-sans h-full overflow-auto">
+    <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[#f8f9fa] font-sans h-full overflow-auto">
       <div className="max-w-6xl mx-auto">
         <PageHeader 
           title="Activity Log" 

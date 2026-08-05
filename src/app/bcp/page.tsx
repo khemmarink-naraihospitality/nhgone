@@ -2894,7 +2894,7 @@ export default function BcpPage() {
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Email</div>
                 <div className={fieldBoxCls}>{g.email || "-"}</div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Title</div>
                   <div className={fieldBoxCls}>{g.title || "-"}</div>
@@ -2904,7 +2904,7 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.first_name || "-"}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Last name</div>
                   <div className={fieldBoxCls}>{g.last_name || "-"}</div>
@@ -2914,7 +2914,7 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.second_last_name || "-"}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Nationality</div>
                   <div className={fieldBoxCls}>{g.nationality_name || g.nationality || "-"}</div>
@@ -2924,7 +2924,7 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.language || "-"}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Telephone</div>
                   <div className={fieldBoxCls}>{g.phone || "-"}</div>
@@ -2934,7 +2934,7 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.sex || "-"}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Date of birth</div>
                   <div className={fieldBoxCls}>{fmtBirthDate(g.birth_date) || "-"}</div>
@@ -2944,7 +2944,7 @@ export default function BcpPage() {
                   <div className={fieldBoxCls}>{g.birth_country_name || "-"}</div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Place of birth</div>
                   <div className={fieldBoxCls}>{g.birth_place || "-"}</div>
@@ -5284,8 +5284,8 @@ export default function BcpPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-display text-xl mb-1">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
-              <div className="grid grid-cols-3 gap-3 mt-4">
-                <div className="col-span-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
+                <div className="col-span-full">
                   <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Full name</div>
                   <div className="w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/10 text-[var(--text-primary)]/60">
                     {guestDisplayName(editGuestForm) || <span className="italic">First + Last + Second last name below</span>}
@@ -5370,7 +5370,7 @@ export default function BcpPage() {
                     </div>
                   );
                 })}
-                <div className="col-span-3">
+                <div className="col-span-full">
                   <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Address</div>
                   <input
                     value={editGuestForm.address_details || ""}
@@ -5835,7 +5835,7 @@ export default function BcpPage() {
                               <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Email</div>
                               <div className={fieldBoxCls}>{g.email || "-"}</div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Title</div>
                                 <div className={fieldBoxCls}>{g.title || "-"}</div>
@@ -5845,7 +5845,7 @@ export default function BcpPage() {
                                 <div className={fieldBoxCls}>{g.first_name || "-"}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Last name</div>
                                 <div className={fieldBoxCls}>{g.last_name || "-"}</div>
@@ -5855,7 +5855,7 @@ export default function BcpPage() {
                                 <div className={fieldBoxCls}>{g.second_last_name || "-"}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Nationality</div>
                                 <div className={fieldBoxCls}>{g.nationality_name || g.nationality || "-"}</div>
@@ -5865,7 +5865,7 @@ export default function BcpPage() {
                                 <div className={fieldBoxCls}>{g.language || "-"}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Telephone</div>
                                 <div className={fieldBoxCls}>{g.phone || "-"}</div>
@@ -5875,7 +5875,7 @@ export default function BcpPage() {
                                 <div className={fieldBoxCls}>{g.sex || "-"}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Date of birth</div>
                                 <div className={fieldBoxCls}>{fmtBirthDate(g.birth_date) || "-"}</div>
@@ -5885,7 +5885,7 @@ export default function BcpPage() {
                                 <div className={fieldBoxCls}>{g.birth_country_name || "-"}</div>
                               </div>
                             </div>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                               <div>
                                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Place of birth</div>
                                 <div className={fieldBoxCls}>{g.birth_place || "-"}</div>

@@ -158,7 +158,7 @@ export default function LogImportPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
-      <div className="p-12 max-w-7xl mx-auto w-full flex flex-col gap-10">
+      <div className="p-4 sm:p-8 md:p-12 max-w-7xl mx-auto w-full flex flex-col gap-10">
         <PageHeader title="Log Import" description="History of automated portfolio synchronization and data health." />
 
         {/* Summary Cards */}
@@ -189,7 +189,7 @@ export default function LogImportPage() {
 
         {/* Filter & Actions */}
         <div className="flex flex-wrap items-end justify-between gap-8 py-6 border-y border-[var(--text-primary)]/10">
-          <div className="flex flex-col gap-3 min-w-[300px]">
+          <div className="flex flex-col gap-3 w-full sm:w-auto sm:min-w-[300px]">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps uppercase ml-1">Entity / Property Filter</label>
             <div className="relative border-b-2 border-[var(--text-primary)]/20 focus-within:border-[var(--text-primary)] transition-colors">
               <select 

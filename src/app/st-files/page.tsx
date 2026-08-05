@@ -323,7 +323,7 @@ export default function StFilesPage() {
   };
 
   return (
-    <div className="flex-1 p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
+    <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
         <PageHeader title="ST Files" description="Daily occupancy report per property - spaces, occupied, house use, out of order, availability, plus that day's customers, arrivals and departures, straight from MEWS.">
           <div className="flex flex-col items-end gap-1">
