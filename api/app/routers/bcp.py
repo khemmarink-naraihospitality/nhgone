@@ -774,6 +774,7 @@ def _action_log_row_to_json(row: dict) -> dict:
         "id": row["id"],
         "at": row["created_at"],
         "checked": bool(row.get("checked")),
+        "archived": bool(row.get("archived")),
         **fields,
     }
 
@@ -798,7 +799,7 @@ async def list_action_logs(property_name: str = Query(...), report_date: Optiona
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
         query = sync_service.supabase.table("bcp_action_logs") \
-            .select("id, checked, data, created_at") \
+            .select("id, checked, archived, data, created_at") \
             .eq("property", property_name)
         if report_date:
             query = query.eq("report_date", report_date)
@@ -856,6 +857,27 @@ async def toggle_action_log(payload: dict = Body(...)):
         raise HTTPException(status_code=400, detail="id and checked are required")
     try:
         sync_service.supabase.table("bcp_action_logs").update({"checked": checked}).eq("id", log_id).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-logs/archive")
+async def archive_action_logs(payload: dict = Body(...)):
+    """Bulk archive/unarchive - the Action Logs tab's row-select checkboxes
+    move many rows into (or back out of) the Archive table below in one
+    click rather than one request per row. Archiving never deletes
+    anything, just hides a row from the main table (still fully visible,
+    searchable and restorable in the Archive table) - this is a
+    decluttering view, not a way to lose history."""
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    ids = payload.get("ids")
+    archived = payload.get("archived")
+    if not ids or not isinstance(ids, list) or archived is None:
+        raise HTTPException(status_code=400, detail="ids (non-empty list) and archived are required")
+    try:
+        sync_service.supabase.table("bcp_action_logs").update({"archived": archived}).in_("id", ids).execute()
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

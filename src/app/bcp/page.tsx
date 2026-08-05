@@ -296,6 +296,10 @@ interface OfflineAction {
   // Logs tab's outstanding-items badge. The row itself stays in the log
   // either way - this only changes how it's displayed, not the history.
   checked?: boolean;
+  // Moved to the Archive table below via the row-select checkboxes -
+  // purely a decluttering view, the row is never actually deleted and can
+  // always be selected + unarchived back to the main table.
+  archived?: boolean;
   // Frozen copies of the reservation + matched guest profile as they stood
   // at the moment this action was logged - captured once, permanently,
   // specifically so the Action Log Detail page can still show full
@@ -645,6 +649,9 @@ export default function BcpPage() {
   // Default matches the server's own order (list_action_logs sorts
   // created_at desc), so leaving headers unclicked looks unchanged.
   const [logSort, setLogSort] = useState<{ key: ActionLogSortKey; dir: "asc" | "desc" }>({ key: "time", dir: "desc" });
+  // Row-select checkboxes for bulk Archive/Unarchive - one shared set since
+  // a row's id only ever appears in one of the two tables at a time.
+  const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
   const [showReadme, setShowReadme] = useState(false);
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
@@ -1318,42 +1325,64 @@ export default function BcpPage() {
     return map;
   }, [actions]);
 
-  const displayedActions = useMemo(() => {
-    const q = logSearch.trim().toLowerCase();
-    const filtered = q
-      ? actions.filter(
-          (a) =>
-            a.guest.toLowerCase().includes(q) ||
-            a.room.toLowerCase().includes(q) ||
-            effectiveRoomNumber(a.room).toLowerCase().includes(q) ||
-            a.action.toLowerCase().includes(q) ||
-            a.detail.toLowerCase().includes(q) ||
-            (a.userEmail || "").toLowerCase().includes(q)
-        )
-      : actions;
-    const { key, dir } = logSort;
-    const sign = dir === "asc" ? 1 : -1;
-    return [...filtered].sort((a, b) => {
-      switch (key) {
-        case "time":
-          return sign * a.at.localeCompare(b.at);
-        case "guest":
-          return sign * a.guest.localeCompare(b.guest);
-        case "room":
-          return sign * effectiveRoomNumber(a.room).localeCompare(effectiveRoomNumber(b.room), undefined, { numeric: true });
-        case "action":
-          return sign * a.action.localeCompare(b.action);
-        case "detail":
-          return sign * a.detail.localeCompare(b.detail);
-        case "userEmail":
-          return sign * (a.userEmail || "").localeCompare(b.userEmail || "");
-        case "checked":
-          return sign * (Number(a.checked) - Number(b.checked));
-        default:
-          return 0;
-      }
-    });
-  }, [actions, logSearch, logSort, effectiveRoomNumber]);
+  // Shared by both the main table (non-archived rows) and the Archive table
+  // below (archived rows) - same search box and column sort apply to
+  // whichever one a row currently lives in.
+  const filterAndSortActions = useCallback(
+    (list: OfflineAction[]) => {
+      const q = logSearch.trim().toLowerCase();
+      const filtered = q
+        ? list.filter(
+            (a) =>
+              a.guest.toLowerCase().includes(q) ||
+              a.room.toLowerCase().includes(q) ||
+              effectiveRoomNumber(a.room).toLowerCase().includes(q) ||
+              a.action.toLowerCase().includes(q) ||
+              a.detail.toLowerCase().includes(q) ||
+              (a.userEmail || "").toLowerCase().includes(q)
+          )
+        : list;
+      const { key, dir } = logSort;
+      const sign = dir === "asc" ? 1 : -1;
+      return [...filtered].sort((a, b) => {
+        switch (key) {
+          case "time":
+            return sign * a.at.localeCompare(b.at);
+          case "guest":
+            return sign * a.guest.localeCompare(b.guest);
+          case "room":
+            return sign * effectiveRoomNumber(a.room).localeCompare(effectiveRoomNumber(b.room), undefined, { numeric: true });
+          case "action":
+            return sign * a.action.localeCompare(b.action);
+          case "detail":
+            return sign * a.detail.localeCompare(b.detail);
+          case "userEmail":
+            return sign * (a.userEmail || "").localeCompare(b.userEmail || "");
+          case "checked":
+            return sign * (Number(a.checked) - Number(b.checked));
+          default:
+            return 0;
+        }
+      });
+    },
+    [logSearch, logSort, effectiveRoomNumber]
+  );
+  const displayedActions = useMemo(
+    () => filterAndSortActions(actions.filter((a) => !a.archived)),
+    [actions, filterAndSortActions]
+  );
+  const displayedArchivedActions = useMemo(
+    () => filterAndSortActions(actions.filter((a) => a.archived)),
+    [actions, filterAndSortActions]
+  );
+  const selectedActiveIds = useMemo(
+    () => displayedActions.filter((a) => selectedLogIds.has(a.id)).map((a) => a.id),
+    [displayedActions, selectedLogIds]
+  );
+  const selectedArchivedIds = useMemo(
+    () => displayedArchivedActions.filter((a) => selectedLogIds.has(a.id)).map((a) => a.id),
+    [displayedArchivedActions, selectedLogIds]
+  );
 
   const handleLogSort = (key: ActionLogSortKey) => {
     setLogSort((prev) => (prev.key === key ? { key, dir: prev.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -1362,6 +1391,51 @@ export default function BcpPage() {
   const logSortArrow = (key: ActionLogSortKey) => {
     if (logSort.key !== key) return "";
     return logSort.dir === "asc" ? " ▲" : " ▼";
+  };
+
+  const handleToggleLogSelected = (id: string) => {
+    setSelectedLogIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+  // Shared by both tables' header "select all" checkbox - selects/clears
+  // exactly the rows currently visible in that table (respects search),
+  // not every id ever selected across both tables.
+  const handleToggleSelectAllVisible = (rows: OfflineAction[]) => {
+    setSelectedLogIds((prev) => {
+      const allSelected = rows.length > 0 && rows.every((a) => prev.has(a.id));
+      const next = new Set(prev);
+      rows.forEach((a) => (allSelected ? next.delete(a.id) : next.add(a.id)));
+      return next;
+    });
+  };
+
+  // Bulk Archive/Unarchive - moves the selected rows between the main table
+  // and the Archive table below. Never deletes anything, just flips
+  // archived so the row still shows up (and is fully searchable/sortable)
+  // in whichever table it currently belongs to.
+  const handleBulkSetArchived = async (ids: string[], archived: boolean) => {
+    if (ids.length === 0) return;
+    setActions((prev) => prev.map((a) => (ids.includes(a.id) ? { ...a, archived } : a)));
+    setSelectedLogIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.delete(id));
+      return next;
+    });
+    try {
+      await fetch("/api/bcp/action-logs/archive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids, archived }),
+      });
+    } catch {
+      /* local state already reflects the move; a failed write here just
+         means it doesn't persist across a reload - not worth rolling back
+         and confusing whoever just clicked the button. */
+    }
   };
 
   // CSV rather than a real .xlsx - Excel opens it natively with no extra
@@ -3903,6 +3977,15 @@ export default function BcpPage() {
               )}
               {mainTab === "logs" && (
                 <div className="w-full sm:w-auto sm:ml-auto flex flex-wrap items-center gap-2">
+                  {selectedActiveIds.length > 0 && (
+                    <button
+                      onClick={() => handleBulkSetArchived(selectedActiveIds, true)}
+                      title="Move the selected rows to the Archive table below - never deletes anything, they stay fully visible and can be unarchived any time"
+                      className="px-3 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                    >
+                      Archive Selected ({selectedActiveIds.length})
+                    </button>
+                  )}
                   <button
                     onClick={handleExportActionLogsToExcel}
                     disabled={displayedActions.length === 0}
@@ -4247,6 +4330,14 @@ export default function BcpPage() {
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                      <th className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={displayedActions.length > 0 && selectedActiveIds.length === displayedActions.length}
+                          onChange={() => handleToggleSelectAllVisible(displayedActions)}
+                          className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+                        />
+                      </th>
                       <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 whitespace-nowrap">No.</th>
                       {(
                         [
@@ -4278,7 +4369,7 @@ export default function BcpPage() {
                   <tbody>
                     {displayedActions.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                        <td colSpan={10} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                           {logSearch ? "No matching actions." : "No actions logged yet."}
                         </td>
                       </tr>
@@ -4293,6 +4384,14 @@ export default function BcpPage() {
                             : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
                         }`}
                       >
+                        <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={selectedLogIds.has(a.id)}
+                            onChange={() => handleToggleLogSelected(a.id)}
+                            className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+                          />
+                        </td>
                         <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
                         <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
                         <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
@@ -4321,7 +4420,106 @@ export default function BcpPage() {
                   </tbody>
                 </table>
                 <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
-                  Saved permanently, not just on this device — every entry ever logged for this property stays here (use search above to narrow it down). Use as a reference to re-enter these actions into MEWS once it&apos;s back online, and tick BCP Check once an action has been re-keyed into MEWS.
+                  Saved permanently, not just on this device — every entry ever logged for this property stays here (use search above to narrow it down). Use as a reference to re-enter these actions into MEWS once it&apos;s back online, and tick BCP Check once an action has been re-keyed into MEWS. Select rows and click Archive Selected to move them to the Archive table below.
+                </div>
+              </div>
+            )}
+
+            {/* Archive - rows moved out of the main table above via its
+                Select checkboxes, purely to declutter it. Nothing here is
+                ever deleted: selecting rows and clicking Unarchive Selected
+                moves them straight back. Shares the same search box and
+                column sort as the main table above (filterAndSortActions),
+                and the same row-click-opens-Detail behavior. */}
+            {mainTab === "logs" && (
+              <div className="no-print mb-8">
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div className="font-display text-xl text-[var(--text-primary)]">Archive</div>
+                  {selectedArchivedIds.length > 0 && (
+                    <button
+                      onClick={() => handleBulkSetArchived(selectedArchivedIds, false)}
+                      title="Move the selected rows back to the main Action Logs table above"
+                      className="px-3 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                    >
+                      Unarchive Selected ({selectedArchivedIds.length})
+                    </button>
+                  )}
+                </div>
+                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto">
+                  <table className="w-full text-left border-collapse min-w-[700px]">
+                    <thead>
+                      <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
+                        <th className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                          <input
+                            type="checkbox"
+                            checked={displayedArchivedActions.length > 0 && selectedArchivedIds.length === displayedArchivedActions.length}
+                            onChange={() => handleToggleSelectAllVisible(displayedArchivedActions)}
+                            className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+                          />
+                        </th>
+                        <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 whitespace-nowrap">No.</th>
+                        {(
+                          [
+                            ["time", "Time"],
+                            ["guest", "Guest"],
+                            ["room", "Room"],
+                            ["action", "Action"],
+                            ["detail", "Detail"],
+                            ["userEmail", "User"],
+                          ] as [ActionLogSortKey, string][]
+                        ).map(([key, label]) => (
+                          <th
+                            key={key}
+                            onClick={() => handleLogSort(key)}
+                            className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50 cursor-pointer select-none hover:text-[var(--text-primary)] transition-colors whitespace-nowrap"
+                          >
+                            {label}{logSortArrow(key)}
+                          </th>
+                        ))}
+                        <th className="p-3 px-4 text-[9px] font-bold uppercase tracking-[0.12em] text-[var(--text-primary)]/50"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {displayedArchivedActions.length === 0 && (
+                        <tr>
+                          <td colSpan={9} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                            {logSearch ? "No matching archived actions." : "No archived actions."}
+                          </td>
+                        </tr>
+                      )}
+                      {displayedArchivedActions.map((a) => (
+                        <tr
+                          key={a.id}
+                          onClick={() => setSelectedLogEntry(a)}
+                          className="border-b last:border-0 cursor-pointer transition-colors text-[var(--text-primary)]/60 hover:bg-[var(--text-primary)]/5"
+                        >
+                          <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                              type="checkbox"
+                              checked={selectedLogIds.has(a.id)}
+                              onChange={() => handleToggleLogSelected(a.id)}
+                              className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+                            />
+                          </td>
+                          <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
+                          <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
+                          <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
+                          <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
+                          <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
+                          <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
+                          <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
+                          <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={() => setSelectedLogEntry(a)}
+                              className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                            >
+                              Detail
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
