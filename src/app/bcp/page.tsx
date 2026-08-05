@@ -3775,7 +3775,7 @@ export default function BcpPage() {
                         <div className="font-bold text-[13px]">{fmtMoney(nightsTotal, res.currency)}</div>
                       </button>
                       {manageNightsOpen && res.rate_lines.map((line, i) => (
-                        <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
+                        <div key={i} className="pl-10 pr-4 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
                           <div>Night — {line.label} — 1×</div>
                           <div>{fmtMoney(line.amount, res.currency)}</div>
                         </div>
@@ -3796,7 +3796,7 @@ export default function BcpPage() {
                         <div className="font-bold text-[13px]">{fmtMoney(group.total, res.currency)}</div>
                       </button>
                       {manageItemGroupsOpen[group.label] && group.lines.map((line, i) => (
-                        <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
+                        <div key={i} className="pl-10 pr-4 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
                           <div>{group.label} — {line.label} — 1×</div>
                           <div>{fmtMoney(line.amount, res.currency)}</div>
                         </div>
