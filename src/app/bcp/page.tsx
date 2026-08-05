@@ -599,6 +599,18 @@ function actionLogDateGroup(at: string): string {
   if (diff <= 7) return "Last Week";
   return "Older";
 }
+// Shared by the main Action Logs table and the Archive table below it -
+// buckets an already-time-sorted list into contiguous date-group runs.
+function groupActionsByDate(list: OfflineAction[]): { group: string; rows: OfflineAction[] }[] {
+  const groups: { group: string; rows: OfflineAction[] }[] = [];
+  for (const a of list) {
+    const g = actionLogDateGroup(a.at);
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.group === g) lastGroup.rows.push(a);
+    else groups.push({ group: g, rows: [a] });
+  }
+  return groups;
+}
 
 // Matches MEWS's own housekeeping status colors: Clean=blue, Inspected=
 // green, Dirty=dark orange, OutOfService=light orange/yellow, OutOfOrder=
@@ -803,6 +815,9 @@ export default function BcpPage() {
   // contiguous block. Collapsed groups persist by label, not id, so
   // collapsing "Today" stays collapsed as new entries join it.
   const [collapsedLogGroups, setCollapsedLogGroups] = useState<Set<string>>(new Set());
+  // Same idea, kept separate so collapsing "Today" in one table doesn't
+  // also collapse "Today" in the other.
+  const [collapsedArchivedLogGroups, setCollapsedArchivedLogGroups] = useState<Set<string>>(new Set());
   const [showReadme, setShowReadme] = useState(false);
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
@@ -1532,17 +1547,14 @@ export default function BcpPage() {
   // bucket only ever changes once per label (no fragmenting). Sorted by
   // any other column, this is null and the table falls back to its plain
   // flat list.
-  const groupedActions = useMemo(() => {
-    if (logSort.key !== "time") return null;
-    const groups: { group: string; rows: OfflineAction[] }[] = [];
-    for (const a of displayedActions) {
-      const g = actionLogDateGroup(a.at);
-      const lastGroup = groups[groups.length - 1];
-      if (lastGroup && lastGroup.group === g) lastGroup.rows.push(a);
-      else groups.push({ group: g, rows: [a] });
-    }
-    return groups;
-  }, [displayedActions, logSort.key]);
+  const groupedActions = useMemo(
+    () => (logSort.key === "time" ? groupActionsByDate(displayedActions) : null),
+    [displayedActions, logSort.key]
+  );
+  const groupedArchivedActions = useMemo(
+    () => (logSort.key === "time" ? groupActionsByDate(displayedArchivedActions) : null),
+    [displayedArchivedActions, logSort.key]
+  );
   const selectedActiveIds = useMemo(
     () => displayedActions.filter((a) => selectedLogIds.has(a.id)).map((a) => a.id),
     [displayedActions, selectedLogIds]
@@ -1629,6 +1641,50 @@ export default function BcpPage() {
   );
   const handleToggleLogGroup = (group: string) => {
     setCollapsedLogGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
+      return next;
+    });
+  };
+
+  // Archive table's own row markup - same idea as renderActionLogRow above,
+  // just without the BCP Check column (archived rows are already resolved
+  // by definition) and its own muted styling instead of the checked/
+  // unresolved red-green split.
+  const renderArchivedLogRow = (a: OfflineAction) => (
+    <tr
+      key={a.id}
+      onClick={() => setSelectedLogEntry(a)}
+      className="border-b last:border-0 cursor-pointer transition-colors text-[var(--text-primary)]/60 hover:bg-[var(--text-primary)]/5"
+    >
+      <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selectedLogIds.has(a.id)}
+          onChange={() => handleToggleLogSelected(a.id)}
+          className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+        />
+      </td>
+      <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
+      <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
+      <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
+      <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
+      <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
+      <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
+      <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
+      <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => setSelectedLogEntry(a)}
+          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+        >
+          Detail
+        </button>
+      </td>
+    </tr>
+  );
+  const handleToggleArchivedLogGroup = (group: string) => {
+    setCollapsedArchivedLogGroups((prev) => {
       const next = new Set(prev);
       if (next.has(group)) next.delete(group);
       else next.add(group);
@@ -3828,7 +3884,7 @@ export default function BcpPage() {
                       <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">Arrival</div>
                       <div className="font-bold text-[13px]">{fmtDateOnly(res.check_in)}</div>
                     </div>
-                    <div className="text-right">
+                    <div className="px-4 py-2 rounded-lg bg-[var(--text-primary)]/5 text-right shrink-0">
                       <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">To be paid</div>
                       <div className="font-bold text-[13px]">{fmtMoney(res.to_be_paid, res.currency)}</div>
                     </div>
@@ -4854,37 +4910,27 @@ export default function BcpPage() {
                           </td>
                         </tr>
                       )}
-                      {displayedArchivedActions.map((a) => (
-                        <tr
-                          key={a.id}
-                          onClick={() => setSelectedLogEntry(a)}
-                          className="border-b last:border-0 cursor-pointer transition-colors text-[var(--text-primary)]/60 hover:bg-[var(--text-primary)]/5"
-                        >
-                          <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                            <input
-                              type="checkbox"
-                              checked={selectedLogIds.has(a.id)}
-                              onChange={() => handleToggleLogSelected(a.id)}
-                              className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
-                            />
-                          </td>
-                          <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
-                          <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
-                          <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
-                          <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
-                          <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
-                          <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
-                          <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
-                          <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={() => setSelectedLogEntry(a)}
-                              className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                      {groupedArchivedActions ? (
+                        groupedArchivedActions.map(({ group, rows }) => (
+                          <Fragment key={group}>
+                            <tr
+                              onClick={() => handleToggleArchivedLogGroup(group)}
+                              className="border-b border-[var(--text-primary)]/10 bg-[var(--text-primary)]/[0.04] cursor-pointer hover:bg-[var(--text-primary)]/[0.07] transition-colors"
                             >
-                              Detail
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                              <td colSpan={9} className="p-2.5 px-4">
+                                <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--text-primary)]/70">
+                                  <svg className={`w-3 h-3 shrink-0 transition-transform ${collapsedArchivedLogGroups.has(group) ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                  {group}
+                                  <span className="font-normal normal-case tracking-normal text-[var(--text-primary)]/40">({rows.length})</span>
+                                </div>
+                              </td>
+                            </tr>
+                            {!collapsedArchivedLogGroups.has(group) && rows.map((a) => renderArchivedLogRow(a))}
+                          </Fragment>
+                        ))
+                      ) : (
+                        displayedArchivedActions.map((a) => renderArchivedLogRow(a))
+                      )}
                     </tbody>
                   </table>
                 </div>
