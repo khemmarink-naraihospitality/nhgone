@@ -1510,6 +1510,16 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
+  // Confirmation step before Check Out, matching Check In's own confirm
+  // dialog (requestCheckIn/checkInDirtyModal) - Check Out has no room-status
+  // branching to gate on, so this is just a plain "are you sure" prompt.
+  const [checkOutFor, setCheckOutFor] = useState<ReservationRow | null>(null);
+  const requestCheckOut = (r: ReservationRow) => setCheckOutFor(r);
+  const handleConfirmCheckOut = () => {
+    if (!checkOutFor) return;
+    handleCheckOut(checkOutFor);
+    setCheckOutFor(null);
+  };
   // Manage > Status tab's Undo Check In/Out - mirrors MEWS's own "Undo
   // check-in"/"Undo check-out" (both require a typed reason before MEWS
   // lets you proceed) - reason is required here the same way, and recorded
@@ -2499,6 +2509,32 @@ export default function BcpPage() {
     </div>
   );
 
+  // Confirmation dialog before Check Out, matching Check In's own confirm
+  // step (checkInDirtyModal) - see requestCheckOut/handleConfirmCheckOut.
+  const checkOutConfirmModal = checkOutFor && (
+    <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckOutFor(null)}>
+      <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="font-display text-xl mb-4">Check out</div>
+        <div className="text-[13px] mb-3">Please confirm check out</div>
+        <div className="flex items-center gap-2 mb-5">
+          <span className="font-bold text-[14px]">{checkOutFor.guest}</span>
+          <span className="text-[13px] text-[var(--text-primary)]/60">Room {effectiveRoomNumber(checkOutFor.room)}</span>
+        </div>
+        <div className="flex justify-end items-center gap-4 mt-6">
+          <button onClick={() => setCheckOutFor(null)} className="text-[12px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors">
+            Go back
+          </button>
+          <button
+            onClick={handleConfirmCheckOut}
+            className="px-5 py-2.5 text-[11px] font-bold tracked-caps bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
+          >
+            Check out
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
   // Guest Profile - a full page (not a drawer), same "replace the whole BCP
   // view" pattern as Room Properties below, mirroring MEWS's own Profile
   // screen. Opened by clicking any guest name (reservation Owner or a
@@ -3205,7 +3241,7 @@ export default function BcpPage() {
                 {checkStatus === "checked_in" && (
                   <>
                     <button
-                      onClick={() => handleCheckOut(res)}
+                      onClick={() => requestCheckOut(res)}
                       className="self-start px-6 py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-[13px] font-bold hover:opacity-90 transition-opacity"
                     >
                       Check Out
@@ -3676,6 +3712,8 @@ export default function BcpPage() {
             </div>
           );
         })()}
+        {checkInDirtyModal}
+        {checkOutConfirmModal}
       </div>
     );
   }
@@ -4246,7 +4284,7 @@ export default function BcpPage() {
                                 </button>
                               ) : (
                                 <button
-                                  onClick={() => handleCheckOut(r)}
+                                  onClick={() => requestCheckOut(r)}
                                   disabled={hasCheckedOutLocally(r)}
                                   title={hasCheckedOutLocally(r) ? "Already checked out" : undefined}
                                   className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity disabled:opacity-40 disabled:hover:opacity-40 disabled:cursor-not-allowed"
@@ -4923,6 +4961,7 @@ export default function BcpPage() {
 
         {roomStatusReasonModal}
         {checkInDirtyModal}
+        {checkOutConfirmModal}
 
         {/* Action Log Detail - every entry here is by definition a local-only
             change (there's nowhere to write these back to while MEWS is
@@ -5906,7 +5945,7 @@ export default function BcpPage() {
                 </button>
                 {isReservationCheckedIn(selectedReservation) ? (
                   <button
-                    onClick={() => handleCheckOut(selectedReservation)}
+                    onClick={() => requestCheckOut(selectedReservation)}
                     disabled={hasCheckedOutLocally(selectedReservation)}
                     title={hasCheckedOutLocally(selectedReservation) ? "Already checked out" : undefined}
                     className="w-[30%] py-2.5 rounded-lg bg-[#152A00] text-[#FFEFD2] text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:hover:opacity-40 disabled:cursor-not-allowed"
