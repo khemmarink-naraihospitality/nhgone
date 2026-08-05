@@ -6,6 +6,7 @@ import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
 import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignaturePad";
+import * as XLSX from "xlsx";
 
 // The guest-identity fields the Reg Card/RR3 form and the Guest Profile
 // page need - shared shape for both the reservation's primary guest
@@ -818,6 +819,7 @@ export default function BcpPage() {
   // Same idea, kept separate so collapsing "Today" in one table doesn't
   // also collapse "Today" in the other.
   const [collapsedArchivedLogGroups, setCollapsedArchivedLogGroups] = useState<Set<string>>(new Set());
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [showReadme, setShowReadme] = useState(false);
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
@@ -1745,12 +1747,13 @@ export default function BcpPage() {
     }
   };
 
-  // CSV rather than a real .xlsx - Excel opens it natively with no extra
-  // library, matching the reused-browser-print-dialog precedent for Reg
-  // Card (prefer what the browser/Excel already does over adding a new
-  // dependency). Exports exactly what's currently visible - respects the
-  // search box and column sort already applied to the table.
-  const handleExportActionLogsToExcel = () => {
+  // Exports exactly what's currently visible - respects the search box and
+  // column sort already applied to the table. .xlsx/.xls go through the
+  // xlsx (SheetJS) library already used for the Dashboard's own Excel
+  // export (DashboardView.tsx) - a real workbook, not a renamed CSV. .csv
+  // stays hand-rolled (not SheetJS's own CSV writer) so the UTF-8 BOM this
+  // already had for Thai guest/user names doesn't need re-verifying.
+  const handleExportActionLogs = (format: "xlsx" | "xls" | "csv") => {
     const headers = ["No.", "Time", "Guest", "Room", "Action", "Detail", "User", "BCP Check"];
     const rows = displayedActions.map((a) => [
       actionSeqNo.get(a.id) ?? "",
@@ -1762,21 +1765,31 @@ export default function BcpPage() {
       a.userEmail || "-",
       a.checked ? "Yes" : "No",
     ]);
-    const escapeCsv = (v: string | number) => {
-      const s = String(v);
-      return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
-    // BOM so Excel reads guest/user names with Thai or other non-ASCII
-    // characters as UTF-8 instead of guessing the wrong codepage.
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
     const safeProperty = (snapshot?.property || "property").replace(/[\\/:*?"<>|]/g, "").trim();
-    link.download = `bcp-action-logs-${safeProperty}-${fmtYMD(new Date())}.csv`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const filenameBase = `bcp-action-logs-${safeProperty}-${fmtYMD(new Date())}`;
+
+    if (format === "csv") {
+      const escapeCsv = (v: string | number) => {
+        const s = String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const csv = [headers, ...rows].map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+      // BOM so Excel reads guest/user names with Thai or other non-ASCII
+      // characters as UTF-8 instead of guessing the wrong codepage.
+      const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${filenameBase}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Action Logs");
+    XLSX.writeFile(workbook, `${filenameBase}.${format}`, { bookType: format });
   };
 
   // requestCheckIn below only ever calls this once the room is already
@@ -4417,14 +4430,39 @@ export default function BcpPage() {
                       Archive Selected ({selectedActiveIds.length})
                     </button>
                   )}
-                  <button
-                    onClick={handleExportActionLogsToExcel}
-                    disabled={displayedActions.length === 0}
-                    title="Export the rows currently shown (respects search and sort) to a .csv file Excel opens directly"
-                    className="px-3 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
-                    Export to Excel
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setExportMenuOpen((v) => !v)}
+                      disabled={displayedActions.length === 0}
+                      title="Export the rows currently shown (respects search and sort)"
+                      className="px-3 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap flex items-center gap-1.5"
+                    >
+                      Export to Excel
+                      <svg className={`w-3 h-3 transition-transform ${exportMenuOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </button>
+                    {exportMenuOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setExportMenuOpen(false)} />
+                        <div className="absolute right-0 top-full mt-1 z-20 bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-xl min-w-[130px] overflow-hidden">
+                          {(
+                            [
+                              ["xlsx", "Excel (.xlsx)"],
+                              ["xls", "Excel 97-2003 (.xls)"],
+                              ["csv", "CSV (.csv)"],
+                            ] as [ "xlsx" | "xls" | "csv", string ][]
+                          ).map(([format, label]) => (
+                            <button
+                              key={format}
+                              onClick={() => { handleExportActionLogs(format); setExportMenuOpen(false); }}
+                              className="w-full px-4 py-2.5 text-left text-[12px] font-bold hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
                   <input
                     type="text"
                     value={logSearch}
