@@ -2319,7 +2319,7 @@ class SyncService:
             return
         try:
             pending = self.supabase.table("bcp_reservation_notes") \
-                .select("id, mews_reservation_id, text") \
+                .select("id, mews_reservation_id, text, created_by") \
                 .eq("property", property_name) \
                 .eq("synced_to_mews", False) \
                 .execute()
@@ -2329,10 +2329,19 @@ class SyncService:
         for row in (pending.data or []):
             if not row.get("mews_reservation_id") or not row.get("text"):
                 continue
+            # Attribute the note to whoever actually typed it into our
+            # system - MEWS's own Text field is plain text with no separate
+            # author field to carry this in, so it's appended here rather
+            # than dropped. Only affects what's sent to MEWS; the row's own
+            # `text` column (and everywhere we display it ourselves) stays
+            # exactly as typed.
+            text = row["text"]
+            if row.get("created_by"):
+                text = f"{text}\n\nAdded via NHGOne by {row['created_by']}"
             try:
                 await mews_client.post(
                     "/api/connector/v1/serviceOrderNotes/add",
-                    {"ServiceOrderNotes": [{"ServiceOrderId": row["mews_reservation_id"], "Text": row["text"]}]},
+                    {"ServiceOrderNotes": [{"ServiceOrderId": row["mews_reservation_id"], "Text": text}]},
                     property_name=property_name,
                 )
                 self.supabase.table("bcp_reservation_notes").update({
