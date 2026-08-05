@@ -3121,7 +3121,6 @@ export default function BcpPage() {
               {detailRow("Total amount", `${res.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${res.currency || ""}`)}
             </>
           )}
-          {typeof res.total_amount_gross === "number" && detailRow("Total amount (Gross)", res.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
           {res.category && detailRow("Requested category", res.category)}
           {detailRow("Assigned space", (
             <span className="inline-flex items-center gap-1.5">
@@ -5295,7 +5294,6 @@ export default function BcpPage() {
                           );
                         })()}
                         {typeof snap.total_amount === "number" && propRow("Total amount", `${snap.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${snap.currency || ""}`)}
-                        {typeof snap.total_amount_gross === "number" && propRow("Total amount (Gross)", snap.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 }))}
                         {snap.category && propRow("Requested category", snap.category)}
                         {propRow("Assigned space", <span className="font-bold">{snap.room ? effectiveRoomNumber(snap.room) : "-"}</span>)}
                         {snap.rate && propRow("Rate", snap.rate)}
@@ -5930,7 +5928,6 @@ export default function BcpPage() {
                             {selectedReservation.segment && (<><div className="text-[var(--text-primary)]/50">Segment</div><div className="text-right">{selectedReservation.segment}</div></>)}
                             {selectedReservation.origin && (<><div className="text-[var(--text-primary)]/50">Origin</div><div className="text-right">{selectedReservation.origin}</div></>)}
                             {selectedReservation.reservation_source && (<><div className="text-[var(--text-primary)]/50">Reservation source</div><div className="text-right">{selectedReservation.reservation_source}</div></>)}
-                            {typeof selectedReservation.total_amount_gross === "number" && (<><div className="text-[var(--text-primary)]/50">Total amount (Gross)</div><div className="text-right">{selectedReservation.total_amount_gross.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div></>)}
                             {selectedReservation.group_name && (<><div className="text-[var(--text-primary)]/50">Group name</div><div className="text-right">{selectedReservation.group_name}</div></>)}
                             {selectedReservation.created_utc && (<><div className="text-[var(--text-primary)]/50">Created</div><div className="text-right">{fmtDateTime(selectedReservation.created_utc)}</div></>)}
                           </div>

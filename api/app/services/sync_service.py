@@ -1637,29 +1637,33 @@ class SyncService:
                         bill_id_by_reservation[order_id] = item.get("BillId")
                     item_type = item.get("Type")
                     item_amount = item.get("Amount") or {}
-                    net = item_amount.get("NetValue") or 0
+                    # MEWS's own Billing screen shows gross (tax-inclusive)
+                    # everywhere - it has no separate net display at all.
+                    # This used to sum NetValue here, so every rate/item
+                    # line, the Rate/Items subtotals, and Total amount all
+                    # came out ~7% (Thai VAT) short of what MEWS itself
+                    # shows for the same reservation - confirmed line-by-line
+                    # against a live bill. gross_amount_by_reservation below
+                    # was already correct; everything else now matches it.
+                    gross = item_amount.get("GrossValue") or 0
                     currency = item_amount.get("Currency")
                     if currency:
                         currency_by_reservation.setdefault(order_id, currency)
-                    # Gross sum mirrors the same Rate+Items type set as the net
-                    # total below (excludes "Additional"-revenue-type items),
-                    # so Total amount and Total amount (Gross) describe the
-                    # same underlying charges, just tax-exclusive vs inclusive.
                     if item_type in ("SpaceOrder", "NightRebate", "ProductOrder", "ProductOrderRebate"):
-                        gross_amount_by_reservation[order_id] = gross_amount_by_reservation.get(order_id, 0) + (item_amount.get("GrossValue") or 0)
+                        gross_amount_by_reservation[order_id] = gross_amount_by_reservation.get(order_id, 0) + gross
                     if item_type in ("SpaceOrder", "NightRebate"):
-                        rate_amount_by_reservation[order_id] = rate_amount_by_reservation.get(order_id, 0) + net
+                        rate_amount_by_reservation[order_id] = rate_amount_by_reservation.get(order_id, 0) + gross
                         start_utc = item.get("StartUtc")
                         if start_utc:
                             night_label = datetime.fromisoformat(start_utc.replace("Z", "+00:00")) \
                                 .astimezone(ZoneInfo("Asia/Bangkok")).strftime("%d/%m")
                         else:
                             night_label = item.get("BillingName") or "Night"
-                        rate_lines_by_reservation.setdefault(order_id, []).append({"label": night_label, "amount": net, "_start": start_utc or ""})
+                        rate_lines_by_reservation.setdefault(order_id, []).append({"label": night_label, "amount": gross, "_start": start_utc or ""})
                     elif item_type in ("ProductOrder", "ProductOrderRebate"):
-                        items_amount_by_reservation[order_id] = items_amount_by_reservation.get(order_id, 0) + net
+                        items_amount_by_reservation[order_id] = items_amount_by_reservation.get(order_id, 0) + gross
                         product_label = item.get("BillingName") or item.get("Name") or "Product"
-                        item_lines_by_reservation.setdefault(order_id, []).append({"label": product_label, "amount": net, "_start": item.get("StartUtc") or ""})
+                        item_lines_by_reservation.setdefault(order_id, []).append({"label": product_label, "amount": gross, "_start": item.get("StartUtc") or ""})
 
                     if item_type != "ProductOrder":
                         continue
