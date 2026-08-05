@@ -1488,15 +1488,16 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
-    // Check-in occupies the room - MEWS marks it Dirty (needs housekeeping
-    // service during the stay), distinct from Clean/Inspected which only
-    // describe a vacant, ready-for-the-next-guest room. Skipped for
-    // OutOfService/OutOfOrder so a genuine maintenance flag isn't silently
-    // overwritten by a check-in that shouldn't be happening on that room
-    // anyway.
+    // Check-in always marks the room Inspected, whether it came in already
+    // Dirty (the checkInDirtyModal path above merges into this same call)
+    // or was some other status - explicit instruction, checked twice now:
+    // every check-in results in Inspected, full stop, no separate tick or
+    // prior-state branching. Skipped for OutOfService/OutOfOrder so a
+    // genuine maintenance flag isn't silently overwritten by a check-in
+    // that shouldn't be happening on that room anyway.
     const currentRoomState = knownRoomState ?? roomStateFor(r.room);
-    if (currentRoomState !== "Dirty" && currentRoomState !== "OutOfService" && currentRoomState !== "OutOfOrder") {
-      handleRoomStatusChange(r.room, currentRoomState, "Dirty");
+    if (currentRoomState !== "OutOfService" && currentRoomState !== "OutOfOrder") {
+      handleRoomStatusChange(r.room, currentRoomState, "Inspected");
     }
   };
   const handleCheckOut = (r: ReservationRow) =>
