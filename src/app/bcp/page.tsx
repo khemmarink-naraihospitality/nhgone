@@ -311,6 +311,23 @@ function fmtBirthDate(isoDate?: string): string {
   return `${d}/${m}/${y}`;
 }
 
+// MEWS's own screens show every amount with a real currency symbol (e.g.
+// ฿2,194.00), not a trailing 3-letter code - Intl.NumberFormat resolves the
+// correct symbol from the currency code Mews itself gave us (Amount.
+// Currency, already flowing through res.currency/p.currency/etc.), not a
+// hardcoded symbol table. th-TH specifically because it's the locale whose
+// currency data actually renders THB as ฿ - en-US's own CLDR data has no ฿
+// glyph for it and falls back to the plain "THB" code instead.
+function fmtMoney(amount: number | null | undefined, currency?: string): string {
+  const n = amount ?? 0;
+  if (!currency) return n.toLocaleString("en-US", { minimumFractionDigits: 2 });
+  try {
+    return new Intl.NumberFormat("th-TH", { style: "currency", currency }).format(n);
+  } catch {
+    return `${n.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${currency}`;
+  }
+}
+
 interface CustomerRow {
   name: string;
   tags: string[];
@@ -2045,7 +2062,7 @@ export default function BcpPage() {
       guest: selectedReservation.guest,
       room: selectedReservation.room,
       action: "Payment Processed",
-      detail: `Processed: ${(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} ${selectedReservation.currency || ""}`,
+      detail: `Processed: ${fmtMoney(selectedReservation.to_be_paid, selectedReservation.currency)}`,
       reason: note || undefined,
       reservationSnapshot: selectedReservation,
       guestProfileSnapshot: findGuestProfile(selectedReservation),
@@ -2888,7 +2905,7 @@ export default function BcpPage() {
                           <td className="p-3">{p.state}</td>
                           <td className="p-3">{p.notes || "-"}</td>
                           <td className="p-3 text-right font-bold">
-                            {p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}
+                            {fmtMoney(p.amount, p.currency)}
                           </td>
                         </tr>
                       ))}
@@ -2897,7 +2914,7 @@ export default function BcpPage() {
                       <tr className="border-t border-[var(--text-primary)]/10">
                         <td colSpan={5} className="p-3 text-right font-bold">Total</td>
                         <td className="p-3 text-right font-bold">
-                          {g.payments.reduce((s, p) => s + p.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {g.payments[0].currency}
+                          {fmtMoney(g.payments.reduce((s, p) => s + p.amount, 0), g.payments[0].currency)}
                         </td>
                       </tr>
                     </tfoot>
@@ -2959,7 +2976,7 @@ export default function BcpPage() {
                       <div className="px-4 py-2 rounded-lg bg-[var(--text-primary)]/5 text-right shrink-0">
                         <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
                         <div className="font-bold text-[14px]">
-                          {(guestProfileReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {guestProfileReservation.currency}
+                          {fmtMoney(guestProfileReservation.to_be_paid, guestProfileReservation.currency)}
                         </div>
                       </div>
                     </div>
@@ -2980,14 +2997,14 @@ export default function BcpPage() {
                             <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                             <span className="text-[var(--text-primary)]/70">{guestProfileReservation.guest} — {effectiveRoomNumber(guestProfileReservation.room)}</span>
                             <span className="text-[var(--text-primary)]/50">— Stay {line.label}</span>
-                            <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                            <span className="ml-auto font-bold shrink-0">{fmtMoney(line.amount, guestProfileReservation.currency)}</span>
                           </div>
                         ))}
                         {guestProfileReservation.item_lines?.map((line, i) => (
                           <div key={`i${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
                             <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                             <span className="text-[var(--text-primary)]/70">{line.label}</span>
-                            <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                            <span className="ml-auto font-bold shrink-0">{fmtMoney(line.amount, guestProfileReservation.currency)}</span>
                           </div>
                         ))}
                         {!guestProfileReservation.rate_lines?.length && !guestProfileReservation.item_lines?.length && (
@@ -3003,7 +3020,7 @@ export default function BcpPage() {
                               <div key={`p${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
                                 <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                                 <span className="text-[var(--text-primary)]/70">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
-                                <span className="ml-auto font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                <span className="ml-auto font-bold shrink-0">{fmtMoney(p.amount, p.currency)}</span>
                               </div>
                             ))}
                           </div>
@@ -3252,9 +3269,9 @@ export default function BcpPage() {
           {detailRow("Guests", `${res.adults} × Adult${res.adults !== 1 ? "s" : ""}${res.children ? `, ${res.children} × Child${res.children !== 1 ? "ren" : ""}` : ""}`)}
           {typeof res.total_amount === "number" && (
             <>
-              {detailRow("Avg. rate (nightly)", ((res.rate_amount ?? 0) / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-              {detailRow("Avg. price with products (nightly)", (res.total_amount / (selectedNights || 1)).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-              {detailRow("Total amount", `${res.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${res.currency || ""}`)}
+              {detailRow("Avg. rate (nightly)", fmtMoney((res.rate_amount ?? 0) / (selectedNights || 1), res.currency))}
+              {detailRow("Avg. price with products (nightly)", fmtMoney(res.total_amount / (selectedNights || 1), res.currency))}
+              {detailRow("Total amount", fmtMoney(res.total_amount, res.currency))}
             </>
           )}
           {res.category && detailRow("Requested category", res.category)}
@@ -3280,7 +3297,7 @@ export default function BcpPage() {
               {res.rate_lines.map((line, i) => (
                 <div key={i} className="flex items-center justify-between text-[13px]">
                   <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                  <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  <span>{fmtMoney(line.amount, res.currency)}</span>
                 </div>
               ))}
             </div>
@@ -3294,7 +3311,7 @@ export default function BcpPage() {
               {res.item_lines.map((line, i) => (
                 <div key={i} className="flex items-center justify-between text-[13px]">
                   <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                  <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                  <span>{fmtMoney(line.amount, res.currency)}</span>
                 </div>
               ))}
             </div>
@@ -3724,7 +3741,7 @@ export default function BcpPage() {
                     </div>
                     <div className="text-right">
                       <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">To be paid</div>
-                      <div className="font-bold text-[13px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                      <div className="font-bold text-[13px]">{fmtMoney(res.to_be_paid, res.currency)}</div>
                     </div>
                   </div>
                 </div>
@@ -3743,7 +3760,7 @@ export default function BcpPage() {
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-[11px] text-[var(--text-primary)]/50">{totalCount}×</span>
                       <span className="font-bold text-[14px]">
-                        {(res.total_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}
+                        {fmtMoney(res.total_amount, res.currency)}
                       </span>
                     </div>
                   </div>
@@ -3755,12 +3772,12 @@ export default function BcpPage() {
                           <svg className={`w-3 h-3 transition-transform ${manageNightsOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           Night — {res.rate_lines.length}×
                         </div>
-                        <div className="font-bold text-[13px]">{nightsTotal.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        <div className="font-bold text-[13px]">{fmtMoney(nightsTotal, res.currency)}</div>
                       </button>
                       {manageNightsOpen && res.rate_lines.map((line, i) => (
                         <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
                           <div>Night — {line.label} — 1×</div>
-                          <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          <div>{fmtMoney(line.amount, res.currency)}</div>
                         </div>
                       ))}
                     </div>
@@ -3776,12 +3793,12 @@ export default function BcpPage() {
                           <svg className={`w-3 h-3 transition-transform ${manageItemGroupsOpen[group.label] ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                           {group.label} — {group.lines.length}×
                         </div>
-                        <div className="font-bold text-[13px]">{group.total.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        <div className="font-bold text-[13px]">{fmtMoney(group.total, res.currency)}</div>
                       </button>
                       {manageItemGroupsOpen[group.label] && group.lines.map((line, i) => (
                         <div key={i} className="px-8 py-2 flex items-center justify-between text-[13px] text-[var(--text-primary)]/70 border-t border-[var(--text-primary)]/5">
                           <div>{group.label} — {line.label} — 1×</div>
-                          <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                          <div>{fmtMoney(line.amount, res.currency)}</div>
                         </div>
                       ))}
                     </div>
@@ -3802,7 +3819,7 @@ export default function BcpPage() {
                             <span className="shrink-0 px-2 py-0.5 text-[10px] font-bold border rounded bg-emerald-50 text-emerald-700 border-emerald-200">Charged</span>
                             <span className="truncate">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
                           </div>
-                          <div className="font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}</div>
+                          <div className="font-bold shrink-0">{fmtMoney(p.amount, p.currency)}</div>
                         </div>
                       ))
                     ) : (
@@ -3818,7 +3835,7 @@ export default function BcpPage() {
                       <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${isProcessed ? "bg-emerald-100 text-emerald-700 border-emerald-300" : "bg-slate-100 text-slate-600 border-slate-300"}`}>
                         {isProcessed ? "Paid" : "To be paid"}
                       </span>
-                      <div className="font-bold text-[18px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                      <div className="font-bold text-[18px]">{fmtMoney(res.to_be_paid, res.currency)}</div>
                     </div>
                     {isProcessed && processed.note && <div className="text-[11px] text-[var(--text-primary)]/50 mt-1">Note: {processed.note}</div>}
                   </div>
@@ -3897,14 +3914,14 @@ export default function BcpPage() {
                   {res.rate_lines?.map((line, i) => (
                     <div key={`night-${i}`} className={`px-4 py-2 flex items-center justify-between text-[13px] ${i > 0 ? "border-t border-[var(--text-primary)]/10" : ""}`}>
                       <div>Night — {line.label}</div>
-                      <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                      <div>{fmtMoney(line.amount, res.currency)}</div>
                     </div>
                   ))}
                   {itemGroups.map((group) =>
                     group.lines.map((line, i) => (
                       <div key={`${group.label}-${i}`} className="px-4 py-2 flex items-center justify-between text-[13px] border-t border-[var(--text-primary)]/10">
                         <div>{group.label} — {line.label}</div>
-                        <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                        <div>{fmtMoney(line.amount, res.currency)}</div>
                       </div>
                     ))
                   )}
@@ -3913,7 +3930,7 @@ export default function BcpPage() {
                   )}
                   <div className="px-4 py-3 flex items-center justify-between text-[14px] font-bold border-t border-[var(--text-primary)]/20 bg-[var(--text-primary)]/5">
                     <div>Total</div>
-                    <div>{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                    <div>{fmtMoney(res.to_be_paid, res.currency)}</div>
                   </div>
                 </div>
 
@@ -5576,12 +5593,12 @@ export default function BcpPage() {
                           const nights = Math.max(1, Math.round((new Date(snap.check_out).getTime() - new Date(snap.check_in).getTime()) / 86400000));
                           return (
                             <>
-                              {propRow("Avg. rate (nightly)", ((snap.rate_amount ?? 0) / nights).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
-                              {propRow("Avg. price with products (nightly)", (snap.total_amount / nights).toLocaleString("en-US", { minimumFractionDigits: 2 }))}
+                              {propRow("Avg. rate (nightly)", fmtMoney((snap.rate_amount ?? 0) / nights, snap.currency))}
+                              {propRow("Avg. price with products (nightly)", fmtMoney(snap.total_amount / nights, snap.currency))}
                             </>
                           );
                         })()}
-                        {typeof snap.total_amount === "number" && propRow("Total amount", `${snap.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} ${snap.currency || ""}`)}
+                        {typeof snap.total_amount === "number" && propRow("Total amount", fmtMoney(snap.total_amount, snap.currency))}
                         {snap.category && propRow("Requested category", snap.category)}
                         {propRow("Assigned space", <span className="font-bold">{snap.room ? effectiveRoomNumber(snap.room) : "-"}</span>)}
                         {snap.rate && propRow("Rate", snap.rate)}
@@ -5596,7 +5613,7 @@ export default function BcpPage() {
                             {snap.rate_lines.map((line, i) => (
                               <div key={i} className="flex items-center justify-between text-[13px]">
                                 <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                                <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                <span>{fmtMoney(line.amount, snap.currency)}</span>
                               </div>
                             ))}
                           </div>
@@ -5610,7 +5627,7 @@ export default function BcpPage() {
                             {snap.item_lines.map((line, i) => (
                               <div key={i} className="flex items-center justify-between text-[13px]">
                                 <span className="text-[var(--text-primary)]/60">{line.label}</span>
-                                <span>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                <span>{fmtMoney(line.amount, snap.currency)}</span>
                               </div>
                             ))}
                           </div>
@@ -5820,7 +5837,7 @@ export default function BcpPage() {
                                       <td className="p-3">{p.state}</td>
                                       <td className="p-3">{p.notes || "-"}</td>
                                       <td className="p-3 text-right font-bold">
-                                        {p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {p.currency}
+                                        {fmtMoney(p.amount, p.currency)}
                                       </td>
                                     </tr>
                                   ))}
@@ -5829,7 +5846,7 @@ export default function BcpPage() {
                                   <tr className="border-t border-[var(--text-primary)]/10">
                                     <td colSpan={5} className="p-3 text-right font-bold">Total</td>
                                     <td className="p-3 text-right font-bold">
-                                      {g.payments.reduce((s, p) => s + p.amount, 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {g.payments[0].currency}
+                                      {fmtMoney(g.payments.reduce((s, p) => s + p.amount, 0), g.payments[0].currency)}
                                     </td>
                                   </tr>
                                 </tfoot>
@@ -5871,7 +5888,7 @@ export default function BcpPage() {
                                 <div className="px-4 py-2 rounded-lg bg-[var(--text-primary)]/5 text-right shrink-0">
                                   <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-0.5">To be paid</div>
                                   <div className="font-bold text-[14px]">
-                                    {(snap.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {snap.currency}
+                                    {fmtMoney(snap.to_be_paid, snap.currency)}
                                   </div>
                                 </div>
                               </div>
@@ -5892,14 +5909,14 @@ export default function BcpPage() {
                                       <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                                       <span className="text-[var(--text-primary)]/70">{snap.guest} — {effectiveRoomNumber(snap.room)}</span>
                                       <span className="text-[var(--text-primary)]/50">— Stay {line.label}</span>
-                                      <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                      <span className="ml-auto font-bold shrink-0">{fmtMoney(line.amount, snap.currency)}</span>
                                     </div>
                                   ))}
                                   {snap.item_lines?.map((line, i) => (
                                     <div key={`i${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
                                       <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                                       <span className="text-[var(--text-primary)]/70">{line.label}</span>
-                                      <span className="ml-auto font-bold shrink-0">{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                      <span className="ml-auto font-bold shrink-0">{fmtMoney(line.amount, snap.currency)}</span>
                                     </div>
                                   ))}
                                   {!snap.rate_lines?.length && !snap.item_lines?.length && (
@@ -5915,7 +5932,7 @@ export default function BcpPage() {
                                         <div key={`p${i}`} className="flex items-center gap-3 text-[13px] py-2 border-b border-[var(--text-primary)]/5 last:border-0">
                                           <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
                                           <span className="text-[var(--text-primary)]/70">{fmtPaymentType(p)}{p.identifier ? ` — ${p.identifier}` : ""}</span>
-                                          <span className="ml-auto font-bold shrink-0">{p.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</span>
+                                          <span className="ml-auto font-bold shrink-0">{fmtMoney(p.amount, p.currency)}</span>
                                         </div>
                                       ))}
                                     </div>
@@ -6143,7 +6160,7 @@ export default function BcpPage() {
                       {typeof selectedReservation.total_amount === "number" && (
                         <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold bg-amber-100 text-amber-900">
                           <div>To be paid</div>
-                          <div>{(selectedReservation.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                          <div>{fmtMoney(selectedReservation.to_be_paid, selectedReservation.currency)}</div>
                         </div>
                       )}
                     </div>
@@ -6170,13 +6187,13 @@ export default function BcpPage() {
                           </div>
                           <div className="flex items-center justify-between mt-1">
                             <div>1× {selectedReservation.rate || "-"}</div>
-                            <div>{(selectedReservation.rate_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div>{fmtMoney(selectedReservation.rate_amount, selectedReservation.currency)}</div>
                           </div>
                         </button>
                         {rateLinesOpen && selectedReservation.rate_lines?.map((line, i) => (
                           <div key={i} className="px-4 pb-2 flex items-center justify-between text-[var(--text-primary)]/70">
                             <div>{line.label}</div>
-                            <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div>{fmtMoney(line.amount, selectedReservation.currency)}</div>
                           </div>
                         ))}
                         <button
@@ -6192,26 +6209,26 @@ export default function BcpPage() {
                           </div>
                           <div className="flex items-center justify-between mt-1">
                             <div>Products</div>
-                            <div>{(selectedReservation.items_amount ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div>{fmtMoney(selectedReservation.items_amount, selectedReservation.currency)}</div>
                           </div>
                         </button>
                         {itemLinesOpen && selectedReservation.item_lines?.map((line, i) => (
                           <div key={i} className="px-4 pb-2 flex items-center justify-between text-[var(--text-primary)]/70">
                             <div>{line.label}</div>
-                            <div>{line.amount.toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div>{fmtMoney(line.amount, selectedReservation.currency)}</div>
                           </div>
                         ))}
                         <div className="px-4 py-3 border-t border-[var(--text-primary)]/10 flex items-center justify-between font-bold bg-amber-100 text-amber-900">
                           <div>Total amount</div>
-                          <div>{selectedReservation.total_amount.toLocaleString("en-US", { minimumFractionDigits: 2 })} {selectedReservation.currency}</div>
+                          <div>{fmtMoney(selectedReservation.total_amount, selectedReservation.currency)}</div>
                         </div>
                         <div className="px-4 py-3 border-t border-[var(--text-primary)]/10">
                           <div className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-1.5">Details</div>
                           <div className="grid grid-cols-2 gap-y-1.5">
                             <div className="text-[var(--text-primary)]/50">Avg. rate (nightly)</div>
-                            <div className="text-right">{((selectedReservation.rate_amount ?? 0) / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div className="text-right">{fmtMoney((selectedReservation.rate_amount ?? 0) / selectedNights, selectedReservation.currency)}</div>
                             <div className="text-[var(--text-primary)]/50">Avg. price with products (nightly)</div>
-                            <div className="text-right">{(selectedReservation.total_amount / selectedNights).toLocaleString("en-US", { minimumFractionDigits: 2 })}</div>
+                            <div className="text-right">{fmtMoney(selectedReservation.total_amount / selectedNights, selectedReservation.currency)}</div>
                             {selectedReservation.service && (<><div className="text-[var(--text-primary)]/50">Service</div><div className="text-right">{selectedReservation.service}</div></>)}
                             {selectedReservation.travel_agency && (<><div className="text-[var(--text-primary)]/50">Travel agency</div><div className="text-right underline decoration-1 underline-offset-2">{selectedReservation.travel_agency}</div></>)}
                             {selectedReservation.travel_agency_confirmation_number && (<><div className="text-[var(--text-primary)]/50">Travel agency confirmation number</div><div className="text-right">{selectedReservation.travel_agency_confirmation_number}</div></>)}
