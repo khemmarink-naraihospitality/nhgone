@@ -496,6 +496,16 @@ const ROOM_STATE_BADGE_CLS: Record<string, string> = {
   OutOfOrder: "bg-red-50 text-red-700 border-red-200",
 };
 
+// Properties tab's own History section (mirrors the Status tab's Check In/
+// Out one) - just the action types that tab can actually change.
+const PROPERTIES_HISTORY_BADGE_CLS: Record<string, string> = {
+  "Note Added": "bg-blue-100 text-blue-700 border-blue-300",
+  "Arrival Changed": "bg-amber-100 text-amber-700 border-amber-300",
+  "Room Type Changed": "bg-purple-100 text-purple-700 border-purple-300",
+  "Chg Room": "bg-amber-100 text-amber-700 border-amber-300",
+  "Room Lock": "bg-indigo-100 text-indigo-700 border-indigo-300",
+};
+
 // Reg Card preview scale factor (see the transform:scale usage below) -
 // shrinks the true-A4-sized card to fit the viewport height, floored at 85%
 // so fine print/thin borders don't get shrunk past legibility on short
@@ -3464,6 +3474,45 @@ export default function BcpPage() {
               {roomTypeOverrides[res.number]?.reason && (
                 <div className="text-[11px] text-[var(--text-primary)]/50 -mt-3">Last change reason: {roomTypeOverrides[res.number]?.reason}</div>
               )}
+
+              {/* History - same idea as the Status tab's own History below
+                  its Check In/Out section, just scoped to the action types
+                  this tab can actually produce (Notes, Arrival/Departure,
+                  Room Type, and the shared Reservations panel's Chg Room/
+                  Room Lock, since both live on this tab too). */}
+              {(() => {
+                const history = actions
+                  .filter(
+                    (a) =>
+                      a.reservationNumber === res.number &&
+                      (a.action === "Note Added" ||
+                        a.action === "Arrival Changed" ||
+                        a.action === "Room Type Changed" ||
+                        a.action === "Chg Room" ||
+                        a.action === "Room Lock")
+                  )
+                  .sort((a, b) => b.at.localeCompare(a.at));
+                if (!history.length) return null;
+                return (
+                  <div className="pt-4 border-t border-[var(--text-primary)]/10">
+                    <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">History</div>
+                    <div className="flex flex-col gap-2">
+                      {history.map((a) => (
+                        <div key={a.id} className="flex items-start justify-between gap-3 text-[12px] pb-2 border-b border-[var(--text-primary)]/10 last:border-0 last:pb-0">
+                          <div>
+                            <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${PROPERTIES_HISTORY_BADGE_CLS[a.action] || "bg-slate-100 text-slate-700 border-slate-300"}`}>
+                              {a.action}
+                            </span>
+                            <div className="text-[var(--text-primary)]/70 mt-1 whitespace-pre-line">{a.detail}</div>
+                            {a.reason && <div className="text-[var(--text-primary)]/60 mt-1">Reason: {a.reason}</div>}
+                          </div>
+                          <div className="text-[var(--text-primary)]/40 shrink-0 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Right column: Reservations - shared with the Status tab above */}
