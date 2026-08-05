@@ -2022,9 +2022,9 @@ class SyncService:
             travel_agency = companies_dict.get(res.get("TravelAgencyId"), {})
             segment = segments_dict.get(res.get("BusinessSegmentId"), {})
             res_id = res.get("Id")
-            requested_amount = res.get("RequestedPaymentAmount") or {}
             rate_amount = rate_amount_by_reservation.get(res_id, 0)
             items_amount = items_amount_by_reservation.get(res_id, 0)
+            gross_total = gross_amount_by_reservation.get(res_id, 0)
             origin_label, reservation_source = format_origin(res)
 
             # Same customer-profile extraction as get_rr3_cards - the Extent
@@ -2105,12 +2105,18 @@ class SyncService:
                 "rate_lines": rate_lines_by_reservation.get(res_id, []),
                 "item_lines": item_lines_by_reservation.get(res_id, []),
                 "total_amount": rate_amount + items_amount,
-                "total_amount_gross": gross_amount_by_reservation.get(res_id, 0),
-                # RequestedPaymentAmount is what MEWS's own "To be paid" reflects
-                # (a specific payment request, not a running balance) - confirmed
-                # against a live reservation with no requested amount, whose
-                # "To be paid" reads 0 despite a nonzero accrued total above.
-                "to_be_paid": requested_amount.get("Value") or 0,
+                "total_amount_gross": gross_total,
+                # This used to read Reservation.RequestedPaymentAmount, which
+                # turned out to be a specific prepayment/deposit request field,
+                # not a running balance - it's almost never populated, so
+                # "To be paid" showed 0 even for reservations MEWS's own
+                # Billing screen shows a real outstanding amount on (confirmed
+                # by the user against a live reservation). MEWS's Billing
+                # screen itself derives the outstanding amount as charges
+                # minus payments, so this does the same: gross charges (same
+                # total shown above) minus payments received by the guest.
+                # Can go negative if the guest overpaid (a credit balance).
+                "to_be_paid": gross_total - sum(p["amount"] for p in guest_identity["payments"]),
                 "currency": currency_by_reservation.get(res_id, ""),
                 "service": stay_service_name,
                 "segment": segment.get("Name", ""),
