@@ -504,6 +504,7 @@ const PROPERTIES_HISTORY_BADGE_CLS: Record<string, string> = {
   "Room Type Changed": "bg-purple-100 text-purple-700 border-purple-300",
   "Chg Room": "bg-amber-100 text-amber-700 border-amber-300",
   "Room Lock": "bg-indigo-100 text-indigo-700 border-indigo-300",
+  "Payment Processed": "bg-emerald-100 text-emerald-700 border-emerald-300",
 };
 
 // Reg Card preview scale factor (see the transform:scale usage below) -
@@ -3673,6 +3674,35 @@ export default function BcpPage() {
                 <div className="text-[11px] text-[var(--text-primary)]/40 italic pt-2 border-t border-[var(--text-primary)]/10">
                   Read-only snapshot - no live connection to MEWS. Process payment is recorded in our own system only - re-process it there once it&apos;s back online. Issue proforma stays disabled.
                 </div>
+
+                {(() => {
+                  const history = actions
+                    .filter((a) => a.reservationNumber === res.number && a.action === "Payment Processed")
+                    .sort((a, b) => b.at.localeCompare(a.at));
+                  if (!history.length) return null;
+                  return (
+                    <div className="pt-4 border-t border-[var(--text-primary)]/10">
+                      <div className="text-[11px] font-bold text-[var(--text-primary)]/50 tracked-caps mb-2">History</div>
+                      <div className="flex flex-col gap-2">
+                        {history.map((a) => (
+                          <div key={a.id} className="flex items-start justify-between gap-3 text-[12px] pb-2 border-b border-[var(--text-primary)]/10 last:border-0 last:pb-0">
+                            <div>
+                              <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${PROPERTIES_HISTORY_BADGE_CLS[a.action] || "bg-slate-100 text-slate-700 border-slate-300"}`}>
+                                {a.action}
+                              </span>
+                              <div className="text-[var(--text-primary)]/70 mt-1 whitespace-pre-line">{a.detail}</div>
+                              {a.reason && <div className="text-[var(--text-primary)]/60 mt-1">Reason: {a.reason}</div>}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                              {a.userEmail && <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{a.userEmail}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
             );
           })()}
