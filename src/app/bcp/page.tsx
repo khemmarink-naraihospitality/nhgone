@@ -1521,26 +1521,21 @@ export default function BcpPage() {
 
   // Mirrors MEWS's own "Please inspect room before check in" prompt - Check
   // In on a Dirty room opens this instead of logging immediately, as a
-  // heads-up. "Make inspected" is optional, not required to proceed - if
-  // ticked, it also flips the room's status to Inspected, same as ticking
-  // it would in MEWS; left unticked, check-in still goes through and the
-  // room stays Dirty. Any other status checks in immediately, unchanged.
+  // heads-up. Confirming always marks the room Inspected (no separate tick
+  // required) as part of completing the check-in. Any other status checks
+  // in immediately, unchanged.
   const [checkInFor, setCheckInFor] = useState<ReservationRow | null>(null);
-  const [checkInMakeInspected, setCheckInMakeInspected] = useState(false);
   const requestCheckIn = (r: ReservationRow) => {
     if (roomStateFor(r.room) === "Dirty") {
       setCheckInFor(r);
-      setCheckInMakeInspected(false);
     } else {
       handleCheckIn(r);
     }
   };
   const handleConfirmCheckIn = () => {
     if (!checkInFor) return;
-    if (checkInMakeInspected) {
-      handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
-    }
-    handleCheckIn(checkInFor, checkInMakeInspected ? "Inspected" : "Dirty");
+    handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
+    handleCheckIn(checkInFor, "Inspected");
     setCheckInFor(null);
   };
 
@@ -2404,9 +2399,8 @@ export default function BcpPage() {
   );
 
   // Mirrors MEWS's own Check In dialog for a Dirty room - a heads-up, not a
-  // gate: "Check in" is always clickable, "Make inspected" is an optional
-  // tick that also flips the room to Inspected if checked (see
-  // handleConfirmCheckIn).
+  // gate: "Check in" is always clickable and always marks the room
+  // Inspected on confirm (see handleConfirmCheckIn), no separate tick needed.
   const checkInDirtyModal = checkInFor && (
     <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
@@ -2416,15 +2410,6 @@ export default function BcpPage() {
           <span className="font-bold text-[14px]">{effectiveRoomNumber(checkInFor.room)}</span>
           <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS.Dirty}`}>Dirty</span>
         </div>
-        <label className="flex items-center gap-2 text-[13px] cursor-pointer">
-          <input
-            type="checkbox"
-            checked={checkInMakeInspected}
-            onChange={(e) => setCheckInMakeInspected(e.target.checked)}
-            className="w-4 h-4"
-          />
-          Make inspected
-        </label>
         <div className="flex justify-end items-center gap-4 mt-6">
           <button onClick={() => setCheckInFor(null)} className="text-[12px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors">
             Go back
