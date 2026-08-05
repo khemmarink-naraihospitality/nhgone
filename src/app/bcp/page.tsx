@@ -580,6 +580,15 @@ const guestInitials = (name: string) => {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   return parts.length ? parts.slice(0, 2).map((w) => w[0]).join("").toUpperCase() : "?";
 };
+// Timeline (bars + the Reservations table below it) shows "Last, First"
+// instead of the usual "First Last" everywhere else in BCP - falls back to
+// whichever half is present, then the combined guest string, per request.
+const timelineGuestLabel = (r: { first_name?: string; last_name?: string; guest?: string }) => {
+  const first = (r.first_name || "").trim();
+  const last = (r.last_name || "").trim();
+  if (first && last) return `${last}, ${first}`;
+  return last || first || r.guest || "(no name)";
+};
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
 
 // Matches MEWS's own housekeeping status colors: Clean=blue, Inspected=
@@ -4394,12 +4403,12 @@ export default function BcpPage() {
                         onClick={() => { setSelectedReservation(res); setShowManagePage(false); setManageTab("reservation"); setManageNotesOpen(false); setSelectedGuestProfile(null); setGuestProfileGroup([]); setGuestProfileReservation(null); setRateLinesOpen(false); setItemLinesOpen(false); }}
                         className={`m-1 px-2 py-1 text-[11px] font-bold text-left truncate rounded border transition-all hover:brightness-95 flex items-center gap-1 ${cls} ${started ? "shadow-sm" : "border-dashed"}`}
                         style={{ gridColumn: `${colStart} / span ${colSpan}`, gridRow: roomIdx + 2, zIndex: 5 }}
-                        title={`${res.guest} — ${STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}${effectiveRoomLocked(res) ? " (room locked)" : ""}`}
+                        title={`${timelineGuestLabel(res)} — ${STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}${effectiveRoomLocked(res) ? " (room locked)" : ""}`}
                       >
                         {effectiveRoomLocked(res) && (
                           <svg className="w-2.5 h-2.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
                         )}
-                        <span className="truncate">{res.guest || "(no name)"}</span>
+                        <span className="truncate">{timelineGuestLabel(res)}</span>
                       </button>
                     );
                   })}
@@ -4465,7 +4474,7 @@ export default function BcpPage() {
                             <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${status.cls}`}>{status.label}</span>
                           </td>
                           <td className="p-3 px-4 align-top">
-                            <div className="font-bold text-[13px] text-[var(--text-primary)]">{r.guest || "(no name)"}</div>
+                            <div className="font-bold text-[13px] text-[var(--text-primary)]">{timelineGuestLabel(r)}</div>
                             <div className="text-[11px] text-[var(--text-primary)]/50">{r.nationality || "-"}</div>
                             {done && (
                               <button onClick={() => setSelectedLogEntry(done)} className="text-[10px] text-red-700 font-bold mt-1 underline decoration-dotted hover:decoration-solid">
