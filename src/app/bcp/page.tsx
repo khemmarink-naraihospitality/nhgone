@@ -187,6 +187,116 @@ const GUEST_FIELD_LABELS: [keyof GuestIdentity, string][] = [
   ["address_details", "Address"],
 ];
 
+// Edit Guest modal's dropdown options, replacing what used to be free-text
+// inputs for these 4 fields (see the Edit Guest render below).
+const GUEST_TITLE_OPTIONS = ["Mr.", "Ms.", "Mrs.", "Dr.", "Prof."];
+// Mews's own documented set of language-culture codes a guest's preferred
+// language is drawn from (https://docs.mews.com/booking-engine-guide/booking-engine-api/guidelines/supported-language-codes).
+// Value is the raw code, matching what's already stored/synced from MEWS
+// (e.g. "de-DE").
+const GUEST_LANGUAGE_OPTIONS: [string, string][] = [
+  ["ca-ES", "Catalan"], ["cs-CZ", "Czech"], ["da-DK", "Danish"], ["de-CH", "German (Swiss)"],
+  ["de-DE", "German"], ["el-GR", "Greek"], ["en-GB", "English (British)"], ["en-US", "English (US)"],
+  ["es-ES", "Spanish"], ["et-EE", "Estonian"], ["eu-ES", "Basque"], ["fi-FI", "Finnish"],
+  ["fr-FR", "French"], ["is-IS", "Icelandic"], ["it-IT", "Italian"], ["ja-JP", "Japanese"],
+  ["ka-GE", "Georgian"], ["ko-KR", "Korean"], ["ms-MY", "Malay"], ["nb-NO", "Norwegian"],
+  ["nl-NL", "Dutch"], ["pl-PL", "Polish"], ["pt-BR", "Portuguese (Brazilian)"], ["pt-PT", "Portuguese"],
+  ["ru-RU", "Russian"], ["sk-SK", "Slovak"], ["sv-SE", "Swedish"], ["ta-IN", "Tamil"],
+  ["tr-TR", "Turkish"], ["uk-UA", "Ukrainian"], ["zh-CN", "Chinese (Simplified)"],
+];
+// Mews's Customer.Sex enum only has these 2 documented values.
+const GUEST_SEX_OPTIONS = ["Male", "Female"];
+// Mews's NationalityCode/BirthCountryCode are ISO 3166-1 codes - full
+// standard country list (matches the backend's _RR3_COUNTRY_MAP, just names
+// since that's all this form stores/displays - keep both in sync).
+const GUEST_COUNTRY_OPTIONS = [
+  "Afghanistan", "Albania", "Algeria", "American Samoa",
+  "Andorra", "Angola", "Anguilla", "Antarctica",
+  "Antigua and Barbuda", "Argentina", "Armenia", "Aruba",
+  "Australia", "Austria", "Azerbaijan", "Bahamas",
+  "Bahrain", "Bangladesh", "Barbados", "Belarus",
+  "Belgium", "Belize", "Benin", "Bermuda",
+  "Bhutan", "Bolivia", "Bonaire, Sint Eustatius and Saba", "Bosnia and Herzegovina",
+  "Botswana", "Bouvet Island", "Brazil", "British Indian Ocean Territory",
+  "Brunei", "Bulgaria", "Burkina Faso", "Burundi",
+  "Cabo Verde", "Cambodia", "Cameroon", "Canada",
+  "Cayman Islands", "Central African Republic", "Chad", "Chile",
+  "China", "Christmas Island", "Cocos (Keeling) Islands", "Colombia",
+  "Comoros", "Congo (Democratic Republic)", "Congo (Republic)", "Cook Islands",
+  "Costa Rica", "Croatia", "Cuba", "Curaçao",
+  "Cyprus", "Czechia", "Côte d'Ivoire", "Denmark",
+  "Djibouti", "Dominica", "Dominican Republic", "Ecuador",
+  "Egypt", "El Salvador", "Equatorial Guinea", "Eritrea",
+  "Estonia", "Eswatini", "Ethiopia", "Falkland Islands",
+  "Faroe Islands", "Fiji", "Finland", "France",
+  "French Guiana", "French Polynesia", "French Southern Territories", "Gabon",
+  "Gambia", "Georgia", "Germany", "Ghana",
+  "Gibraltar", "Greece", "Greenland", "Grenada",
+  "Guadeloupe", "Guam", "Guatemala", "Guernsey",
+  "Guinea", "Guinea-Bissau", "Guyana", "Haiti",
+  "Heard Island and McDonald Islands", "Holy See", "Honduras", "Hong Kong",
+  "Hungary", "Iceland", "India", "Indonesia",
+  "Iran", "Iraq", "Ireland", "Isle of Man",
+  "Israel", "Italy", "Jamaica", "Japan",
+  "Jersey", "Jordan", "Kazakhstan", "Kenya",
+  "Kiribati", "Kuwait", "Kyrgyzstan", "Laos",
+  "Latvia", "Lebanon", "Lesotho", "Liberia",
+  "Libya", "Liechtenstein", "Lithuania", "Luxembourg",
+  "Macao", "Madagascar", "Malawi", "Malaysia",
+  "Maldives", "Mali", "Malta", "Marshall Islands",
+  "Martinique", "Mauritania", "Mauritius", "Mayotte",
+  "Mexico", "Micronesia", "Moldova", "Monaco",
+  "Mongolia", "Montenegro", "Montserrat", "Morocco",
+  "Mozambique", "Myanmar", "Namibia", "Nauru",
+  "Nepal", "Netherlands", "New Caledonia", "New Zealand",
+  "Nicaragua", "Niger", "Nigeria", "Niue",
+  "Norfolk Island", "North Korea", "North Macedonia", "Northern Mariana Islands",
+  "Norway", "Oman", "Pakistan", "Palau",
+  "Palestine", "Panama", "Papua New Guinea", "Paraguay",
+  "Peru", "Philippines", "Pitcairn", "Poland",
+  "Portugal", "Puerto Rico", "Qatar", "Romania",
+  "Russia", "Rwanda", "Saint Barthélemy", "Saint Kitts and Nevis",
+  "Saint Lucia", "Saint Martin", "Saint Pierre and Miquelon", "Saint Vincent and the Grenadines",
+  "Samoa", "San Marino", "Saudi Arabia", "Senegal",
+  "Serbia", "Seychelles", "Sierra Leone", "Singapore",
+  "Sint Maarten", "Slovakia", "Slovenia", "Solomon Islands",
+  "Somalia", "South Africa", "South Georgia and South Sandwich Islands", "South Korea",
+  "South Sudan", "Spain", "Sri Lanka", "Sudan",
+  "Suriname", "Svalbard and Jan Mayen", "Sweden", "Switzerland",
+  "Syria", "São Tomé and Príncipe", "Taiwan", "Tajikistan",
+  "Tanzania", "Thailand", "Timor-Leste", "Togo",
+  "Tokelau", "Tonga", "Trinidad and Tobago", "Tunisia",
+  "Turkey", "Turkmenistan", "Turks and Caicos Islands", "Tuvalu",
+  "Uganda", "Ukraine", "United Arab Emirates", "United Kingdom",
+  "United States", "United States Minor Outlying Islands", "Uruguay", "Uzbekistan",
+  "Vanuatu", "Venezuela", "Vietnam", "Virgin Islands (British)",
+  "Virgin Islands (U.S.)", "Wallis and Futuna", "Western Sahara", "Yemen",
+  "Zambia", "Zimbabwe", "Åland Islands",
+];
+// MEWS's BirthDate is a plain YYYY-MM-DD calendar date - the Edit Guest
+// modal shows/accepts MM/DD/YYYY instead (per request), converting at the
+// edges so everything else that reads birth_date (fmtBirthDate, Reg Card)
+// keeps seeing ISO. Both fall through to the raw string unchanged until it
+// fully matches the expected pattern, so mid-typing isn't clobbered.
+function mdyToIso(mdy: string): string {
+  const m = mdy.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return mdy;
+  const [, mm, dd, yyyy] = m;
+  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
+}
+function isoToMdy(iso: string): string {
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return iso;
+  const [, yyyy, mm, dd] = m;
+  return `${mm}/${dd}/${yyyy}`;
+}
+
+// Edit Guest modal's Full name is a read-only display derived from First +
+// Last + Second last name, not its own editable/required field anymore.
+function guestDisplayName(g: Pick<GuestIdentity, "first_name" | "last_name" | "second_last_name">): string {
+  return [g.first_name, g.last_name, g.second_last_name].filter((s) => s && s.trim()).join(" ");
+}
+
 // Builds the Action Log's Detail string for Guest Added/Edited/Removed -
 // added/removed list every filled-in field (so the log itself is the full
 // record of what was there), edited lists only the fields that actually
@@ -2068,6 +2178,7 @@ export default function BcpPage() {
     if (!editGuestFor || !editGuestForm || !selectedReservation || !snapshot?.property) return;
     setSavingGuestEdit(true);
     setGuestEditError(null);
+    const formToSave: GuestIdentity = { ...editGuestForm, name: guestDisplayName(editGuestForm) };
     try {
       const res = await fetch("/api/bcp/guest-overrides", {
         method: "POST",
@@ -2077,19 +2188,19 @@ export default function BcpPage() {
           reservation_number: selectedReservation.number,
           guest_key: editGuestFor.guestKey,
           removed: false,
-          data: editGuestForm,
+          data: formToSave,
         }),
       });
       const result = await res.json();
       if (result.status === "success") {
-        setGuestOverrides((prev) => ({ ...prev, [editGuestFor.guestKey]: { removed: false, data: editGuestForm } }));
+        setGuestOverrides((prev) => ({ ...prev, [editGuestFor.guestKey]: { removed: false, data: formToSave } }));
         logOfflineAction({
           at: new Date().toISOString(),
           reservationNumber: selectedReservation.number,
-          guest: editGuestForm.name,
+          guest: formToSave.name,
           room: selectedReservation.room,
           action: editGuestFor.isNew ? "Guest Added" : "Guest Edited",
-          detail: summarizeGuestChanges(editGuestFor.isNew ? null : editGuestOriginal, editGuestForm, editGuestFor.isNew ? "added" : "edited"),
+          detail: summarizeGuestChanges(editGuestFor.isNew ? null : editGuestOriginal, formToSave, editGuestFor.isNew ? "added" : "edited"),
           reservationSnapshot: selectedReservation,
           guestProfileSnapshot: findGuestProfile(selectedReservation),
         });
@@ -4979,42 +5090,84 @@ export default function BcpPage() {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="font-display text-xl mb-1">{editGuestFor.isNew ? "Add Guest" : "Edit Guest"}</div>
-              <div className="text-[11px] text-[var(--text-primary)]/50 mb-4">
-                <span className="text-red-600 font-bold">*</span> Required
-              </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="col-span-3">
+                  <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Full name</div>
+                  <div className="w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/10 text-[var(--text-primary)]/60">
+                    {guestDisplayName(editGuestForm) || <span className="italic">First + Last + Second last name below</span>}
+                  </div>
+                </div>
                 {(
                   [
-                    ["name", "Full name", true],
-                    ["title", "Title", false],
-                    ["first_name", "First name", false],
-                    ["last_name", "Last name", false],
-                    ["second_last_name", "Second last name", false],
-                    ["nationality_name", "Nationality", false],
-                    ["language", "Language", false],
-                    ["phone", "Telephone", false],
-                    ["sex", "Sex", false],
-                    ["birth_date", "Date of birth (YYYY-MM-DD)", false],
-                    ["birth_country_name", "Country of birth", false],
-                    ["birth_place", "Place of birth", false],
-                    ["occupation", "Occupation", false],
-                    ["passport_number", "Passport", false],
-                    ["identity_card_number", "ID Card", false],
-                    ["alien_book", "Alien Book", false],
-                    ["email", "Email", false],
-                  ] as [keyof GuestIdentity, string, boolean][]
-                ).map(([field, label, required]) => (
-                  <div key={field}>
-                    <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">
-                      {label}{required && <span className="text-red-600 font-bold ml-0.5">*</span>}
+                    ["title", "Title"],
+                    ["first_name", "First name"],
+                    ["last_name", "Last name"],
+                    ["second_last_name", "Second last name"],
+                    ["nationality_name", "Nationality"],
+                    ["language", "Language"],
+                    ["phone", "Telephone"],
+                    ["sex", "Sex"],
+                    ["birth_date", "Date of birth (MM/DD/YYYY)"],
+                    ["birth_country_name", "Country of birth"],
+                    ["birth_place", "Place of birth"],
+                    ["occupation", "Occupation"],
+                    ["passport_number", "Passport"],
+                    ["identity_card_number", "ID Card"],
+                    ["alien_book", "Alien Book"],
+                    ["email", "Email"],
+                  ] as [keyof GuestIdentity, string][]
+                ).map(([field, label]) => {
+                  const inputCls = "w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/5 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30";
+                  const value = (editGuestForm[field] as string) || "";
+                  const setValue = (v: string) => setEditGuestForm((prev) => (prev ? { ...prev, [field]: v } : prev));
+                  let control: ReactNode;
+                  if (field === "title") {
+                    control = (
+                      <select value={value} onChange={(e) => setValue(e.target.value)} className={inputCls}>
+                        <option value="">-</option>
+                        {GUEST_TITLE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    );
+                  } else if (field === "sex") {
+                    control = (
+                      <select value={value} onChange={(e) => setValue(e.target.value)} className={inputCls}>
+                        <option value="">-</option>
+                        {GUEST_SEX_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    );
+                  } else if (field === "language") {
+                    control = (
+                      <select value={value} onChange={(e) => setValue(e.target.value)} className={inputCls}>
+                        <option value="">-</option>
+                        {GUEST_LANGUAGE_OPTIONS.map(([code, name]) => <option key={code} value={code}>{name} ({code})</option>)}
+                      </select>
+                    );
+                  } else if (field === "nationality_name" || field === "birth_country_name") {
+                    control = (
+                      <select value={value} onChange={(e) => setValue(e.target.value)} className={inputCls}>
+                        <option value="">-</option>
+                        {GUEST_COUNTRY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    );
+                  } else if (field === "birth_date") {
+                    control = (
+                      <input
+                        value={isoToMdy(value)}
+                        onChange={(e) => setValue(mdyToIso(e.target.value))}
+                        placeholder="MM/DD/YYYY"
+                        className={inputCls}
+                      />
+                    );
+                  } else {
+                    control = <input value={value} onChange={(e) => setValue(e.target.value)} className={inputCls} />;
+                  }
+                  return (
+                    <div key={field}>
+                      <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">{label}</div>
+                      {control}
                     </div>
-                    <input
-                      value={(editGuestForm[field] as string) || ""}
-                      onChange={(e) => setEditGuestForm((prev) => (prev ? { ...prev, [field]: e.target.value } : prev))}
-                      className="w-full px-2.5 py-1.5 text-[13px] rounded-lg bg-[var(--text-primary)]/5 focus:outline-none focus:ring-1 focus:ring-[var(--text-primary)]/30"
-                    />
-                  </div>
-                ))}
+                  );
+                })}
                 <div className="col-span-3">
                   <div className="text-[10px] text-[var(--text-primary)]/50 mb-1">Address</div>
                   <input
@@ -5038,7 +5191,7 @@ export default function BcpPage() {
                 </button>
                 <button
                   onClick={handleSaveGuestEdit}
-                  disabled={savingGuestEdit || !editGuestForm.name.trim()}
+                  disabled={savingGuestEdit || !guestDisplayName(editGuestForm).trim()}
                   className="px-4 py-2 text-[11px] font-bold tracked-caps bg-amber-400 text-[#152A00] hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {savingGuestEdit ? "Saving..." : "Save"}
