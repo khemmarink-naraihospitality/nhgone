@@ -3316,7 +3316,10 @@ export default function BcpPage() {
                               </span>
                               {a.reason && <div className="text-[var(--text-primary)]/60 mt-1">Reason: {a.reason}</div>}
                             </div>
-                            <div className="text-[var(--text-primary)]/40 shrink-0 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                            <div className="text-right shrink-0">
+                              <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                              {a.userEmail && <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{a.userEmail}</div>}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -3506,7 +3509,10 @@ export default function BcpPage() {
                             <div className="text-[var(--text-primary)]/70 mt-1 whitespace-pre-line">{a.detail}</div>
                             {a.reason && <div className="text-[var(--text-primary)]/60 mt-1">Reason: {a.reason}</div>}
                           </div>
-                          <div className="text-[var(--text-primary)]/40 shrink-0 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                          <div className="text-right shrink-0">
+                            <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{fmtNoteTimestamp(a.at)}</div>
+                            {a.userEmail && <div className="text-[var(--text-primary)]/40 whitespace-nowrap">{a.userEmail}</div>}
+                          </div>
                         </div>
                       ))}
                     </div>
