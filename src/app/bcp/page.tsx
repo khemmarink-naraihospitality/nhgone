@@ -3700,6 +3700,27 @@ export default function BcpPage() {
 
             return (
               <div className="max-w-3xl flex flex-col gap-6">
+                {/* Mirrors MEWS's own Billing screen, which shows these 3 as
+                    a compact label-over-value row above the bill itself
+                    (Reservation status/Arrival/To be paid), not folded into
+                    the summary card below like everything else here. */}
+                <div className="flex items-center justify-end gap-8">
+                  <div className="text-right">
+                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">Reservation status</div>
+                    <span className={`inline-block px-2 py-0.5 text-[10px] font-bold border rounded ${STATE_BADGE_CLS[effectiveReservationState(res)] || STATE_BADGE_CLS.Processed}`}>
+                      {STATE_DISPLAY_LABEL[effectiveReservationState(res)] || effectiveReservationState(res)}
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">Arrival</div>
+                    <div className="font-bold text-[13px]">{fmtDateOnly(res.check_in)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] text-[var(--text-primary)]/50 tracked-caps mb-1">To be paid</div>
+                    <div className="font-bold text-[13px]">{(res.to_be_paid ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} {res.currency}</div>
+                  </div>
+                </div>
+
                 <div className="border border-[var(--text-primary)]/14 rounded-xl overflow-hidden">
                   <div className="p-4 flex items-center justify-between gap-4 flex-wrap border-b border-[var(--text-primary)]/10">
                     <div className="flex items-center gap-3 min-w-0 flex-wrap text-[12px]">
