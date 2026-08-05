@@ -273,24 +273,6 @@ const GUEST_COUNTRY_OPTIONS = [
   "Virgin Islands (U.S.)", "Wallis and Futuna", "Western Sahara", "Yemen",
   "Zambia", "Zimbabwe", "Åland Islands",
 ];
-// MEWS's BirthDate is a plain YYYY-MM-DD calendar date - the Edit Guest
-// modal shows/accepts MM/DD/YYYY instead (per request), converting at the
-// edges so everything else that reads birth_date (fmtBirthDate, Reg Card)
-// keeps seeing ISO. Both fall through to the raw string unchanged until it
-// fully matches the expected pattern, so mid-typing isn't clobbered.
-function mdyToIso(mdy: string): string {
-  const m = mdy.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (!m) return mdy;
-  const [, mm, dd, yyyy] = m;
-  return `${yyyy}-${mm.padStart(2, "0")}-${dd.padStart(2, "0")}`;
-}
-function isoToMdy(iso: string): string {
-  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return iso;
-  const [, yyyy, mm, dd] = m;
-  return `${mm}/${dd}/${yyyy}`;
-}
-
 // Edit Guest modal's Full name is a read-only display derived from First +
 // Last + Second last name, not its own editable/required field anymore.
 function guestDisplayName(g: Pick<GuestIdentity, "first_name" | "last_name" | "second_last_name">): string {
@@ -5160,10 +5142,18 @@ export default function BcpPage() {
                     );
                   } else if (field === "birth_date") {
                     control = (
+                      // Native date input for a real calendar picker - its
+                      // value/onChange are always plain ISO yyyy-mm-dd
+                      // regardless of display format, matching what's
+                      // stored/read everywhere else (fmtBirthDate, Reg
+                      // Card). lang="en-US" pins the displayed text/picker
+                      // to MM/DD/YYYY in Chromium regardless of the
+                      // browser's own UI language, per request.
                       <input
-                        value={isoToMdy(value)}
-                        onChange={(e) => setValue(mdyToIso(e.target.value))}
-                        placeholder="MM/DD/YYYY"
+                        type="date"
+                        lang="en-US"
+                        value={value}
+                        onChange={(e) => setValue(e.target.value)}
                         className={inputCls}
                       />
                     );
