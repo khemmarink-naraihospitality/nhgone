@@ -881,3 +881,21 @@ async def archive_action_logs(payload: dict = Body(...)):
         return {"status": "success"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/action-logs/delete")
+async def delete_action_logs(payload: dict = Body(...)):
+    """Permanently delete rows - unlike archive/unarchive above, this can't
+    be undone. The Archive table's Delete Selected button is only shown to
+    Super Admin in the frontend; this endpoint itself doesn't re-check the
+    role, same as the rest of BCP's role gating (client-side only)."""
+    if not sync_service.supabase:
+        raise HTTPException(status_code=503, detail="Supabase not initialized")
+    ids = payload.get("ids")
+    if not ids or not isinstance(ids, list):
+        raise HTTPException(status_code=400, detail="ids (non-empty list) is required")
+    try:
+        sync_service.supabase.table("bcp_action_logs").delete().in_("id", ids).execute()
+        return {"status": "success"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

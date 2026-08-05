@@ -663,6 +663,11 @@ export default function BcpPage() {
   // Row-select checkboxes for bulk Archive/Unarchive - one shared set since
   // a row's id only ever appears in one of the two tables at a time.
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
+  // Archive table's Delete Selected - Super Admin only (gated in the UI
+  // below), unlike Archive/Unarchive this is permanent, so it goes through
+  // a confirm modal first. Holds the ids pending confirmation.
+  const [deleteLogsFor, setDeleteLogsFor] = useState<string[] | null>(null);
+  const [deletingLogs, setDeletingLogs] = useState(false);
   const [showReadme, setShowReadme] = useState(false);
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
@@ -1446,6 +1451,34 @@ export default function BcpPage() {
       /* local state already reflects the move; a failed write here just
          means it doesn't persist across a reload - not worth rolling back
          and confusing whoever just clicked the button. */
+    }
+  };
+
+  // Permanent delete - Archive table only. Unlike handleBulkSetArchived
+  // above, this actually removes the rows, so it's called only after the
+  // confirm modal (deleteLogsFor) and gated to Super Admin in the UI.
+  const handleBulkDeleteLogs = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    setDeletingLogs(true);
+    try {
+      await fetch("/api/bcp/action-logs/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      setActions((prev) => prev.filter((a) => !ids.includes(a.id)));
+      setSelectedLogIds((prev) => {
+        const next = new Set(prev);
+        ids.forEach((id) => next.delete(id));
+        return next;
+      });
+    } catch {
+      /* left in local state on failure - unlike the optimistic Archive/
+         Unarchive above, a permanent delete shouldn't disappear from the
+         table only to silently reappear on the next reload. */
+    } finally {
+      setDeletingLogs(false);
+      setDeleteLogsFor(null);
     }
   };
 
@@ -4544,13 +4577,24 @@ export default function BcpPage() {
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="font-display text-xl text-[var(--text-primary)]">Archive</div>
                   {selectedArchivedIds.length > 0 && (
-                    <button
-                      onClick={() => handleBulkSetArchived(selectedArchivedIds, false)}
-                      title="Move the selected rows back to the main Action Logs table above"
-                      className="px-3 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
-                    >
-                      Unarchive Selected ({selectedArchivedIds.length})
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {isSuperAdminRole && (
+                        <button
+                          onClick={() => setDeleteLogsFor(selectedArchivedIds)}
+                          title="Permanently delete the selected rows - Super Admin only"
+                          className="px-3 py-2 text-[11px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors whitespace-nowrap"
+                        >
+                          Delete Selected ({selectedArchivedIds.length})
+                        </button>
+                      )}
+                      <button
+                        onClick={() => handleBulkSetArchived(selectedArchivedIds, false)}
+                        title="Move the selected rows back to the main Action Logs table above"
+                        className="px-3 py-2 text-[11px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                      >
+                        Unarchive Selected ({selectedArchivedIds.length})
+                      </button>
+                    </div>
                   )}
                 </div>
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto">
@@ -5023,6 +5067,33 @@ export default function BcpPage() {
                   className="px-4 py-2 text-[11px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors"
                 >
                   Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {deleteLogsFor && (
+          <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => !deletingLogs && setDeleteLogsFor(null)}>
+            <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
+              <div className="font-display text-xl mb-1">Delete Action Logs</div>
+              <div className="text-[13px] text-[var(--text-primary)]/70 mb-4">
+                Permanently delete {deleteLogsFor.length} archived {deleteLogsFor.length === 1 ? "entry" : "entries"}? This cannot be undone.
+              </div>
+              <div className="flex justify-end gap-2">
+                <button
+                  onClick={() => setDeleteLogsFor(null)}
+                  disabled={deletingLogs}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps border border-[var(--text-primary)]/20 hover:bg-[var(--text-primary)]/5 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => handleBulkDeleteLogs(deleteLogsFor)}
+                  disabled={deletingLogs}
+                  className="px-4 py-2 text-[11px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {deletingLogs ? "Deleting..." : "Delete"}
                 </button>
               </div>
             </div>
