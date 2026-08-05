@@ -1520,10 +1520,11 @@ export default function BcpPage() {
   };
 
   // Mirrors MEWS's own "Please inspect room before check in" prompt - Check
-  // In on a Dirty room opens this instead of logging immediately, and only
-  // lets the front desk proceed once they've ticked "Make inspected" (which
-  // also flips the room's status to Inspected, same as ticking it would in
-  // MEWS). Any other status checks in immediately, unchanged.
+  // In on a Dirty room opens this instead of logging immediately, as a
+  // heads-up. "Make inspected" is optional, not required to proceed - if
+  // ticked, it also flips the room's status to Inspected, same as ticking
+  // it would in MEWS; left unticked, check-in still goes through and the
+  // room stays Dirty. Any other status checks in immediately, unchanged.
   const [checkInFor, setCheckInFor] = useState<ReservationRow | null>(null);
   const [checkInMakeInspected, setCheckInMakeInspected] = useState(false);
   const requestCheckIn = (r: ReservationRow) => {
@@ -1535,9 +1536,11 @@ export default function BcpPage() {
     }
   };
   const handleConfirmCheckIn = () => {
-    if (!checkInFor || !checkInMakeInspected) return;
-    handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
-    handleCheckIn(checkInFor, "Inspected");
+    if (!checkInFor) return;
+    if (checkInMakeInspected) {
+      handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
+    }
+    handleCheckIn(checkInFor, checkInMakeInspected ? "Inspected" : "Dirty");
     setCheckInFor(null);
   };
 
@@ -2400,9 +2403,10 @@ export default function BcpPage() {
     </div>
   );
 
-  // Mirrors MEWS's own Check In dialog for a Dirty room - "Check in" stays
-  // disabled until "Make inspected" is ticked, which both flips the room to
-  // Inspected and completes the check-in on confirm (see handleConfirmCheckIn).
+  // Mirrors MEWS's own Check In dialog for a Dirty room - a heads-up, not a
+  // gate: "Check in" is always clickable, "Make inspected" is an optional
+  // tick that also flips the room to Inspected if checked (see
+  // handleConfirmCheckIn).
   const checkInDirtyModal = checkInFor && (
     <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
@@ -2427,8 +2431,7 @@ export default function BcpPage() {
           </button>
           <button
             onClick={handleConfirmCheckIn}
-            disabled={!checkInMakeInspected}
-            className="px-5 py-2.5 text-[11px] font-bold tracked-caps bg-indigo-600 text-white hover:bg-indigo-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="px-5 py-2.5 text-[11px] font-bold tracked-caps bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
           >
             Check in
           </button>
