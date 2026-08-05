@@ -4945,7 +4945,13 @@ export default function BcpPage() {
               )}
             </div>
 
-            <div className="fixed bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px] max-h-[92vh] overflow-y-auto">
+            {/* top-24 (not max-h-[92vh], which only bounded this from the
+                bottom) leaves clearance for the Close/Save/Print row above -
+                that row's own height varies (grows when regCardSaveResult
+                shows a message underneath it), and anchoring this panel
+                purely from the bottom let its top edge grow up underneath
+                those buttons on tall content. */}
+            <div className="fixed top-24 bottom-4 right-4 z-10 bg-white text-black border border-black/10 shadow-2xl p-4 w-[340px] overflow-y-auto">
               {/* Occupation - MEWS's own customer profile very often has no
                   Occupation at all; printing a fabricated default in that
                   case misrepresented data MEWS never provided (see
