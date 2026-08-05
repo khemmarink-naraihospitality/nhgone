@@ -4364,7 +4364,9 @@ export default function BcpPage() {
             )}
 
             {mainTab === "logs" && (
-              <div className="no-print bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 overflow-x-auto">
+              <div className="no-print mb-8">
+                <div className="font-display text-xl text-[var(--text-primary)] mb-3">Action Logs</div>
+                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto">
                 <table className="w-full text-left border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.03]">
@@ -4459,6 +4461,7 @@ export default function BcpPage() {
                 </table>
                 <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
                   Saved permanently, not just on this device — every entry ever logged for this property stays here (use search above to narrow it down). Use as a reference to re-enter these actions into MEWS once it&apos;s back online, and tick BCP Check once an action has been re-keyed into MEWS. Select rows and click Archive Selected to move them to the Archive table below.
+                </div>
                 </div>
               </div>
             )}
