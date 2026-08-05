@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -590,6 +590,16 @@ const timelineGuestLabel = (r: { first_name?: string; last_name?: string; guest?
 };
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / DAY_MS);
 
+// Action Logs' Outlook-style date groups - Bangkok calendar day, same
+// convention as every other date bucketing in this file (toBangkokDay).
+function actionLogDateGroup(at: string): string {
+  const diff = daysBetween(toBangkokDay(at), toBangkokDay(new Date().toISOString()));
+  if (diff <= 0) return "Today";
+  if (diff === 1) return "Yesterday";
+  if (diff <= 7) return "Last Week";
+  return "Older";
+}
+
 // Matches MEWS's own housekeeping status colors: Clean=blue, Inspected=
 // green, Dirty=dark orange, OutOfService=light orange/yellow, OutOfOrder=
 // red. (Card/dot/badge previously disagreed with each other - e.g. Dirty
@@ -786,6 +796,13 @@ export default function BcpPage() {
   // a confirm modal first. Holds the ids pending confirmation.
   const [deleteLogsFor, setDeleteLogsFor] = useState<string[] | null>(null);
   const [deletingLogs, setDeletingLogs] = useState(false);
+  // Outlook-style date group headers (Today/Yesterday/Last Week/Older) for
+  // the main Action Logs table - only meaningful while sorted by Time (see
+  // groupedActions below), since grouping by date while sorted by another
+  // column would scatter each date group into fragments instead of one
+  // contiguous block. Collapsed groups persist by label, not id, so
+  // collapsing "Today" stays collapsed as new entries join it.
+  const [collapsedLogGroups, setCollapsedLogGroups] = useState<Set<string>>(new Set());
   const [showReadme, setShowReadme] = useState(false);
   // English by default (matching every other label in the app), with a
   // toggle button in the modal itself for Thai - not persisted, resets to
@@ -1509,6 +1526,23 @@ export default function BcpPage() {
     () => filterAndSortActions(actions.filter((a) => a.archived)),
     [actions, filterAndSortActions]
   );
+  // Buckets displayedActions into contiguous Today/Yesterday/Last Week/
+  // Older runs for the main table's group headers - only when sorted by
+  // Time, since displayedActions is then already in date order and a
+  // bucket only ever changes once per label (no fragmenting). Sorted by
+  // any other column, this is null and the table falls back to its plain
+  // flat list.
+  const groupedActions = useMemo(() => {
+    if (logSort.key !== "time") return null;
+    const groups: { group: string; rows: OfflineAction[] }[] = [];
+    for (const a of displayedActions) {
+      const g = actionLogDateGroup(a.at);
+      const lastGroup = groups[groups.length - 1];
+      if (lastGroup && lastGroup.group === g) lastGroup.rows.push(a);
+      else groups.push({ group: g, rows: [a] });
+    }
+    return groups;
+  }, [displayedActions, logSort.key]);
   const selectedActiveIds = useMemo(
     () => displayedActions.filter((a) => selectedLogIds.has(a.id)).map((a) => a.id),
     [displayedActions, selectedLogIds]
@@ -1543,6 +1577,61 @@ export default function BcpPage() {
       const allSelected = rows.length > 0 && rows.every((a) => prev.has(a.id));
       const next = new Set(prev);
       rows.forEach((a) => (allSelected ? next.delete(a.id) : next.add(a.id)));
+      return next;
+    });
+  };
+
+  // Shared row markup for the main Action Logs table, used both by the
+  // flat list and by the grouped-by-date rendering below (groupedActions)
+  // so the two don't drift out of sync with each other.
+  const renderActionLogRow = (a: OfflineAction) => (
+    <tr
+      key={a.id}
+      onClick={() => setSelectedLogEntry(a)}
+      className={`border-b last:border-0 cursor-pointer transition-colors ${
+        a.checked
+          ? "border-emerald-100 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
+          : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
+      }`}
+    >
+      <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={selectedLogIds.has(a.id)}
+          onChange={() => handleToggleLogSelected(a.id)}
+          className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+        />
+      </td>
+      <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
+      <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
+      <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
+      <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
+      <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
+      <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
+      <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
+      <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
+        <button
+          onClick={() => setSelectedLogEntry(a)}
+          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+        >
+          Detail
+        </button>
+      </td>
+      <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
+        <input
+          type="checkbox"
+          checked={!!a.checked}
+          onChange={() => handleToggleActionChecked(a.id)}
+          className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
+        />
+      </td>
+    </tr>
+  );
+  const handleToggleLogGroup = (group: string) => {
+    setCollapsedLogGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group);
+      else next.add(group);
       return next;
     });
   };
@@ -4662,49 +4751,27 @@ export default function BcpPage() {
                         </td>
                       </tr>
                     )}
-                    {displayedActions.map((a) => (
-                      <tr
-                        key={a.id}
-                        onClick={() => setSelectedLogEntry(a)}
-                        className={`border-b last:border-0 cursor-pointer transition-colors ${
-                          a.checked
-                            ? "border-emerald-100 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"
-                            : "border-red-100 bg-red-50 text-red-900 hover:bg-red-100"
-                        }`}
-                      >
-                        <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={selectedLogIds.has(a.id)}
-                            onChange={() => handleToggleLogSelected(a.id)}
-                            className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
-                          />
-                        </td>
-                        <td className="p-3 px-4 text-[12px] opacity-70">{actionSeqNo.get(a.id) ?? "-"}</td>
-                        <td className="p-3 px-4 text-[12px] whitespace-nowrap opacity-70">{fmtDateTime(a.at)}</td>
-                        <td className="p-3 px-4 text-[13px] font-bold">{a.guest}</td>
-                        <td className="p-3 px-4 text-[13px]">{effectiveRoomNumber(a.room)}</td>
-                        <td className="p-3 px-4 text-[12px] font-bold">{a.action}</td>
-                        <td className="p-3 px-4 text-[12px] opacity-80">{a.detail}</td>
-                        <td className="p-3 px-4 text-[11px] opacity-70 whitespace-nowrap">{a.userEmail || "-"}</td>
-                        <td className="p-3 px-4" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            onClick={() => setSelectedLogEntry(a)}
-                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity whitespace-nowrap"
+                    {groupedActions ? (
+                      groupedActions.map(({ group, rows }) => (
+                        <Fragment key={group}>
+                          <tr
+                            onClick={() => handleToggleLogGroup(group)}
+                            className="border-b border-[var(--text-primary)]/10 bg-[var(--text-primary)]/[0.04] cursor-pointer hover:bg-[var(--text-primary)]/[0.07] transition-colors"
                           >
-                            Detail
-                          </button>
-                        </td>
-                        <td className="p-3 px-4 text-center" onClick={(e) => e.stopPropagation()}>
-                          <input
-                            type="checkbox"
-                            checked={!!a.checked}
-                            onChange={() => handleToggleActionChecked(a.id)}
-                            className="w-4 h-4 cursor-pointer accent-[var(--text-primary)]"
-                          />
-                        </td>
-                      </tr>
-                    ))}
+                            <td colSpan={10} className="p-2.5 px-4">
+                              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.1em] text-[var(--text-primary)]/70">
+                                <svg className={`w-3 h-3 shrink-0 transition-transform ${collapsedLogGroups.has(group) ? "-rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                {group}
+                                <span className="font-normal normal-case tracking-normal text-[var(--text-primary)]/40">({rows.length})</span>
+                              </div>
+                            </td>
+                          </tr>
+                          {!collapsedLogGroups.has(group) && rows.map((a) => renderActionLogRow(a))}
+                        </Fragment>
+                      ))
+                    ) : (
+                      displayedActions.map((a) => renderActionLogRow(a))
+                    )}
                   </tbody>
                 </table>
                 <div className="p-3 px-4 text-[10px] text-[var(--text-primary)]/40 italic border-t border-[var(--text-primary)]/8">
