@@ -3329,7 +3329,7 @@ export default function BcpPage() {
                 <div className="flex flex-col gap-4">
                   {[
                     ...res.notes.map((n) => ({ text: n.text, label: n.type, created: n.created_utc, ours: false, synced: false })),
-                    ...reservationNotes.map((n) => ({ text: n.text, label: "Front Desk", created: n.created_at, ours: true, synced: n.synced_to_mews })),
+                    ...reservationNotes.map((n) => ({ text: n.text, label: n.created_by || "Front Desk", created: n.created_at, ours: true, synced: n.synced_to_mews })),
                   ]
                     .sort((a, b) => b.created.localeCompare(a.created))
                     .map((n, i) => (
