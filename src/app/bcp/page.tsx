@@ -1472,12 +1472,11 @@ export default function BcpPage() {
     URL.revokeObjectURL(url);
   };
 
-  // knownRoomState lets a caller that just changed the room's status in this
-  // same synchronous call (handleConfirmCheckIn below) pass the new value
-  // directly - roomStateFor would otherwise re-read roomStatusOverrides
-  // before React has applied that setState, seeing the stale pre-change
-  // status instead.
-  const handleCheckIn = (r: ReservationRow, knownRoomState?: string) => {
+  // requestCheckIn below only ever calls this once the room is already
+  // confirmed Inspected (anything else blocks with checkInBlockedModal
+  // instead of reaching here), so dirtying it on check-in is unconditional -
+  // no prior-state branching needed.
+  const handleCheckIn = (r: ReservationRow) => {
     logOfflineAction({
       at: new Date().toISOString(),
       reservationNumber: r.number,
@@ -1488,17 +1487,7 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
-    // Check-in always marks the room Inspected, whether it came in already
-    // Dirty (the checkInDirtyModal path above merges into this same call)
-    // or was some other status - explicit instruction, checked twice now:
-    // every check-in results in Inspected, full stop, no separate tick or
-    // prior-state branching. Skipped for OutOfService/OutOfOrder so a
-    // genuine maintenance flag isn't silently overwritten by a check-in
-    // that shouldn't be happening on that room anyway.
-    const currentRoomState = knownRoomState ?? roomStateFor(r.room);
-    if (currentRoomState !== "OutOfService" && currentRoomState !== "OutOfOrder") {
-      handleRoomStatusChange(r.room, currentRoomState, "Inspected");
-    }
+    handleRoomStatusChange(r.room, "Inspected", "Dirty");
   };
   const handleCheckOut = (r: ReservationRow) =>
     logOfflineAction({
@@ -1511,9 +1500,8 @@ export default function BcpPage() {
       reservationSnapshot: r,
       guestProfileSnapshot: findGuestProfile(r),
     });
-  // Confirmation step before Check Out, matching Check In's own confirm
-  // dialog (requestCheckIn/checkInDirtyModal) - Check Out has no room-status
-  // branching to gate on, so this is just a plain "are you sure" prompt.
+  // Confirmation step before Check Out - unlike Check In, there's no room
+  // status to gate on, so this is just a plain "are you sure" prompt.
   const [checkOutFor, setCheckOutFor] = useState<ReservationRow | null>(null);
   const requestCheckOut = (r: ReservationRow) => setCheckOutFor(r);
   const handleConfirmCheckOut = () => {
@@ -1604,24 +1592,19 @@ export default function BcpPage() {
     return room ? effectiveRoomState(room) : "";
   };
 
-  // Mirrors MEWS's own "Please inspect room before check in" prompt - Check
-  // In on a Dirty room opens this instead of logging immediately, as a
-  // heads-up. Confirming always marks the room Inspected (no separate tick
-  // required) as part of completing the check-in. Any other status checks
-  // in immediately, unchanged.
-  const [checkInFor, setCheckInFor] = useState<ReservationRow | null>(null);
+  // Check-in requires the room to already be Inspected - explicit
+  // requirement: anything else (Dirty, Clean, OutOfService, OutOfOrder)
+  // blocks with an explanatory popup instead of proceeding, so front desk
+  // has to actually change the room status first rather than check a guest
+  // into an unprepared room. handleCheckIn above then always dirties it.
+  const [checkInBlockedFor, setCheckInBlockedFor] = useState<{ r: ReservationRow; state: string } | null>(null);
   const requestCheckIn = (r: ReservationRow) => {
-    if (roomStateFor(r.room) === "Dirty") {
-      setCheckInFor(r);
+    const state = roomStateFor(r.room);
+    if (state !== "Inspected") {
+      setCheckInBlockedFor({ r, state });
     } else {
       handleCheckIn(r);
     }
-  };
-  const handleConfirmCheckIn = () => {
-    if (!checkInFor) return;
-    handleRoomStatusChange(checkInFor.room, "Dirty", "Inspected");
-    handleCheckIn(checkInFor, "Inspected");
-    setCheckInFor(null);
   };
 
   const handleChgRoomSave = () => {
@@ -2483,35 +2466,34 @@ export default function BcpPage() {
     </div>
   );
 
-  // Mirrors MEWS's own Check In dialog for a Dirty room - a heads-up, not a
-  // gate: "Check in" is always clickable and always marks the room
-  // Inspected on confirm (see handleConfirmCheckIn), no separate tick needed.
-  const checkInDirtyModal = checkInFor && (
-    <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInFor(null)}>
+  // A hard gate, not a confirm-to-proceed step - see requestCheckIn above.
+  // Only dismissible (OK), since the actual fix (changing the room status)
+  // has to happen outside this dialog, on the room itself.
+  const checkInBlockedModal = checkInBlockedFor && (
+    <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckInBlockedFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
-        <div className="font-display text-xl mb-4">Check in</div>
-        <div className="text-[13px] mb-3">Please inspect room before check in</div>
+        <div className="font-display text-xl mb-4">Cannot check in</div>
+        <div className="text-[13px] mb-3">Room must be Inspected before check-in. Change the room status first.</div>
         <div className="flex items-center gap-2 mb-5">
-          <span className="font-bold text-[14px]">{effectiveRoomNumber(checkInFor.room)}</span>
-          <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS.Dirty}`}>Dirty</span>
+          <span className="font-bold text-[14px]">{effectiveRoomNumber(checkInBlockedFor.r.room)}</span>
+          <span className={`px-2 py-0.5 text-[10px] font-bold border rounded ${ROOM_STATE_BADGE_CLS[checkInBlockedFor.state] || "bg-slate-100 text-slate-600 border-slate-300"}`}>
+            {ROOM_STATUS_LABELS[checkInBlockedFor.state] || checkInBlockedFor.state}
+          </span>
         </div>
-        <div className="flex justify-end items-center gap-4 mt-6">
-          <button onClick={() => setCheckInFor(null)} className="text-[12px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] transition-colors">
-            Go back
-          </button>
+        <div className="flex justify-end items-center mt-6">
           <button
-            onClick={handleConfirmCheckIn}
+            onClick={() => setCheckInBlockedFor(null)}
             className="px-5 py-2.5 text-[11px] font-bold tracked-caps bg-indigo-600 text-white hover:bg-indigo-700 transition-colors"
           >
-            Check in
+            OK
           </button>
         </div>
       </div>
     </div>
   );
 
-  // Confirmation dialog before Check Out, matching Check In's own confirm
-  // step (checkInDirtyModal) - see requestCheckOut/handleConfirmCheckOut.
+  // Confirmation dialog before Check Out - see requestCheckOut/
+  // handleConfirmCheckOut.
   const checkOutConfirmModal = checkOutFor && (
     <div className="no-print fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={() => setCheckOutFor(null)}>
       <div className="bg-[var(--paper)] text-[var(--text-primary)] border border-[var(--text-primary)]/14 max-w-sm w-full shadow-2xl p-6" onClick={(e) => e.stopPropagation()}>
@@ -3713,7 +3695,7 @@ export default function BcpPage() {
             </div>
           );
         })()}
-        {checkInDirtyModal}
+        {checkInBlockedModal}
         {checkOutConfirmModal}
       </div>
     );
@@ -4964,7 +4946,7 @@ export default function BcpPage() {
         )}
 
         {roomStatusReasonModal}
-        {checkInDirtyModal}
+        {checkInBlockedModal}
         {checkOutConfirmModal}
 
         {/* Action Log Detail - every entry here is by definition a local-only
