@@ -9,6 +9,7 @@ from typing import Optional
 import asyncio
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
+from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY
 
 logger = logging.getLogger(__name__)
 
@@ -1840,6 +1841,70 @@ class SyncService:
             lines.append("|".join(fields))
         filename = f"{property_code}_ST_{yyyymmdd}.csv"
         return "\n".join(lines), filename
+
+    async def send_st_files_daily_digest(self, date_str: str, mark_sent: bool = True) -> dict:
+        """
+        Builds and sends the once-daily ST Files email (Admin > Templates >
+        ST Files Email) - one CSV attachment per property that has a
+        Property Code configured AND already-imported st_files_sync data
+        for date_str (properties missing either are silently skipped, not
+        fatal - the digest still goes out for whoever's ready). Shared by
+        main.py's scheduled send_st_files_daily_email (mark_sent=True, the
+        real send) and admin.py's manual "Send Test Now" button
+        (mark_sent=False, so testing never suppresses that day's real
+        scheduled send via the last_sent_date guard below).
+        """
+        settings_row = email_service.get_st_files_daily_settings()
+        props_res = self.supabase.table("property_api_settings").select("property_name").order("property_name").execute()
+
+        attachments, included, skipped = [], [], []
+        for p in (props_res.data or []):
+            prop = p["property_name"]
+            try:
+                text, filename = self.get_st_report_export(prop, date_str)
+                attachments.append((filename, text.encode("utf-8")))
+                included.append(prop)
+            except Exception as e:
+                skipped.append(f"{prop}: {str(e)[:150]}")
+
+        if not attachments:
+            return {"sent": False, "included": included, "skipped": skipped}
+
+        recipients = [e.strip() for e in (settings_row["recipients"] or "").split(",") if e.strip()]
+        if not recipients:
+            return {"sent": False, "included": included, "skipped": skipped}
+
+        date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+        subject = settings_row["subject"].replace("<<Date>>", date_display)
+        html_body = settings_row["html_template"] \
+            .replace("<<Date>>", date_display) \
+            .replace("<<PropertyCount>>", str(len(included))) \
+            .replace("<<PropertyList>>", ", ".join(included))
+
+        email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
+
+        if mark_sent:
+            try:
+                existing = self.supabase.table("email_templates").select("id") \
+                    .eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
+                if existing.data:
+                    self.supabase.table("email_templates").update({"last_sent_date": date_str}) \
+                        .eq("id", existing.data[0]["id"]).execute()
+                else:
+                    self.supabase.table("email_templates").insert({
+                        "template_key": ST_FILES_DAILY_TEMPLATE_KEY,
+                        "subject": settings_row["subject"],
+                        "html_template": settings_row["html_template"],
+                        "recipients": settings_row["recipients"],
+                        "send_hour": settings_row["send_hour"],
+                        "send_minute": settings_row["send_minute"],
+                        "enabled": True,
+                        "last_sent_date": date_str,
+                    }).execute()
+            except Exception as e:
+                logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
+
+        return {"sent": True, "included": included, "skipped": skipped}
 
     # BCP timeline window: how far back/forward from "today" the reservations
     # grid covers. Wide enough to show most stays without blowing up capture

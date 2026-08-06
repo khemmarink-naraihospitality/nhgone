@@ -6,6 +6,7 @@ from app.services.mews_client import mews_client
 from app.routers import reservations, members, payments, admin, bills, resources, rr3, st_files, bcp
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
+from app.services.email_service import email_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
 import os
@@ -399,6 +400,53 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
             except Exception:
                 pass
 
+async def send_st_files_daily_email(match_hour_only: bool = False):
+    """
+    Once-daily email (Admin > Templates > ST Files Email) with every ready
+    property's ST export CSV attached. Piggybacks the same /sync/auto cron
+    tick daily_auto_sync_st_files above uses rather than getting its own
+    dedicated cron entry - unlike BCP's 5-minute snapshots (see
+    trigger_auto_sync's own note on why BCP needed one), a once-a-day send
+    is coarser than the hourly cron already fires, so hour-matching here is
+    all the precision this needs.
+
+    last_sent_date (on the same settings row get_st_files_daily_settings
+    reads) is the same-day dedup guard - production's hourly cron would
+    otherwise resend for every remaining tick within the matching hour.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        settings_row = email_service.get_st_files_daily_settings()
+    except Exception as e:
+        print(f"Error in send_st_files_daily_email (loading settings): {str(e)}")
+        return
+
+    if not settings_row.get("enabled"):
+        return
+
+    today_str = now.date().isoformat()
+    if settings_row.get("last_sent_date") == today_str:
+        return
+
+    hour_matches = now.hour == settings_row["send_hour"]
+    if match_hour_only:
+        if not hour_matches:
+            return
+    elif not (hour_matches and now.minute == settings_row["send_minute"]):
+        return
+
+    try:
+        result = await sync_service.send_st_files_daily_digest(today_str)
+        if result["sent"]:
+            print(f"[{now.isoformat()}] ST Files daily email sent: {len(result['included'])} included, {len(result['skipped'])} skipped.")
+        else:
+            print(f"[{now.isoformat()}] ST Files daily email: nothing ready to send yet ({len(result['skipped'])} propert(y/ies) not ready).")
+    except Exception as e:
+        print(f"Error in send_st_files_daily_email: {str(e)}")
+
 async def retry_failed_syncs():
     """
     Runs once daily at 09:00 Asia/Bangkok. Finds every (property, table) pair
@@ -617,6 +665,8 @@ async def start_scheduler():
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # ST Files' own independent schedule (st_files_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
+    # ST Files daily email digest - own configurable send_hour/minute.
+    scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -642,6 +692,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(retry_scheduled_syncs)
     # ST Files' own independent schedule.
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
+    # ST Files daily email digest - own configurable send_hour/minute.
+    background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

@@ -1,10 +1,13 @@
 import secrets
+from datetime import datetime
 from typing import Optional
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
-from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY
+from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY
+from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -51,6 +54,14 @@ class SmtpTestRequest(BaseModel):
 class EmailTemplateUpdate(BaseModel):
     subject: str
     html_template: str
+
+class StFilesEmailSettingsUpdate(BaseModel):
+    subject: str
+    html_template: str
+    recipients: str
+    send_hour: int
+    send_minute: int
+    enabled: bool = True
 
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
@@ -342,5 +353,64 @@ async def save_email_template(request: EmailTemplateUpdate):
         else:
             admin_supabase.table("email_templates").insert(payload).execute()
         return {"status": "success", "message": "Email template saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/email-template/st-files-daily")
+async def get_st_files_daily_email_template():
+    """
+    Returns the ST Files daily digest's subject/body plus delivery config
+    (recipients/send_hour/send_minute/enabled), or the built-in defaults
+    (is_default=True) if none saved yet - see
+    email_service.get_st_files_daily_settings.
+    """
+    return {"status": "success", "data": email_service.get_st_files_daily_settings()}
+
+@router.post("/email-template/st-files-daily")
+async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate):
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
+        payload = {
+            "template_key": ST_FILES_DAILY_TEMPLATE_KEY,
+            "subject": request.subject,
+            "html_template": request.html_template,
+            "recipients": request.recipients,
+            "send_hour": request.send_hour,
+            "send_minute": request.send_minute,
+            "enabled": request.enabled,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": "ST Files email settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/email-template/st-files-daily/send-now")
+async def send_st_files_daily_email_now():
+    """
+    Manual "Send Test Now" trigger (Admin > Templates > ST Files Email) -
+    builds and sends today's digest immediately, bypassing the schedule.
+    mark_sent=False so this never marks today as already-sent, meaning it
+    can't suppress the real scheduled send for the same day.
+    """
+    try:
+        today_str = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
+        result = await sync_service.send_st_files_daily_digest(today_str, mark_sent=False)
+        if not result.get("sent"):
+            skipped = "; ".join(result.get("skipped", [])) or "no properties have today's data imported yet"
+            raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
+        settings_row = email_service.get_st_files_daily_settings()
+        return {
+            "status": "success",
+            "message": f"Sent to {settings_row['recipients']}",
+            "included": result["included"],
+            "skipped": result["skipped"],
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

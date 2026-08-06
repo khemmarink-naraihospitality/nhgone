@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
-type TemplateType = "billing" | "rr3" | "email";
+type TemplateType = "billing" | "rr3" | "email" | "st_files_email";
 
 interface TokenDoc {
   name: string;
@@ -71,6 +71,12 @@ const EMAIL_TOKENS: TokenDoc[] = [
   { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
 ];
 
+const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "Report date (DD/MM/YYYY)" },
+  { name: "PropertyCount", description: "Number of properties included in this email" },
+  { name: "PropertyList", description: "Comma-separated list of included property names" },
+];
+
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
   endpoint: string;
@@ -80,6 +86,11 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   perProperty: boolean;
   hasSubject?: boolean;
   previewable?: boolean;
+  // Recipients/Time to Send/Enabled fields + a "Send Test Now" button -
+  // only the ST Files Email tab is a scheduled digest rather than a
+  // triggered-by-an-action template, so these stay optional or every
+  // other tab would need to carry unused schedule fields too.
+  hasScheduleFields?: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -111,6 +122,17 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     perProperty: false,
     hasSubject: true,
     previewable: true,
+  },
+  st_files_email: {
+    label: "ST Files Email",
+    endpoint: "/admin/email-template/st-files-daily",
+    tokens: ST_FILES_EMAIL_TOKENS,
+    defaultNote: "No ST Files daily email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) with every ready property's ST Files export CSV attached.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
   },
 };
 
@@ -179,6 +201,11 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Email: "john.doe@example.com",
     AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
   }),
+  st_files_email: () => ({
+    Date: "06/08/2026",
+    PropertyCount: "8",
+    PropertyList: "Lub d Bangkok Chinatown, Lub d Bangkok Siam, Lub d Koh Samui Chaweng Beach, Lub d Koh Tao Tanote Bay, Lub d Philippines Makati, Lub d Phuket Patong, Lub d Siem Reap, Marasca Samui",
+  }),
 };
 
 function renderPreviewHtml(template: string, sample: Record<string, string>): string {
@@ -199,6 +226,14 @@ export default function TemplatesPage() {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [viewMode, setViewMode] = useState<"preview" | "code">("preview");
+
+  // ST Files Email tab only (config.hasScheduleFields) - stored as "HH:MM"
+  // and split into send_hour/send_minute on save, matching the native
+  // <input type="time"> the rest of the app already uses for date/time entry.
+  const [recipients, setRecipients] = useState("");
+  const [sendTime, setSendTime] = useState("03:00");
+  const [enabled, setEnabled] = useState(true);
+  const [sendingTest, setSendingTest] = useState(false);
 
   // Same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env var is set
   // (in Vercel) to a stale API deployment that predates the template endpoints,
@@ -231,6 +266,13 @@ export default function TemplatesPage() {
           setHtml(result.data.html_template);
           setSubject(result.data.subject || "");
           setIsDefault(!!result.data.is_default);
+          if (config.hasScheduleFields) {
+            setRecipients(result.data.recipients || "");
+            const h = result.data.send_hour ?? 3;
+            const m = result.data.send_minute ?? 0;
+            setSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+            setEnabled(result.data.enabled !== false);
+          }
         } else {
           alert("Error loading template: " + (result.detail || result.message));
         }
@@ -253,9 +295,16 @@ export default function TemplatesPage() {
     if (config.hasSubject && !subject.trim()) return;
     setSaving(true);
     try {
-      const body: Record<string, string> = { html_template: html };
+      const body: Record<string, string | number | boolean> = { html_template: html };
       if (config.perProperty) body.property_name = selectedProperty;
       if (config.hasSubject) body.subject = subject;
+      if (config.hasScheduleFields) {
+        const [h, m] = sendTime.split(":").map(Number);
+        body.recipients = recipients;
+        body.send_hour = h;
+        body.send_minute = m;
+        body.enabled = enabled;
+      }
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -275,11 +324,29 @@ export default function TemplatesPage() {
     }
   };
 
+  const handleSendTestNow = async () => {
+    setSendingTest(true);
+    try {
+      const res = await fetch(`${apiUrl}/admin/email-template/st-files-daily/send-now`, { method: "POST" });
+      const result = await res.json();
+      if (result.status === "success") {
+        const skippedNote = result.skipped?.length ? `\nSkipped: ${result.skipped.join("; ")}` : "";
+        alert(`${result.message}\nIncluded: ${result.included.join(", ") || "none"}${skippedNote}`);
+      } else {
+        alert("Error sending: " + (result.detail || result.message));
+      }
+    } catch (err: any) {
+      alert("Error sending: " + err.message);
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   return (
     <div className="p-8 bg-white min-h-screen text-slate-900 font-sans">
       <PageHeader
         title="Templates"
-        description="Edit the printable HTML templates per property (Billing, RR3), and the welcome email sent when a new user is created."
+        description="Edit the printable HTML templates per property (Billing, RR3), the welcome email sent when a new user is created, and the daily ST Files export email."
       >
         <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
           {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
@@ -336,6 +403,40 @@ export default function TemplatesPage() {
                 </div>
               )}
 
+              {config.hasScheduleFields && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">To (comma-separated)</label>
+                    <input
+                      type="text"
+                      value={recipients}
+                      onChange={(e) => setRecipients(e.target.value)}
+                      placeholder="khemmarin.k@lubd.com"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
+                    <input
+                      type="time"
+                      value={sendTime}
+                      onChange={(e) => setSendTime(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2.5 md:col-span-2">
+                    <button
+                      type="button"
+                      onClick={() => setEnabled(!enabled)}
+                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors ${enabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-5" : ""}`} />
+                    </button>
+                    <span className="text-sm font-medium text-slate-700">Enabled</span>
+                  </div>
+                </div>
+              )}
+
               {config.previewable && (
                 <div className="flex bg-slate-100 rounded-xl p-1 gap-1 mb-4 w-fit">
                   <button
@@ -378,6 +479,15 @@ export default function TemplatesPage() {
               >
                 {saving ? "Saving..." : `Save ${config.label} Template`}
               </button>
+              {config.hasScheduleFields && (
+                <button
+                  onClick={handleSendTestNow}
+                  disabled={sendingTest}
+                  className="mt-3 w-full py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                >
+                  {sendingTest ? "Sending..." : "Send Test Now"}
+                </button>
+              )}
             </>
           )}
         </div>

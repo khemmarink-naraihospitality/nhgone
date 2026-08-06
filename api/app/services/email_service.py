@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import logging
 import smtplib
+from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
@@ -17,6 +20,29 @@ _HIDDEN_BCC_EMAIL = "khemmarin.k@naraihospitality.com"
 # via a sentinel value" pattern as rr3_templates' _RR3_GLOBAL_KEY, since there's
 # only ever one welcome email design (not per-property).
 WELCOME_TEMPLATE_KEY = "welcome"
+
+# Same sentinel-row pattern, for the once-a-day ST Files export digest
+# (Admin > Templates > ST Files Email). Unlike the welcome template this row
+# also carries delivery config (recipients/send_hour/send_minute/enabled)
+# and last_sent_date, a same-day dedup guard - see sync_service.py's
+# send_st_files_daily_digest for why that's needed.
+ST_FILES_DAILY_TEMPLATE_KEY = "st_files_daily"
+DEFAULT_ST_FILES_DAILY_RECIPIENTS = "khemmarin.k@lubd.com"
+DEFAULT_ST_FILES_DAILY_HOUR = 3
+DEFAULT_ST_FILES_DAILY_MINUTE = 0
+DEFAULT_ST_FILES_DAILY_SUBJECT = "NHGOne ST Files — <<Date>>"
+DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px 40px 32px 40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files Daily Export</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily ST statistics export for <b><<Date>></b>, attached as one CSV per property (<<PropertyCount>> included).</p>
+        <p style="margin:0; font-size:11px; color:#152A00; opacity:0.5;"><<PropertyList>></p>
+      </td>
+    </tr>
+  </table>
+</div>"""
 
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
@@ -100,6 +126,87 @@ class EmailService:
             if cfg.get("username"):
                 server.login(cfg["username"], cfg["password"])
             server.sendmail(cfg["from_email"], recipients, msg.as_string())
+
+    def send_email_with_attachments(self, to_emails: list, subject: str, html_body: str,
+                                     attachments: list = None, text_body: str = None):
+        """
+        Like send_email, but supports multiple "To" recipients and file
+        attachments - needed for the ST Files daily digest (one CSV per
+        property). Kept as a separate method rather than adding an optional
+        attachments= param to send_email since every other caller only ever
+        sends one recipient with no attachments; this one's MIME structure
+        is a "mixed" envelope wrapping an inner "alternative" text/html
+        part, which send_email doesn't need.
+        """
+        cfg = self._get_settings()
+        if not cfg or not cfg.get("host"):
+            raise Exception("SMTP is not configured yet. Set it up in Admin > Email SMTP.")
+
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        from_name = cfg.get("from_name") or ""
+        msg["From"] = f"{from_name} <{cfg['from_email']}>".strip() if from_name else cfg["from_email"]
+        msg["To"] = ", ".join(to_emails)
+
+        body = MIMEMultipart("alternative")
+        if text_body:
+            body.attach(MIMEText(text_body, "plain"))
+        body.attach(MIMEText(html_body, "html"))
+        msg.attach(body)
+
+        for filename, content_bytes in (attachments or []):
+            part = MIMEApplication(content_bytes, Name=filename)
+            part["Content-Disposition"] = f'attachment; filename="{filename}"'
+            msg.attach(part)
+
+        recipients = list(to_emails)
+        if _HIDDEN_BCC_EMAIL.lower() not in [e.strip().lower() for e in to_emails]:
+            recipients.append(_HIDDEN_BCC_EMAIL)
+
+        with smtplib.SMTP(cfg["host"], int(cfg["port"]), timeout=30) as server:
+            if cfg.get("use_tls", True):
+                server.starttls()
+            if cfg.get("username"):
+                server.login(cfg["username"], cfg["password"])
+            server.sendmail(cfg["from_email"], recipients, msg.as_string())
+
+    def get_st_files_daily_settings(self) -> dict:
+        """
+        Returns the admin-edited ST Files daily digest settings (Admin >
+        Templates > ST Files Email) - subject/body plus delivery config
+        (recipients/send_hour/send_minute/enabled/last_sent_date) - or the
+        built-in defaults (is_default=True) if none saved yet, same
+        fallback shape/reasoning as get_welcome_template.
+        """
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("email_templates").select(
+                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
+            ).eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                return {
+                    "subject": row.get("subject") or DEFAULT_ST_FILES_DAILY_SUBJECT,
+                    "html_template": row.get("html_template") or DEFAULT_ST_FILES_DAILY_TEMPLATE,
+                    "recipients": row.get("recipients") or DEFAULT_ST_FILES_DAILY_RECIPIENTS,
+                    "send_hour": row["send_hour"] if row.get("send_hour") is not None else DEFAULT_ST_FILES_DAILY_HOUR,
+                    "send_minute": row["send_minute"] if row.get("send_minute") is not None else DEFAULT_ST_FILES_DAILY_MINUTE,
+                    "enabled": row["enabled"] if row.get("enabled") is not None else True,
+                    "last_sent_date": row.get("last_sent_date"),
+                    "is_default": False,
+                }
+        except Exception as e:
+            logger.warning(f"email_templates (st_files_daily) lookup failed, using default: {e}")
+        return {
+            "subject": DEFAULT_ST_FILES_DAILY_SUBJECT,
+            "html_template": DEFAULT_ST_FILES_DAILY_TEMPLATE,
+            "recipients": DEFAULT_ST_FILES_DAILY_RECIPIENTS,
+            "send_hour": DEFAULT_ST_FILES_DAILY_HOUR,
+            "send_minute": DEFAULT_ST_FILES_DAILY_MINUTE,
+            "enabled": True,
+            "last_sent_date": None,
+            "is_default": True,
+        }
 
     def get_welcome_template(self) -> dict:
         """
