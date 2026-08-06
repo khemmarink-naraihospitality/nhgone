@@ -399,11 +399,18 @@ export default function StFilesPage() {
 
         {report && (
           <>
-            <div className="flex items-center gap-4 text-[11px] text-[var(--text-primary)]/60 mb-4 px-1">
-              <span><b>{report.parameters.property}</b></span>
+            <div className="flex items-center gap-1.5 flex-wrap text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mb-4 px-1">
+              <span>{report.parameters.property}</span>
+              <span>·</span>
               <span>{report.parameters.date}</span>
+              <span>·</span>
               <span>Space types: {report.parameters.space_types.join(", ")}</span>
-              {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
+              {report._synced_at && (
+                <>
+                  <span>·</span>
+                  <span>Imported: {fmtDateTime(report._synced_at)}</span>
+                </>
+              )}
             </div>
 
             <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
