@@ -548,7 +548,7 @@ export default function StFilesPage() {
               </div>
             </CollapsibleSection>
 
-            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">Statistic Data</h2>
+            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">ST Data</h2>
 
             <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
               {TABS.map((t) => {
