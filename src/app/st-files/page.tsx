@@ -93,7 +93,7 @@ export default function StFilesPage() {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dataSource, setDataSource] = useState<DataSource>("live");
+  const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
 
   const getYesterday = () => {
@@ -115,6 +115,17 @@ export default function StFilesPage() {
     };
     fetchProperties();
   }, []);
+
+  // Auto-loads as soon as a property is selected (on open, and again if the
+  // property is switched) instead of waiting for a manual Fetch Report
+  // click - dataSource defaults to "database" above, so this is a fast
+  // cached read, not a live MEWS call.
+  useEffect(() => {
+    if (selectedProperty) {
+      fetchReport();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProperty]);
 
   const fetchReport = async () => {
     if (!selectedProperty) return;
