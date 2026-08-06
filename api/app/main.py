@@ -344,9 +344,13 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
     from the 5-table daily_auto_sync above rather than a 6th entry in
     _TARGET_TABLE_SYNC_FN, since a property may well want this on a
     different clock than its main data sync (or not at all). Always syncs
-    TODAY's Bangkok date (not yesterday, unlike the main sync) - matches
-    what the manual Import To Data Mart button on /st-files fetches by
-    default, and what the report is actually for (today's occupancy).
+    YESTERDAY's Bangkok date, matching /st-files' own manual default
+    (getYesterday() in the frontend) and MEWS's own native "Availability &
+    occupancy report" export schedule (confirmed against a real property's
+    Export Schedule config: "Previous day", 00:00-00:00, run at 01:30) -
+    capturing "today" instead (as this used to) grabs an in-progress day
+    only hours old at the default 02:00 run time, before that day's
+    check-outs/check-ins have actually happened, making the numbers wrong.
 
     Same match_hour_only split as daily_auto_sync: exact minute match
     locally (per-minute tick), hour-only in production (Vercel's cron is
@@ -377,7 +381,7 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
         return
 
     print(f"[{now.isoformat()}] ST Files auto-import: {len(items)} propert(y/ies) scheduled...")
-    today_str = now.date().isoformat()
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
 
     for p in items:
         prop, prop_id = p["property_name"], p["id"]
@@ -393,7 +397,7 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
             continue
 
         try:
-            await _sync_st_files_for_property(prop, prop_id, today_str)
+            await _sync_st_files_for_property(prop, prop_id, report_date_str)
         finally:
             try:
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
@@ -438,8 +442,13 @@ async def send_st_files_daily_email(match_hour_only: bool = False):
     elif not (hour_matches and now.minute == settings_row["send_minute"]):
         return
 
+    # The report attached is YESTERDAY's (matching daily_auto_sync_st_files'
+    # own capture date - see its docstring), but the dedup marker is keyed
+    # on TODAY (today_str, the actual send day) so a repeat cron tick later
+    # this same hour is still caught correctly.
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
     try:
-        result = await sync_service.send_st_files_daily_digest(today_str)
+        result = await sync_service.send_st_files_daily_digest(report_date_str, sent_date_str=today_str)
         if result["sent"]:
             print(f"[{now.isoformat()}] ST Files daily email sent: {len(result['included'])} included, {len(result['skipped'])} skipped.")
         else:

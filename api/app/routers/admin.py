@@ -1,5 +1,5 @@
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Body
@@ -393,15 +393,19 @@ async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate
 async def send_st_files_daily_email_now():
     """
     Manual "Send Test Now" trigger (Admin > Templates > ST Files Email) -
-    builds and sends today's digest immediately, bypassing the schedule.
-    mark_sent=False so this never marks today as already-sent, meaning it
-    can't suppress the real scheduled send for the same day.
+    builds and sends immediately, bypassing the schedule. Targets
+    YESTERDAY's report, same as the real scheduled send (see
+    daily_auto_sync_st_files' docstring on why "today" would be an
+    incomplete, still-in-progress day) - this is meant to test the exact
+    same path production uses, not a different one. mark_sent=False so
+    this never marks anything as already-sent, meaning it can't suppress
+    the real scheduled send for the same day.
     """
     try:
-        today_str = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
-        result = await sync_service.send_st_files_daily_digest(today_str, mark_sent=False)
+        report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
+        result = await sync_service.send_st_files_daily_digest(report_date_str, mark_sent=False)
         if not result.get("sent"):
-            skipped = "; ".join(result.get("skipped", [])) or "no properties have today's data imported yet"
+            skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
         settings_row = email_service.get_st_files_daily_settings()
         return {

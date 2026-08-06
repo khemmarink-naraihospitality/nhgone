@@ -1842,17 +1842,28 @@ class SyncService:
         filename = f"{property_code}_ST_{yyyymmdd}.csv"
         return "\n".join(lines), filename
 
-    async def send_st_files_daily_digest(self, date_str: str, mark_sent: bool = True) -> dict:
+    async def send_st_files_daily_digest(self, date_str: str, mark_sent: bool = True,
+                                          sent_date_str: str = None) -> dict:
         """
         Builds and sends the once-daily ST Files email (Admin > Templates >
         ST Files Email) - one CSV attachment per property that has a
         Property Code configured AND already-imported st_files_sync data
-        for date_str (properties missing either are silently skipped, not
-        fatal - the digest still goes out for whoever's ready). Shared by
-        main.py's scheduled send_st_files_daily_email (mark_sent=True, the
-        real send) and admin.py's manual "Send Test Now" button
-        (mark_sent=False, so testing never suppresses that day's real
-        scheduled send via the last_sent_date guard below).
+        for date_str (the REPORT's own date - yesterday relative to the
+        send, per daily_auto_sync_st_files' own docstring on why "today"
+        gives an incomplete, still-in-progress day). Properties missing a
+        Property Code or that day's data are silently skipped, not fatal -
+        the digest still goes out for whoever's ready.
+
+        Shared by main.py's scheduled send_st_files_daily_email
+        (mark_sent=True, the real send) and admin.py's manual "Send Test
+        Now" button (mark_sent=False, so testing never suppresses that
+        day's real scheduled send via the last_sent_date guard below).
+
+        sent_date_str is the calendar day this SEND counts as for that
+        dedup guard - deliberately separate from date_str (the report's
+        own, earlier date) so a same-day duplicate send can still be
+        detected correctly across the date_str/sent_date_str's day
+        boundary. Defaults to date_str for callers where they're the same.
         """
         settings_row = email_service.get_st_files_daily_settings()
         props_res = self.supabase.table("property_api_settings").select("property_name").order("property_name").execute()
@@ -1884,11 +1895,12 @@ class SyncService:
         email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
 
         if mark_sent:
+            marker_date = sent_date_str or date_str
             try:
                 existing = self.supabase.table("email_templates").select("id") \
                     .eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
                 if existing.data:
-                    self.supabase.table("email_templates").update({"last_sent_date": date_str}) \
+                    self.supabase.table("email_templates").update({"last_sent_date": marker_date}) \
                         .eq("id", existing.data[0]["id"]).execute()
                 else:
                     self.supabase.table("email_templates").insert({
@@ -1899,7 +1911,7 @@ class SyncService:
                         "send_hour": settings_row["send_hour"],
                         "send_minute": settings_row["send_minute"],
                         "enabled": True,
-                        "last_sent_date": date_str,
+                        "last_sent_date": marker_date,
                     }).execute()
             except Exception as e:
                 logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
