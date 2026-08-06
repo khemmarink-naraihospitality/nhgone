@@ -391,6 +391,123 @@ async def retry_failed_syncs():
         print(f"Error in retry_failed_syncs: {str(e)}")
         traceback.print_exc()
 
+# Whole-hour offsets after a property's own sync_hour, not minutes - Vercel's
+# hourly cron (see daily_auto_sync's docstring) can only ever land on an
+# hour boundary in production, so a sub-hour offset would silently never
+# fire there. Two offsets = the "2 more times" a scheduled sync gets
+# retried if it didn't come in cleanly.
+_SCHEDULED_RETRY_OFFSET_HOURS = [1, 2]
+
+async def retry_scheduled_syncs():
+    """
+    Per-property equivalent of retry_failed_syncs above, but tied to that
+    property's OWN sync_hour instead of a fixed 09:00 - fires at sync_hour+1
+    and sync_hour+2 (Bangkok time) and, for each of that property's enabled
+    tables, retries it if today's latest sync_logs row is still "error" OR
+    there's no row at all yet for today (the scheduled run never fired at
+    all - e.g. a cold start/outage at that exact minute, not just a logged
+    failure). Already-succeeded tables are left untouched.
+
+    No dedup logic needed here: every sync_* function this calls upserts on
+    mews_id (see CLAUDE.md's Chunked upsert pattern), so re-running a table
+    that already succeeded - or retrying the same table 3 times over - can
+    never produce duplicate rows, only redundant re-upserts of the same ones.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        props_res = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, sync_hour, sync_minute, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources") \
+            .eq("sync_enabled", True).execute()
+    except Exception as e:
+        print(f"Error in retry_scheduled_syncs (fetching properties): {str(e)}")
+        return
+
+    # match_hour_only mirrors daily_auto_sync's own local-vs-Vercel split:
+    # in production (hourly cron) only the hour can line up reliably, so
+    # minute is ignored there; locally (per-minute tick) it's matched too,
+    # otherwise every minute within the target hour would re-trigger this.
+    match_hour_only = bool(os.environ.get("VERCEL"))
+    due = []
+    for prop_settings in props_res.data or []:
+        sched_hour = prop_settings.get("sync_hour")
+        sched_minute = prop_settings.get("sync_minute")
+        if sched_hour is None:
+            continue
+        for offset in _SCHEDULED_RETRY_OFFSET_HOURS:
+            hour_matches = now.hour == (sched_hour + offset) % 24
+            minute_matches = match_hour_only or sched_minute is None or now.minute == sched_minute
+            if hour_matches and minute_matches:
+                due.append(prop_settings)
+                break
+
+    if not due:
+        return
+
+    print(f"[{now.isoformat()}] Scheduled-sync retry check: {len(due)} propert(y/ies) due for a retry pass...")
+
+    today_start_utc = now.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc).isoformat()
+    yesterday_bkk = now - timedelta(days=1)
+    report_date = yesterday_bkk.date().isoformat()
+    now_iso = now.astimezone(timezone.utc).isoformat()
+
+    for prop_settings in due:
+        prop = prop_settings["property_name"]
+        prop_id = prop_settings["id"]
+
+        try:
+            logs_res = sync_service.supabase.table("sync_logs") \
+                .select("target_table, status, created_at") \
+                .eq("property_id", prop_id) \
+                .gte("created_at", today_start_utc) \
+                .order("created_at", desc=True) \
+                .execute()
+        except Exception as e:
+            print(f"Scheduled retry check failed to read sync_logs for {prop}: {e}")
+            continue
+
+        latest_by_table = {}
+        for row in logs_res.data or []:
+            t = row.get("target_table")
+            if t not in latest_by_table:
+                latest_by_table[t] = row
+
+        enabled_tables = [t for t, (_fn, flag) in _TARGET_TABLE_SYNC_FN.items() if prop_settings.get(flag, True)]
+        to_retry = [
+            t for t in enabled_tables
+            if t not in latest_by_table or latest_by_table[t].get("status") == "error"
+        ]
+
+        if not to_retry:
+            continue
+
+        print(f"[{now.isoformat()}] Scheduled retry: {prop} still missing/failing {to_retry}, retrying...")
+
+        try:
+            lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                "target_property_id": prop_id, "timeout_mins": 15
+            }).execute().data
+            if not lock_acquired:
+                print(f"Scheduled retry skipped for {prop}: sync lock busy.")
+                continue
+        except Exception as lock_err:
+            print(f"Scheduled retry lock error for {prop}: {lock_err}")
+            continue
+
+        try:
+            for target in to_retry:
+                fn, _flag = _TARGET_TABLE_SYNC_FN[target]
+                await fn(prop, prop_id, now_iso, report_date, sync_type="retry")
+        except Exception as e:
+            print(f"Error during scheduled retry for {prop}: {str(e)}")
+        finally:
+            try:
+                sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+            except Exception:
+                pass
+
 @app.on_event("startup")
 async def start_scheduler():
     # Vercel sets this env var in every serverless invocation - previously
@@ -415,6 +532,8 @@ async def start_scheduler():
     # Same per-minute cadence; retry_failed_syncs self-gates to only do work
     # when the Bangkok hour is 9, so this just gives it a chance to fire.
     scheduler.add_job(retry_failed_syncs, 'cron', second=0)
+    # Same idea, gated per-property to sync_hour+1/+2 instead of a fixed hour.
+    scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -436,6 +555,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # 09:00 retry check piggybacks here too (see retry_failed_syncs' own
     # hour==9 guard) instead of needing a second vercel.json cron entry.
     background_tasks.add_task(retry_failed_syncs)
+    # Same piggyback, gated per-property to sync_hour+1/+2 instead.
+    background_tasks.add_task(retry_scheduled_syncs)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would
