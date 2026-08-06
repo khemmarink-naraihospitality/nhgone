@@ -583,7 +583,7 @@ export default function StFilesPage() {
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-serif text-[var(--text-primary)]">ST Files List</h2>
+            <h2 className="text-xl font-serif text-[var(--text-primary)]">Statistic Files</h2>
             {listLoading && <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Loading...</span>}
           </div>
           <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
