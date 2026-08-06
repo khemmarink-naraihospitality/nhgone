@@ -196,67 +196,101 @@ export default function AdminSyncPage() {
       {/* Edit Modal */}
       {editingProperty && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-           <div className="bg-[#1a1a1a] rounded-[24px] w-full max-w-[440px] shadow-2xl overflow-hidden border border-white/10 p-8 animate-in fade-in zoom-in-95 duration-200">
-              <div className="flex justify-between items-center mb-8">
-                 <h2 className="text-xl font-bold text-white">Edit Auto Import Schedule</h2>
-                 <button onClick={() => setEditingProperty(null)} className="text-white/40 hover:text-white transition-colors">
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                 </button>
-              </div>
+           <div className="bg-[#161616] rounded-[28px] w-full max-w-[480px] shadow-2xl overflow-hidden border border-white/10 animate-in fade-in zoom-in-95 duration-200">
 
-              <div className="mb-6">
-                <p className="text-white/60 text-sm">{editingProperty.property_name}</p>
-              </div>
-
-              <div className="space-y-6">
-                 <div>
-                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">Scheduled Time (24h, Asia/Bangkok)</label>
-                    <div className="grid grid-cols-2 gap-4">
-                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/20 ml-1">HOUR (0-23)</label>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="23"
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
-                            value={editingProperty.sync_hour}
-                            onChange={(e) => setEditingProperty({...editingProperty, sync_hour: parseInt(e.target.value) || 0})}
-                          />
+              <div className="px-8 pt-7 pb-5 border-b border-white/5">
+                 <div className="flex justify-between items-start">
+                    <div>
+                       <h2 className="text-xl font-bold text-white">Auto Import Schedule</h2>
+                       <div className="inline-flex items-center gap-1.5 mt-2 bg-white/5 px-3 py-1 rounded-full border border-white/10">
+                          <svg className="w-3 h-3 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                          <span className="text-[12px] font-bold text-white/70">{editingProperty.property_name}</span>
                        </div>
-                       <div className="space-y-2">
-                          <label className="text-[10px] font-bold text-white/20 ml-1">MINUTE (0-59)</label>
-                          <input 
-                            type="number"
-                            min="0"
-                            max="59"
-                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
-                            value={editingProperty.sync_minute}
-                            onChange={(e) => setEditingProperty({...editingProperty, sync_minute: parseInt(e.target.value) || 0})}
-                          />
+                    </div>
+                    <button onClick={() => setEditingProperty(null)} className="text-white/30 hover:text-white transition-colors -mt-1">
+                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                    </button>
+                 </div>
+              </div>
+
+              <div className="px-8 py-6 space-y-4 max-h-[70vh] overflow-y-auto">
+
+                 {/* Data Mart card */}
+                 <div className="rounded-2xl border border-[#AAA024]/20 bg-gradient-to-b from-[#AAA024]/[0.07] to-transparent overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                       <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-[#AAA024]/15 flex items-center justify-center shrink-0">
+                             <svg className="w-[18px] h-[18px] text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4" /></svg>
+                          </div>
+                          <div className="min-w-0">
+                             <div className="text-[13px] font-bold text-white">Data Mart Sync</div>
+                             <div className="text-[10px] text-white/40 truncate">Reservations, Members, Payments, Bills, Resources</div>
+                          </div>
+                       </div>
+                       <button
+                         onClick={() => setEditingProperty({...editingProperty, sync_enabled: !editingProperty.sync_enabled})}
+                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ${editingProperty.sync_enabled ? 'bg-emerald-500' : 'bg-white/10'}`}
+                       >
+                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                       </button>
+                    </div>
+
+                    <div className="px-5 pb-5">
+                       <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3 mb-4">
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="23"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.sync_hour}
+                               onChange={(e) => setEditingProperty({...editingProperty, sync_hour: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                          </div>
+                          <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="59"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.sync_minute}
+                               onChange={(e) => setEditingProperty({...editingProperty, sync_minute: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
+                       </div>
+
+                       <div className="grid grid-cols-2 gap-2">
+                          {SYNC_TABLE_OPTIONS.map((opt) => (
+                            <label key={opt.key} className={`flex items-center gap-2 bg-white/[0.03] hover:bg-white/[0.06] px-3 py-2.5 rounded-lg border border-white/5 cursor-pointer transition-colors ${opt.key === "sync_resources" ? "col-span-2" : ""}`}>
+                               <input
+                                 type="checkbox"
+                                 checked={editingProperty[opt.key] as boolean}
+                                 onChange={(e) => setEditingProperty({ ...editingProperty, [opt.key]: e.target.checked })}
+                                 className="accent-[#AAA024] w-3.5 h-3.5"
+                               />
+                               <span className="text-[12px] text-white/80">{opt.label}</span>
+                            </label>
+                          ))}
                        </div>
                     </div>
                  </div>
 
-                 <div>
-                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">Data To Sync</label>
-                    <div className="space-y-2">
-                       {SYNC_TABLE_OPTIONS.map((opt) => (
-                         <label key={opt.key} className="flex items-center gap-3 bg-white/5 px-4 py-2.5 rounded-xl border border-white/5 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={editingProperty[opt.key] as boolean}
-                              onChange={(e) => setEditingProperty({ ...editingProperty, [opt.key]: e.target.checked })}
-                              className="accent-[#AAA024] w-4 h-4"
-                            />
-                            <span className="text-sm text-white">{opt.label}</span>
-                         </label>
-                       ))}
-                    </div>
-                 </div>
-
-                 <div className="border-t border-white/10 pt-6">
-                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">ST Files Auto Import</label>
-                    <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 mb-4">
+                 {/* ST Files card */}
+                 <div className="rounded-2xl border border-emerald-500/20 bg-gradient-to-b from-emerald-500/[0.07] to-transparent overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                       <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                             <svg className="w-[18px] h-[18px] text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                          </div>
+                          <div className="min-w-0">
+                             <div className="text-[13px] font-bold text-white">ST Files Sync</div>
+                             <div className="text-[10px] text-white/40 truncate">Today&apos;s occupancy report, same as manual &quot;Import To Data Mart&quot;</div>
+                          </div>
+                       </div>
                        <button
                          onClick={() => setEditingProperty({
                            ...editingProperty,
@@ -270,67 +304,54 @@ export default function AdminSyncPage() {
                        >
                          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.st_files_sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
                        </button>
-                       <div className="flex flex-col">
-                          <span className="text-sm font-bold text-white">Import to Database daily</span>
-                          <span className="text-[10px] text-white/40">Auto-imports that day&apos;s ST Files report (Live API result) into our Database, same as the manual &quot;Import To Data Mart&quot; button</span>
-                       </div>
                     </div>
-                    {editingProperty.st_files_sync_enabled && (
-                       <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-bold text-white/20 ml-1">HOUR (0-23)</label>
+
+                    <div className="px-5 pb-5">
+                       <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
+                          <div className="flex flex-col items-center">
                              <input
                                type="number"
                                min="0"
                                max="23"
-                               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
                                value={editingProperty.st_files_sync_hour ?? 5}
                                onChange={(e) => setEditingProperty({...editingProperty, st_files_sync_hour: parseInt(e.target.value) || 0})}
                              />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
                           </div>
-                          <div className="space-y-2">
-                             <label className="text-[10px] font-bold text-white/20 ml-1">MINUTE (0-59)</label>
+                          <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
+                          <div className="flex flex-col items-center">
                              <input
                                type="number"
                                min="0"
                                max="59"
-                               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
                                value={editingProperty.st_files_sync_minute ?? 0}
                                onChange={(e) => setEditingProperty({...editingProperty, st_files_sync_minute: parseInt(e.target.value) || 0})}
                              />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
                           </div>
+                          <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
                        </div>
-                    )}
-                 </div>
-
-                 <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
-                    <button
-                      onClick={() => setEditingProperty({...editingProperty, sync_enabled: !editingProperty.sync_enabled})}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none ${editingProperty.sync_enabled ? 'bg-emerald-500' : 'bg-white/10'}`}
-                    >
-                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
-                    </button>
-                    <div className="flex flex-col">
-                       <span className="text-sm font-bold text-white">Enable Automated Sync</span>
-                       <span className="text-[10px] text-white/40">Keep this on for daily automated imports</span>
                     </div>
                  </div>
 
-                 <div className="pt-4 flex gap-3">
-                    <button 
-                      onClick={handleSaveSettings}
-                      disabled={saving}
-                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-3.5 text-sm font-extrabold shadow-xl shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
-                    >
-                      {saving ? "Saving..." : "Save Schedule"}
-                    </button>
-                    <button 
-                      onClick={() => setEditingProperty(null)}
-                      className="flex-1 bg-white/5 text-white/60 rounded-xl py-3.5 text-sm font-bold hover:bg-white/10 transition-all border border-white/5"
-                    >
-                      Cancel
-                    </button>
-                 </div>
+              </div>
+
+              <div className="px-8 py-6 border-t border-white/5 flex gap-3">
+                 <button
+                   onClick={handleSaveSettings}
+                   disabled={saving}
+                   className="flex-1 bg-[#AAA024] text-white rounded-xl py-3.5 text-sm font-extrabold shadow-xl shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
+                 >
+                   {saving ? "Saving..." : "Save Schedule"}
+                 </button>
+                 <button
+                   onClick={() => setEditingProperty(null)}
+                   className="flex-1 bg-white/5 text-white/60 rounded-xl py-3.5 text-sm font-bold hover:bg-white/10 transition-all border border-white/5"
+                 >
+                   Cancel
+                 </button>
               </div>
            </div>
         </div>
