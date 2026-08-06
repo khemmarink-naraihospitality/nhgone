@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -150,6 +150,10 @@ export default function StFilesPage() {
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [fileMenuDate, setFileMenuDate] = useState<string | null>(null);
+  // Preview (Statistic Files table's FILE menu) updates the Statistic Data
+  // section far above the table, off-screen when triggered from way down
+  // the page - nothing visibly happens unless we scroll to it ourselves.
+  const reportSectionRef = useRef<HTMLDivElement>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
 
@@ -231,10 +235,11 @@ export default function StFilesPage() {
     }
   };
 
-  const jumpToDay = (rowDate: string) => {
+  const jumpToDay = async (rowDate: string) => {
     setDate(rowDate);
     setDataSource("database");
-    fetchReport({ date: rowDate, source: "database" });
+    await fetchReport({ date: rowDate, source: "database" });
+    reportSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const handleDownload = async (rowDate: string) => {
@@ -575,7 +580,7 @@ export default function StFilesPage() {
         )}
 
         {report && (
-          <>
+          <div ref={reportSectionRef}>
             <CollapsibleSection open={headerOpen}>
               <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-4">
                 <span className="font-bold">{report.parameters.property}</span>
@@ -609,7 +614,7 @@ export default function StFilesPage() {
             <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
               {renderTab()}
             </div>
-          </>
+          </div>
         )}
 
         {!report && !error && !loading && (
