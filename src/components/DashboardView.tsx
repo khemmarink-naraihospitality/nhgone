@@ -503,7 +503,7 @@ export default function DashboardView({
                   onClick={() => setActiveSection(s)}
                   className={`pb-3 text-[11px] font-bold tracked-caps transition-all px-1 border-b-2 whitespace-nowrap shrink-0 ${activeSection === s ? "border-[var(--text-primary)] text-[var(--text-primary)]" : "border-transparent text-[var(--text-primary)]/30 hover:text-[var(--text-primary)]"}`}
                 >
-                  {s}
+                  {s}{s === activeSection ? ` (${filteredAndSortedData.length})` : ""}
                 </button>
               ))}
             </div>
