@@ -64,6 +64,18 @@ interface ReservationRow {
   children: number;
 }
 
+interface ReservationAuditRow {
+  number: string;
+  guest: string;
+  room: string;
+  category: string;
+  rate: string;
+  state: string;
+  check_in: string;
+  check_out: string;
+  complimentary: boolean;
+}
+
 interface StFilesReport {
   parameters: {
     property: string;
@@ -82,6 +94,7 @@ interface StFilesReport {
   customers: CustomerRow[];
   arrivals: ReservationRow[];
   departures: ReservationRow[];
+  reservations?: ReservationAuditRow[];
   _synced_at?: string;
 }
 
@@ -110,6 +123,7 @@ const TABS = [
   { key: "customers", label: "Customers" },
   { key: "arrivals", label: "Arrivals" },
   { key: "departures", label: "Departures" },
+  { key: "reservations", label: "Reservations" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -363,6 +377,43 @@ export default function StFilesPage() {
     </table>
   );
 
+  // Reservation-level audit for the Complimentary number above - shows every
+  // reservation colliding with the day plus its Rate/State, so a mismatch
+  // between the aggregate count and what's expected can be traced back to a
+  // specific reservation (e.g. a "Complimentary Room" rate that's since
+  // checked out, so it no longer counts - State reflects MEWS's current
+  // status, not a historical snapshot of that day).
+  const reservationAuditTable = (rows: ReservationAuditRow[]) => (
+    <table className="w-full text-left border-collapse min-w-max">
+      <thead>
+        <tr className="bg-[var(--text-primary)]/5">
+          <th className={thCls}>Reservation No.</th>
+          <th className={thCls}>Guest</th>
+          <th className={thCls}>Room</th>
+          <th className={thCls}>Category</th>
+          <th className={thCls}>Rate</th>
+          <th className={thCls}>State</th>
+          <th className={thCls}>Complimentary</th>
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-[var(--text-primary)]/5">
+        {rows.length === 0 ? (
+          <tr><td colSpan={7} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
+        ) : rows.map((r, i) => (
+          <tr key={r.number + i} className={`hover:bg-[var(--text-primary)]/[0.02] ${r.complimentary ? "bg-emerald-500/[0.05]" : ""}`}>
+            <td className={`${tdCls} font-bold`}>{r.number}</td>
+            <td className={tdCls}>{r.guest || "-"}</td>
+            <td className={tdCls}>{r.room || "-"}</td>
+            <td className={tdCls}>{r.category || "-"}</td>
+            <td className={tdCls}>{r.rate || "-"}</td>
+            <td className={tdCls}>{r.state}</td>
+            <td className={tdCls}>{r.complimentary ? "Yes" : "-"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
   const renderTab = () => {
     if (!report) return null;
     switch (activeTab) {
@@ -392,6 +443,8 @@ export default function StFilesPage() {
         return reservationTable(report.arrivals);
       case "departures":
         return reservationTable(report.departures);
+      case "reservations":
+        return reservationAuditTable(report.reservations || []);
     }
   };
 
@@ -401,6 +454,7 @@ export default function StFilesPage() {
       case "customers": return report.customers.length;
       case "arrivals": return report.arrivals.length;
       case "departures": return report.departures.length;
+      case "reservations": return report.reservations?.length ?? null;
       case "out_of_order": return report.out_of_order.reduce((s, r) => s + r.count, 0);
       case "house_use": return report.house_use.reduce((s, r) => s + r.count, 0);
       default: return null;
@@ -493,6 +547,8 @@ export default function StFilesPage() {
                 {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
               </div>
             </CollapsibleSection>
+
+            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">Statistic Data</h2>
 
             <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
               {TABS.map((t) => {

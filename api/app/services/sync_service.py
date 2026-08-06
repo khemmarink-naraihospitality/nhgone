@@ -1663,6 +1663,30 @@ class SyncService:
         arrivals.sort(key=lambda r: r["room"] or "zzz")
         departures.sort(key=lambda r: r["room"] or "zzz")
 
+        # Reservation tab - every reservation colliding with the day (the
+        # same population complimentary_count is computed from above), with
+        # Rate/State/Complimentary shown per-row so the aggregate Complimentary
+        # number on the Statistic Data tabs and the ST Files List table can be
+        # audited reservation-by-reservation instead of taken on faith.
+        reservation_audit_rows = []
+        for res in reservations:
+            customer = customers_map.get(res.get("CustomerId"), {})
+            room = resources_map.get(res.get("AssignedResourceId"), {})
+            cat = categories.get(res.get("RequestedCategoryId"), {})
+            rate = rates_by_id.get(res.get("RateId"), {})
+            reservation_audit_rows.append({
+                "number": res.get("Number", ""),
+                "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
+                "room": room.get("Name", ""),
+                "category": cat.get("short_name") or cat.get("name", ""),
+                "rate": rate.get("Name", ""),
+                "state": res.get("State", ""),
+                "check_in": res.get("StartUtc", ""),
+                "check_out": res.get("EndUtc", ""),
+                "complimentary": res.get("State") == "Started" and rate.get("Name") in self._COMPLIMENTARY_RATE_NAMES,
+            })
+        reservation_audit_rows.sort(key=lambda r: r["room"] or "zzz")
+
         spaces = category_rows(metric["ActiveResources"])
         report = {
             "parameters": {
@@ -1683,6 +1707,7 @@ class SyncService:
             "arrivals": arrivals,
             "departures": departures,
             "complimentary": complimentary_count,
+            "reservations": reservation_audit_rows,
         }
         return report
 
