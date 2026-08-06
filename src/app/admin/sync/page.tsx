@@ -137,16 +137,17 @@ export default function AdminSyncPage() {
             <thead>
               <tr className="bg-slate-50/30 border-b border-slate-100">
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property Name</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Sync Time</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Data Mart Sync</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">ST Files Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Auto-Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={4} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                <tr><td colSpan={5} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : properties.length === 0 ? (
-                <tr><td colSpan={4} className="py-20 text-center text-slate-400 text-sm">No properties configured. Add properties via API Setting first.</td></tr>
+                <tr><td colSpan={5} className="py-20 text-center text-slate-400 text-sm">No properties configured. Add properties via API Setting first.</td></tr>
               ) : properties.map((prop) => (
                 <tr key={prop.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-5">
@@ -157,10 +158,14 @@ export default function AdminSyncPage() {
                     <span className="bg-[#AAA024]/5 text-[#AAA024] px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-[#AAA024]/10">
                       {String(prop.sync_hour).padStart(2, '0')}:{String(prop.sync_minute).padStart(2, '0')}
                     </span>
-                    {prop.st_files_sync_enabled && (
-                      <div className="mt-1.5 text-[10px] text-slate-400 font-medium">
-                        ST Files {String(prop.st_files_sync_hour ?? 0).padStart(2, '0')}:{String(prop.st_files_sync_minute ?? 0).padStart(2, '0')}
-                      </div>
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    {prop.st_files_sync_enabled ? (
+                      <span className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-emerald-100">
+                        {String(prop.st_files_sync_hour ?? 0).padStart(2, '0')}:{String(prop.st_files_sync_minute ?? 0).padStart(2, '0')}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-sm">Off</span>
                     )}
                   </td>
                   <td className="px-6 py-5">
