@@ -150,7 +150,7 @@ export default function StFilesPage() {
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [fileMenuDate, setFileMenuDate] = useState<string | null>(null);
-  const [previewFile, setPreviewFile] = useState<{ date: string; text: string } | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // Statistic Data (tabs + table) - expanded by default, unlike headerOpen,
@@ -238,6 +238,15 @@ export default function StFilesPage() {
   // Preview shows the exact pipe-delimited ST export file content in a
   // popup - what Download would save to disk - not the day's dashboard
   // view above (that's a separate, already-visible thing).
+  // Filename (<<Property Code>>_ST_<<yyyymmdd>>.csv) is decided server-side,
+  // where the real Property Code is known - read back from the response
+  // instead of guessing it client-side.
+  const filenameFromResponse = (res: Response, rowDate: string) => {
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="?([^";]+)"?/);
+    return match ? match[1] : `ST_${selectedProperty}_${rowDate}.csv`;
+  };
+
   const handlePreview = async (rowDate: string) => {
     setFileMenuDate(null);
     try {
@@ -249,7 +258,7 @@ export default function StFilesPage() {
         try { detail = JSON.parse(text).detail || text; } catch { /* not JSON */ }
         throw new Error(detail);
       }
-      setPreviewFile({ date: rowDate, text });
+      setPreviewFile({ date: rowDate, text, filename: filenameFromResponse(res, rowDate) });
     } catch (err: any) {
       alert(err.message);
     }
@@ -264,11 +273,7 @@ export default function StFilesPage() {
         const result = await res.json().catch(() => null);
         throw new Error(result?.detail || "Download failed");
       }
-      // Filename (<<Property Code>>_ST_<<yyyymmdd>>.csv) is decided
-      // server-side, where the real Property Code is known.
-      const disposition = res.headers.get("Content-Disposition") || "";
-      const match = disposition.match(/filename="?([^";]+)"?/);
-      const filename = match ? match[1] : `ST_${selectedProperty}_${rowDate}.csv`;
+      const filename = filenameFromResponse(res, rowDate);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -756,6 +761,7 @@ export default function StFilesPage() {
               <div>
                 <div className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/50">File Preview</div>
                 <div className="text-sm font-bold text-[var(--text-primary)]">{selectedProperty} — {previewFile.date}</div>
+                <div className="text-[11px] font-mono text-[var(--text-primary)]/50 mt-0.5">({previewFile.filename})</div>
               </div>
               <button
                 onClick={() => setPreviewFile(null)}
