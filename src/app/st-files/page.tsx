@@ -502,6 +502,8 @@ export default function StFilesPage() {
       case "reservations": return report.reservations?.length ?? null;
       case "out_of_order": return report.out_of_order.reduce((s, r) => s + r.count, 0);
       case "house_use": return report.house_use.reduce((s, r) => s + r.count, 0);
+      case "occupied": return report.occupied.reduce((s, r) => s + r.count, 0);
+      case "availability": return report.availability.reduce((s, r) => s + r.count, 0);
       default: return null;
     }
   };
