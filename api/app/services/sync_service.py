@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
+from typing import Optional
 import asyncio
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
@@ -1365,6 +1366,31 @@ class SyncService:
     # and Apartment categories are what the sheet excludes).
     _ST_FILES_SPACE_TYPES = ("Room", "Bed")
 
+    @staticmethod
+    def _resolve_stay_service(services: list) -> Optional[dict]:
+        """Picks the property's real accommodation ("Stay") service out of
+        services/getAll's response. Filtering on Discriminator=="Bookable"
+        alone isn't enough - a property can have OTHER, inactive Bookable
+        services too, and MEWS doesn't order the array with the real one
+        first. Confirmed live on Lub d Bangkok Siam: two inactive
+        "Co-Working Space" Bookable services sorted before the actual
+        active "Stay" one, so the old `next(... Discriminator=="Bookable")`
+        picked an inactive service and every call downstream
+        (getAvailability, resourceCategories) failed with MEWS's "Invalid
+        ServiceId." Filters to active ones, then prefers one literally
+        named "Stay" (MEWS's own near-universal convention for the
+        accommodation service) in case a property has more than one
+        active Bookable service - falls back to the first active one so a
+        property naming it something else doesn't silently return nothing.
+        """
+        active_bookable = [
+            s for s in services
+            if (s.get("Data") or {}).get("Discriminator") == "Bookable" and s.get("IsActive", True)
+        ]
+        if not active_bookable:
+            return None
+        return next((s for s in active_bookable if s.get("Name") == "Stay"), active_bookable[0])
+
     async def get_st_files_report(self, property_name: str, date: str):
         """
         Builds the daily "ST Files" occupancy/availability report for one
@@ -1390,11 +1416,7 @@ class SyncService:
             {"Limitation": {"Count": 100}},
             property_name=property_name,
         )
-        stay = next(
-            (s for s in services_res.get("Services", [])
-             if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
-            None,
-        )
+        stay = self._resolve_stay_service(services_res.get("Services", []))
         if not stay:
             raise Exception(f"No bookable (accommodation) service found for {property_name}")
         service_id = stay["Id"]
@@ -1916,11 +1938,7 @@ class SyncService:
                     {"Limitation": {"Count": 100}},
                     property_name=property_name,
                 )
-                stay_service = next(
-                    (s for s in services_res.get("Services", [])
-                     if (s.get("Data") or {}).get("Discriminator") == "Bookable"),
-                    None,
-                )
+                stay_service = self._resolve_stay_service(services_res.get("Services", []))
                 if stay_service:
                     stay_service_name = stay_service.get("Name", "")
                     cats_res = await mews_client.post(
