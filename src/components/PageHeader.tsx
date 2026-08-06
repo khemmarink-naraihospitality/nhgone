@@ -24,10 +24,11 @@ export default function PageHeader({ title, description, children }: PageHeaderP
       </div>
       <div className="flex items-center gap-3 md:gap-6 pt-2 shrink-0 flex-wrap">
         {children}
-        <div className="hidden md:block h-10 w-px bg-[var(--text-primary)]/10 mx-2"></div>
-        {/* Hidden on mobile - the top bar (Navigation.tsx) shows its own
-            UserHeader there instead, on the same row as the logo. */}
-        <div className="hidden md:block">
+        <div className="hidden lg:block h-10 w-px bg-[var(--text-primary)]/10 mx-2"></div>
+        {/* Hidden below lg - Navigation.tsx's own top bar shows its own
+            UserHeader there instead (same breakpoint it switches to the
+            hamburger menu at), on the same row as the logo. */}
+        <div className="hidden lg:block">
           <UserHeader />
         </div>
       </div>

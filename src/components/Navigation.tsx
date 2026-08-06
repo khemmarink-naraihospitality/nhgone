@@ -408,11 +408,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <div className="min-h-full flex flex-col md:flex-row bg-background text-foreground w-full transition-colors duration-300">
-      {/* Mobile top bar - the desktop <aside> below is hidden under md, so
+    <div className="min-h-full flex flex-col lg:flex-row bg-background text-foreground w-full transition-colors duration-300">
+      {/* Mobile top bar - the desktop <aside> below is hidden under lg, so
           this is the only way to reach the hamburger drawer (and therefore
-          any other page) on a phone. */}
-      <div className="md:hidden flex items-center justify-between px-4 py-3 bg-[#152A00] border-b border-[#FFEFD2]/10 sticky top-0 z-40 shrink-0">
+          any other page) on a phone or tablet. lg (1024px) rather than md
+          (768px) specifically so iPad portrait (768-834px across Mini/Air/
+          Pro 11") gets the full-width hamburger layout instead of a fixed
+          192px sidebar eating a quarter of an already-narrow screen -
+          iPad landscape (1024px+) still gets the full desktop sidebar. */}
+      <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#152A00] border-b border-[#FFEFD2]/10 sticky top-0 z-40 shrink-0">
         <button
           onClick={() => setMobileNavOpen(true)}
           aria-label="Open menu"
@@ -430,7 +434,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       </div>
 
       {mobileNavOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+        <div className="lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
           <div className="relative w-72 max-w-[82vw] h-full bg-[#152A00] p-4 flex flex-col gap-6 overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between">
@@ -450,7 +454,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
-      <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden md:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+      <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300">
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
             <img
@@ -467,7 +471,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
         <div className="mt-auto pb-4">{exitAdminLink}</div>
       </aside>
-      <main className="flex-1 flex flex-col md:h-screen overflow-hidden relative min-h-0">
+      <main className="flex-1 flex flex-col lg:h-screen overflow-hidden relative min-h-0">
         <div className="flex-1 overflow-y-auto w-full">
           {children}
         </div>
