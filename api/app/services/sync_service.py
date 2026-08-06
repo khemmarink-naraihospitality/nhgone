@@ -1432,11 +1432,10 @@ class SyncService:
     _COMPLIMENTARY_RATE_NAMES = {"Complimentary", "Complimentary Room"}
 
     # ST Files List's "Download" file - the legacy pipe-delimited PMSST/RMSST
-    # statistics export, reverse-engineered from a real 10-row sample. Field
-    # layout is confirmed (see get_st_report_export's docstring); the
-    # per-property code in field 5 is NOT - populate this before trusting the
-    # export for a real government/PMS submission.
-    _ST_REPORT_PROPERTY_CODES: dict = {}
+    # statistics export. Field layout confirmed against the source Google
+    # Sheet formula itself (see get_st_report_export's docstring) - field 5
+    # is a report-month code, not a property code; the real per-property
+    # value (field 17) comes from property_api_settings.st_property_code.
 
     # (metric_code, field-8 label, totals-dict key, record_type). "key" is
     # None for "No. of Day", whose value is always the literal 1.
@@ -1781,17 +1780,31 @@ class SyncService:
         Builds the legacy pipe-delimited "ST" statistics submission file
         (record types PMSST/RMSST) for one already-imported day - 10 fixed
         metric rows, 41 fields each, values taken from that day's
-        st_files_sync blob (same totals get_st_files_list shows). Field
-        layout was reverse-engineered from a real sample; property_name must
-        be registered in _ST_REPORT_PROPERTY_CODES first (field 5's
-        property/branch code isn't confirmed for any property yet) - raises
-        rather than guessing at a code for a real regulatory submission.
+        st_files_sync blob (same totals get_st_files_list shows).
+
+        Field layout confirmed directly against the source Google Sheet
+        formula (not just inferred from sample output):
+          ="PMSST|RMSST|"&"90107"&"|"&text(date,"ddmmyyyy")&"|"&"0"&text(date,"mm")
+            &"|"&text(date,"yyyy")&"|"&"ST"&text(date,"yyyymmdd")&"|"&"Spaces"&"|"
+            &text(date,"ddmmyyyy")&"|"&"THB"&"|"&Master!B4&"|1||||D|"&Master!$B$3
+            &"|111|ZZ|ZZ|..."
+        Field 5 is "0"+month (a report-period code, NOT a property code -
+        "008" in the original sample was just August, field 6's year makes
+        it unambiguous). Field 17 IS the real per-property value (Master!$B$3
+        in their sheet, e.g. "SM" for Lub d Bangkok Siam) - sourced from
+        property_api_settings.st_property_code here; raises if that property
+        hasn't been given one yet rather than guessing at it for what could
+        be a real government/PMS submission. Fields 12/16/18/19/20 are
+        hardcoded literals in the formula itself, confirmed constant for
+        every property.
         """
-        property_code = self._ST_REPORT_PROPERTY_CODES.get(property_name)
-        if not property_code:
-            raise ValueError(f"No ST report property code configured yet for {property_name}")
         if not self.supabase:
             raise Exception("Supabase not initialized")
+        prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+            "property_name", property_name).limit(1).execute()
+        property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
+        if not property_code:
+            raise ValueError(f"No ST Property Code configured yet for {property_name} - set it in Admin > API Settings")
         res = self.supabase.table("st_files_sync").select("data").eq(
             "property", property_name).eq("report_date", date_str).limit(1).execute()
         if not res.data:
@@ -1812,13 +1825,14 @@ class SyncService:
         day = datetime.strptime(date_str, "%Y-%m-%d")
         ddmmyyyy = day.strftime("%d%m%Y")
         yyyymmdd = day.strftime("%Y%m%d")
+        month_code = "0" + day.strftime("%m")
         lines = []
         for code, label, key, record_type in self._ST_REPORT_METRICS:
             value = 1 if key is None else totals.get(key, 0)
             fields = [
-                "PMSST", record_type, code, ddmmyyyy, property_code, str(day.year),
+                "PMSST", record_type, code, ddmmyyyy, month_code, str(day.year),
                 f"ST{yyyymmdd}", label, ddmmyyyy, "THB", str(value), "1",
-                "", "", "", "D", "SM", "111", "ZZ", "ZZ",
+                "", "", "", "D", property_code, "111", "ZZ", "ZZ",
             ] + [""] * 21
             lines.append("|".join(fields))
         return "\n".join(lines)

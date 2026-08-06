@@ -10,6 +10,7 @@ interface PropertySetting {
   client_name: string;
   client_token: string;
   access_token: string;
+  st_property_code: string | null;
 }
 
 export default function ApiSettingsPage() {
@@ -23,7 +24,8 @@ export default function ApiSettingsPage() {
     property_name: "",
     client_name: "XPossible Hotel Connec",
     client_token: "",
-    access_token: ""
+    access_token: "",
+    st_property_code: ""
   });
 
   const fetchSettings = async () => {
@@ -73,7 +75,7 @@ export default function ApiSettingsPage() {
       if (res.status === "success") {
         setSettings([...settings, res.data].sort((a, b) => a.property_name.localeCompare(b.property_name)));
         setIsAdding(false);
-        setNewForm({ property_name: "", client_name: "XPossible Hotel Connec", client_token: "", access_token: "" });
+        setNewForm({ property_name: "", client_name: "XPossible Hotel Connec", client_token: "", access_token: "", st_property_code: "" });
       } else {
         alert("Error adding property: " + res.detail);
       }
@@ -97,7 +99,8 @@ export default function ApiSettingsPage() {
           property_name: editForm.property_name,
           client_name: editForm.client_name,
           client_token: editForm.client_token,
-          access_token: editForm.access_token
+          access_token: editForm.access_token,
+          st_property_code: editForm.st_property_code
         })
       });
       const res = await response.json();
@@ -163,8 +166,17 @@ export default function ApiSettingsPage() {
                 />
               </div>
               <div className="space-y-1.5">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property Code</label>
+                <input
+                  placeholder="e.g. SM"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
+                  value={newForm.st_property_code}
+                  onChange={(e) => setNewForm({...newForm, st_property_code: e.target.value})}
+                />
+              </div>
+              <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Client Name</label>
-                <input 
+                <input
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
                   value={newForm.client_name}
                   onChange={(e) => setNewForm({...newForm, client_name: e.target.value})}
@@ -226,8 +238,17 @@ export default function ApiSettingsPage() {
                       />
                     </div>
                     <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Property Code</label>
+                      <input
+                        placeholder="e.g. SM"
+                        className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                        value={editForm?.st_property_code || ""}
+                        onChange={(e) => setEditForm({...editForm!, st_property_code: e.target.value})}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Client Name</label>
-                      <input 
+                      <input
                         className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
                         value={editForm?.client_name}
                         onChange={(e) => setEditForm({...editForm!, client_name: e.target.value})}
@@ -256,6 +277,7 @@ export default function ApiSettingsPage() {
                   <div>
                     <h3 className="text-xl font-bold mb-1 text-slate-800">{prop.property_name}</h3>
                     <div className="flex gap-4 text-xs">
+                       <span className="text-slate-500">Property Code: <span className={`font-mono ${prop.st_property_code ? "text-slate-700" : "text-red-500 italic"}`}>{prop.st_property_code || "not set"}</span></span>
                        <span className="text-slate-500">Client: <span className="text-slate-700">{prop.client_name}</span></span>
                        <span className="text-slate-500">Access Token: <span className="text-slate-700 font-mono italic">***{prop.access_token.slice(-6)}</span></span>
                     </div>

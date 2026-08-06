@@ -31,6 +31,10 @@ class PropertyApiSettingsUpdate(BaseModel):
     client_name: str
     client_token: str
     access_token: str
+    # Per-property code used in the legacy pipe-delimited ST statistics
+    # export (field 17) - e.g. "SM" for Lub d Bangkok Siam. Not sensitive,
+    # so it isn't in encryption.py's SENSITIVE_FIELDS.
+    st_property_code: Optional[str] = None
 
 class SmtpSettingsUpdate(BaseModel):
     host: str
