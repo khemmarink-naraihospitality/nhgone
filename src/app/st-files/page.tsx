@@ -1,9 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
+
+// Same collapsible-header pattern as BCP's own page (bcp/page.tsx) - one
+// shared open/close toggle can wrap multiple separate blocks (the
+// description, the property/date controls, the loaded-report info bar)
+// so they all hide together under a single "Details" line instead of
+// permanently taking up space above the tabs/table.
+function CollapsibleSection({ label, open, onToggle, children }: { label?: string; open: boolean; onToggle?: () => void; children: ReactNode }) {
+  return (
+    <div className="no-print mb-3">
+      {label && onToggle && (
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-1.5 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          {label}
+        </button>
+      )}
+      {open && <div className={label ? "mt-2" : ""}>{children}</div>}
+    </div>
+  );
+}
 
 interface CategoryRow {
   short_name: string;
@@ -95,6 +119,8 @@ export default function StFilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
+  // Collapsed by default, same as BCP's own header details section.
+  const [headerOpen, setHeaderOpen] = useState(false);
 
   const getYesterday = () => {
     const d = new Date();
@@ -336,7 +362,7 @@ export default function StFilesPage() {
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="ST Files" description="Daily occupancy report per property - spaces, occupied, house use, out of order, availability, plus that day's customers, arrivals and departures, straight from MEWS.">
+        <PageHeader title="ST Files">
           <div className="flex flex-col items-end gap-1">
             <span className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Mode</span>
             <div className="flex border border-[var(--text-primary)]/14 bg-[var(--paper)]">
@@ -356,42 +382,54 @@ export default function StFilesPage() {
           </div>
         </PageHeader>
 
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
-          <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-            <div className="relative">
-              <select
-                value={selectedProperty}
-                onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-              >
-                {properties.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+        <CollapsibleSection
+          open={headerOpen}
+          onToggle={() => setHeaderOpen((o) => !o)}
+          label={`Details — ${selectedProperty || "no property selected"}${report ? ` · ${report.parameters.date}` : ""}`}
+        >
+          <p className="text-[var(--text-primary)] text-sm opacity-70 leading-relaxed max-w-4xl">
+            Daily occupancy report per property - spaces, occupied, house use, out of order, availability, plus that day&apos;s customers, arrivals and departures, straight from MEWS.
+          </p>
+        </CollapsibleSection>
+
+        <CollapsibleSection open={headerOpen}>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-4">
+            <div className="flex flex-col gap-2 w-full md:w-80">
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
+              <div className="relative">
+                <select
+                  value={selectedProperty}
+                  onChange={(e) => setSelectedProperty(e.target.value)}
+                  className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                >
+                  {properties.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </div>
             </div>
+            <div className="flex flex-col gap-2 w-full md:w-48">
+              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Date</label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+              />
+            </div>
+            <button onClick={fetchReport} disabled={loading} className="btn-brand btn-primary h-[46px]">
+              {loading ? "Loading..." : "Fetch Report"}
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={importing || !selectedProperty}
+              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {importing ? "Importing..." : "Import To Data Mart"}
+            </button>
           </div>
-          <div className="flex flex-col gap-2 w-full md:w-48">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Date</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-            />
-          </div>
-          <button onClick={fetchReport} disabled={loading} className="btn-brand btn-primary h-[46px]">
-            {loading ? "Loading..." : "Fetch Report"}
-          </button>
-          <button
-            onClick={handleImport}
-            disabled={importing || !selectedProperty}
-            className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            {importing ? "Importing..." : "Import To Data Mart"}
-          </button>
-        </div>
+        </CollapsibleSection>
 
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
@@ -399,19 +437,14 @@ export default function StFilesPage() {
 
         {report && (
           <>
-            <div className="flex items-center gap-1.5 flex-wrap text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mb-4 px-1">
-              <span>{report.parameters.property}</span>
-              <span>·</span>
-              <span>{report.parameters.date}</span>
-              <span>·</span>
-              <span>Space types: {report.parameters.space_types.join(", ")}</span>
-              {report._synced_at && (
-                <>
-                  <span>·</span>
-                  <span>Imported: {fmtDateTime(report._synced_at)}</span>
-                </>
-              )}
-            </div>
+            <CollapsibleSection open={headerOpen}>
+              <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-4">
+                <span className="font-bold">{report.parameters.property}</span>
+                <span>{report.parameters.date}</span>
+                <span>Space types: {report.parameters.space_types.join(", ")}</span>
+                {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
+              </div>
+            </CollapsibleSection>
 
             <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
               {TABS.map((t) => {
