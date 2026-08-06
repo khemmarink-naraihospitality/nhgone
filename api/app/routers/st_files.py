@@ -10,6 +10,20 @@ from app.services.encryption import encryption_service
 router = APIRouter(prefix="/st-files", tags=["ST Files"])
 
 
+async def sync_st_files_day(property_name: str, date_str: str) -> None:
+    """Fetches + upserts one (property, date) ST Files report into
+    st_files_sync - shared by the manual Import To Data Mart button below
+    and the scheduled daily auto-import in main.py, so the two can't drift
+    out of sync with each other. Raises on failure; callers log/count it."""
+    report = await sync_service.get_st_files_report(property_name, date_str)
+    sync_service.supabase.table("st_files_sync").upsert({
+        "property": property_name,
+        "report_date": date_str,
+        "data": {"blob": encryption_service.encrypt(json.dumps(report))},
+        "synced_at": datetime.now(timezone.utc).isoformat(),
+    }, on_conflict="property,report_date").execute()
+
+
 @router.get("/report")
 async def get_report(
     property_name: str = Query(...),
@@ -57,20 +71,13 @@ async def sync_manual(payload: dict = Body(...)):
         except Exception as e:
             print(f"Logging fetch error (st_files): {str(e)}")
 
-        now_iso = datetime.now(timezone.utc).isoformat()
         inserted = 0
         errors = []
         day = start
         while day <= end:
             date_str = day.strftime("%Y-%m-%d")
             try:
-                report = await sync_service.get_st_files_report(property_name, date_str)
-                sync_service.supabase.table("st_files_sync").upsert({
-                    "property": property_name,
-                    "report_date": date_str,
-                    "data": {"blob": encryption_service.encrypt(json.dumps(report))},
-                    "synced_at": now_iso,
-                }, on_conflict="property,report_date").execute()
+                await sync_st_files_day(property_name, date_str)
                 inserted += 1
             except Exception as e:
                 errors.append(f"{date_str}: {str(e)[:200]}")

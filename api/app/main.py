@@ -218,6 +218,23 @@ async def _sync_bills(prop, prop_id, now_iso, report_date, sync_type="auto"):
         print(f"Error syncing bills for {prop}: {e}")
         return False
 
+async def _sync_st_files_for_property(prop, prop_id, date_str, sync_type="auto"):
+    """Not one of the five _TARGET_TABLE_SYNC_FN tables (different schedule
+    - see daily_auto_sync_st_files below - and a different source table,
+    st_files_sync) - kept as its own function rather than folded into that
+    dict so it isn't accidentally picked up by daily_auto_sync/
+    retry_failed_syncs/retry_scheduled_syncs's per-table loops."""
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
+    try:
+        await st_files.sync_st_files_day(prop, date_str)
+        _log_sync(prop, prop_id, "ST Files", "success", 1, f"{label} ST Files Sync: {date_str}", sync_type)
+        return True
+    except Exception as e:
+        err = str(e)[:1000]
+        _log_sync(prop, prop_id, "ST Files", "error", 0, f"{label} ST Files Sync Failed: {err}", sync_type)
+        print(f"Error syncing ST Files for {prop}: {e}")
+        return False
+
 _TARGET_TABLE_SYNC_FN = {
     "Reservations": (_sync_reservations, "sync_reservations"),
     "Customers": (_sync_members, "sync_members"),
@@ -317,6 +334,70 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
     except Exception as e:
         print(f"Error in automated sync check: {str(e)}")
         traceback.print_exc()
+
+async def daily_auto_sync_st_files(match_hour_only: bool = False):
+    """
+    ST Files' own auto-import schedule (Admin > Sync's "ST Files Auto
+    Import" section, st_files_sync_enabled/st_files_sync_hour/
+    st_files_sync_minute on property_api_settings) - deliberately separate
+    from the 5-table daily_auto_sync above rather than a 6th entry in
+    _TARGET_TABLE_SYNC_FN, since a property may well want this on a
+    different clock than its main data sync (or not at all). Always syncs
+    TODAY's Bangkok date (not yesterday, unlike the main sync) - matches
+    what the manual Import To Data Mart button on /st-files fetches by
+    default, and what the report is actually for (today's occupancy).
+
+    Same match_hour_only split as daily_auto_sync: exact minute match
+    locally (per-minute tick), hour-only in production (Vercel's cron is
+    hourly and not guaranteed to land on :00 - see daily_auto_sync's own
+    docstring for why).
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, st_files_sync_hour, st_files_sync_minute") \
+            .eq("st_files_sync_enabled", True)
+        if match_hour_only:
+            query = query.eq("st_files_sync_hour", now.hour)
+        else:
+            query = query.eq("st_files_sync_hour", now.hour).eq("st_files_sync_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        # Swallows a missing-column error gracefully (e.g. the migration
+        # adding these 3 columns hasn't been run yet) rather than taking
+        # down this whole background task.
+        print(f"Error in daily_auto_sync_st_files (fetching properties): {str(e)}")
+        return
+
+    if not items:
+        return
+
+    print(f"[{now.isoformat()}] ST Files auto-import: {len(items)} propert(y/ies) scheduled...")
+    today_str = now.date().isoformat()
+
+    for p in items:
+        prop, prop_id = p["property_name"], p["id"]
+        try:
+            lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                "target_property_id": prop_id, "timeout_mins": 15
+            }).execute().data
+            if not lock_acquired:
+                print(f"Skipping ST Files auto-import for {prop}: sync lock busy.")
+                continue
+        except Exception as lock_err:
+            print(f"ST Files auto-import lock error for {prop}: {lock_err}")
+            continue
+
+        try:
+            await _sync_st_files_for_property(prop, prop_id, today_str)
+        finally:
+            try:
+                sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+            except Exception:
+                pass
 
 async def retry_failed_syncs():
     """
@@ -534,6 +615,8 @@ async def start_scheduler():
     scheduler.add_job(retry_failed_syncs, 'cron', second=0)
     # Same idea, gated per-property to sync_hour+1/+2 instead of a fixed hour.
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
+    # ST Files' own independent schedule (st_files_sync_hour/minute).
+    scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -557,6 +640,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(retry_failed_syncs)
     # Same piggyback, gated per-property to sync_hour+1/+2 instead.
     background_tasks.add_task(retry_scheduled_syncs)
+    # ST Files' own independent schedule.
+    background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

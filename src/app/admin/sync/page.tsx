@@ -15,6 +15,12 @@ interface PropertySyncSettings {
   sync_payments: boolean;
   sync_bills: boolean;
   sync_resources: boolean;
+  // ST Files' own independent schedule - always imports TODAY's Bangkok
+  // date (not yesterday, unlike the 5 tables above), matching what the
+  // manual Import To Data Mart button on /st-files fetches by default.
+  st_files_sync_enabled: boolean;
+  st_files_sync_hour: number | null;
+  st_files_sync_minute: number | null;
 }
 
 const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] = [
@@ -36,7 +42,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute")
         .order("property_name");
       
       if (error) throw error;
@@ -85,6 +91,9 @@ export default function AdminSyncPage() {
           sync_payments: editingProperty.sync_payments,
           sync_bills: editingProperty.sync_bills,
           sync_resources: editingProperty.sync_resources,
+          st_files_sync_enabled: editingProperty.st_files_sync_enabled,
+          st_files_sync_hour: editingProperty.st_files_sync_hour,
+          st_files_sync_minute: editingProperty.st_files_sync_minute,
         })
         .eq("id", editingProperty.id);
       
@@ -148,6 +157,11 @@ export default function AdminSyncPage() {
                     <span className="bg-[#AAA024]/5 text-[#AAA024] px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-[#AAA024]/10">
                       {String(prop.sync_hour).padStart(2, '0')}:{String(prop.sync_minute).padStart(2, '0')}
                     </span>
+                    {prop.st_files_sync_enabled && (
+                      <div className="mt-1.5 text-[10px] text-slate-400 font-medium">
+                        ST Files {String(prop.st_files_sync_hour ?? 0).padStart(2, '0')}:{String(prop.st_files_sync_minute ?? 0).padStart(2, '0')}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-5">
                     <div className="flex justify-center">
@@ -233,6 +247,55 @@ export default function AdminSyncPage() {
                          </label>
                        ))}
                     </div>
+                 </div>
+
+                 <div className="border-t border-white/10 pt-6">
+                    <label className="text-xs font-bold text-white/40 ml-1 block mb-3 uppercase tracking-widest">ST Files Auto Import</label>
+                    <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5 mb-4">
+                       <button
+                         onClick={() => setEditingProperty({
+                           ...editingProperty,
+                           st_files_sync_enabled: !editingProperty.st_files_sync_enabled,
+                           // Sensible default (05:00) the first time this is turned
+                           // on for a property that's never had it configured.
+                           st_files_sync_hour: editingProperty.st_files_sync_hour ?? 5,
+                           st_files_sync_minute: editingProperty.st_files_sync_minute ?? 0,
+                         })}
+                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ${editingProperty.st_files_sync_enabled ? 'bg-emerald-500' : 'bg-white/10'}`}
+                       >
+                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.st_files_sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                       </button>
+                       <div className="flex flex-col">
+                          <span className="text-sm font-bold text-white">Import to Database daily</span>
+                          <span className="text-[10px] text-white/40">Auto-imports that day&apos;s ST Files report (Live API result) into our Database, same as the manual &quot;Import To Data Mart&quot; button</span>
+                       </div>
+                    </div>
+                    {editingProperty.st_files_sync_enabled && (
+                       <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                             <label className="text-[10px] font-bold text-white/20 ml-1">HOUR (0-23)</label>
+                             <input
+                               type="number"
+                               min="0"
+                               max="23"
+                               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
+                               value={editingProperty.st_files_sync_hour ?? 5}
+                               onChange={(e) => setEditingProperty({...editingProperty, st_files_sync_hour: parseInt(e.target.value) || 0})}
+                             />
+                          </div>
+                          <div className="space-y-2">
+                             <label className="text-[10px] font-bold text-white/20 ml-1">MINUTE (0-59)</label>
+                             <input
+                               type="number"
+                               min="0"
+                               max="59"
+                               className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white font-mono text-lg focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 transition-all"
+                               value={editingProperty.st_files_sync_minute ?? 0}
+                               onChange={(e) => setEditingProperty({...editingProperty, st_files_sync_minute: parseInt(e.target.value) || 0})}
+                             />
+                          </div>
+                       </div>
+                    )}
                  </div>
 
                  <div className="flex items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/5">
