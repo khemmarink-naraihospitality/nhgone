@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
@@ -150,13 +150,7 @@ export default function StFilesPage() {
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
   const [fileMenuDate, setFileMenuDate] = useState<string | null>(null);
-  // Preview (Statistic Files table's FILE menu) updates the Statistic Data
-  // section far above the table, off-screen when triggered from way down
-  // the page - nothing visibly happens unless we scroll to it ourselves.
-  // Anchored to an always-mounted marker (not the conditional report/error
-  // blocks) so it's never null on the very first Preview click, before
-  // React has committed a report/error render.
-  const reportSectionRef = useRef<HTMLDivElement>(null);
+  const [previewFile, setPreviewFile] = useState<{ date: string; text: string } | null>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // Statistic Data (tabs + table) - expanded by default, unlike headerOpen,
@@ -241,12 +235,24 @@ export default function StFilesPage() {
     }
   };
 
-  const jumpToDay = async (rowDate: string) => {
-    setDate(rowDate);
-    setDataSource("database");
-    setStatsOpen(true);
-    await fetchReport({ date: rowDate, source: "database" });
-    reportSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Preview shows the exact pipe-delimited ST export file content in a
+  // popup - what Download would save to disk - not the day's dashboard
+  // view above (that's a separate, already-visible thing).
+  const handlePreview = async (rowDate: string) => {
+    setFileMenuDate(null);
+    try {
+      const params = new URLSearchParams({ property_name: selectedProperty, date: rowDate });
+      const res = await fetch(`/api/st-files/export?${params.toString()}`);
+      const text = await res.text();
+      if (!res.ok) {
+        let detail = text;
+        try { detail = JSON.parse(text).detail || text; } catch { /* not JSON */ }
+        throw new Error(detail);
+      }
+      setPreviewFile({ date: rowDate, text });
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   const handleDownload = async (rowDate: string) => {
@@ -582,11 +588,6 @@ export default function StFilesPage() {
           </div>
         </CollapsibleSection>
 
-        {/* Always mounted (unlike the conditional blocks below) so Preview's
-            scrollIntoView never races a same-tick React commit - see
-            reportSectionRef's declaration above. */}
-        <div ref={reportSectionRef} />
-
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         )}
@@ -677,10 +678,9 @@ export default function StFilesPage() {
                   </tr>
                 ) : listRows.map((r) => {
                   // Highlights whichever row's day is currently loaded into
-                  // Statistic Data above - Preview's only feedback otherwise
-                  // is numbers changing up there, easy to miss when a day's
-                  // Spaces total happens to match (room inventory rarely
-                  // changes day to day, unlike Occupied/Customers/etc).
+                  // Statistic Data above, via the Select Property/Date/Fetch
+                  // Report controls (Preview below opens a separate popup,
+                  // not this section).
                   const isActive = !!report && dataSource === "database" && report.parameters.date === r.date;
                   return (
                   <tr key={r.date} className={isActive ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
@@ -711,7 +711,7 @@ export default function StFilesPage() {
                             <div className="fixed inset-0 z-10" onClick={() => setFileMenuDate(null)} />
                             <div className="absolute right-0 top-full mt-1 z-20 w-32 bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[0_8px_24px_rgba(21,42,0,0.12)]">
                               <button
-                                onClick={() => { setFileMenuDate(null); jumpToDay(r.date); }}
+                                onClick={() => handlePreview(r.date)}
                                 className="block w-full text-left px-4 py-2 text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
                               >
                                 Preview
@@ -735,6 +735,46 @@ export default function StFilesPage() {
           </div>
         </div>
       </div>
+
+      {previewFile && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={() => setPreviewFile(null)}
+        >
+          <div
+            className="bg-[var(--paper)] border border-[var(--text-primary)]/14 w-full max-w-2xl max-h-[85vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--text-primary)]/14">
+              <div>
+                <div className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/50">File Preview</div>
+                <div className="text-sm font-bold text-[var(--text-primary)]">{selectedProperty} — {previewFile.date}</div>
+              </div>
+              <button
+                onClick={() => setPreviewFile(null)}
+                className="text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] text-2xl leading-none"
+              >
+                &times;
+              </button>
+            </div>
+            <pre className="flex-1 overflow-auto p-5 text-[10.5px] font-mono leading-relaxed text-[var(--text-primary)] whitespace-pre">{previewFile.text}</pre>
+            <div className="flex justify-end gap-2 px-5 py-3 border-t border-[var(--text-primary)]/14">
+              <button
+                onClick={() => setPreviewFile(null)}
+                className="px-4 py-2 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] transition-colors"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => handleDownload(previewFile.date)}
+                className="px-4 py-2 text-[10px] font-bold tracked-caps bg-[#152A00] text-[#FFEFD2] hover:opacity-90 transition-opacity"
+              >
+                Download
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
