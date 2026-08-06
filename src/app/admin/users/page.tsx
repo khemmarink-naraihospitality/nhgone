@@ -1027,15 +1027,18 @@ export default function AdminUsersPage() {
 
                  <div className="space-y-2">
                     <label className="text-xs font-bold text-white/60 ml-1">Assigned Role</label>
-                    <select 
-                      className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 appearance-none cursor-pointer transition-all"
-                      value={newUser.role}
-                      onChange={(e) => setNewUser({...newUser, role: e.target.value})}
-                    >
-                       {rolePermissions.map((r) => (
-                         <option key={r.role} value={r.role} className="bg-[#1a1a1a]">{r.role}</option>
-                       ))}
-                    </select>
+                    <div className="relative">
+                      <select
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 pr-10 py-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#AAA024]/40 appearance-none cursor-pointer transition-all"
+                        value={newUser.role}
+                        onChange={(e) => setNewUser({...newUser, role: e.target.value})}
+                      >
+                         {rolePermissions.map((r) => (
+                           <option key={r.role} value={r.role} className="bg-[#1a1a1a]">{r.role}</option>
+                         ))}
+                      </select>
+                      <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                    </div>
                  </div>
 
                   <div className="flex items-center gap-3 ml-1 p-3 bg-white/5 rounded-xl border border-white/10">

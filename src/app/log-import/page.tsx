@@ -192,14 +192,15 @@ export default function LogImportPage() {
           <div className="flex flex-col gap-3 w-full sm:w-auto sm:min-w-[300px]">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps uppercase ml-1">Entity / Property Filter</label>
             <div className="relative border-b-2 border-[var(--text-primary)]/20 focus-within:border-[var(--text-primary)] transition-colors">
-              <select 
-                value={filterProperty} 
-                onChange={(e) => setFilterProperty(e.target.value)} 
-                className="w-full bg-transparent py-3 px-1 text-[13px] font-medium text-[var(--text-primary)] outline-none appearance-none cursor-pointer"
+              <select
+                value={filterProperty}
+                onChange={(e) => setFilterProperty(e.target.value)}
+                className="w-full bg-transparent py-3 pl-1 pr-8 text-[13px] font-medium text-[var(--text-primary)] outline-none appearance-none cursor-pointer"
               >
                 <option value="All">All Property</option>
                 {properties.map(p => <option key={p} value={p}>{p}</option>)}
               </select>
+              <svg className="pointer-events-none absolute right-1 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
             </div>
           </div>
           <button 
