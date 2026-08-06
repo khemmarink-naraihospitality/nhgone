@@ -210,7 +210,7 @@ export default function StFilesPage() {
       if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to fetch ST Files report");
       if (source === "database" && !result.data) {
         setReport(null);
-        throw new Error(`No imported report for ${selectedProperty} on ${targetDate} yet - switch MODE to Live API, or use "Import To Data Mart" first.`);
+        throw new Error(`No imported report for ${selectedProperty} on ${targetDate} yet - switch MODE to MEWS, or use "Import To Data Mart" first.`);
       }
       setReport(result.data);
     } catch (err: any) {
@@ -517,13 +517,13 @@ export default function StFilesPage() {
                 onClick={() => setDataSource("live")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
-                Live API
+                MEWS
               </button>
               <button
                 onClick={() => setDataSource("database")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
-                Database
+                NHG
               </button>
             </div>
           </div>
