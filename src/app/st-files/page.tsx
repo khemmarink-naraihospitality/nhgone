@@ -264,11 +264,16 @@ export default function StFilesPage() {
         const result = await res.json().catch(() => null);
         throw new Error(result?.detail || "Download failed");
       }
+      // Filename (<<Property Code>>_ST_<<yyyymmdd>>.csv) is decided
+      // server-side, where the real Property Code is known.
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^";]+)"?/);
+      const filename = match ? match[1] : `ST_${selectedProperty}_${rowDate}.csv`;
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `ST_${selectedProperty}_${rowDate}.txt`;
+      a.download = filename;
       a.click();
       URL.revokeObjectURL(url);
     } catch (err: any) {
@@ -742,7 +747,7 @@ export default function StFilesPage() {
           onClick={() => setPreviewFile(null)}
         >
           <div
-            className="bg-[var(--paper)] border border-[var(--text-primary)]/14 w-full max-w-2xl max-h-[85vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
+            className="bg-[var(--paper)] border border-[var(--text-primary)]/14 w-full max-w-4xl max-h-[90vh] flex flex-col shadow-[0_20px_60px_rgba(0,0,0,0.3)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--text-primary)]/14">

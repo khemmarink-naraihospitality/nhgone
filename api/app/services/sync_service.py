@@ -1775,7 +1775,7 @@ class SyncService:
             })
         return rows
 
-    def get_st_report_export(self, property_name: str, date_str: str) -> str:
+    def get_st_report_export(self, property_name: str, date_str: str) -> tuple:
         """
         Builds the legacy pipe-delimited "ST" statistics submission file
         (record types PMSST/RMSST) for one already-imported day - 10 fixed
@@ -1797,6 +1797,9 @@ class SyncService:
         be a real government/PMS submission. Fields 12/16/18/19/20 are
         hardcoded literals in the formula itself, confirmed constant for
         every property.
+
+        Returns (csv_text, filename) - filename is "{property_code}_ST_
+        {yyyymmdd}.csv", e.g. "SM_ST_20260805.csv" for Lub d Bangkok Siam.
         """
         if not self.supabase:
             raise Exception("Supabase not initialized")
@@ -1835,7 +1838,8 @@ class SyncService:
                 "", "", "", "D", property_code, "111", "ZZ", "ZZ",
             ] + [""] * 21
             lines.append("|".join(fields))
-        return "\n".join(lines)
+        filename = f"{property_code}_ST_{yyyymmdd}.csv"
+        return "\n".join(lines), filename
 
     # BCP timeline window: how far back/forward from "today" the reservations
     # grid covers. Wide enough to show most stays without blowing up capture

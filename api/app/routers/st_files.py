@@ -150,9 +150,8 @@ async def export_report(
     pipe-delimited ST statistics file for one already-imported day (see
     sync_service.get_st_report_export)."""
     try:
-        text = sync_service.get_st_report_export(property_name, date)
-        filename = f"ST_{property_name.replace(' ', '_')}_{date}.txt"
-        return PlainTextResponse(text, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+        text, filename = sync_service.get_st_report_export(property_name, date)
+        return PlainTextResponse(text, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{filename}"'})
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
