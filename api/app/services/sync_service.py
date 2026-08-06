@@ -1,5 +1,6 @@
 from supabase import create_client, Client
 from app.config import settings
+import json
 import logging
 import re
 from datetime import datetime, timezone, timedelta
@@ -1418,6 +1419,18 @@ class SyncService:
             logger.warning(f"Could not resolve MEWS timezone for {property_name}, defaulting to Asia/Bangkok: {e}")
         return ZoneInfo("Asia/Bangkok")
 
+    # ST Files List's "Complimentary" column - a "Checked in" (State ==
+    # "Started") reservation counts if its Rate is named either of these,
+    # replicating the exact 2 labels in the user's own pre-existing
+    # spreadsheet formula for this metric (which also checked a "Voucher"
+    # field - dropped here since live testing found VoucherId essentially
+    # never populated on real reservations, 0 of 381 sampled, and this
+    # property's Connector token doesn't even have vouchers/getAll enabled,
+    # 401. "Complimentary Room" is confirmed live as a real, in-use Rate
+    # name here; "Complimentary" is kept too in case another property uses
+    # the shorter name).
+    _COMPLIMENTARY_RATE_NAMES = {"Complimentary", "Complimentary Room"}
+
     async def get_st_files_report(self, property_name: str, date: str):
         """
         Builds the daily "ST Files" occupancy/availability report for one
@@ -1544,6 +1557,26 @@ class SyncService:
         customers_map = {c["Id"]: c for c in resv_res.get("Customers", []) if c.get("Id")}
         resources_map = {r["Id"]: r for r in resv_res.get("Resources", []) if r.get("Id")}
 
+        # 6b. Complimentary count (see _COMPLIMENTARY_RATE_NAMES above for
+        # why this only checks Rate, not Voucher).
+        rate_ids = list({r.get("RateId") for r in reservations if r.get("RateId")})
+        rates_by_id = {}
+        if rate_ids:
+            try:
+                rates_res = await mews_client.post(
+                    "/api/connector/v1/rates/getAll",
+                    {"RateIds": rate_ids, "Limitation": {"Count": 200}},
+                    property_name=property_name,
+                )
+                rates_by_id = {r["Id"]: r for r in rates_res.get("Rates", []) if r.get("Id")}
+            except Exception as e:
+                logger.warning(f"ST Files complimentary check: rates lookup failed for {property_name}: {e}")
+        complimentary_count = sum(
+            1 for r in reservations
+            if r.get("State") == "Started"
+            and rates_by_id.get(r.get("RateId"), {}).get("Name") in self._COMPLIMENTARY_RATE_NAMES
+        )
+
         # Room names for block rows come from the same Resources extent; any
         # blocked room without a reservation that day won't be in the map, so
         # fall back to one resources/getAll only if a block's room is unknown.
@@ -1649,8 +1682,52 @@ class SyncService:
             "customers": customers,
             "arrivals": arrivals,
             "departures": departures,
+            "complimentary": complimentary_count,
         }
         return report
+
+    async def get_st_files_list(self, property_name: str) -> list:
+        """
+        ST Files List's per-day summary rows - reads exclusively from
+        st_files_sync (Database-sourced, per request), not live MEWS -
+        recomputing every historical day live would mean ~6 MEWS calls per
+        row for what could be months of history. Each row's totals are
+        summed from that day's already-stored report blob (the same
+        numbers the single-day tabs above show), not recomputed here.
+        """
+        if not self.supabase:
+            return []
+        res = self.supabase.table("st_files_sync") \
+            .select("report_date, data, synced_at") \
+            .eq("property", property_name) \
+            .order("report_date", desc=True) \
+            .execute()
+        rows = []
+        for row in res.data or []:
+            blob = (row.get("data") or {}).get("blob", "")
+            if not blob:
+                continue
+            try:
+                report = json.loads(encryption_service.decrypt(blob))
+            except Exception as e:
+                logger.warning(f"ST Files List: failed to decrypt {property_name}/{row.get('report_date')}: {e}")
+                continue
+            rows.append({
+                "date": row.get("report_date"),
+                "spaces": sum(c.get("count", 0) for c in report.get("spaces", [])),
+                "occupied": sum(c.get("count", 0) for c in report.get("occupied", [])),
+                "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
+                "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
+                "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
+                "customers": len(report.get("customers", [])),
+                "arrivals": len(report.get("arrivals", [])),
+                "departures": len(report.get("departures", [])),
+                # Reports imported before the complimentary field existed
+                # (see get_st_files_report) simply show 0 here, not an error.
+                "complimentary": report.get("complimentary", 0),
+                "synced_at": row.get("synced_at"),
+            })
+        return rows
 
     # BCP timeline window: how far back/forward from "today" the reservations
     # grid covers. Wide enough to show most stays without blowing up capture

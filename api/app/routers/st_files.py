@@ -127,3 +127,14 @@ async def get_managed(
         return {"status": "success", "data": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/list")
+async def get_list(property_name: str = Query(...)):
+    """ST Files List tab - one row per day already imported into
+    st_files_sync for this property, newest first."""
+    try:
+        rows = await sync_service.get_st_files_list(property_name)
+        return {"status": "success", "data": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

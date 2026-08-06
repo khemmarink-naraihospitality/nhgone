@@ -85,6 +85,20 @@ interface StFilesReport {
   _synced_at?: string;
 }
 
+interface StFilesListRow {
+  date: string;
+  spaces: number;
+  occupied: number;
+  house_use: number;
+  out_of_order: number;
+  availability: number;
+  customers: number;
+  arrivals: number;
+  departures: number;
+  complimentary: number;
+  synced_at?: string;
+}
+
 type DataSource = "live" | "database";
 
 const TABS = [
@@ -119,6 +133,8 @@ export default function StFilesPage() {
   const [error, setError] = useState<string | null>(null);
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
+  const [listRows, setListRows] = useState<StFilesListRow[]>([]);
+  const [listLoading, setListLoading] = useState(false);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
 
@@ -149,23 +165,30 @@ export default function StFilesPage() {
   useEffect(() => {
     if (selectedProperty) {
       fetchReport();
+      fetchList();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
 
-  const fetchReport = async () => {
+  // Accepts an override date/source so the ST Files List's "Files" button can
+  // jump straight to a given day without racing the date/dataSource state
+  // setters it calls right before this (setState is async, so reading the
+  // plain `date`/`dataSource` closure vars here would still see the old day).
+  const fetchReport = async (opts?: { date?: string; source?: DataSource }) => {
     if (!selectedProperty) return;
+    const targetDate = opts?.date ?? date;
+    const source = opts?.source ?? dataSource;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ property_name: selectedProperty, date });
-      const endpoint = dataSource === "database" ? "managed" : "report";
+      const params = new URLSearchParams({ property_name: selectedProperty, date: targetDate });
+      const endpoint = source === "database" ? "managed" : "report";
       const res = await fetch(`/api/st-files/${endpoint}?${params.toString()}`);
       const result = await res.json();
       if (result.status !== "success") throw new Error(result.message || result.detail || "Failed to fetch ST Files report");
-      if (dataSource === "database" && !result.data) {
+      if (source === "database" && !result.data) {
         setReport(null);
-        throw new Error(`No imported report for ${selectedProperty} on ${date} yet - switch MODE to Live API, or use "Import To Data Mart" first.`);
+        throw new Error(`No imported report for ${selectedProperty} on ${targetDate} yet - switch MODE to Live API, or use "Import To Data Mart" first.`);
       }
       setReport(result.data);
     } catch (err: any) {
@@ -173,6 +196,30 @@ export default function StFilesPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ST Files List's per-day summary rows - always reads from the Database
+  // (st_files_sync), matching the requested "based on what's already in the
+  // Database" scope; non-critical if it fails, so no error banner for it.
+  const fetchList = async () => {
+    if (!selectedProperty) return;
+    setListLoading(true);
+    try {
+      const params = new URLSearchParams({ property_name: selectedProperty });
+      const res = await fetch(`/api/st-files/list?${params.toString()}`);
+      const result = await res.json();
+      if (result.status === "success") setListRows(result.data || []);
+    } catch {
+      // swallow - the single-day report above is the primary view
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  const jumpToDay = (rowDate: string) => {
+    setDate(rowDate);
+    setDataSource("database");
+    fetchReport({ date: rowDate, source: "database" });
   };
 
   const handleImport = async () => {
@@ -189,6 +236,7 @@ export default function StFilesPage() {
       if (result.status !== "success") throw new Error(result.message || result.detail || "Import failed");
       if (result.errors?.length) throw new Error(`Import finished with errors: ${result.errors.join("; ")}`);
       alert(`Imported ST Files report for ${selectedProperty} ${date} to Data Mart.`);
+      fetchList();
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -418,7 +466,7 @@ export default function StFilesPage() {
                 className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
               />
             </div>
-            <button onClick={fetchReport} disabled={loading} className="btn-brand btn-primary h-[46px]">
+            <button onClick={() => fetchReport()} disabled={loading} className="btn-brand btn-primary h-[46px]">
               {loading ? "Loading..." : "Fetch Report"}
             </button>
             <button
@@ -476,6 +524,64 @@ export default function StFilesPage() {
             Pick a property and date, then Fetch Report.
           </div>
         )}
+
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-serif text-[var(--text-primary)]">ST Files List</h2>
+            {listLoading && <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Loading...</span>}
+          </div>
+          <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-max">
+              <thead>
+                <tr className="bg-[var(--text-primary)]/5">
+                  <th className={thCls}>Date</th>
+                  <th className={`${thCls} text-right`}>Spaces</th>
+                  <th className={`${thCls} text-right`}>Occupied</th>
+                  <th className={`${thCls} text-right`}>House uses</th>
+                  <th className={`${thCls} text-right`}>Out of order</th>
+                  <th className={`${thCls} text-right`}>Availability</th>
+                  <th className={`${thCls} text-right`}>Customers</th>
+                  <th className={`${thCls} text-right`}>Arrivals</th>
+                  <th className={`${thCls} text-right`}>Departures</th>
+                  <th className={`${thCls} text-right`}>Complimentary</th>
+                  <th className={`${thCls} text-right`}>No. of Day</th>
+                  <th className={thCls}>Files</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--text-primary)]/5">
+                {listRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={12} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                      {selectedProperty ? "No imported days yet - use “Import To Data Mart” above." : "Select a property to see imported ST Files history."}
+                    </td>
+                  </tr>
+                ) : listRows.map((r) => (
+                  <tr key={r.date} className="hover:bg-[var(--text-primary)]/[0.02]">
+                    <td className={`${tdCls} font-bold`}>{r.date}</td>
+                    <td className={`${tdCls} text-right`}>{r.spaces}</td>
+                    <td className={`${tdCls} text-right`}>{r.occupied}</td>
+                    <td className={`${tdCls} text-right`}>{r.house_use}</td>
+                    <td className={`${tdCls} text-right`}>{r.out_of_order}</td>
+                    <td className={`${tdCls} text-right`}>{r.availability}</td>
+                    <td className={`${tdCls} text-right`}>{r.customers}</td>
+                    <td className={`${tdCls} text-right`}>{r.arrivals}</td>
+                    <td className={`${tdCls} text-right`}>{r.departures}</td>
+                    <td className={`${tdCls} text-right`}>{r.complimentary}</td>
+                    <td className={`${tdCls} text-right`}>1</td>
+                    <td className={tdCls}>
+                      <button
+                        onClick={() => jumpToDay(r.date)}
+                        className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
