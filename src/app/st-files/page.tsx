@@ -607,7 +607,7 @@ export default function StFilesPage() {
                   <button
                     key={t.key}
                     onClick={() => setActiveTab(t.key)}
-                    className={`px-5 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px transition-all ${
+                    className={`px-3 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px whitespace-nowrap transition-all ${
                       activeTab === t.key
                         ? "border-[var(--text-primary)] text-[var(--text-primary)]"
                         : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
