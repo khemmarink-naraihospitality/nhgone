@@ -254,7 +254,7 @@ export default function BillGeneratorPage() {
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; Data Mart mode reads from our own database (faster, already imported).">
+        <PageHeader title="Bills" description="Select a real MEWS bill and generate a printable Thai tax invoice/receipt from it. MEWS mode reads live from MEWS; NHG mode reads from our own database (faster, already imported).">
           <div className="flex flex-col gap-2">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Mode</label>
             <div className="flex border border-[var(--text-primary)]/20 overflow-hidden">
@@ -268,7 +268,7 @@ export default function BillGeneratorPage() {
                 onClick={() => setDataSource("database")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
-                Data Mart
+                NHG
               </button>
             </div>
           </div>

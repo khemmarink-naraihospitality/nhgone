@@ -467,7 +467,7 @@ export default function DashboardView({
                 onClick={() => setDataSource("saved")}
                 className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "saved" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
               >
-                Data Mart
+                NHG
               </button>
             </div>
           )}
