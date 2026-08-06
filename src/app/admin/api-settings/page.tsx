@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
 interface PropertySetting {
@@ -31,13 +30,18 @@ export default function ApiSettingsPage() {
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from("property_api_settings")
-        .select("*")
-        .order("property_name");
-      
-      if (error) throw error;
-      setSettings(data || []);
+      // Must go through the backend, not a direct Supabase query - client_name/
+      // client_token/access_token are stored encrypted, and only the backend's
+      // GET /admin/sync/properties decrypts them (encryption_service.decrypt_data).
+      // Reading the raw ciphertext here and saving it back through the backend's
+      // PUT (which encrypts unconditionally) double-encrypts it, corrupting the
+      // real MEWS credentials - this broke 3 properties' live API access before
+      // it was caught.
+      const apiUrl = "/api";
+      const response = await fetch(`${apiUrl}/admin/sync/properties`);
+      const res = await response.json();
+      if (res.status !== "success") throw new Error(res.detail || "Failed to load settings");
+      setSettings(res.data || []);
     } catch (err: any) {
       console.error("Fetch error:", err);
       alert("Error loading settings: " + err.message);

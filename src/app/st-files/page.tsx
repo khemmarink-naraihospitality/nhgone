@@ -153,6 +153,9 @@ export default function StFilesPage() {
   // Preview (Statistic Files table's FILE menu) updates the Statistic Data
   // section far above the table, off-screen when triggered from way down
   // the page - nothing visibly happens unless we scroll to it ourselves.
+  // Anchored to an always-mounted marker (not the conditional report/error
+  // blocks) so it's never null on the very first Preview click, before
+  // React has committed a report/error render.
   const reportSectionRef = useRef<HTMLDivElement>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -575,12 +578,17 @@ export default function StFilesPage() {
           </div>
         </CollapsibleSection>
 
+        {/* Always mounted (unlike the conditional blocks below) so Preview's
+            scrollIntoView never races a same-tick React commit - see
+            reportSectionRef's declaration above. */}
+        <div ref={reportSectionRef} />
+
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         )}
 
         {report && (
-          <div ref={reportSectionRef}>
+          <div>
             <CollapsibleSection open={headerOpen}>
               <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-4">
                 <span className="font-bold">{report.parameters.property}</span>
