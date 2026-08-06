@@ -486,7 +486,22 @@ export default function StFilesPage() {
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-7xl mx-auto">
-        <PageHeader title="ST Files">
+        <PageHeader
+          title={
+            <span className="inline-flex items-center gap-4">
+              ST Files
+              <a
+                href="https://claude.ai/code/artifact/5e4edf3e-11d6-493a-9256-7f3354bb5885"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-sans inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors align-middle"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                Read Me
+              </a>
+            </span>
+          }
+        >
           <div className="flex flex-col items-end gap-1">
             <span className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Mode</span>
             <div className="flex border border-[var(--text-primary)]/14 bg-[var(--paper)]">
