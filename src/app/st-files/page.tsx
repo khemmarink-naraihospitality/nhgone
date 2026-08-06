@@ -159,6 +159,9 @@ export default function StFilesPage() {
   const reportSectionRef = useRef<HTMLDivElement>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
+  // Statistic Data (tabs + table) - expanded by default, unlike headerOpen,
+  // since it's the page's main content rather than supporting detail.
+  const [statsOpen, setStatsOpen] = useState(true);
 
   const getYesterday = () => {
     const d = new Date();
@@ -241,6 +244,7 @@ export default function StFilesPage() {
   const jumpToDay = async (rowDate: string) => {
     setDate(rowDate);
     setDataSource("database");
+    setStatsOpen(true);
     await fetchReport({ date: rowDate, source: "database" });
     reportSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
@@ -598,30 +602,40 @@ export default function StFilesPage() {
               </div>
             </CollapsibleSection>
 
-            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">Statistic Data</h2>
+            <button
+              onClick={() => setStatsOpen((o) => !o)}
+              className="flex items-center gap-2 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
+            >
+              <svg className={`w-4 h-4 shrink-0 transition-transform ${statsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+              <h2 className="text-xl font-serif">Statistic Data</h2>
+            </button>
 
-            <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
-              {TABS.map((t) => {
-                const count = tabCount(t.key);
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => setActiveTab(t.key)}
-                    className={`px-3 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px whitespace-nowrap transition-all ${
-                      activeTab === t.key
-                        ? "border-[var(--text-primary)] text-[var(--text-primary)]"
-                        : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
-                    }`}
-                  >
-                    {t.label}{count !== null ? ` (${count})` : ""}
-                  </button>
-                );
-              })}
-            </div>
+            {statsOpen && (
+              <>
+                <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
+                  {TABS.map((t) => {
+                    const count = tabCount(t.key);
+                    return (
+                      <button
+                        key={t.key}
+                        onClick={() => setActiveTab(t.key)}
+                        className={`px-3 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px whitespace-nowrap transition-all ${
+                          activeTab === t.key
+                            ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                            : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                        }`}
+                      >
+                        {t.label}{count !== null ? ` (${count})` : ""}
+                      </button>
+                    );
+                  })}
+                </div>
 
-            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
-              {renderTab()}
-            </div>
+                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
+                  {renderTab()}
+                </div>
+              </>
+            )}
           </div>
         )}
 
