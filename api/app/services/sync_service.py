@@ -1391,20 +1391,49 @@ class SyncService:
             return None
         return next((s for s in active_bookable if s.get("Name") == "Stay"), active_bookable[0])
 
+    async def _resolve_property_timezone(self, property_name: str) -> ZoneInfo:
+        """Nearly every property here is Asia/Bangkok, but not all - MEWS's
+        own Enterprise.TimeZoneIdentifier for "Lub d Philippines Makati" is
+        actually "Asia/Singapore" (UTC+8, an hour ahead of Bangkok).
+        get_st_files_report used to hardcode Asia/Bangkok for every
+        property's day-boundary math, which MEWS's own getAvailability
+        endpoint then rejected for Makati specifically with "Invalid
+        FirstTimeUnitStartUtc: not start of TimeUnit" - MEWS computes that
+        endpoint's TimeUnit boundaries from the property's own configured
+        timezone, not Bangkok's, so the request has to match. Falls back to
+        Bangkok (the correct value for every other property today) if
+        configuration/get fails or the field's ever missing/malformed,
+        rather than raising and breaking the whole report over it.
+        """
+        try:
+            res = await mews_client.post(
+                "/api/connector/v1/configuration/get",
+                {},
+                property_name=property_name,
+            )
+            tz_name = (res.get("Enterprise") or {}).get("TimeZoneIdentifier")
+            if tz_name:
+                return ZoneInfo(tz_name)
+        except Exception as e:
+            logger.warning(f"Could not resolve MEWS timezone for {property_name}, defaulting to Asia/Bangkok: {e}")
+        return ZoneInfo("Asia/Bangkok")
+
     async def get_st_files_report(self, property_name: str, date: str):
         """
         Builds the daily "ST Files" occupancy/availability report for one
-        property + one Bangkok calendar date, replicating the user's manual
-        Google Sheet (tabs: Spaces / Occupied / House uses / Out of order /
-        Availability / Customers / Arrivals / Departures).
+        property + one calendar date in that property's own MEWS-configured
+        timezone (see _resolve_property_timezone - Bangkok for every
+        property except Makati), replicating the user's manual Google Sheet
+        (tabs: Spaces / Occupied / House uses / Out of order / Availability
+        / Customers / Arrivals / Departures).
 
-        `date` is YYYY-MM-DD interpreted as an Asia/Bangkok calendar day.
+        `date` is YYYY-MM-DD interpreted as that property's own calendar day.
         All MEWS aggregate numbers come per resource category; the category
         list itself requires the Resource Categories permission on the
         property's Connector token (403s cleanly if MEWS hasn't enabled it).
         """
-        bkk = ZoneInfo("Asia/Bangkok")
-        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=bkk)
+        property_tz = await self._resolve_property_timezone(property_name)
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
         day_start_utc = day.astimezone(timezone.utc)
         day_end_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
         start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
