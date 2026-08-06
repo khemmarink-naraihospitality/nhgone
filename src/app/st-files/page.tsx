@@ -489,7 +489,7 @@ export default function StFilesPage() {
         <PageHeader
           title={
             <span className="inline-flex items-center gap-4">
-              ST Files
+              Statistic Files
               <a
                 href="https://claude.ai/code/artifact/5e4edf3e-11d6-493a-9256-7f3354bb5885"
                 target="_blank"
@@ -585,7 +585,7 @@ export default function StFilesPage() {
               </div>
             </CollapsibleSection>
 
-            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">ST Data</h2>
+            <h2 className="text-xl font-serif text-[var(--text-primary)] mb-3">Statistic Data</h2>
 
             <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
               {TABS.map((t) => {
