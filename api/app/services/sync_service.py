@@ -1666,9 +1666,13 @@ class SyncService:
                 arrivals.append(reservation_row(res))
             if in_window(res.get("EndUtc")):
                 departures.append(reservation_row(res))
-            for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
-                if cid:
-                    day_customer_ids.add(cid)
+            # Primary guest only (CustomerId), not CompanionIds - confirmed
+            # live against MEWS's own "Availability & occupancy" Export
+            # Schedule report (Chinatown 2026-08-05: MEWS showed ~167, our
+            # old primary+companion count was 303, nearly double).
+            cid = res.get("CustomerId")
+            if cid:
+                day_customer_ids.add(cid)
 
         customers = []
         for cid in day_customer_ids:
