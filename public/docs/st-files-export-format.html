@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ST Statistics Export Format — Field Reference</title>
+<style>
+  :root{
+    --bg:#FFEFD2;
+    --paper:#FFFBF0;
+    --paper-raised:#FFFFFF;
+    --ink:#152A00;
+    --ink-muted:rgba(21,42,0,0.62);
+    --ink-faint:rgba(21,42,0,0.38);
+    --rule:rgba(21,42,0,0.14);
+    --rule-soft:rgba(21,42,0,0.08);
+    --gold:#8f8620;
+    --gold-bg:rgba(170,160,36,0.10);
+    --confirmed:#1f7a4d;
+    --confirmed-bg:rgba(31,122,77,0.10);
+    --inferred:#a3660a;
+    --inferred-bg:rgba(163,102,10,0.11);
+    --unknown:#b3261e;
+    --unknown-bg:rgba(179,38,30,0.09);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#101a06;
+      --paper:#17230c;
+      --paper-raised:#1c2a10;
+      --ink:#F3EFD9;
+      --ink-muted:rgba(243,239,217,0.66);
+      --ink-faint:rgba(243,239,217,0.40);
+      --rule:rgba(243,239,217,0.16);
+      --rule-soft:rgba(243,239,217,0.09);
+      --gold:#d9cd4e;
+      --gold-bg:rgba(217,205,78,0.12);
+      --confirmed:#5fd493;
+      --confirmed-bg:rgba(95,212,147,0.12);
+      --inferred:#e0a458;
+      --inferred-bg:rgba(224,164,88,0.13);
+      --unknown:#f18a83;
+      --unknown-bg:rgba(241,138,131,0.12);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#101a06; --paper:#17230c; --paper-raised:#1c2a10; --ink:#F3EFD9;
+    --ink-muted:rgba(243,239,217,0.66); --ink-faint:rgba(243,239,217,0.40);
+    --rule:rgba(243,239,217,0.16); --rule-soft:rgba(243,239,217,0.09);
+    --gold:#d9cd4e; --gold-bg:rgba(217,205,78,0.12);
+    --confirmed:#5fd493; --confirmed-bg:rgba(95,212,147,0.12);
+    --inferred:#e0a458; --inferred-bg:rgba(224,164,88,0.13);
+    --unknown:#f18a83; --unknown-bg:rgba(241,138,131,0.12);
+  }
+  :root[data-theme="light"]{
+    --bg:#FFEFD2; --paper:#FFFBF0; --paper-raised:#FFFFFF; --ink:#152A00;
+    --ink-muted:rgba(21,42,0,0.62); --ink-faint:rgba(21,42,0,0.38);
+    --rule:rgba(21,42,0,0.14); --rule-soft:rgba(21,42,0,0.08);
+    --gold:#8f8620; --gold-bg:rgba(170,160,36,0.10);
+    --confirmed:#1f7a4d; --confirmed-bg:rgba(31,122,77,0.10);
+    --inferred:#a3660a; --inferred-bg:rgba(163,102,10,0.11);
+    --unknown:#b3261e; --unknown-bg:rgba(179,38,30,0.09);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--sans); line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .page{ max-width:920px; margin:0 auto; padding:64px 28px 120px; }
+
+  .eyebrow{
+    font-size:11px; font-weight:700; letter-spacing:0.14em; text-transform:uppercase;
+    color:var(--gold); margin:0 0 14px;
+  }
+  h1{
+    font-family:var(--serif); font-weight:500; font-size:clamp(30px,4.4vw,42px);
+    margin:0 0 12px; text-wrap:balance; letter-spacing:-0.01em;
+  }
+  .lede{
+    font-size:15.5px; color:var(--ink-muted); max-width:64ch; margin:0 0 28px;
+  }
+  .meta{
+    display:flex; flex-wrap:wrap; gap:10px 22px; font-size:12.5px; color:var(--ink-faint);
+    border-top:1px solid var(--rule); border-bottom:1px solid var(--rule);
+    padding:14px 0; margin-bottom:48px;
+  }
+  .meta b{ color:var(--ink-muted); font-weight:600; }
+
+  section{ margin-bottom:56px; }
+  h2{
+    font-family:var(--serif); font-weight:500; font-size:22px; margin:0 0 6px;
+    letter-spacing:-0.005em;
+  }
+  .section-note{ font-size:13.5px; color:var(--ink-muted); margin:0 0 20px; max-width:68ch; }
+
+  .legend{ display:flex; flex-wrap:wrap; gap:10px; margin-bottom:28px; }
+  .badge{
+    display:inline-flex; align-items:center; gap:6px;
+    font-size:11px; font-weight:700; letter-spacing:0.04em;
+    padding:4px 10px; border-radius:20px; white-space:nowrap;
+  }
+  .badge.confirmed{ color:var(--confirmed); background:var(--confirmed-bg); }
+  .badge.inferred{ color:var(--inferred); background:var(--inferred-bg); }
+  .badge.unknown{ color:var(--unknown); background:var(--unknown-bg); }
+  .legend .badge{ font-weight:600; }
+  .legend-desc{ font-size:12.5px; color:var(--ink-faint); }
+  .legend-item{ display:flex; align-items:center; gap:8px; }
+
+  .table-wrap{
+    overflow-x:auto; border:1px solid var(--rule); border-radius:10px;
+    background:var(--paper);
+  }
+  table{ width:100%; border-collapse:collapse; min-width:560px; }
+  thead th{
+    text-align:left; font-size:10.5px; font-weight:700; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--ink-faint);
+    padding:11px 14px; border-bottom:1px solid var(--rule);
+    background:var(--rule-soft); white-space:nowrap;
+  }
+  tbody td{
+    padding:11px 14px; font-size:13.5px; border-bottom:1px solid var(--rule-soft);
+    vertical-align:top;
+  }
+  tbody tr:last-child td{ border-bottom:none; }
+  td.pos{ font-family:var(--mono); color:var(--ink-faint); font-size:12.5px; white-space:nowrap; }
+  td.val{ font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  td.meaning{ color:var(--ink); }
+  td.meaning .sub{ display:block; font-size:12px; color:var(--ink-faint); margin-top:2px; }
+
+  .fields-metric{ font-family:var(--mono); font-variant-numeric:tabular-nums; white-space:nowrap; }
+
+  /* annotated sample breakdown */
+  .breakdown{
+    background:var(--paper); border:1px solid var(--rule); border-radius:10px;
+    padding:24px; overflow-x:auto;
+  }
+  .breakdown-row{
+    display:flex; flex-wrap:nowrap; gap:2px; font-family:var(--mono); font-size:13px;
+    white-space:nowrap; margin-bottom:10px;
+  }
+  .seg{
+    padding:5px 8px; border-radius:5px; position:relative;
+  }
+  .seg.identifier{ background:var(--rule-soft); color:var(--ink-muted); }
+  .seg.confirmed{ background:var(--confirmed-bg); color:var(--confirmed); }
+  .seg.inferred{ background:var(--inferred-bg); color:var(--inferred); }
+  .seg.unknown{ background:var(--unknown-bg); color:var(--unknown); }
+  .seg.empty{ background:transparent; color:var(--ink-faint); border:1px dashed var(--rule); min-width:14px; }
+  .breakdown-labels{
+    display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--sans); font-size:11.5px;
+    color:var(--ink-faint); padding-top:8px; border-top:1px dashed var(--rule); margin-top:14px;
+  }
+  .breakdown-labels span b{ color:var(--ink-muted); }
+
+  pre{
+    background:var(--paper); border:1px solid var(--rule); border-radius:10px;
+    padding:20px 22px; overflow-x:auto; font-family:var(--mono); font-size:12.8px;
+    line-height:1.65; color:var(--ink);
+  }
+  pre .c{ color:var(--ink-faint); font-style:italic; }
+  pre .k{ color:var(--gold); }
+  pre .s{ color:var(--confirmed); }
+
+  .callout{
+    border:1px solid var(--unknown); background:var(--unknown-bg);
+    border-radius:10px; padding:22px 24px;
+  }
+  .callout h3{
+    font-family:var(--serif); font-size:16px; font-weight:600; margin:0 0 12px; color:var(--ink);
+  }
+  .callout ol{ margin:0; padding-left:20px; }
+  .callout li{ font-size:13.5px; margin-bottom:12px; color:var(--ink); }
+  .callout li:last-child{ margin-bottom:0; }
+  .callout li b{ color:var(--ink); }
+  .callout .hint{ display:block; color:var(--ink-muted); font-size:12.5px; margin-top:3px; }
+
+  .prop-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr));
+    gap:8px; margin-top:16px;
+  }
+  .prop-pill{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    background:var(--paper-raised); border:1px solid var(--rule); border-radius:8px;
+    padding:8px 12px; font-size:12.5px;
+  }
+  .prop-pill .code{ font-family:var(--mono); color:var(--ink-faint); }
+
+  footer{
+    margin-top:64px; padding-top:20px; border-top:1px solid var(--rule);
+    font-size:12px; color:var(--ink-faint);
+  }
+
+  @media (max-width:600px){
+    .page{ padding:44px 18px 90px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <p class="eyebrow">ST Files → Statistic Files → Download</p>
+  <h1>ST Statistics Export Format</h1>
+  <p class="lede">
+    Field map of the pipe-delimited daily statistics file (record type
+    <code>PMSST</code>/<code>RMSST</code>), one row per metric for a single
+    reporting day. Originally reverse-engineered from a 10-row output
+    sample; now verified directly against the source Google Sheet formula
+    that generates it, which resolved the two fields the first pass couldn't
+    prove. This is the format the <b>Download</b> option on the Statistic
+    Files table reproduces.
+  </p>
+  <div class="meta">
+    <span><b>Sample rows</b> 10</span>
+    <span><b>Fields per row</b> 41</span>
+    <span><b>Sample date</b> 05/08/2026</span>
+    <span><b>Sample property</b> Lub d Bangkok Siam</span>
+    <span><b>Delimiter</b> <code>|</code> (pipe)</span>
+  </div>
+
+  <section>
+    <h2>Source formula</h2>
+    <p class="section-note">The "Spaces" row's own formula from the property's Google Sheet ("Siam-ST"), cell A1 — this is what resolved fields 5 and 17.</p>
+    <pre>="PMSST|RMSST|"&"90107"&"|"&text('Parameters-Availability'!$B$7,"ddmmyyyy")
+&"|"&"0"&text('Parameters-Availability'!$B$7,"mm")
+&"|"&text('Parameters-Availability'!$B$7,"yyyy")
+&"|"&"ST"&text('Parameters-Availability'!$B$7,"yyyymmdd")
+&"|"&"Spaces"&"|"&text('Parameters-Availability'!$B$7,"ddmmyyyy")
+&"|"&"THB"&"|"&Master!B4&"|1||||D|"&Master!$B$3&"|111|ZZ|ZZ|..."</pre>
+    <p class="section-note" style="margin-top:14px;">
+      Two things this settles: field 5 is <code>"0"&text(date,"mm")</code> — a
+      report-month code, not a property code (August ⇒ "008", which is why
+      the original sample's "008" didn't match any property's real ID).
+      Field 17 is <code>Master!$B$3</code> — a cell in the property's <i>own</i>
+      sheet, evaluating to <code>"SM"</code> here. That's the actual
+      per-property code, now editable at <b>Admin → API Settings → Property
+      Code</b>. Everything else in the literal tail (<code>1||||D|</code> and
+      <code>|111|ZZ|ZZ|...</code>) is hardcoded directly in the formula, not
+      a reference — confirmed constant for any property.
+    </p>
+  </section>
+
+  <section>
+    <h2>How to read this</h2>
+    <p class="section-note">Every field below is tagged by how sure the mapping is, based only on what the 10-row sample can actually prove.</p>
+    <div class="legend">
+      <div class="legend-item"><span class="badge confirmed">Confirmed</span><span class="legend-desc">value or pattern is directly verifiable across all 10 rows</span></div>
+      <div class="legend-item"><span class="badge inferred">Inferred</span><span class="legend-desc">a reasonable reading, not provable from one sample</span></div>
+      <div class="legend-item"><span class="badge unknown">Needs confirmation</span><span class="legend-desc">genuinely unknown — must not be guessed for a real submission</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Field map (41 positions)</h2>
+    <p class="section-note">Positions 13–15 and 21–41 are blank on every one of the 10 sample rows and are grouped here rather than listed one by one.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Pos</th><th>Sample value</th><th>Meaning</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="pos">1</td><td class="val">PMSST</td><td class="meaning">Format/system code — constant on every row.<span class="sub">Reads as "PMS Statistics", the export format's own identifier.</span></td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">2</td><td class="val">RMSST / PMSST</td><td class="meaning">Record type.<span class="sub">RMSST hardcoded on the Spaces row's own formula; every other metric row uses PMSST — reads as "inventory/master record" vs "daily statistic record," though the formula only proves the pattern, not the reasoning.</span></td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">3</td><td class="val">90100–90115</td><td class="meaning">Metric code — one fixed 5-digit code per statistic type (see the row table below).</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">4</td><td class="val">05082026</td><td class="meaning">Report date, DDMMYYYY.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">5</td><td class="val">008</td><td class="meaning">Report-month code: <code>"0" & MM</code>.<span class="sub">Not a property code — August's 2-digit month "08" prefixed with a literal "0". Every property reporting in August would show "008" here.</span></td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">6</td><td class="val">2026</td><td class="meaning">Report year — matches field 4.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">7</td><td class="val">ST20260805</td><td class="meaning">Batch/document reference — "ST" + date.<span class="sub">Row 10 ("No. of Day") breaks the pattern: <code>ST05082026</code> (DDMMYYYY, not YYYYMMDD) — that row's own formula does it differently, most likely a copy-paste bug in the source sheet rather than a rule to replicate.</span></td><td><span class="badge inferred">Inferred</span></td></tr>
+          <tr><td class="pos">8</td><td class="val">Spaces, Occupied…</td><td class="meaning">Metric label — matches our ST Files tab names exactly (see row table).</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">9</td><td class="val">05082026</td><td class="meaning">Value date, DDMMYYYY — duplicate of field 4 in every sample row.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">10</td><td class="val">THB</td><td class="meaning">Currency code — constant.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">11</td><td class="val">88, 64, 0, 4…</td><td class="meaning">The actual statistic value for that row's metric.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">12</td><td class="val">1</td><td class="meaning">Unit/record-count flag — hardcoded literal <code>1</code> in the formula.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">13–15</td><td class="val">(blank)</td><td class="meaning">Unused — hardcoded empty (<code>||||</code>) in the formula.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">16</td><td class="val">D</td><td class="meaning">Single-letter flag — hardcoded literal in the formula, not a reference.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">17</td><td class="val">SM</td><td class="meaning"><b>The real per-property code.</b><span class="sub">A cell reference (<code>Master!$B$3</code>) in the property's own sheet, not a literal — this is what actually identifies the hotel. "SM" for Lub d Bangkok Siam. Now editable at Admin → API Settings → Property Code.</span></td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">18</td><td class="val">111</td><td class="meaning">Cost-center / GL-style code — hardcoded literal in the formula.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">19–20</td><td class="val">ZZ, ZZ</td><td class="meaning">Filler pair — hardcoded literal.<span class="sub">"ZZ" is a common legacy-format convention for "not applicable."</span></td><td><span class="badge confirmed">Confirmed</span></td></tr>
+          <tr><td class="pos">21–41</td><td class="val">(blank)</td><td class="meaning">Trailing padding — pads every record out to a fixed 41 fields.</td><td><span class="badge confirmed">Confirmed</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>What the 10 rows mean</h2>
+    <p class="section-note">Every metric code maps 1:1 to a tab already on the ST Files report — the Download file is just those same totals, re-serialized.</p>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Code</th><th>Label (field 8)</th><th>Sample value</th><th>Maps to</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="fields-metric">90107</td><td>Spaces</td><td class="val">88</td><td>Sum of the Spaces tab's category counts</td></tr>
+          <tr><td class="fields-metric">90100</td><td>Occupied</td><td class="val">64</td><td>Sum of the Occupied tab's category counts</td></tr>
+          <tr><td class="fields-metric">90104</td><td>House uses</td><td class="val">0</td><td>Sum of the House Uses tab's category counts</td></tr>
+          <tr><td class="fields-metric">90103</td><td>Out of order</td><td class="val">4</td><td>Sum of the Out of Order tab's category counts</td></tr>
+          <tr><td class="fields-metric">90102</td><td>Availability</td><td class="val">20</td><td>Sum of the Availability tab's category counts</td></tr>
+          <tr><td class="fields-metric">90105</td><td>Customers</td><td class="val">55</td><td>Row count on the Customers tab</td></tr>
+          <tr><td class="fields-metric">90114</td><td>Arrivals</td><td class="val">20</td><td>Row count on the Arrivals tab</td></tr>
+          <tr><td class="fields-metric">90115</td><td>Departures</td><td class="val">25</td><td>Row count on the Departures tab</td></tr>
+          <tr><td class="fields-metric">90101</td><td>Complimentary Room</td><td class="val">0</td><td>The Complimentary count on the Reservations tab</td></tr>
+          <tr><td class="fields-metric">90108</td><td>No. of Day</td><td class="val">1</td><td>Always 1 — one row covers one calendar day</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>One row, field by field</h2>
+    <p class="section-note">The Spaces row, broken into its 41 pipe-separated positions. Color follows the same confidence legend as above.</p>
+    <div class="breakdown">
+      <div class="breakdown-row">
+        <span class="seg identifier">PMSST</span><span class="seg confirmed">RMSST</span><span class="seg confirmed">90107</span><span class="seg confirmed">05082026</span><span class="seg confirmed">008</span><span class="seg confirmed">2026</span><span class="seg inferred">ST20260805</span><span class="seg confirmed">Spaces</span><span class="seg confirmed">05082026</span><span class="seg confirmed">THB</span><span class="seg confirmed">88</span><span class="seg confirmed">1</span><span class="seg empty">·</span><span class="seg empty">·</span><span class="seg empty">·</span><span class="seg confirmed">D</span><span class="seg confirmed" style="outline:2px solid var(--confirmed); outline-offset:1px;">SM</span><span class="seg confirmed">111</span><span class="seg confirmed">ZZ</span><span class="seg confirmed">ZZ</span><span class="seg empty">21 blank fields…</span>
+      </div>
+      <div class="breakdown-labels">
+        <span><b>1</b> format</span>
+        <span><b>2</b> record type</span>
+        <span><b>3</b> metric code</span>
+        <span><b>4</b> report date</span>
+        <span><b>5</b> month code</span>
+        <span><b>6</b> year</span>
+        <span><b>7</b> batch ref</span>
+        <span><b>8</b> label</span>
+        <span><b>9</b> value date</span>
+        <span><b>10</b> currency</span>
+        <span><b>11</b> value</span>
+        <span><b>12</b> unit flag</span>
+        <span><b>13–15</b> unused</span>
+        <span><b>16</b> flag</span>
+        <span><b>17</b> ★ property code</span>
+        <span><b>18</b> GL code</span>
+        <span><b>19–20</b> filler</span>
+        <span><b>21–41</b> padding</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Export logic (as implemented)</h2>
+    <p class="section-note">Live in <code>sync_service.get_st_report_export</code> — 10 fixed metric rows, values pulled from the already-imported <code>st_files_sync</code> row for that day, property code from <code>property_api_settings.st_property_code</code>.</p>
+    <pre><span class="c"># one entry per statistic; "key" is None for the constant-1 row</span>
+_ST_REPORT_METRICS = [
+    (<span class="s">"90107"</span>, <span class="s">"Spaces"</span>,             <span class="s">"spaces"</span>,       <span class="s">"RMSST"</span>),
+    (<span class="s">"90100"</span>, <span class="s">"Occupied"</span>,           <span class="s">"occupied"</span>,     <span class="s">"PMSST"</span>),
+    (<span class="s">"90104"</span>, <span class="s">"House uses"</span>,        <span class="s">"house_use"</span>,    <span class="s">"PMSST"</span>),
+    (<span class="s">"90103"</span>, <span class="s">"Out of order"</span>,      <span class="s">"out_of_order"</span>, <span class="s">"PMSST"</span>),
+    (<span class="s">"90102"</span>, <span class="s">"Availability"</span>,      <span class="s">"availability"</span>, <span class="s">"PMSST"</span>),
+    (<span class="s">"90105"</span>, <span class="s">"Customers"</span>,         <span class="s">"customers"</span>,    <span class="s">"PMSST"</span>),
+    (<span class="s">"90114"</span>, <span class="s">"Arrivals"</span>,          <span class="s">"arrivals"</span>,     <span class="s">"PMSST"</span>),
+    (<span class="s">"90115"</span>, <span class="s">"Departures"</span>,        <span class="s">"departures"</span>,   <span class="s">"PMSST"</span>),
+    (<span class="s">"90101"</span>, <span class="s">"Complimentary Room"</span>,<span class="s">"complimentary"</span>,<span class="s">"PMSST"</span>),
+    (<span class="s">"90108"</span>, <span class="s">"No. of Day"</span>,        <span class="k">None</span>,          <span class="s">"PMSST"</span>),  <span class="c"># value forced to 1</span>
+]
+
+property_code = <span class="c"># from property_api_settings.st_property_code - raises if unset</span>
+month_code = <span class="s">"0"</span> + day.strftime(<span class="s">"%m"</span>)   <span class="c"># field 5, e.g. "008" for August</span>
+
+<span class="k">for</span> code, label, key, record_type <span class="k">in</span> _ST_REPORT_METRICS:
+    value = <span class="k">1</span> <span class="k">if</span> key <span class="k">is</span> <span class="k">None</span> <span class="k">else</span> totals[key]
+    row = <span class="s">"|"</span>.join([
+        <span class="s">"PMSST"</span>, record_type, code, ddmmyyyy, month_code, str(year),
+        <span class="s">f"ST{yyyymmdd}"</span>, label, ddmmyyyy, <span class="s">"THB"</span>, str(value), <span class="s">"1"</span>,
+        <span class="s">""</span>, <span class="s">""</span>, <span class="s">""</span>, <span class="s">"D"</span>, property_code, <span class="s">"111"</span>, <span class="s">"ZZ"</span>, <span class="s">"ZZ"</span>,
+    ] + [<span class="s">""</span>] * <span class="k">21</span>)</pre>
+  </section>
+
+  <section>
+    <div class="callout" style="border-color:var(--confirmed); background:var(--confirmed-bg);">
+      <h3 style="color:var(--confirmed);">Resolved — one item left</h3>
+      <ol>
+        <li>
+          <b>Property Code, per property.</b> Confirmed for Lub d Bangkok Siam (<code>SM</code>, set from this same formula). The other 7 still need their own code entered at Admin → API Settings → Property Code — Download raises a clear error for any property until it's set, rather than guessing.
+          <div class="prop-grid">
+            <div class="prop-pill"><span>Lub d Bangkok Chinatown</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Bangkok Siam</span><span class="code" style="color:var(--confirmed);">SM ✓</span></div>
+            <div class="prop-pill"><span>Lub d Koh Samui Chaweng Beach</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Koh Tao Tanote Bay</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Philippines Makati</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Phuket Patong</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Siem Reap</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Marasca Samui</span><span class="code">?</span></div>
+          </div>
+        </li>
+        <li><b>Field 7's format quirk on the "No. of Day" row</b> (<code>ST05082026</code> instead of <code>ST20260805</code>) is still not replicated — the exporter standardizes every row to <code>ST</code>+YYYYMMDD. Flag if the receiving system actually expects the DDMMYYYY form on that one row specifically.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>
+    Built for the ST Files → Statistic Files → Download feature · field map derived from a 10-row production sample, 2026-08-06.
+  </footer>
+
+</div>
+
+</body>
+</html>

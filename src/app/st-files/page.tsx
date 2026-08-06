@@ -514,7 +514,7 @@ export default function StFilesPage() {
             <span className="inline-flex items-center gap-4">
               Statistic Files
               <a
-                href="https://claude.ai/code/artifact/5e4edf3e-11d6-493a-9256-7f3354bb5885"
+                href="/docs/st-files-export-format.html"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-sans inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps border border-[var(--text-primary)]/30 text-[var(--text-primary)]/70 hover:text-[var(--text-primary)] hover:border-[var(--text-primary)] transition-colors align-middle"
