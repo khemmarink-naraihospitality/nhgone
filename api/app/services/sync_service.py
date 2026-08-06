@@ -1431,6 +1431,28 @@ class SyncService:
     # the shorter name).
     _COMPLIMENTARY_RATE_NAMES = {"Complimentary", "Complimentary Room"}
 
+    # ST Files List's "Download" file - the legacy pipe-delimited PMSST/RMSST
+    # statistics export, reverse-engineered from a real 10-row sample. Field
+    # layout is confirmed (see get_st_report_export's docstring); the
+    # per-property code in field 5 is NOT - populate this before trusting the
+    # export for a real government/PMS submission.
+    _ST_REPORT_PROPERTY_CODES: dict = {}
+
+    # (metric_code, field-8 label, totals-dict key, record_type). "key" is
+    # None for "No. of Day", whose value is always the literal 1.
+    _ST_REPORT_METRICS = [
+        ("90107", "Spaces", "spaces", "RMSST"),
+        ("90100", "Occupied", "occupied", "PMSST"),
+        ("90104", "House uses", "house_use", "PMSST"),
+        ("90103", "Out of order", "out_of_order", "PMSST"),
+        ("90102", "Availability", "availability", "PMSST"),
+        ("90105", "Customers", "customers", "PMSST"),
+        ("90114", "Arrivals", "arrivals", "PMSST"),
+        ("90115", "Departures", "departures", "PMSST"),
+        ("90101", "Complimentary Room", "complimentary", "PMSST"),
+        ("90108", "No. of Day", None, "PMSST"),
+    ]
+
     async def get_st_files_report(self, property_name: str, date: str):
         """
         Builds the daily "ST Files" occupancy/availability report for one
@@ -1753,6 +1775,53 @@ class SyncService:
                 "synced_at": row.get("synced_at"),
             })
         return rows
+
+    def get_st_report_export(self, property_name: str, date_str: str) -> str:
+        """
+        Builds the legacy pipe-delimited "ST" statistics submission file
+        (record types PMSST/RMSST) for one already-imported day - 10 fixed
+        metric rows, 41 fields each, values taken from that day's
+        st_files_sync blob (same totals get_st_files_list shows). Field
+        layout was reverse-engineered from a real sample; property_name must
+        be registered in _ST_REPORT_PROPERTY_CODES first (field 5's
+        property/branch code isn't confirmed for any property yet) - raises
+        rather than guessing at a code for a real regulatory submission.
+        """
+        property_code = self._ST_REPORT_PROPERTY_CODES.get(property_name)
+        if not property_code:
+            raise ValueError(f"No ST report property code configured yet for {property_name}")
+        if not self.supabase:
+            raise Exception("Supabase not initialized")
+        res = self.supabase.table("st_files_sync").select("data").eq(
+            "property", property_name).eq("report_date", date_str).limit(1).execute()
+        if not res.data:
+            raise ValueError(f"No imported report for {property_name} on {date_str} - import it first")
+        blob = (res.data[0].get("data") or {}).get("blob", "")
+        report = json.loads(encryption_service.decrypt(blob))
+        totals = {
+            "spaces": sum(c.get("count", 0) for c in report.get("spaces", [])),
+            "occupied": sum(c.get("count", 0) for c in report.get("occupied", [])),
+            "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
+            "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
+            "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
+            "customers": len(report.get("customers", [])),
+            "arrivals": len(report.get("arrivals", [])),
+            "departures": len(report.get("departures", [])),
+            "complimentary": report.get("complimentary", 0),
+        }
+        day = datetime.strptime(date_str, "%Y-%m-%d")
+        ddmmyyyy = day.strftime("%d%m%Y")
+        yyyymmdd = day.strftime("%Y%m%d")
+        lines = []
+        for code, label, key, record_type in self._ST_REPORT_METRICS:
+            value = 1 if key is None else totals.get(key, 0)
+            fields = [
+                "PMSST", record_type, code, ddmmyyyy, property_code, str(day.year),
+                f"ST{yyyymmdd}", label, ddmmyyyy, "THB", str(value), "1",
+                "", "", "", "D", "SM", "111", "ZZ", "ZZ",
+            ] + [""] * 21
+            lines.append("|".join(fields))
+        return "\n".join(lines)
 
     # BCP timeline window: how far back/forward from "today" the reservations
     # grid covers. Wide enough to show most stays without blowing up capture

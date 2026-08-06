@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi.responses import PlainTextResponse
 
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
@@ -136,5 +137,23 @@ async def get_list(property_name: str = Query(...)):
     try:
         rows = await sync_service.get_st_files_list(property_name)
         return {"status": "success", "data": rows}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/export")
+async def export_report(
+    property_name: str = Query(...),
+    date: str = Query(...),
+):
+    """Download option on the Statistic Files table - the legacy
+    pipe-delimited ST statistics file for one already-imported day (see
+    sync_service.get_st_report_export)."""
+    try:
+        text = sync_service.get_st_report_export(property_name, date)
+        filename = f"ST_{property_name.replace(' ', '_')}_{date}.txt"
+        return PlainTextResponse(text, headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

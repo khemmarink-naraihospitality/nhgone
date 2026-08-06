@@ -149,6 +149,7 @@ export default function StFilesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [fileMenuDate, setFileMenuDate] = useState<string | null>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
 
@@ -234,6 +235,27 @@ export default function StFilesPage() {
     setDate(rowDate);
     setDataSource("database");
     fetchReport({ date: rowDate, source: "database" });
+  };
+
+  const handleDownload = async (rowDate: string) => {
+    setFileMenuDate(null);
+    try {
+      const params = new URLSearchParams({ property_name: selectedProperty, date: rowDate });
+      const res = await fetch(`/api/st-files/export?${params.toString()}`);
+      if (!res.ok) {
+        const result = await res.json().catch(() => null);
+        throw new Error(result?.detail || "Download failed");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `ST_${selectedProperty}_${rowDate}.txt`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message);
+    }
   };
 
   const handleImport = async () => {
@@ -625,12 +647,33 @@ export default function StFilesPage() {
                     <td className={`${tdCls} text-right`}>{r.complimentary}</td>
                     <td className={`${tdCls} text-right`}>1</td>
                     <td className={tdCls}>
-                      <button
-                        onClick={() => jumpToDay(r.date)}
-                        className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                      >
-                        View
-                      </button>
+                      <div className="relative inline-block">
+                        <button
+                          onClick={() => setFileMenuDate(fileMenuDate === r.date ? null : r.date)}
+                          className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                        >
+                          File
+                        </button>
+                        {fileMenuDate === r.date && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setFileMenuDate(null)} />
+                            <div className="absolute right-0 top-full mt-1 z-20 w-32 bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[0_8px_24px_rgba(21,42,0,0.12)]">
+                              <button
+                                onClick={() => { setFileMenuDate(null); jumpToDay(r.date); }}
+                                className="block w-full text-left px-4 py-2 text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                              >
+                                Preview
+                              </button>
+                              <button
+                                onClick={() => handleDownload(r.date)}
+                                className="block w-full text-left px-4 py-2 text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors border-t border-[var(--text-primary)]/10"
+                              >
+                                Download
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
