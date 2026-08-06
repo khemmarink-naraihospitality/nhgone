@@ -661,9 +661,19 @@ export default function StFilesPage() {
                       {selectedProperty ? "No imported days yet - use “Import To Data Mart” above." : "Select a property to see imported ST Files history."}
                     </td>
                   </tr>
-                ) : listRows.map((r) => (
-                  <tr key={r.date} className="hover:bg-[var(--text-primary)]/[0.02]">
-                    <td className={`${tdCls} font-bold`}>{r.date}</td>
+                ) : listRows.map((r) => {
+                  // Highlights whichever row's day is currently loaded into
+                  // Statistic Data above - Preview's only feedback otherwise
+                  // is numbers changing up there, easy to miss when a day's
+                  // Spaces total happens to match (room inventory rarely
+                  // changes day to day, unlike Occupied/Customers/etc).
+                  const isActive = !!report && dataSource === "database" && report.parameters.date === r.date;
+                  return (
+                  <tr key={r.date} className={isActive ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
+                    <td className={`${tdCls} font-bold`}>
+                      {r.date}
+                      {isActive && <span className="ml-2 text-[9px] font-bold tracked-caps text-emerald-700">Viewing</span>}
+                    </td>
                     <td className={`${tdCls} text-right`}>{r.spaces}</td>
                     <td className={`${tdCls} text-right`}>{r.occupied}</td>
                     <td className={`${tdCls} text-right`}>{r.house_use}</td>
@@ -704,7 +714,8 @@ export default function StFilesPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
