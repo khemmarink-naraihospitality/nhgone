@@ -1453,6 +1453,18 @@ class SyncService:
         ("90108", "No. of Day", None, "PMSST"),
     ]
 
+    @staticmethod
+    def _st_report_counts(report: dict) -> dict:
+        """
+        Customers/Arrivals/Departures totals for a stored report. Reports
+        imported before these were counted separately from their row lists
+        fall back to the list lengths, which undercount dorms.
+        """
+        return {
+            key: report.get(f"{key}_count", len(report.get(key, [])))
+            for key in ("customers", "arrivals", "departures")
+        }
+
     async def get_st_files_report(self, property_name: str, date: str):
         """
         Builds the daily "ST Files" occupancy/availability report for one
@@ -1599,19 +1611,43 @@ class SyncService:
             and rates_by_id.get(r.get("RateId"), {}).get("Name") in self._COMPLIMENTARY_RATE_NAMES
         )
 
-        # Room names for block rows come from the same Resources extent; any
-        # blocked room without a reservation that day won't be in the map, so
-        # fall back to one resources/getAll only if a block's room is unknown.
-        block_resource_ids = {b.get("AssignedResourceId") for b in blocks if b.get("AssignedResourceId")}
-        if block_resource_ids - set(resources_map.keys()):
-            all_res = await mews_client.post(
-                "/api/connector/v1/resources/getAll",
-                {"Extent": {"Resources": True}, "Limitation": {"Count": 1000}},
-                property_name=property_name,
-            )
-            for r in all_res.get("Resources", []):
-                if r.get("Id"):
-                    resources_map.setdefault(r["Id"], r)
+        # Full resource list + their category assignments. Needed for two
+        # things: room names on block rows (the reservation Extent only knows
+        # rooms that had a reservation that day), and mapping each reservation
+        # to the space category MEWS files it under below.
+        all_res = await mews_client.post(
+            "/api/connector/v1/resources/getAll",
+            {"Extent": {"Resources": True, "ResourceCategoryAssignments": True}, "Limitation": {"Count": 1000}},
+            property_name=property_name,
+        )
+        for r in all_res.get("Resources", []):
+            if r.get("Id"):
+                resources_map.setdefault(r["Id"], r)
+        resource_category = {
+            a["ResourceId"]: a["CategoryId"]
+            for a in all_res.get("ResourceCategoryAssignments", [])
+            if a.get("ResourceId") and a.get("CategoryId")
+        }
+
+        # A dorm is one parent resource ("210") whose children are the
+        # individually bookable beds. Booking the whole dorm assigns the
+        # parent, whose own category is Type=Dorm and so is absent from the
+        # Room/Bed tables - MEWS still counts it as one arrival per bed, under
+        # the beds' category. Map parent -> (bed category, bed count) so those
+        # reservations can be expanded instead of silently dropped.
+        dorm_children = {}
+        for r in all_res.get("Resources", []):
+            parent = r.get("ParentResourceId")
+            if parent and r.get("Id"):
+                dorm_children.setdefault(parent, []).append(r["Id"])
+        dorm_parent_beds = {}
+        for parent, kids in dorm_children.items():
+            bed_cats = [
+                resource_category[k] for k in kids
+                if categories.get(resource_category.get(k), {}).get("type") == "Bed"
+            ]
+            if bed_cats:
+                dorm_parent_beds[parent] = (max(set(bed_cats), key=bed_cats.count), len(kids))
 
         def block_rows(block_type):
             rows = []
@@ -1629,14 +1665,17 @@ class SyncService:
             rows.sort(key=lambda r: r["room"])
             return rows
 
-        def in_window(ts):
+        def parse_utc(ts):
             if not ts:
-                return False
+                return None
             try:
-                t = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
             except Exception:
-                return False
-            return day_start_utc <= t < day_end_utc
+                return None
+
+        def in_window(ts):
+            t = parse_utc(ts)
+            return t is not None and day_start_utc <= t < day_end_utc
 
         active_states = {"Confirmed", "Started", "Processed", "Optional"}
 
@@ -1657,25 +1696,58 @@ class SyncService:
                 "children": res.get("ChildCount", 0),
             }
 
+        # How MEWS's own Availability report counts these three, verified
+        # category-by-category against its export for Chinatown (see
+        # _ST_REPORT_METRICS): Arrivals/Departures count *spaces* (a whole-dorm
+        # booking is 8 bed arrivals, not 1), while Customers counts *people*
+        # staying the night, filed under the assigned space's own category -
+        # so the same dorm booking adds 0 there, its parent being Type=Dorm.
+        def headcount(res):
+            return (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
+
+        def stay_category(res):
+            """The Room/Bed category the assigned space itself belongs to."""
+            cat_id = resource_category.get(res.get("AssignedResourceId")) or res.get("RequestedCategoryId")
+            return cat_id if categories.get(cat_id, {}).get("in_report") else None
+
+        def space_units(res):
+            """(category, spaces) - a whole-dorm booking counts once per bed."""
+            resource_id = res.get("AssignedResourceId")
+            cat_id = resource_category.get(resource_id)
+            if categories.get(cat_id, {}).get("in_report"):
+                return cat_id, 1
+            if resource_id in dorm_parent_beds:
+                bed_cat_id, bed_count = dorm_parent_beds[resource_id]
+                return bed_cat_id, (headcount(res) or bed_count)
+            requested = res.get("RequestedCategoryId")
+            if categories.get(requested, {}).get("in_report"):
+                return requested, 1
+            return None, 0
+
         arrivals, departures = [], []
-        day_customer_ids = set()
+        arrivals_count = departures_count = customers_count = 0
+        night_guest_ids = set()
         for res in reservations:
             if res.get("State") not in active_states:
                 continue
+            _, units = space_units(res)
             if in_window(res.get("StartUtc")):
-                arrivals.append(reservation_row(res))
+                arrivals.append({**reservation_row(res), "spaces": units})
+                arrivals_count += units
             if in_window(res.get("EndUtc")):
-                departures.append(reservation_row(res))
-            # Primary guest only (CustomerId), not CompanionIds - confirmed
-            # live against MEWS's own "Availability & occupancy" Export
-            # Schedule report (Chinatown 2026-08-05: MEWS showed ~167, our
-            # old primary+companion count was 303, nearly double).
-            cid = res.get("CustomerId")
-            if cid:
-                day_customer_ids.add(cid)
+                departures.append({**reservation_row(res), "spaces": units})
+                departures_count += units
+            # Staying the night = still checked in when the day rolls over,
+            # which is the population MEWS bases Customers on (a guest who
+            # checked out that morning belongs to the previous day's file).
+            if parse_utc(res.get("EndUtc")) and parse_utc(res["EndUtc"]) > day_end_utc and stay_category(res):
+                customers_count += headcount(res)
+                for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
+                    if cid:
+                        night_guest_ids.add(cid)
 
         customers = []
-        for cid in day_customer_ids:
+        for cid in night_guest_ids:
             c = customers_map.get(cid)
             if not c:
                 continue
@@ -1732,6 +1804,12 @@ class SyncService:
             "customers": customers,
             "arrivals": arrivals,
             "departures": departures,
+            # Counts are stored rather than derived from the row lists: one
+            # reservation can be several spaces (dorms), and a night's guests
+            # outnumber the profiles MEWS actually names.
+            "customers_count": customers_count,
+            "arrivals_count": arrivals_count,
+            "departures_count": departures_count,
             "complimentary": complimentary_count,
             "reservations": reservation_audit_rows,
         }
@@ -1770,9 +1848,7 @@ class SyncService:
                 "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
                 "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
                 "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
-                "customers": len(report.get("customers", [])),
-                "arrivals": len(report.get("arrivals", [])),
-                "departures": len(report.get("departures", [])),
+                **self._st_report_counts(report),
                 # Reports imported before the complimentary field existed
                 # (see get_st_files_report) simply show 0 here, not an error.
                 "complimentary": report.get("complimentary", 0),
@@ -1825,9 +1901,7 @@ class SyncService:
             "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
             "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
             "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
-            "customers": len(report.get("customers", [])),
-            "arrivals": len(report.get("arrivals", [])),
-            "departures": len(report.get("departures", [])),
+            **self._st_report_counts(report),
             "complimentary": report.get("complimentary", 0),
         }
         day = datetime.strptime(date_str, "%Y-%m-%d")

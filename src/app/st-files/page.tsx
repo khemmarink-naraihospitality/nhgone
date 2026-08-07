@@ -94,6 +94,10 @@ interface StFilesReport {
   customers: CustomerRow[];
   arrivals: ReservationRow[];
   departures: ReservationRow[];
+  // Absent on reports imported before dorms were counted per bed.
+  customers_count?: number;
+  arrivals_count?: number;
+  departures_count?: number;
   reservations?: ReservationAuditRow[];
   _synced_at?: string;
 }
@@ -498,9 +502,9 @@ export default function StFilesPage() {
   const tabCount = (key: TabKey): number | null => {
     if (!report) return null;
     switch (key) {
-      case "customers": return report.customers.length;
-      case "arrivals": return report.arrivals.length;
-      case "departures": return report.departures.length;
+      case "customers": return report.customers_count ?? report.customers.length;
+      case "arrivals": return report.arrivals_count ?? report.arrivals.length;
+      case "departures": return report.departures_count ?? report.departures.length;
       case "reservations": return report.reservations?.length ?? null;
       case "out_of_order": return report.out_of_order.reduce((s, r) => s + r.count, 0);
       case "house_use": return report.house_use.reduce((s, r) => s + r.count, 0);
