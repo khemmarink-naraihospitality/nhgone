@@ -9,6 +9,7 @@ from app.services.encryption import encryption_service
 from app.services.email_service import email_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
+import asyncio
 import os
 import traceback
 from datetime import datetime, timedelta, timezone
@@ -383,18 +384,21 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
     print(f"[{now.isoformat()}] ST Files auto-import: {len(items)} propert(y/ies) scheduled...")
     report_date_str = (now.date() - timedelta(days=1)).isoformat()
 
-    for p in items:
+    async def import_one(p) -> bool:
+        """False only when the lock was unavailable - i.e. worth retrying.
+        A genuine sync failure is logged by _sync_st_files_for_property and
+        counts as handled."""
         prop, prop_id = p["property_name"], p["id"]
         try:
             lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
                 "target_property_id": prop_id, "timeout_mins": 15
             }).execute().data
-            if not lock_acquired:
-                print(f"Skipping ST Files auto-import for {prop}: sync lock busy.")
-                continue
         except Exception as lock_err:
             print(f"ST Files auto-import lock error for {prop}: {lock_err}")
-            continue
+            return False
+        if not lock_acquired:
+            print(f"ST Files auto-import for {prop}: sync lock busy.")
+            return False
 
         try:
             await _sync_st_files_for_property(prop, prop_id, report_date_str)
@@ -403,6 +407,26 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
             except Exception:
                 pass
+        return True
+
+    # The every-5-minute BCP capture takes this same per-property lock, so a
+    # property whose capture overlaps this tick used to be skipped for the
+    # whole day - and silently, a busy lock being a bare `continue` that
+    # logged nothing (Lub d Koh Samui Chaweng Beach lost 2026-08-06 this way).
+    # Retry those once the others are done, by which point BCP has long since
+    # released it, and log an error if it's somehow still held so a real miss
+    # shows up in the Activity Log instead of vanishing.
+    deferred = []
+    for p in items:
+        if not await import_one(p):
+            deferred.append(p)
+
+    if deferred:
+        await asyncio.sleep(20)
+        for p in deferred:
+            if not await import_one(p):
+                _log_sync(p["property_name"], p["id"], "ST Files", "error", 0,
+                          f"Auto ST Files Sync Failed: sync lock still busy for {report_date_str}", "auto")
 
 async def send_st_files_daily_email(match_hour_only: bool = False):
     """
