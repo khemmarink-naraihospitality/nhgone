@@ -10,6 +10,9 @@ interface PropertySetting {
   client_token: string;
   access_token: string;
   st_property_code: string | null;
+  // Comma-separated MEWS category types the ST report counts for this
+  // property; null/blank falls back to Room,Bed.
+  st_space_types?: string | null;
 }
 
 export default function ApiSettingsPage() {
@@ -104,7 +107,8 @@ export default function ApiSettingsPage() {
           client_name: editForm.client_name,
           client_token: editForm.client_token,
           access_token: editForm.access_token,
-          st_property_code: editForm.st_property_code
+          st_property_code: editForm.st_property_code,
+          st_space_types: editForm.st_space_types || null
         })
       });
       const res = await response.json();
@@ -249,6 +253,16 @@ export default function ApiSettingsPage() {
                         value={editForm?.st_property_code || ""}
                         onChange={(e) => setEditForm({...editForm!, st_property_code: e.target.value})}
                       />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">ST Space Types</label>
+                      <input
+                        placeholder="Room,Bed"
+                        className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                        value={editForm?.st_space_types || ""}
+                        onChange={(e) => setEditForm({...editForm!, st_space_types: e.target.value})}
+                      />
+                      <span className="text-[10px] text-slate-400 px-1">Must match this property&apos;s MEWS export &quot;Space types&quot; filter. Blank = Room,Bed.</span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Client Name</label>

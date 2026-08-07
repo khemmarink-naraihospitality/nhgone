@@ -1362,11 +1362,30 @@ class SyncService:
             logger.error(f"Error building RR3 cards for {property_name}: {str(e)}")
             raise e
 
-    # ST Files report only counts these category types, matching the source
-    # Google Sheet's "Space types: Room, Bed" parameter (verified: Chinatown's
-    # Room+Bed categories sum to exactly the sheet's 176 total; Dorm-as-a-whole
-    # and Apartment categories are what the sheet excludes).
+    # Fallback when a property has no st_space_types configured. Each
+    # property's MEWS export schedule carries its OWN "Space types" filter, so
+    # there is no single correct list: Chinatown/Siam/Samui/Makati/Patong/Siem
+    # Reap are Room+Bed (verified - Chinatown sums to exactly 176, and Siem
+    # Reap's 6-space Suite category is deliberately NOT in its 222), while Koh
+    # Tao and Marasca Samui also count Suite (51+3=54 and 57+5=62, matching
+    # their exports exactly). Set st_space_types per property to override.
     _ST_FILES_SPACE_TYPES = ("Room", "Bed")
+
+    async def _resolve_st_space_types(self, property_name: str) -> tuple:
+        """Per-property "Space types" filter, comma-separated in
+        property_api_settings.st_space_types (Admin > API Settings). Falls
+        back to Room+Bed when unset - or when the column doesn't exist yet, so
+        the report keeps working before that migration is run."""
+        if not self.supabase:
+            return self._ST_FILES_SPACE_TYPES
+        try:
+            res = self.supabase.table("property_api_settings").select(
+                "st_space_types").eq("property_name", property_name).limit(1).execute()
+        except Exception as e:
+            logger.warning(f"ST Files space types lookup failed for {property_name}: {e}")
+            return self._ST_FILES_SPACE_TYPES
+        raw = (res.data[0].get("st_space_types") if res.data else None) or ""
+        return tuple(t.strip() for t in raw.split(",") if t.strip()) or self._ST_FILES_SPACE_TYPES
 
     @staticmethod
     def _resolve_stay_service(services: list) -> Optional[dict]:
@@ -1480,6 +1499,7 @@ class SyncService:
         property's Connector token (403s cleanly if MEWS hasn't enabled it).
         """
         property_tz = await self._resolve_property_timezone(property_name)
+        space_types = await self._resolve_st_space_types(property_name)
         day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
         day_start_utc = day.astimezone(timezone.utc)
         day_end_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
@@ -1516,7 +1536,7 @@ class SyncService:
                 "type": c.get("Type", ""),
                 "capacity": c.get("Capacity"),
                 "ordering": c.get("Ordering", 0),
-                "in_report": c.get("Type") in self._ST_FILES_SPACE_TYPES,
+                "in_report": c.get("Type") in space_types,
             }
 
         def category_rows(count_by_cat_id):
@@ -1791,7 +1811,7 @@ class SyncService:
                 "property": property_name,
                 "service": stay.get("Name", ""),
                 "date": date,
-                "space_types": list(self._ST_FILES_SPACE_TYPES),
+                "space_types": list(space_types),
                 "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             },
             "spaces": spaces,

@@ -38,6 +38,11 @@ class PropertyApiSettingsUpdate(BaseModel):
     # export (field 17) - e.g. "SM" for Lub d Bangkok Siam. Not sensitive,
     # so it isn't in encryption.py's SENSITIVE_FIELDS.
     st_property_code: Optional[str] = None
+    # Comma-separated MEWS resource category types this property's ST report
+    # counts, mirroring its own export schedule's "Space types" filter (e.g.
+    # "Room,Bed" for most, "Room,Suite" for Koh Tao / Marasca Samui). Blank
+    # falls back to Room,Bed - see sync_service._resolve_st_space_types.
+    st_space_types: Optional[str] = None
 
 class SmtpSettingsUpdate(BaseModel):
     host: str
