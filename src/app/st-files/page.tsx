@@ -149,7 +149,6 @@ export default function StFilesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
-  const [fileMenuDate, setFileMenuDate] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -248,7 +247,6 @@ export default function StFilesPage() {
   };
 
   const handlePreview = async (rowDate: string) => {
-    setFileMenuDate(null);
     try {
       const params = new URLSearchParams({ property_name: selectedProperty, date: rowDate });
       const res = await fetch(`/api/st-files/export?${params.toString()}`);
@@ -265,7 +263,6 @@ export default function StFilesPage() {
   };
 
   const handleDownload = async (rowDate: string) => {
-    setFileMenuDate(null);
     try {
       const params = new URLSearchParams({ property_name: selectedProperty, date: rowDate });
       const res = await fetch(`/api/st-files/export?${params.toString()}`);
@@ -515,7 +512,7 @@ export default function StFilesPage() {
 
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
-      <div className="max-w-7xl mx-auto">
+      <div className="max-w-[100rem] mx-auto">
         <PageHeader
           title={
             <span className="inline-flex items-center gap-4">
@@ -711,32 +708,19 @@ export default function StFilesPage() {
                     <td className={`${tdCls} text-right`}>{r.complimentary}</td>
                     <td className={`${tdCls} text-right`}>1</td>
                     <td className={tdCls}>
-                      <div className="relative inline-block">
+                      <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setFileMenuDate(fileMenuDate === r.date ? null : r.date)}
-                          className="px-4 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                          onClick={() => handlePreview(r.date)}
+                          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                         >
-                          File
+                          Preview
                         </button>
-                        {fileMenuDate === r.date && (
-                          <>
-                            <div className="fixed inset-0 z-10" onClick={() => setFileMenuDate(null)} />
-                            <div className="absolute right-0 top-full mt-1 z-20 w-32 bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[0_8px_24px_rgba(21,42,0,0.12)]">
-                              <button
-                                onClick={() => handlePreview(r.date)}
-                                className="block w-full text-left px-4 py-2 text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                              >
-                                Preview
-                              </button>
-                              <button
-                                onClick={() => handleDownload(r.date)}
-                                className="block w-full text-left px-4 py-2 text-[11px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors border-t border-[var(--text-primary)]/10"
-                              >
-                                Download
-                              </button>
-                            </div>
-                          </>
-                        )}
+                        <button
+                          onClick={() => handleDownload(r.date)}
+                          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                        >
+                          Download
+                        </button>
                       </div>
                     </td>
                   </tr>
