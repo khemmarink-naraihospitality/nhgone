@@ -1649,25 +1649,18 @@ class SyncService:
             if a.get("ResourceId") and a.get("CategoryId")
         }
 
-        # A dorm is one parent resource ("210") whose children are the
-        # individually bookable beds. Booking the whole dorm assigns the
-        # parent, whose own category is Type=Dorm and so is absent from the
-        # Room/Bed tables - MEWS still counts it as one arrival per bed, under
-        # the beds' category. Map parent -> (bed category, bed count) so those
+        # Some spaces are sold both whole and in parts: a dorm ("210") whose
+        # children are its individually bookable beds, or a two-bedroom suite
+        # ("412/414") whose children are the two rooms. Booking the whole thing
+        # assigns the PARENT, whose own category is Type=Dorm/Suite and so is
+        # absent from the Room/Bed tables - MEWS still counts it, once per child
+        # space, under the children's category. Map parent -> child ids so those
         # reservations can be expanded instead of silently dropped.
-        dorm_children = {}
+        parent_children = {}
         for r in all_res.get("Resources", []):
             parent = r.get("ParentResourceId")
             if parent and r.get("Id"):
-                dorm_children.setdefault(parent, []).append(r["Id"])
-        dorm_parent_beds = {}
-        for parent, kids in dorm_children.items():
-            bed_cats = [
-                resource_category[k] for k in kids
-                if categories.get(resource_category.get(k), {}).get("type") == "Bed"
-            ]
-            if bed_cats:
-                dorm_parent_beds[parent] = (max(set(bed_cats), key=bed_cats.count), len(kids))
+                parent_children.setdefault(parent, []).append(r["Id"])
 
         def block_rows(block_type):
             rows = []
@@ -1717,11 +1710,11 @@ class SyncService:
             }
 
         # How MEWS's own Availability report counts these three, verified
-        # category-by-category against its export for Chinatown (see
-        # _ST_REPORT_METRICS): Arrivals/Departures count *spaces* (a whole-dorm
-        # booking is 8 bed arrivals, not 1), while Customers counts *people*
-        # staying the night, filed under the assigned space's own category -
-        # so the same dorm booking adds 0 there, its parent being Type=Dorm.
+        # category-by-category against its exports (see _ST_REPORT_METRICS):
+        # Arrivals/Departures count *spaces*, while Customers counts *people*
+        # staying the night, filed under the assigned space's own category - so
+        # a whole-dorm or whole-suite booking adds 0 there, its parent category
+        # being Type=Dorm/Suite rather than one of the report's own.
         def headcount(res):
             return (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
 
@@ -1730,19 +1723,27 @@ class SyncService:
             cat_id = resource_category.get(res.get("AssignedResourceId")) or res.get("RequestedCategoryId")
             return cat_id if categories.get(cat_id, {}).get("in_report") else None
 
-        def space_units(res):
-            """(category, spaces) - a whole-dorm booking counts once per bed."""
+        def space_categories(res):
+            """One entry per space the reservation occupies. Booking a parent
+            (whole dorm, whole two-bedroom suite) counts once per CHILD space,
+            not once per guest - Siem Reap 2026-08-06 is the proof: its two
+            arriving suites are 4 DCR rooms, not their 3+4 occupants, and its
+            two arriving dorms are 10+10 beds, not 7+8."""
             resource_id = res.get("AssignedResourceId")
             cat_id = resource_category.get(resource_id)
             if categories.get(cat_id, {}).get("in_report"):
-                return cat_id, 1
-            if resource_id in dorm_parent_beds:
-                bed_cat_id, bed_count = dorm_parent_beds[resource_id]
-                return bed_cat_id, (headcount(res) or bed_count)
+                return [cat_id]
+            child_cats = [
+                resource_category.get(child)
+                for child in parent_children.get(resource_id, [])
+            ]
+            child_cats = [c for c in child_cats if categories.get(c, {}).get("in_report")]
+            if child_cats:
+                return child_cats
             requested = res.get("RequestedCategoryId")
             if categories.get(requested, {}).get("in_report"):
-                return requested, 1
-            return None, 0
+                return [requested]
+            return []
 
         arrivals, departures = [], []
         arrivals_count = departures_count = customers_count = 0
@@ -1750,7 +1751,7 @@ class SyncService:
         for res in reservations:
             if res.get("State") not in active_states:
                 continue
-            _, units = space_units(res)
+            units = len(space_categories(res))
             if in_window(res.get("StartUtc")):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
