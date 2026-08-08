@@ -33,7 +33,7 @@ const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] =
 
 interface RetrySettings {
   retry_count: number;
-  retry_interval_hours: number;
+  retry_interval_minutes: number;
 }
 
 interface FtpSettings {
@@ -58,7 +58,7 @@ export default function AdminSyncPage() {
   const [editingProperty, setEditingProperty] = useState<PropertySyncSettings | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const [retrySettings, setRetrySettings] = useState<RetrySettings>({ retry_count: 2, retry_interval_hours: 1 });
+  const [retrySettings, setRetrySettings] = useState<RetrySettings>({ retry_count: 2, retry_interval_minutes: 60 });
   const [retrySaving, setRetrySaving] = useState(false);
 
   const [ftpSettings, setFtpSettings] = useState<FtpSettings>(emptyFtpSettings);
@@ -95,7 +95,7 @@ export default function AdminSyncPage() {
       if (result.status === "success" && result.data) {
         setRetrySettings({
           retry_count: result.data.retry_count ?? 2,
-          retry_interval_hours: result.data.retry_interval_hours ?? 1,
+          retry_interval_minutes: result.data.retry_interval_minutes ?? 60,
         });
       }
     } catch (err) {
@@ -268,19 +268,20 @@ export default function AdminSyncPage() {
            <div className="flex flex-col items-center">
               <input
                 type="number"
-                min="1"
-                max="12"
-                className="w-16 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-bold text-slate-800 py-2 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
-                value={retrySettings.retry_interval_hours}
-                onChange={(e) => setRetrySettings({ ...retrySettings, retry_interval_hours: parseInt(e.target.value) || 1 })}
+                min="5"
+                max="720"
+                step="5"
+                className="w-20 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-bold text-slate-800 py-2 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                value={retrySettings.retry_interval_minutes}
+                onChange={(e) => setRetrySettings({ ...retrySettings, retry_interval_minutes: parseInt(e.target.value) || 5 })}
               />
-              <span className="text-[9px] font-bold text-slate-400 tracking-widest mt-1">HOURS APART</span>
+              <span className="text-[9px] font-bold text-slate-400 tracking-widest mt-1">MINUTES APART</span>
            </div>
            <div className="text-xs text-slate-400 flex-1">
               {retrySettings.retry_count === 0 ? (
                 "Retries disabled - a failed table stays failed until the 09:00 daily catch-up."
               ) : (
-                <>Fires at {Array.from({ length: retrySettings.retry_count }, (_, i) => `+${retrySettings.retry_interval_hours * (i + 1)}h`).join(", ")} after each property&apos;s own scheduled sync time.</>
+                <>Fires at {Array.from({ length: retrySettings.retry_count }, (_, i) => `+${retrySettings.retry_interval_minutes * (i + 1)}m`).join(", ")} after each property&apos;s own scheduled sync time (checked every 5 min in production, so it lands on the nearest 5-minute mark).</>
               )}
            </div>
            <button

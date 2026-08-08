@@ -222,24 +222,27 @@ class SyncService:
             self.supabase = None
             logger.warning("Supabase credentials missing. Sync will not work.")
 
-    _DEFAULT_RETRY_SETTINGS = {"retry_count": 2, "retry_interval_hours": 1}
+    _DEFAULT_RETRY_SETTINGS = {"retry_count": 2, "retry_interval_minutes": 60}
 
     async def get_sync_retry_settings(self) -> dict:
         """
         Global policy for main.py's retry_scheduled_syncs: how many times,
-        and how many hours apart, a property's Data Mart sync (Reservations/
+        and how many minutes apart, a property's Data Mart sync (Reservations/
         Customers/Payments/Bills/Resources) is auto-retried after its own
         scheduled run if a table is still missing or errored that day - e.g.
-        the default (2 retries, 1h apart) fires at sync_hour+1 and
-        sync_hour+2. Editable at Admin > Sync. Falls back to the default if
-        no row has been saved yet, or the table doesn't exist (migration not
-        run) - retries keep working with the old hardcoded behavior either way.
+        the default (2 retries, 60 min apart) fires at sync_time+1h and
+        sync_time+2h. Editable at Admin > Sync (runs on its own 5-minute
+        cron - see retry_scheduled_syncs' docstring on why minutes needed a
+        dedicated cron instead of piggybacking on the hourly one). Falls
+        back to the default if no row has been saved yet, or the table
+        doesn't exist (migration not run) - retries keep working with the
+        old hardcoded behavior either way.
         """
         if not self.supabase:
             return dict(self._DEFAULT_RETRY_SETTINGS)
         try:
             res = self.supabase.table("sync_retry_settings").select(
-                "retry_count, retry_interval_hours").limit(1).execute()
+                "retry_count, retry_interval_minutes").limit(1).execute()
         except Exception as e:
             logger.warning(f"sync_retry_settings lookup failed, using defaults: {e}")
             return dict(self._DEFAULT_RETRY_SETTINGS)
@@ -248,7 +251,7 @@ class SyncService:
         row = res.data[0]
         return {
             "retry_count": row.get("retry_count") or self._DEFAULT_RETRY_SETTINGS["retry_count"],
-            "retry_interval_hours": row.get("retry_interval_hours") or self._DEFAULT_RETRY_SETTINGS["retry_interval_hours"],
+            "retry_interval_minutes": row.get("retry_interval_minutes") or self._DEFAULT_RETRY_SETTINGS["retry_interval_minutes"],
         }
 
     async def sync_reservation(self, data: dict):

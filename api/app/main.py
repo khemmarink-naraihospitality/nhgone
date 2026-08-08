@@ -600,19 +600,26 @@ async def retry_failed_syncs():
 async def retry_scheduled_syncs():
     """
     Per-property equivalent of retry_failed_syncs above, but tied to that
-    property's OWN sync_hour instead of a fixed 09:00, and for a configurable
-    count/spacing instead of a fixed two (Admin > Sync's Retry Policy card,
-    backed by sync_retry_settings - see sync_service.get_sync_retry_settings;
-    default is 2 retries, 1h apart, i.e. sync_hour+1 and sync_hour+2 Bangkok
-    time). For each of that property's enabled tables, retries it if today's
-    latest sync_logs row is still "error" OR there's no row at all yet for
-    today (the scheduled run never fired at all - e.g. a cold start/outage at
-    that exact minute, not just a logged failure). Already-succeeded tables
-    are left untouched.
+    property's OWN sync_hour/minute instead of a fixed 09:00, and for a
+    configurable count/spacing instead of a fixed two (Admin > Sync's Retry
+    Policy card, backed by sync_retry_settings - see
+    sync_service.get_sync_retry_settings; default is 2 retries, 60 minutes
+    apart, i.e. sync_time+1h and sync_time+2h). For each of that property's
+    enabled tables, retries it if today's latest sync_logs row is still
+    "error" OR there's no row at all yet for today (the scheduled run never
+    fired at all - e.g. a cold start/outage at that exact minute, not just a
+    logged failure). Already-succeeded tables are left untouched.
 
-    Offsets are whole hours, not minutes - Vercel's hourly cron (see
-    daily_auto_sync's docstring) can only ever land on an hour boundary in
-    production, so a sub-hour interval would silently never fire there.
+    Runs on its OWN dedicated Vercel Cron entry (/sync/retry-check,
+    */5 * * * * - see vercel.json), separate from the hourly /sync/auto,
+    specifically so the interval can be configured in MINUTES and actually
+    fire at that granularity: piggybacking on the hourly cron (as this used
+    to) could only ever match a whole-hour offset in production. Matching is
+    bucketed to 5-minute marks in production (Vercel's cron granularity,
+    same as BCP's own auto-capture) and to the minute locally (APScheduler
+    ticks every second there) - an interval that isn't a multiple of the
+    bucket size still works, it just resolves to the nearest bucket rather
+    than firing at the exact minute typed in.
 
     No dedup logic needed here: every sync_* function this calls upserts on
     mews_id (see CLAUDE.md's Chunked upsert pattern), so re-running a table
@@ -624,11 +631,11 @@ async def retry_scheduled_syncs():
         return
 
     retry_settings = await sync_service.get_sync_retry_settings()
-    offset_hours = [
-        retry_settings["retry_interval_hours"] * i
+    offset_minutes = [
+        retry_settings["retry_interval_minutes"] * i
         for i in range(1, retry_settings["retry_count"] + 1)
     ]
-    if not offset_hours:
+    if not offset_minutes:
         return
 
     try:
@@ -639,21 +646,19 @@ async def retry_scheduled_syncs():
         print(f"Error in retry_scheduled_syncs (fetching properties): {str(e)}")
         return
 
-    # match_hour_only mirrors daily_auto_sync's own local-vs-Vercel split:
-    # in production (hourly cron) only the hour can line up reliably, so
-    # minute is ignored there; locally (per-minute tick) it's matched too,
-    # otherwise every minute within the target hour would re-trigger this.
-    match_hour_only = bool(os.environ.get("VERCEL"))
+    bucket = 5 if os.environ.get("VERCEL") else 1
+    now_bucket = ((now.hour * 60 + now.minute) // bucket) * bucket
+
     due = []
     for prop_settings in props_res.data or []:
         sched_hour = prop_settings.get("sync_hour")
-        sched_minute = prop_settings.get("sync_minute")
         if sched_hour is None:
             continue
-        for offset in offset_hours:
-            hour_matches = now.hour == (sched_hour + offset) % 24
-            minute_matches = match_hour_only or sched_minute is None or now.minute == sched_minute
-            if hour_matches and minute_matches:
+        base_minutes = sched_hour * 60 + (prop_settings.get("sync_minute") or 0)
+        for offset in offset_minutes:
+            target_minutes = (base_minutes + offset) % 1440
+            target_bucket = (target_minutes // bucket) * bucket
+            if target_bucket == now_bucket:
                 due.append(prop_settings)
                 break
 
@@ -746,7 +751,10 @@ async def start_scheduler():
     # Same per-minute cadence; retry_failed_syncs self-gates to only do work
     # when the Bangkok hour is 9, so this just gives it a chance to fire.
     scheduler.add_job(retry_failed_syncs, 'cron', second=0)
-    # Same idea, gated per-property to sync_hour+1/+2 instead of a fixed hour.
+    # Same idea, gated per-property to its own sync time + configurable offsets.
+    # In production this instead runs on its own dedicated cron - see
+    # /sync/retry-check - since Vercel doesn't have a persistent process for
+    # APScheduler to tick every second the way local dev does.
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # ST Files' own independent schedule (st_files_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
@@ -775,8 +783,10 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # 09:00 retry check piggybacks here too (see retry_failed_syncs' own
     # hour==9 guard) instead of needing a second vercel.json cron entry.
     background_tasks.add_task(retry_failed_syncs)
-    # Same piggyback, gated per-property to sync_hour+1/+2 instead.
-    background_tasks.add_task(retry_scheduled_syncs)
+    # retry_scheduled_syncs deliberately NOT piggybacked here anymore - it has
+    # its own dedicated 5-minute cron (/sync/retry-check) so its interval can
+    # be configured in minutes and actually fire at that granularity; see its
+    # own docstring for why the hourly tick here couldn't support that.
     # ST Files' own independent schedule.
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
     # ST Files daily email digest - own configurable send_hour/minute.
@@ -789,6 +799,18 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # otherwise re-trigger a full daily_auto_sync multiple times an hour if
     # this endpoint were invoked more often just to feed BCP.
     return {"status": "accepted", "message": f"Sync job started in background (force={force})"}
+
+@app.get("/sync/retry-check")
+async def trigger_retry_check(background_tasks: BackgroundTasks = None):
+    """
+    Dedicated 5-minute Vercel Cron entry (vercel.json) for
+    retry_scheduled_syncs - split out from the hourly /sync/auto so the
+    Retry Policy's interval (Admin > Sync) can be configured in minutes and
+    actually resolve at that granularity in production. See
+    retry_scheduled_syncs' own docstring for the full reasoning.
+    """
+    background_tasks.add_task(retry_scheduled_syncs)
+    return {"status": "accepted"}
 
 @app.post("/sync/property")
 async def sync_property_now(payload: dict):

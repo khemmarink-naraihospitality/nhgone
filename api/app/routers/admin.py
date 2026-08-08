@@ -47,7 +47,7 @@ class PropertyApiSettingsUpdate(BaseModel):
 
 class SyncRetrySettingsUpdate(BaseModel):
     retry_count: int = 2
-    retry_interval_hours: int = 1
+    retry_interval_minutes: int = 60
 
 class FtpSettingsUpdate(BaseModel):
     host: str
@@ -259,11 +259,11 @@ async def update_property_settings(property_id: str, request: PropertyApiSetting
 async def get_sync_retry_settings():
     """
     Global policy for main.py's retry_scheduled_syncs: how many times, and
-    how many hours apart, a property's Data Mart sync is auto-retried after
-    its own scheduled run if a table is still missing or errored that day.
-    Reuses sync_service's lookup (same one the retry job itself calls) so
-    this always reflects what will actually run, including the built-in
-    fallback (2 retries, 1h apart) before the settings row has been saved.
+    how many minutes apart, a property's Data Mart sync is auto-retried
+    after its own scheduled run if a table is still missing or errored that
+    day. Reuses sync_service's lookup (same one the retry job itself calls)
+    so this always reflects what will actually run, including the built-in
+    fallback (2 retries, 60 min apart) before the settings row has been saved.
     """
     try:
         data = await sync_service.get_sync_retry_settings()
@@ -275,17 +275,17 @@ async def get_sync_retry_settings():
 async def save_sync_retry_settings(request: SyncRetrySettingsUpdate):
     """
     Upsert the single global retry-policy row. Clamped server-side: 0-6
-    retries (0 disables the retry pass entirely), 1-12 hours between them -
-    the interval can't go below 1h since Vercel's cron is hourly (see
-    retry_scheduled_syncs' own docstring on why a sub-hour offset would
-    silently never fire in production).
+    retries (0 disables the retry pass entirely), 5-720 minutes between them
+    - the interval floors at 5 since retry_scheduled_syncs' dedicated cron
+    only ticks every 5 minutes in production (see its own docstring), so a
+    finer value would just resolve to that same 5-minute bucket anyway.
     """
     try:
         retry_count = max(0, min(request.retry_count, 6))
-        retry_interval_hours = max(1, min(request.retry_interval_hours, 12))
+        retry_interval_minutes = max(5, min(request.retry_interval_minutes, 720))
         admin_supabase = get_supabase_client()
         existing = admin_supabase.table("sync_retry_settings").select("id").limit(1).execute()
-        payload = {"retry_count": retry_count, "retry_interval_hours": retry_interval_hours}
+        payload = {"retry_count": retry_count, "retry_interval_minutes": retry_interval_minutes}
         if existing.data:
             admin_supabase.table("sync_retry_settings").update(payload).eq("id", existing.data[0]["id"]).execute()
         else:

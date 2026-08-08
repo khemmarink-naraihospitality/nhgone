@@ -13,6 +13,10 @@
     {
       "path": "/api/bcp/auto-capture",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/sync/retry-check",
+      "schedule": "*/5 * * * *"
     }
   ],
   "functions": {
