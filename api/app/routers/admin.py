@@ -349,7 +349,7 @@ async def upload_ftp_now():
     """
     try:
         report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
-        result = await sync_service.send_st_files_ftp_upload(report_date_str, mark_sent=False)
+        result = await sync_service.send_st_files_ftp_upload(report_date_str, mark_sent=False, sync_type="manual")
         if not result.get("uploaded"):
             reason = result.get("reason") or "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing uploaded - {reason}")

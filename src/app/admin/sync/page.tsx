@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
+import { format } from "date-fns";
 
 interface PropertySyncSettings {
   id: string;
@@ -52,6 +54,29 @@ const emptyFtpSettings: FtpSettings = {
   enabled: false, upload_hour: 4, upload_minute: 0,
 };
 
+interface SyncLogRow {
+  id: string;
+  created_at: string;
+  property: string | null;
+  target_table: string;
+  status: string;
+  message: string;
+  sync_type: string;
+}
+
+// Same tag palette as Admin > Activity Log, plus ST Files FTP - the action
+// this History widget was built to surface in the first place (it used to
+// be print()-only; see sync_service.py's _log_sync_row).
+const HISTORY_TAG: Record<string, { label: string; cls: string }> = {
+  "Reservations": { label: "RESERVATIONS", cls: "bg-indigo-50 text-indigo-600 border-indigo-100" },
+  "Customers":    { label: "CUSTOMERS",    cls: "bg-violet-50 text-violet-600 border-violet-100" },
+  "Payments":     { label: "PAYMENTS",     cls: "bg-amber-50 text-amber-600 border-amber-100" },
+  "Bills":        { label: "BILLS",        cls: "bg-emerald-50 text-emerald-600 border-emerald-100" },
+  "Resources":    { label: "RESOURCES",    cls: "bg-sky-50 text-sky-600 border-sky-100" },
+  "ST Files":     { label: "ST FILES",     cls: "bg-rose-50 text-rose-600 border-rose-100" },
+  "ST Files FTP": { label: "ST FILES FTP", cls: "bg-cyan-50 text-cyan-600 border-cyan-100" },
+};
+
 export default function AdminSyncPage() {
   const [properties, setProperties] = useState<PropertySyncSettings[]>([]);
   const [loading, setLoading] = useState(true);
@@ -65,6 +90,9 @@ export default function AdminSyncPage() {
   const [ftpPasswordSet, setFtpPasswordSet] = useState(false);
   const [ftpSaving, setFtpSaving] = useState(false);
   const [ftpTesting, setFtpTesting] = useState(false);
+
+  const [historyLogs, setHistoryLogs] = useState<SyncLogRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
 
   // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env
   // var points at a stale API deployment lacking newer endpoints/behavior
@@ -180,10 +208,42 @@ export default function AdminSyncPage() {
     }
   };
 
+  const fetchHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("sync_logs")
+        .select("id, created_at, property, target_table, status, message, sync_type")
+        .order("created_at", { ascending: false })
+        .limit(40);
+      if (error) throw error;
+      setHistoryLogs(data || []);
+    } catch (err) {
+      console.error("Failed to fetch sync history:", err);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchProperties();
     fetchRetrySettings();
     fetchFtpSettings();
+    fetchHistory();
+
+    // Live-updates as jobs run, matching Admin > Activity Log's own pattern -
+    // useful here specifically because "Upload Test Now"/manual retries fire
+    // from this same page, so the row they just created should appear
+    // without a manual refresh.
+    const subscription = supabase
+      .channel("sync_page_history")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "sync_logs" }, (payload) => {
+        setHistoryLogs((current) => [payload.new as SyncLogRow, ...current].slice(0, 40));
+      })
+      .subscribe();
+    return () => {
+      supabase.removeChannel(subscription);
+    };
   }, []);
 
   const handleToggleSync = async (prop: PropertySyncSettings) => {
@@ -460,6 +520,74 @@ export default function AdminSyncPage() {
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+        <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
+           <div>
+              <h3 className="text-sm font-bold text-slate-700">Recent Activity</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">Latest 40 actions from every job on this page - Data Mart sync, ST Files sync, and ST Files FTP upload.</p>
+           </div>
+           <div className="flex items-center gap-2">
+              <Link
+                href="/admin/logs"
+                className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-[#AAA024] transition-colors"
+              >
+                View Full Activity Log →
+              </Link>
+              <button
+                onClick={fetchHistory}
+                className="p-2 text-slate-400 hover:text-[#AAA024] transition-colors"
+                title="Refresh"
+              >
+                <svg className={`w-4 h-4 ${historyLoading ? "animate-spin" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+              </button>
+           </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50/30 border-b border-slate-100">
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Timestamp</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Action</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Trigger</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-6 py-3 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Message</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {historyLoading && historyLogs.length === 0 ? (
+                <tr><td colSpan={6} className="py-16 text-center"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+              ) : historyLogs.length === 0 ? (
+                <tr><td colSpan={6} className="py-16 text-center text-slate-400 text-sm">No activity recorded yet.</td></tr>
+              ) : historyLogs.map((log) => {
+                const tag = HISTORY_TAG[log.target_table] ?? { label: log.target_table.toUpperCase(), cls: "bg-slate-100 text-slate-500 border-slate-200" };
+                return (
+                  <tr key={log.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-6 py-3.5 whitespace-nowrap text-xs font-medium text-slate-700">
+                      {format(new Date(log.created_at), "dd MMM, HH:mm:ss")}
+                    </td>
+                    <td className="px-6 py-3.5 whitespace-nowrap text-xs text-slate-600">{log.property || "-"}</td>
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border ${tag.cls}`}>{tag.label}</span>
+                    </td>
+                    <td className="px-6 py-3.5 whitespace-nowrap text-xs text-slate-400 capitalize">{log.sync_type}</td>
+                    <td className="px-6 py-3.5 whitespace-nowrap">
+                      {log.status === "success" ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">Success</span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-100">Error</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-3.5 text-xs text-slate-500 max-w-md truncate" title={log.message}>{log.message}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
