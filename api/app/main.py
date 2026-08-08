@@ -553,22 +553,22 @@ async def retry_failed_syncs():
         print(f"Error in retry_failed_syncs: {str(e)}")
         traceback.print_exc()
 
-# Whole-hour offsets after a property's own sync_hour, not minutes - Vercel's
-# hourly cron (see daily_auto_sync's docstring) can only ever land on an
-# hour boundary in production, so a sub-hour offset would silently never
-# fire there. Two offsets = the "2 more times" a scheduled sync gets
-# retried if it didn't come in cleanly.
-_SCHEDULED_RETRY_OFFSET_HOURS = [1, 2]
-
 async def retry_scheduled_syncs():
     """
     Per-property equivalent of retry_failed_syncs above, but tied to that
-    property's OWN sync_hour instead of a fixed 09:00 - fires at sync_hour+1
-    and sync_hour+2 (Bangkok time) and, for each of that property's enabled
-    tables, retries it if today's latest sync_logs row is still "error" OR
-    there's no row at all yet for today (the scheduled run never fired at
-    all - e.g. a cold start/outage at that exact minute, not just a logged
-    failure). Already-succeeded tables are left untouched.
+    property's OWN sync_hour instead of a fixed 09:00, and for a configurable
+    count/spacing instead of a fixed two (Admin > Sync's Retry Policy card,
+    backed by sync_retry_settings - see sync_service.get_sync_retry_settings;
+    default is 2 retries, 1h apart, i.e. sync_hour+1 and sync_hour+2 Bangkok
+    time). For each of that property's enabled tables, retries it if today's
+    latest sync_logs row is still "error" OR there's no row at all yet for
+    today (the scheduled run never fired at all - e.g. a cold start/outage at
+    that exact minute, not just a logged failure). Already-succeeded tables
+    are left untouched.
+
+    Offsets are whole hours, not minutes - Vercel's hourly cron (see
+    daily_auto_sync's docstring) can only ever land on an hour boundary in
+    production, so a sub-hour interval would silently never fire there.
 
     No dedup logic needed here: every sync_* function this calls upserts on
     mews_id (see CLAUDE.md's Chunked upsert pattern), so re-running a table
@@ -577,6 +577,14 @@ async def retry_scheduled_syncs():
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     if not sync_service.supabase:
+        return
+
+    retry_settings = await sync_service.get_sync_retry_settings()
+    offset_hours = [
+        retry_settings["retry_interval_hours"] * i
+        for i in range(1, retry_settings["retry_count"] + 1)
+    ]
+    if not offset_hours:
         return
 
     try:
@@ -598,7 +606,7 @@ async def retry_scheduled_syncs():
         sched_minute = prop_settings.get("sync_minute")
         if sched_hour is None:
             continue
-        for offset in _SCHEDULED_RETRY_OFFSET_HOURS:
+        for offset in offset_hours:
             hour_matches = now.hour == (sched_hour + offset) % 24
             minute_matches = match_hour_only or sched_minute is None or now.minute == sched_minute
             if hour_matches and minute_matches:

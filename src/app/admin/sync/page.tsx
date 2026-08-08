@@ -31,11 +31,24 @@ const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] =
   { key: "sync_resources", label: "Resources" },
 ];
 
+interface RetrySettings {
+  retry_count: number;
+  retry_interval_hours: number;
+}
+
 export default function AdminSyncPage() {
   const [properties, setProperties] = useState<PropertySyncSettings[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProperty, setEditingProperty] = useState<PropertySyncSettings | null>(null);
   const [saving, setSaving] = useState(false);
+
+  const [retrySettings, setRetrySettings] = useState<RetrySettings>({ retry_count: 2, retry_interval_hours: 1 });
+  const [retrySaving, setRetrySaving] = useState(false);
+
+  // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env
+  // var points at a stale API deployment lacking newer endpoints/behavior
+  // (see admin/users' identical fix).
+  const apiUrl = "/api";
 
   const fetchProperties = async () => {
     setLoading(true);
@@ -44,7 +57,7 @@ export default function AdminSyncPage() {
         .from("property_api_settings")
         .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute")
         .order("property_name");
-      
+
       if (error) throw error;
       setProperties(data || []);
     } catch (err: unknown) {
@@ -54,8 +67,41 @@ export default function AdminSyncPage() {
     }
   };
 
+  const fetchRetrySettings = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/admin/sync/retry-settings`);
+      const result = await res.json();
+      if (result.status === "success" && result.data) {
+        setRetrySettings({
+          retry_count: result.data.retry_count ?? 2,
+          retry_interval_hours: result.data.retry_interval_hours ?? 1,
+        });
+      }
+    } catch (err) {
+      console.error("Failed to fetch retry settings:", err);
+    }
+  };
+
+  const handleSaveRetrySettings = async () => {
+    setRetrySaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/admin/sync/retry-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(retrySettings),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.detail || result.message);
+    } catch (err: any) {
+      alert("Error saving retry settings: " + err.message);
+    } finally {
+      setRetrySaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchProperties();
+    fetchRetrySettings();
   }, []);
 
   const handleToggleSync = async (prop: PropertySyncSettings) => {
@@ -119,6 +165,51 @@ export default function AdminSyncPage() {
            <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Scheduler Active (Asia/Bangkok)</span>
         </div>
       </PageHeader>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+        <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+           <h3 className="text-sm font-bold text-slate-700">Failed-Sync Retry Policy</h3>
+           <p className="text-[11px] text-slate-400 mt-0.5">Applies to every property&apos;s Data Mart sync (Reservations/Customers/Payments/Bills/Resources). If a table is still missing or errored after its scheduled run, it&apos;s retried this many times, this many hours apart.</p>
+        </div>
+        <div className="p-5 flex items-center gap-6">
+           <div className="flex flex-col items-center">
+              <input
+                type="number"
+                min="0"
+                max="6"
+                className="w-16 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-bold text-slate-800 py-2 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                value={retrySettings.retry_count}
+                onChange={(e) => setRetrySettings({ ...retrySettings, retry_count: parseInt(e.target.value) || 0 })}
+              />
+              <span className="text-[9px] font-bold text-slate-400 tracking-widest mt-1">RETRY COUNT</span>
+           </div>
+           <div className="flex flex-col items-center">
+              <input
+                type="number"
+                min="1"
+                max="12"
+                className="w-16 bg-slate-50 border border-slate-200 rounded-xl text-center text-xl font-mono font-bold text-slate-800 py-2 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                value={retrySettings.retry_interval_hours}
+                onChange={(e) => setRetrySettings({ ...retrySettings, retry_interval_hours: parseInt(e.target.value) || 1 })}
+              />
+              <span className="text-[9px] font-bold text-slate-400 tracking-widest mt-1">HOURS APART</span>
+           </div>
+           <div className="text-xs text-slate-400 flex-1">
+              {retrySettings.retry_count === 0 ? (
+                "Retries disabled - a failed table stays failed until the 09:00 daily catch-up."
+              ) : (
+                <>Fires at {Array.from({ length: retrySettings.retry_count }, (_, i) => `+${retrySettings.retry_interval_hours * (i + 1)}h`).join(", ")} after each property&apos;s own scheduled sync time.</>
+              )}
+           </div>
+           <button
+             onClick={handleSaveRetrySettings}
+             disabled={retrySaving}
+             className="px-5 py-2.5 bg-[#AAA024] text-white rounded-xl text-xs font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50 shrink-0"
+           >
+             {retrySaving ? "Saving..." : "Save"}
+           </button>
+        </div>
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
