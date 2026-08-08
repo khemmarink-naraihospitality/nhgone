@@ -56,6 +56,8 @@ interface RvReport {
     canceled_items_skipped: number;
   };
   gl_source: "mews_categories" | "billing_name_defaults";
+  // Absent on reports imported before the GL chart was property-gated.
+  gl_verified?: boolean;
   _synced_at?: string;
 }
 
@@ -333,6 +335,10 @@ export default function RvPage() {
   };
 
   const hasUnmapped = !!report?.payments.some((p) => p.unmapped);
+  // Only warn once a report is actually loaded, and treat an older stored
+  // report (no gl_verified field) as verified rather than alarming on every
+  // pre-existing import.
+  const glUnverified = !!report && report.gl_verified === false;
 
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
@@ -408,6 +414,17 @@ export default function RvPage() {
 
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
+        )}
+
+        {glUnverified && (
+          <div className="p-4 bg-[var(--paper)] border border-amber-300 text-amber-800 text-sm leading-relaxed mb-6">
+            <span className="font-bold">GL codes not verified for this property.</span> The codes below
+            come from Lub d Bangkok Chinatown&apos;s chart of accounts, and other properties do differ —
+            Siem Reap books Guest Ledger to 11401 rather than 21203, online payments to 11208 rather
+            than 11399, and laundry to 30450 rather than 30445. The figures are correct, but the
+            account each one lands in may not be. Downloading the journal file is blocked until this
+            property&apos;s GL mapping is confirmed.
+          </div>
         )}
 
         {hasUnmapped && (

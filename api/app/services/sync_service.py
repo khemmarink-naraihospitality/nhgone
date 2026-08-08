@@ -2010,14 +2010,30 @@ class SyncService:
         ("room adjustment", "30005", "111"),
         ("no show",         "30010", "111"),
         ("early check in",  "30020", "111"),
-        ("service charge",  "30805", "111"),
         ("breakfast",       "30105", "121"),
         ("laundry",         "30445", "141"),
         ("night",           "30001", "111"),
     ]
     _RV_REVENUE_GL_FALLBACK = ("30550", "122")   # products / minibar / retail
+    # Service charge is its own GL account but keeps the DEPARTMENT of whatever
+    # it was charged on: the real file books "Included Breakfast SVC (Adults)"
+    # to 30805/121 (service charge, breakfast dept) while a plain
+    # "Service Charge" on a room is 30805/111. Matching only the literal words
+    # "service charge" missed the "... SVC" spellings entirely and mis-booked
+    # them to 30105, so both spellings are matched here.
+    _RV_SERVICE_CHARGE_GL = "30805"
+    _RV_SERVICE_CHARGE_DEFAULT_DEPT = "111"
     _RV_VAT_GL = ("21600", "")
     _RV_GUEST_LEDGER_GL = ("21203", "000")
+
+    # Properties whose GL chart has been verified line-by-line against a real
+    # MEWS-generated RV file. The codes above came from Chinatown's file and are
+    # NOT portable: Siem Reap's own file books Guest Ledger to 11401 (not
+    # 21203), online payments to 11208 (not 11399) and laundry to 30450 (not
+    # 30445). Exporting a financial journal for an unverified property would
+    # silently post to the wrong accounts, so get_rv_export refuses unless the
+    # property is listed here or has explicit rv_gl_mappings rows.
+    _RV_GL_VERIFIED_PROPERTIES = {"Lub d Bangkok Chinatown"}
 
     @staticmethod
     def _rv_payment_key(payment: dict) -> str:
@@ -2056,14 +2072,27 @@ class SyncService:
             return {}
         return {r["accounting_category_id"]: r for r in (res.data or []) if r.get("accounting_category_id")}
 
+    @staticmethod
+    def _rv_is_service_charge(low: str) -> bool:
+        """MEWS names service-charge lines either "Service Charge [Room]" or
+        "<product> SVC", e.g. "Included Breakfast SVC (Adults)". SVC is matched
+        as a whole word so a product that merely contains those letters isn't
+        swept up."""
+        return "service charge" in low or re.search(r"\bsvc\b", low) is not None
+
     def _rv_revenue_gl(self, billing_name: str, category_id: str, overrides: dict) -> tuple:
         override = overrides.get(category_id or "")
         if override and override.get("gl_code"):
             return override["gl_code"], override.get("department") or ""
         low = (billing_name or "").lower()
-        for keyword, gl, dept in self._RV_REVENUE_GL:
-            if keyword in low:
-                return gl, dept
+        base = next(((gl, dept) for keyword, gl, dept in self._RV_REVENUE_GL if keyword in low), None)
+        if self._rv_is_service_charge(low):
+            # Service charge on a product keeps that product's department
+            # (breakfast SVC -> 121); a bare room service charge has no base
+            # product and falls back to accommodation's own department.
+            return self._RV_SERVICE_CHARGE_GL, (base[1] if base else self._RV_SERVICE_CHARGE_DEFAULT_DEPT)
+        if base:
+            return base
         return self._RV_REVENUE_GL_FALLBACK
 
     async def get_rv_report(self, property_name: str, date: str) -> dict:
@@ -2186,6 +2215,11 @@ class SyncService:
             # generic: until MEWS enables Accounting Categories, revenue GL
             # codes come from BillingName matching, not from MEWS itself.
             "gl_source": "mews_categories" if overrides else "billing_name_defaults",
+            # False means the GL codes shown are Chinatown's, applied to a
+            # property that has never been checked against its own RV file -
+            # the report is still useful to read, but get_rv_export refuses to
+            # produce a financial file from it.
+            "gl_verified": bool(overrides) or property_name in self._RV_GL_VERIFIED_PROPERTIES,
         }
 
     async def get_rv_list(self, property_name: str) -> list:
@@ -2249,6 +2283,16 @@ class SyncService:
         property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
         if not property_code:
             raise ValueError(f"No Property Code configured yet for {property_name} - set it in Admin > API")
+        if (property_name not in self._RV_GL_VERIFIED_PROPERTIES
+                and not self._rv_gl_overrides(property_name)):
+            raise ValueError(
+                f"Cannot export: the GL chart for {property_name} has not been verified. "
+                "The built-in GL codes were taken from Lub d Bangkok Chinatown's own RV file "
+                "and other properties differ (Siem Reap books Guest Ledger to 11401 rather "
+                "than 21203, online payments to 11208 rather than 11399, laundry to 30450 "
+                "rather than 30445). Add this property's GL mapping to rv_gl_mappings first, "
+                "or wait until MEWS enables accountingCategories/getAll. Viewing the report "
+                "on screen still works.")
         res = self.supabase.table("rv_files_sync").select("data").eq(
             "property", property_name).eq("report_date", date_str).limit(1).execute()
         if not res.data:
