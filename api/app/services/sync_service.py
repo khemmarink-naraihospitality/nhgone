@@ -2314,12 +2314,19 @@ class SyncService:
         def row(gl, description, amount, natural_dc, dept):
             """natural_dc is the letter this kind of line carries when its
             amount is positive; a negative amount flips it and is written as
-            a magnitude."""
+            a magnitude.
+
+            Field 8 is capped at 50 characters because that is the declared
+            width of TransDesc in Infor's interface spec, and MEWS's own file
+            truncates to exactly that. It matters more than it looks: the
+            SunSystems import profile posts with "Post if no errors", so one
+            over-length line rejects the entire day's journal, not just its
+            own row."""
             dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
             value = f"{abs(amount):.2f}"
             return "|".join([
                 "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
-                f"RV{yyyymmdd}", description, ddmmyyyy, "THB", value, "1", value,
+                f"RV{yyyymmdd}", (description or "")[:50], ddmmyyyy, "THB", value, "1", value,
                 "", "", dc, property_code, dept or "", "ZZ", "ZZ",
             ] + [""] * 21)
 
