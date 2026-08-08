@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
 import asyncio
+from collections import Counter
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY
@@ -1990,50 +1991,90 @@ class SyncService:
     # (MS_RV_20260807.csv, Lub d Bangkok Chinatown). The payment half of the
     # file needs no extra MEWS permission: every distinction the file draws is
     # already on the payment object itself.
-    _RV_PAYMENT_GL = {
-        "CashPayment":                   ("11110", "000", "Cash payment"),
-        "CreditCardPayment":             ("11403", "000", "Card payment"),
-        "ExternalPayment/OnlinePayment": ("11399", "000", "External payment (Online payment)"),
-        "ExternalPayment/WireTransfer":  ("11399", "000", "External payment (Wire transfer)"),
-        "ExternalPayment/Prepayment":    ("21201", "",    "External payment (Prepayment)"),
-        "ExternalPayment/Complimentary": ("60300", "241", "External payment (Complimentary)"),
+    # Each property posts to its OWN chart of accounts - they are not variations
+    # on a theme. Siem Reap books Guest Ledger to 11401 where Chinatown uses
+    # 21203, online payments to 11208 rather than 11399, laundry to 30450 rather
+    # than 30445, and carries accounts Chinatown has no equivalent for at all
+    # (11416 breakfast, 11704 in-country VAT, 30505 commission). Every entry
+    # below was read off that property's own MEWS-generated RV file.
+    #
+    # MEWS only puts an AccountingCategoryId GUID on each item, and resolving
+    # those needs accountingCategories/getAll, which 401s on all 8 properties
+    # today. Until that permission is granted, revenue is matched on the item's
+    # BillingName: first substring hit wins, so specific entries come before
+    # generic ones. A property absent from this map cannot be exported at all
+    # (see get_rv_export) rather than silently borrowing another's accounts.
+    _RV_CHARTS = {
+        "Lub d Bangkok Chinatown": {
+            "payments": {
+                "CashPayment":                   ("11110", "000"),
+                "CreditCardPayment":             ("11403", "000"),
+                "ExternalPayment/OnlinePayment": ("11399", "000"),
+                "ExternalPayment/WireTransfer":  ("11399", "000"),
+                "ExternalPayment/Prepayment":    ("21201", ""),
+                "ExternalPayment/Complimentary": ("60300", "241"),
+            },
+            "revenue": [
+                ("room adjustment", "30005", "111"),
+                ("no show",         "30010", "111"),
+                ("early check in",  "30020", "111"),
+                ("breakfast",       "30105", "121"),
+                ("laundry",         "30445", "141"),
+                ("night",           "30001", "111"),
+            ],
+            "fallback": ("30550", "122"),        # products / minibar / retail
+            # Service charge is its own account but keeps the DEPARTMENT of
+            # whatever it was charged on: "Included Breakfast SVC (Adults)"
+            # books to 30805/121 while a plain room service charge is 30805/111.
+            "service_charge": ("30805", "111"),
+            "vat": ("21600", ""),
+            "guest_ledger": ("21203", "000"),
+        },
+        "Lub d Siem Reap": {
+            "payments": {
+                "CashPayment":                   ("11110", "0"),
+                "CreditCardPayment":             ("11403", "0"),
+                "ExternalPayment/OnlinePayment": ("11208", "000"),
+                "ExternalPayment/Invoice":       ("11402", "0"),
+            },
+            "revenue": [
+                ("rounding adjustment", "30005", "111"),
+                ("no show",            "30010", "111"),
+                ("included breakfast", "11416", "000"),
+                ("10% vat",            "11704", "000"),
+                ("laundry",            "30450", "141"),
+                ("commission",         "30505", "134"),
+                ("night",              "30001", "111"),
+                ("room revenue",       "30001", "111"),
+                ("extra person",       "30001", "111"),
+            ],
+            # Everything else at Siem Reap is an activity or incidental (tours,
+            # lost key card, blanket upgrade) and books to 30815 - the one
+            # inferred entry here, from every remaining item on both verified
+            # days landing there. Siem Reap posts no service charge at all.
+            "fallback": ("30815", "141"),
+            "service_charge": None,
+            "vat": ("21600", ""),
+            "guest_ledger": ("11401", "000"),
+        },
     }
 
-    # Revenue side: MEWS puts only an AccountingCategoryId GUID on each order
-    # item, and resolving those to GL codes needs accountingCategories/getAll -
-    # which currently 401s on all 8 properties because MEWS hasn't enabled the
-    # Accounting Categories permission on the Connector tokens. Until it is,
-    # GL codes are matched from the item's own BillingName using the table
-    # below, every entry verified against the real RV file. Order matters:
-    # first substring hit wins, so put the specific before the generic.
-    _RV_REVENUE_GL = [
-        ("room adjustment", "30005", "111"),
-        ("no show",         "30010", "111"),
-        ("early check in",  "30020", "111"),
-        ("breakfast",       "30105", "121"),
-        ("laundry",         "30445", "141"),
-        ("night",           "30001", "111"),
-    ]
-    _RV_REVENUE_GL_FALLBACK = ("30550", "122")   # products / minibar / retail
-    # Service charge is its own GL account but keeps the DEPARTMENT of whatever
-    # it was charged on: the real file books "Included Breakfast SVC (Adults)"
-    # to 30805/121 (service charge, breakfast dept) while a plain
-    # "Service Charge" on a room is 30805/111. Matching only the literal words
-    # "service charge" missed the "... SVC" spellings entirely and mis-booked
-    # them to 30105, so both spellings are matched here.
-    _RV_SERVICE_CHARGE_GL = "30805"
-    _RV_SERVICE_CHARGE_DEFAULT_DEPT = "111"
-    _RV_VAT_GL = ("21600", "")
-    _RV_GUEST_LEDGER_GL = ("21203", "000")
-
-    # Properties whose GL chart has been verified line-by-line against a real
-    # MEWS-generated RV file. The codes above came from Chinatown's file and are
-    # NOT portable: Siem Reap's own file books Guest Ledger to 11401 (not
-    # 21203), online payments to 11208 (not 11399) and laundry to 30450 (not
-    # 30445). Exporting a financial journal for an unverified property would
-    # silently post to the wrong accounts, so get_rv_export refuses unless the
-    # property is listed here or has explicit rv_gl_mappings rows.
-    _RV_GL_VERIFIED_PROPERTIES = {"Lub d Bangkok Chinatown"}
+    # Market segment codes ARE shared across the group - Chinatown's and Siem
+    # Reap's files agree on all seven - so this is keyed by segment name, not by
+    # property. Recovered by matching each segment's accommodation revenue
+    # against the file bucket for bucket; Siem Reap reconciled exactly on every
+    # one of the seven. "Travel Agent" really does map to a blank code. A
+    # segment not listed here also yields blank, which is a value the files
+    # themselves use and so cannot break the import.
+    _RV_MARKET_SEGMENT_CODES = {
+        "Own Web":              "100",
+        "Online Travel Agent":  "101",
+        "Direct Host":          "102",
+        "Direct Reservation":   "103",
+        "Social Chats":         "105",
+        "Group Leisure Series": "106",
+        "Travel Agent":         "",
+    }
 
     @staticmethod
     def _rv_payment_key(payment: dict) -> str:
@@ -2057,26 +2098,6 @@ class SyncService:
         "Complimentary": "Complimentary",
     }
 
-    # Field 22 (Analysis 6) is MARKET SEGMENT in Infor's layout. MEWS business
-    # segments carry only a name, so these numeric codes are Lub D's own; they
-    # were recovered by matching each segment's accommodation revenue against
-    # the real file bucket for bucket, and five of the six reconcile to the
-    # satang (the sixth is the OTA bucket, off by exactly the day's known
-    # post-export repricing). "Travel Agent" really does map to a blank code in
-    # the file, so it is spelled out here rather than left out - an unlisted
-    # segment also yields blank, which is a value the file itself uses and
-    # therefore cannot break the import.
-    _RV_MARKET_SEGMENT_CODES = {
-        "Lub d Bangkok Chinatown": {
-            "Own Web": "100",
-            "Online Travel Agent": "101",
-            "Direct Host": "102",
-            "Social Chats": "105",
-            "Group Leisure Series": "106",
-            "Travel Agent": "",
-        },
-    }
-
     async def _rv_market_segments(self, property_name: str, items: list, stay_service_id) -> dict:
         """Maps stay-service ServiceOrderIds to their market segment code.
 
@@ -2089,10 +2110,9 @@ class SyncService:
         reservations, and reservations/getAll rejects an entire batch that
         contains a single non-reservation id.
 
-        Degrades to {} (every row blank, i.e. today's behaviour) if the
-        property has no segment mapping or the lookups fail."""
-        codes = self._RV_MARKET_SEGMENT_CODES.get(property_name)
-        if not codes or not stay_service_id:
+        Degrades to {} (every row blank) if the lookups fail."""
+        codes = self._RV_MARKET_SEGMENT_CODES
+        if not stay_service_id:
             return {}
         ids = sorted({i["ServiceOrderId"] for i in items
                       if i.get("ServiceId") == stay_service_id and i.get("ServiceOrderId")})
@@ -2149,7 +2169,12 @@ class SyncService:
         verified line-by-line against the real file."""
         ptype = pay.get("Type") or ""
         amount = pay.get("Amount") or {}
-        notes = (pay.get("Notes") or "").strip()
+        # Kept verbatim rather than trimmed: front desk often types a trailing
+        # space ("PAID EXTEND ") and the real file preserves it inside the
+        # brackets. Only the emptiness test ignores whitespace.
+        notes = pay.get("Notes") or ""
+        if not notes.strip():
+            notes = ""
         # MEWS returns money in as negative, so a positive amount is money
         # going back out. Every payment kind is renamed for that case in the
         # real file - "Cash refund THB", "Card refund (...)", "External refund
@@ -2191,16 +2216,34 @@ class SyncService:
         return ptype or "Payment"
 
     @staticmethod
-    def _rv_display_name(name: str) -> str:
-        """The item's BillingName is used verbatim, both for grouping and as
-        the journal description. Accommodation comes through as
-        "Night 8/7/2026" and the real RV file keeps that date in the
-        description rather than collapsing it to "Night".
+    def _rv_display_name(name: str, report_day=None) -> str:
+        """The item's BillingName becomes the journal description, and is used
+        for grouping too.
 
         Deliberately not trimmed: several MEWS products are named with a
         trailing space ("Coke ", "Dental Kit ") and the real file preserves it,
-        so trimming here would make otherwise-identical rows differ."""
-        return name or ""
+        so trimming here would make otherwise-identical rows differ.
+
+        The one thing that IS normalised is the date accommodation carries.
+        MEWS formats it per property - Chinatown returns "Night 8/6/2026" but
+        Siem Reap returns "Night 06/08/2026" for the very same night - while
+        both properties' RV files write it as M/D/YYYY. Rather than guess which
+        way round an ambiguous date is, the trailing date is only rewritten
+        when it parses (either order) to the day being reported, which is the
+        only date accommodation for that day can carry."""
+        name = name or ""
+        if report_day is None:
+            return name
+        match = re.search(r"^(.*?)(\d{1,2})/(\d{1,2})/(\d{4})\s*$", name)
+        if not match:
+            return name
+        prefix, first, second, year = match.group(1), int(match.group(2)), int(match.group(3)), int(match.group(4))
+        if year != report_day.year:
+            return name
+        if not ((first, second) == (report_day.month, report_day.day)
+                or (second, first) == (report_day.month, report_day.day)):
+            return name
+        return f"{prefix}{report_day.month}/{report_day.day}/{report_day.year}"
 
     def _rv_gl_overrides(self, property_name: str) -> dict:
         """Per-AccountingCategoryId GL overrides from rv_gl_mappings, keyed by
@@ -2226,20 +2269,26 @@ class SyncService:
         swept up."""
         return "service charge" in low or re.search(r"\bsvc\b", low) is not None
 
-    def _rv_revenue_gl(self, billing_name: str, category_id: str, overrides: dict) -> tuple:
+    def _rv_chart(self, property_name: str) -> dict:
+        """The property's chart of accounts, or {} if it has never been
+        verified against that property's own RV file."""
+        return self._RV_CHARTS.get(property_name) or {}
+
+    def _rv_revenue_gl(self, billing_name: str, category_id: str, overrides: dict, chart: dict) -> tuple:
         override = overrides.get(category_id or "")
         if override and override.get("gl_code"):
             return override["gl_code"], override.get("department") or ""
         low = (billing_name or "").lower()
-        base = next(((gl, dept) for keyword, gl, dept in self._RV_REVENUE_GL if keyword in low), None)
-        if self._rv_is_service_charge(low):
+        base = next(((gl, dept) for keyword, gl, dept in chart.get("revenue", []) if keyword in low), None)
+        service_charge = chart.get("service_charge")
+        if service_charge and self._rv_is_service_charge(low):
             # Service charge on a product keeps that product's department
             # (breakfast SVC -> 121); a bare room service charge has no base
             # product and falls back to accommodation's own department.
-            return self._RV_SERVICE_CHARGE_GL, (base[1] if base else self._RV_SERVICE_CHARGE_DEFAULT_DEPT)
+            return service_charge[0], (base[1] if base else service_charge[1])
         if base:
             return base
-        return self._RV_REVENUE_GL_FALLBACK
+        return chart.get("fallback") or ("", "")
 
     async def get_rv_report(self, property_name: str, date: str) -> dict:
         """
@@ -2290,6 +2339,7 @@ class SyncService:
         )
 
         overrides = self._rv_gl_overrides(property_name)
+        chart = self._rv_chart(property_name)
         stay = self._resolve_stay_service(services_res.get("Services", []))
 
         # --- Revenue -------------------------------------------------------
@@ -2300,11 +2350,14 @@ class SyncService:
             property_name, live_items, stay.get("Id") if stay else None)
 
         revenue, vat_total = {}, 0.0
+        currencies = Counter()
         for item in live_items:
             amount = item.get("Amount") or {}
+            if amount.get("Currency"):
+                currencies[amount["Currency"]] += 1
             net = amount.get("NetValue") or 0.0
-            name = self._rv_display_name(item.get("BillingName") or "")
-            gl, dept = self._rv_revenue_gl(name, item.get("AccountingCategoryId"), overrides)
+            name = self._rv_display_name(item.get("BillingName") or "", day)
+            gl, dept = self._rv_revenue_gl(name, item.get("AccountingCategoryId"), overrides, chart)
             segment = segments.get(item.get("ServiceOrderId"), "") or ""
             key = (gl, dept, name, segment)
             row = revenue.setdefault(key, {"gl_code": gl, "department": dept, "name": name,
@@ -2346,11 +2399,11 @@ class SyncService:
         for pay in live_payments:
             net = (pay.get("Amount") or {}).get("NetValue") or 0.0
             key = self._rv_payment_key(pay)
-            mapped = self._RV_PAYMENT_GL.get(key)
+            mapped = (chart.get("payments") or {}).get(key)
             # An unrecognised payment type must NOT be quietly booked to some
             # real GL account - it's left unmapped so the UI can flag it and
             # somebody decides where it belongs.
-            gl, dept, _ = mapped if mapped else ("", "", "")
+            gl, dept = mapped if mapped else ("", "")
             payment_rows.append({
                 "gl_code": gl,
                 "department": dept,
@@ -2376,11 +2429,15 @@ class SyncService:
             "revenue": revenue_rows,
             "payments": payment_rows,
             "vat": round(vat_total, 2),
-            "vat_gl_code": self._RV_VAT_GL[0],
+            # Field 10 of the journal. Siem Reap posts in USD, not THB, so this
+            # cannot be assumed - it is the currency MEWS actually stamped on
+            # the day's items (the most common one, if a day ever mixes them).
+            "currency": (currencies.most_common(1)[0][0] if currencies else "THB"),
+            "vat_gl_code": (chart.get("vat") or ("", ""))[0],
             # Guest Ledger is the balancing row: whatever the day earned but
             # didn't settle is still owed on somebody's open bill.
             "guest_ledger": round(revenue_net + vat_total - payments_total, 2),
-            "guest_ledger_gl_code": self._RV_GUEST_LEDGER_GL[0],
+            "guest_ledger_gl_code": (chart.get("guest_ledger") or ("", ""))[0],
             "totals": {
                 "revenue_net": round(revenue_net, 2),
                 "vat": round(vat_total, 2),
@@ -2400,7 +2457,7 @@ class SyncService:
             # property that has never been checked against its own RV file -
             # the report is still useful to read, but get_rv_export refuses to
             # produce a financial file from it.
-            "gl_verified": bool(overrides) or property_name in self._RV_GL_VERIFIED_PROPERTIES,
+            "gl_verified": bool(overrides) or bool(chart),
         }
 
     async def get_rv_list(self, property_name: str) -> list:
@@ -2464,16 +2521,15 @@ class SyncService:
         property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
         if not property_code:
             raise ValueError(f"No Property Code configured yet for {property_name} - set it in Admin > API")
-        if (property_name not in self._RV_GL_VERIFIED_PROPERTIES
-                and not self._rv_gl_overrides(property_name)):
+        chart = self._rv_chart(property_name)
+        if not chart and not self._rv_gl_overrides(property_name):
             raise ValueError(
-                f"Cannot export: the GL chart for {property_name} has not been verified. "
-                "The built-in GL codes were taken from Lub d Bangkok Chinatown's own RV file "
-                "and other properties differ (Siem Reap books Guest Ledger to 11401 rather "
-                "than 21203, online payments to 11208 rather than 11399, laundry to 30450 "
-                "rather than 30445). Add this property's GL mapping to rv_gl_mappings first, "
-                "or wait until MEWS enables accountingCategories/getAll. Viewing the report "
-                "on screen still works.")
+                f"Cannot export: no chart of accounts has been verified for {property_name}. "
+                "Each property posts to its own accounts - Siem Reap books Guest Ledger to "
+                "11401 where Chinatown uses 21203 - so no other property's codes can stand "
+                "in. Add this property's GL mapping to rv_gl_mappings first, or wait until "
+                "MEWS enables accountingCategories/getAll. Viewing the report on screen "
+                "still works.")
         res = self.supabase.table("rv_files_sync").select("data").eq(
             "property", property_name).eq("report_date", date_str).limit(1).execute()
         if not res.data:
@@ -2491,6 +2547,7 @@ class SyncService:
         ddmmyyyy = day.strftime("%d%m%Y")
         yyyymmdd = day.strftime("%Y%m%d")
         month_code = "0" + day.strftime("%m")
+        currency = report.get("currency") or "THB"
 
         def row(gl, description, amount, natural_dc, dept, market_segment=""):
             """natural_dc is the letter this kind of line carries when its
@@ -2511,7 +2568,7 @@ class SyncService:
             tail[1] = market_segment or ""
             return "|".join([
                 "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
-                f"RV{yyyymmdd}", (description or "")[:50], ddmmyyyy, "THB", value, "1", value,
+                f"RV{yyyymmdd}", (description or "")[:50], ddmmyyyy, currency, value, "1", value,
                 "", "", dc, property_code, dept or "", "ZZ", "ZZ",
             ] + tail)
 
@@ -2520,12 +2577,14 @@ class SyncService:
             lines.append(row(r["gl_code"], r["name"], r["amount"], "C", r.get("department"),
                              r.get("market_segment")))
         if report.get("vat"):
-            lines.append(row(self._RV_VAT_GL[0], "VAT", report["vat"], "C", self._RV_VAT_GL[1]))
+            vat_gl = chart.get("vat") or ("", "")
+            lines.append(row(vat_gl[0], "VAT", report["vat"], "C", vat_gl[1]))
         for p in report.get("payments", []):
             lines.append(row(p["gl_code"], p["name"], p["amount"], "D", p.get("department")))
         if report.get("guest_ledger"):
-            lines.append(row(self._RV_GUEST_LEDGER_GL[0], "Guest Ledger",
-                             report["guest_ledger"], "D", self._RV_GUEST_LEDGER_GL[1]))
+            ledger_gl = chart.get("guest_ledger") or ("", "")
+            lines.append(row(ledger_gl[0], "Guest Ledger",
+                             report["guest_ledger"], "D", ledger_gl[1]))
 
         filename = f"{property_code}_RV_{yyyymmdd}.csv"
         return "\n".join(lines), filename

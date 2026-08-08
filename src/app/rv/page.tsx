@@ -57,6 +57,8 @@ interface RvReport {
     payment_items: number;
     canceled_items_skipped: number;
   };
+  // Siem Reap posts in USD, not THB - absent on reports imported before this.
+  currency?: string;
   gl_source: "mews_categories" | "billing_name_defaults";
   // Absent on reports imported before the GL chart was property-gated.
   gl_verified?: boolean;
@@ -308,7 +310,7 @@ export default function RvPage() {
           <tr className="bg-[var(--text-primary)]/5">
             <th className={thCls}>Line</th>
             <th className={thCls}>GL Account</th>
-            <th className={`${thCls} text-right`}>Amount (THB)</th>
+            <th className={`${thCls} text-right`}>Amount ({r.currency || "THB"})</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-[var(--text-primary)]/5">
@@ -327,8 +329,8 @@ export default function RvPage() {
   const renderTab = () => {
     if (!report) return null;
     switch (activeTab) {
-      case "revenue": return journalTable(report.revenue, "Amount (THB)", true);
-      case "payments": return journalTable(report.payments, "Amount (THB)");
+      case "revenue": return journalTable(report.revenue, `Amount (${currency})`, true);
+      case "payments": return journalTable(report.payments, `Amount (${currency})`);
       case "summary": return summaryTable(report);
       default: return null;
     }
@@ -343,6 +345,7 @@ export default function RvPage() {
     }
   };
 
+  const currency = report?.currency || "THB";
   const hasUnmapped = !!report?.payments.some((p) => p.unmapped);
   // Only warn once a report is actually loaded, and treat an older stored
   // report (no gl_verified field) as verified rather than alarming on every
