@@ -311,7 +311,7 @@ export default function AdminSyncPage() {
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 border-b border-slate-100 bg-slate-50/50">
            <h3 className="text-sm font-bold text-slate-700">Failed-Sync Retry Policy</h3>
-           <p className="text-[11px] text-slate-400 mt-0.5">Applies to every property&apos;s Data Mart sync (Reservations/Customers/Payments/Bills/Resources). If a table is still missing or errored after its scheduled run, it&apos;s retried this many times, this many hours apart.</p>
+           <p className="text-[11px] text-slate-400 mt-0.5">Applies to every property&apos;s Data Mart sync (Reservations/Customers/Payments/Bills/Resources) and ST Files sync, each checked against its own schedule. If still missing or errored after its scheduled run, it&apos;s retried this many times, this many minutes apart.</p>
         </div>
         <div className="p-5 flex items-center gap-6">
            <div className="flex flex-col items-center">

@@ -599,16 +599,19 @@ async def retry_failed_syncs():
 
 async def retry_scheduled_syncs():
     """
-    Per-property equivalent of retry_failed_syncs above, but tied to that
-    property's OWN sync_hour/minute instead of a fixed 09:00, and for a
-    configurable count/spacing instead of a fixed two (Admin > Sync's Retry
-    Policy card, backed by sync_retry_settings - see
-    sync_service.get_sync_retry_settings; default is 2 retries, 60 minutes
-    apart, i.e. sync_time+1h and sync_time+2h). For each of that property's
-    enabled tables, retries it if today's latest sync_logs row is still
-    "error" OR there's no row at all yet for today (the scheduled run never
-    fired at all - e.g. a cold start/outage at that exact minute, not just a
-    logged failure). Already-succeeded tables are left untouched.
+    Per-property equivalent of retry_failed_syncs above, but tied to each
+    property's OWN schedule instead of a fixed 09:00, and for a configurable
+    count/spacing instead of a fixed two (Admin > Sync's Retry Policy card,
+    backed by sync_retry_settings - see sync_service.get_sync_retry_settings;
+    default is 2 retries, 60 minutes apart). Covers BOTH of a property's
+    independent schedules: the 5-table Data Mart sync (sync_hour/minute) and
+    ST Files (st_files_sync_hour/minute, which a property can run on a
+    completely different clock, or not at all - see daily_auto_sync_st_files'
+    own docstring). A property can be due for either, both, or neither on any
+    given tick; retries whatever's still "error" or has no sync_logs row at
+    all yet for today (the scheduled run never fired - e.g. a cold start/
+    outage at that exact minute, not just a logged failure). Already-
+    succeeded tables/ST Files are left untouched.
 
     Runs on its OWN dedicated Vercel Cron entry (/sync/retry-check,
     */5 * * * * - see vercel.json), separate from the hourly /sync/auto,
@@ -639,9 +642,15 @@ async def retry_scheduled_syncs():
         return
 
     try:
+        # No top-level enabled filter here (unlike before) since Data Mart
+        # and ST Files are checked independently below - a property with
+        # Data Mart sync off but ST Files on (or vice versa) still needs to
+        # be considered for whichever one it has enabled.
         props_res = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, sync_hour, sync_minute, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources") \
-            .eq("sync_enabled", True).execute()
+            .select("id, property_name, sync_enabled, sync_hour, sync_minute, "
+                     "sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, "
+                     "st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute") \
+            .execute()
     except Exception as e:
         print(f"Error in retry_scheduled_syncs (fetching properties): {str(e)}")
         return
@@ -649,18 +658,25 @@ async def retry_scheduled_syncs():
     bucket = 5 if os.environ.get("VERCEL") else 1
     now_bucket = ((now.hour * 60 + now.minute) // bucket) * bucket
 
-    due = []
-    for prop_settings in props_res.data or []:
-        sched_hour = prop_settings.get("sync_hour")
+    def is_due(sched_hour, sched_minute):
         if sched_hour is None:
-            continue
-        base_minutes = sched_hour * 60 + (prop_settings.get("sync_minute") or 0)
+            return False
+        base_minutes = sched_hour * 60 + (sched_minute or 0)
         for offset in offset_minutes:
             target_minutes = (base_minutes + offset) % 1440
             target_bucket = (target_minutes // bucket) * bucket
             if target_bucket == now_bucket:
-                due.append(prop_settings)
-                break
+                return True
+        return False
+
+    due = []
+    for prop_settings in props_res.data or []:
+        due_data_mart = bool(prop_settings.get("sync_enabled")) and is_due(
+            prop_settings.get("sync_hour"), prop_settings.get("sync_minute"))
+        due_st_files = bool(prop_settings.get("st_files_sync_enabled")) and is_due(
+            prop_settings.get("st_files_sync_hour"), prop_settings.get("st_files_sync_minute"))
+        if due_data_mart or due_st_files:
+            due.append((prop_settings, due_data_mart, due_st_files))
 
     if not due:
         return
@@ -672,7 +688,7 @@ async def retry_scheduled_syncs():
     report_date = yesterday_bkk.date().isoformat()
     now_iso = now.astimezone(timezone.utc).isoformat()
 
-    for prop_settings in due:
+    for prop_settings, due_data_mart, due_st_files in due:
         prop = prop_settings["property_name"]
         prop_id = prop_settings["id"]
 
@@ -693,16 +709,23 @@ async def retry_scheduled_syncs():
             if t not in latest_by_table:
                 latest_by_table[t] = row
 
-        enabled_tables = [t for t, (_fn, flag) in _TARGET_TABLE_SYNC_FN.items() if prop_settings.get(flag, True)]
-        to_retry = [
-            t for t in enabled_tables
-            if t not in latest_by_table or latest_by_table[t].get("status") == "error"
-        ]
+        to_retry = []
+        if due_data_mart:
+            enabled_tables = [t for t, (_fn, flag) in _TARGET_TABLE_SYNC_FN.items() if prop_settings.get(flag, True)]
+            to_retry = [
+                t for t in enabled_tables
+                if t not in latest_by_table or latest_by_table[t].get("status") == "error"
+            ]
 
-        if not to_retry:
+        retry_st_files = due_st_files and (
+            "ST Files" not in latest_by_table or latest_by_table["ST Files"].get("status") == "error"
+        )
+
+        if not to_retry and not retry_st_files:
             continue
 
-        print(f"[{now.isoformat()}] Scheduled retry: {prop} still missing/failing {to_retry}, retrying...")
+        labels = to_retry + (["ST Files"] if retry_st_files else [])
+        print(f"[{now.isoformat()}] Scheduled retry: {prop} still missing/failing {labels}, retrying...")
 
         try:
             lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
@@ -719,6 +742,8 @@ async def retry_scheduled_syncs():
             for target in to_retry:
                 fn, _flag = _TARGET_TABLE_SYNC_FN[target]
                 await fn(prop, prop_id, now_iso, report_date, sync_type="retry")
+            if retry_st_files:
+                await _sync_st_files_for_property(prop, prop_id, report_date, sync_type="retry")
         except Exception as e:
             print(f"Error during scheduled retry for {prop}: {str(e)}")
         finally:
