@@ -301,14 +301,82 @@
           <tr><td class="fields-metric">90104</td><td>House uses</td><td class="val">0</td><td>Sum of the House Uses tab's category counts</td></tr>
           <tr><td class="fields-metric">90103</td><td>Out of order</td><td class="val">4</td><td>Sum of the Out of Order tab's category counts</td></tr>
           <tr><td class="fields-metric">90102</td><td>Availability</td><td class="val">20</td><td>Sum of the Availability tab's category counts</td></tr>
-          <tr><td class="fields-metric">90105</td><td>Customers</td><td class="val">55</td><td>Row count on the Customers tab</td></tr>
-          <tr><td class="fields-metric">90114</td><td>Arrivals</td><td class="val">20</td><td>Row count on the Arrivals tab</td></tr>
-          <tr><td class="fields-metric">90115</td><td>Departures</td><td class="val">25</td><td>Row count on the Departures tab</td></tr>
+          <tr><td class="fields-metric">90105</td><td>Customers</td><td class="val">55</td><td>Guests staying the night + same-day (day-use) stays — <b>not</b> a row count, see below</td></tr>
+          <tr><td class="fields-metric">90114</td><td>Arrivals</td><td class="val">20</td><td>Spaces starting that day (a whole-dorm booking is N arrivals, not 1) — <b>not</b> a row count, see below</td></tr>
+          <tr><td class="fields-metric">90115</td><td>Departures</td><td class="val">25</td><td>Spaces ending that day, same per-space counting as Arrivals — <b>not</b> a row count, see below</td></tr>
           <tr><td class="fields-metric">90101</td><td>Complimentary Room</td><td class="val">0</td><td>The Complimentary count on the Reservations tab</td></tr>
           <tr><td class="fields-metric">90108</td><td>No. of Day</td><td class="val">1</td><td>Always 1 — one row covers one calendar day</td></tr>
         </tbody>
       </table>
     </div>
+  </section>
+
+  <section>
+    <h2>How Customers, Arrivals and Departures are actually computed</h2>
+    <p class="section-note">
+      These three never came from a row count on their own tab — that was
+      the original implementation's assumption, and it undercounted every
+      property, every day. The real definitions were reverse-engineered
+      against MEWS's own daily <b>Statistic File</b> automation (the same
+      "before we start to auto-import into the SUN System" emails this
+      export format was reproducing) — matched category-by-category, not
+      just on the final total, across 8 properties and multiple days.
+    </p>
+    <div class="legend">
+      <div class="legend-item"><span class="badge confirmed">Confirmed</span><span class="legend-desc">exact match against MEWS on Spaces, Occupied, House Uses, Out of Order and Departures, every property tested</span></div>
+    </div>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">Arrivals / Departures count spaces, not reservations</h3>
+    <p class="section-note">
+      A reservation booked against a <i>parent</i> resource — a whole
+      8-bed dorm room, or a two-bedroom suite whose bedrooms are also
+      individually bookable — is one row in MEWS, but MEWS counts it once
+      <i>per child space</i>, not once per booking. A single reservation
+      for an 8-bed dorm that arrives today is <b>8 arrivals</b>, filed
+      under the beds' own category, not 1. The same rule applies on
+      departure. Verified on Lub d Siem Reap 2026-08-06: two arriving
+      whole-suite bookings (3 + 4 guests) came out to <b>4</b> arrivals in
+      MEWS's own per-category export — the 4 child rooms, not the 7
+      occupants — and two arriving whole-dorm bookings came out to
+      <b>10 + 10</b> — the bed count, not the 7 + 8 guests.
+    </p>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">Customers counts people, filed under their own space</h3>
+    <p class="section-note">
+      Customers is the guest headcount (adults + children) for every
+      reservation that is either <b>still checked in when the day rolls
+      over</b> (staying the night) <b>or</b> checks in and out entirely
+      <b>within that same day</b> (a day-use stay that never sees a
+      night). A guest who merely checks <i>out</i> that morning — having
+      arrived on a previous day — is not counted; they belong to the
+      previous day's file. Unlike Arrivals/Departures, a parent-resource
+      booking is <b>not</b> expanded here — it's filed under the assigned
+      space's own category, which for a whole-dorm booking is a
+      Type&nbsp;=&nbsp;Dorm category outside the reported Room/Bed set, so
+      it contributes 0 to Customers even though it contributed several
+      Arrivals.
+    </p>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">Which space categories count is per-property</h3>
+    <p class="section-note">
+      Spaces / Occupied / Availability / Customers / Arrivals / Departures
+      all total only the MEWS resource categories in that property's own
+      <code>st_space_types</code> setting (Admin → API Settings → ST Space
+      Types) — matching each property's own MEWS Export Schedule
+      configuration, which is not uniform across the portfolio.
+    </p>
+    <div class="prop-grid">
+      <div class="prop-pill"><span>Most properties</span><span class="code">Room, Bed</span></div>
+      <div class="prop-pill"><span>Lub d Koh Tao Tanote Bay</span><span class="code">Room, Suite</span></div>
+      <div class="prop-pill"><span>Marasca Samui</span><span class="code">Room, Suite</span></div>
+    </div>
+    <p class="section-note" style="margin-top:10px;">
+      Blank falls back to <code>Room, Bed</code>. This is why Lub d Siem
+      Reap's own 6-space Suite category is deliberately excluded from its
+      Spaces total (222, not 228) while Koh Tao's and Marasca's Suite
+      spaces are deliberately included — each matches that property's own
+      MEWS export, not a single hardcoded rule.
+    </p>
   </section>
 
   <section>
@@ -343,7 +411,7 @@
 
   <section>
     <h2>Export logic (as implemented)</h2>
-    <p class="section-note">Live in <code>sync_service.get_st_report_export</code> — 10 fixed metric rows, values pulled from the already-imported <code>st_files_sync</code> row for that day, property code from <code>property_api_settings.st_property_code</code>.</p>
+    <p class="section-note">Live in <code>sync_service.get_st_report_export</code> — 10 fixed metric rows, values pulled from the already-imported <code>st_files_sync</code> row for that day, property code from <code>property_api_settings.st_property_code</code>. <code>totals["customers"/"arrivals"/"departures"]</code> read the stored <code>*_count</code> fields described above, not a list length — a report imported before that fix simply falls back to the old (undercounting) list length rather than erroring.</p>
     <pre><span class="c"># one entry per statistic; "key" is None for the constant-1 row</span>
 _ST_REPORT_METRICS = [
     (<span class="s">"90107"</span>, <span class="s">"Spaces"</span>,             <span class="s">"spaces"</span>,       <span class="s">"RMSST"</span>),
@@ -375,16 +443,16 @@ month_code = <span class="s">"0"</span> + day.strftime(<span class="s">"%m"</spa
       <h3 style="color:var(--confirmed);">Resolved — one item left</h3>
       <ol>
         <li>
-          <b>Property Code, per property.</b> Confirmed for Lub d Bangkok Siam (<code>SM</code>, set from this same formula). The other 7 still need their own code entered at Admin → API Settings → Property Code — Download raises a clear error for any property until it's set, rather than guessing.
+          <b>Property Code, per property.</b> All 8 properties now have a code set at Admin → API Settings → Property Code — Download still raises a clear error rather than guessing if a new property is ever added without one.
           <div class="prop-grid">
-            <div class="prop-pill"><span>Lub d Bangkok Chinatown</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Bangkok Chinatown</span><span class="code" style="color:var(--confirmed);">MS ✓</span></div>
             <div class="prop-pill"><span>Lub d Bangkok Siam</span><span class="code" style="color:var(--confirmed);">SM ✓</span></div>
-            <div class="prop-pill"><span>Lub d Koh Samui Chaweng Beach</span><span class="code">?</span></div>
-            <div class="prop-pill"><span>Lub d Koh Tao Tanote Bay</span><span class="code">?</span></div>
-            <div class="prop-pill"><span>Lub d Philippines Makati</span><span class="code">?</span></div>
-            <div class="prop-pill"><span>Lub d Phuket Patong</span><span class="code">?</span></div>
-            <div class="prop-pill"><span>Lub d Siem Reap</span><span class="code">?</span></div>
-            <div class="prop-pill"><span>Marasca Samui</span><span class="code">?</span></div>
+            <div class="prop-pill"><span>Lub d Koh Samui Chaweng Beach</span><span class="code" style="color:var(--confirmed);">SU ✓</span></div>
+            <div class="prop-pill"><span>Lub d Koh Tao Tanote Bay</span><span class="code" style="color:var(--confirmed);">KT ✓</span></div>
+            <div class="prop-pill"><span>Lub d Philippines Makati</span><span class="code" style="color:var(--confirmed);">MK ✓</span></div>
+            <div class="prop-pill"><span>Lub d Phuket Patong</span><span class="code" style="color:var(--confirmed);">PT ✓</span></div>
+            <div class="prop-pill"><span>Lub d Siem Reap</span><span class="code" style="color:var(--confirmed);">SR ✓</span></div>
+            <div class="prop-pill"><span>Marasca Samui</span><span class="code" style="color:var(--confirmed);">S2 ✓</span></div>
           </div>
         </li>
         <li><b>Field 7's format quirk on the "No. of Day" row</b> (<code>ST05082026</code> instead of <code>ST20260805</code>) is still not replicated — the exporter standardizes every row to <code>ST</code>+YYYYMMDD. Flag if the receiving system actually expects the DDMMYYYY form on that one row specifically.</li>
@@ -393,7 +461,7 @@ month_code = <span class="s">"0"</span> + day.strftime(<span class="s">"%m"</spa
   </section>
 
   <footer>
-    Built for the ST Files → Statistic Files → Download feature · field map derived from a 10-row production sample, 2026-08-06.
+    Built for the ST Files → Statistic Files → Download feature · field map derived from a 10-row production sample, 2026-08-06 · Customers/Arrivals/Departures definitions verified against MEWS's own daily export across 8 properties, 2026-08-08.
   </footer>
 
 </div>
