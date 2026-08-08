@@ -2057,6 +2057,68 @@ class SyncService:
         "Complimentary": "Complimentary",
     }
 
+    # Field 22 (Analysis 6) is MARKET SEGMENT in Infor's layout. MEWS business
+    # segments carry only a name, so these numeric codes are Lub D's own; they
+    # were recovered by matching each segment's accommodation revenue against
+    # the real file bucket for bucket, and five of the six reconcile to the
+    # satang (the sixth is the OTA bucket, off by exactly the day's known
+    # post-export repricing). "Travel Agent" really does map to a blank code in
+    # the file, so it is spelled out here rather than left out - an unlisted
+    # segment also yields blank, which is a value the file itself uses and
+    # therefore cannot break the import.
+    _RV_MARKET_SEGMENT_CODES = {
+        "Lub d Bangkok Chinatown": {
+            "Own Web": "100",
+            "Online Travel Agent": "101",
+            "Direct Host": "102",
+            "Social Chats": "105",
+            "Group Leisure Series": "106",
+            "Travel Agent": "",
+        },
+    }
+
+    async def _rv_market_segments(self, property_name: str, items: list, stay_service_id) -> dict:
+        """Maps stay-service ServiceOrderIds to their market segment code.
+
+        Only items sold on the Reservable stay service carry a segment.
+        Verified against the real file: accommodation, its service charge and
+        its included breakfast all carry one, while everything billed on the
+        other services (Accommodation Extras, Merchandise, Food & Beverage,
+        Laundry) leaves field 22 blank. The filter is required rather than an
+        optimisation - those other services' ServiceOrderIds are not
+        reservations, and reservations/getAll rejects an entire batch that
+        contains a single non-reservation id.
+
+        Degrades to {} (every row blank, i.e. today's behaviour) if the
+        property has no segment mapping or the lookups fail."""
+        codes = self._RV_MARKET_SEGMENT_CODES.get(property_name)
+        if not codes or not stay_service_id:
+            return {}
+        ids = sorted({i["ServiceOrderId"] for i in items
+                      if i.get("ServiceId") == stay_service_id and i.get("ServiceOrderId")})
+        if not ids:
+            return {}
+        try:
+            business_segment_ids = {}
+            for start in range(0, len(ids), 100):
+                res = await mews_client.post(
+                    "/api/connector/v1/reservations/getAll",
+                    {"ReservationIds": ids[start:start + 100], "Limitation": {"Count": 100}},
+                    property_name=property_name,
+                )
+                for r in res.get("Reservations", []):
+                    business_segment_ids[r.get("Id")] = r.get("BusinessSegmentId")
+            segments_res = await mews_client.post(
+                "/api/connector/v1/businessSegments/getAll",
+                {"Limitation": {"Count": 200}}, property_name=property_name,
+            )
+        except Exception as e:
+            logger.info(f"RV: market segments unavailable for {property_name} ({e})")
+            return {}
+        names = {s.get("Id"): s.get("Name") for s in segments_res.get("BusinessSegments", [])}
+        return {rid: codes.get(names.get(bsid) or "", "")
+                for rid, bsid in business_segment_ids.items()}
+
     async def _rv_load_credit_cards(self, property_name: str, card_ids) -> dict:
         """Card rows name the card itself - "Card payment (Mastercard ****8119
         Virtual, B46FWB)" - but payments/getAll carries only a CreditCardId;
@@ -2130,10 +2192,12 @@ class SyncService:
         """The item's BillingName is used verbatim, both for grouping and as
         the journal description. Accommodation comes through as
         "Night 8/7/2026" and the real RV file keeps that date in the
-        description rather than collapsing it to "Night" - and since a report
-        covers a single day, every night item already shares one BillingName,
-        so nothing needs stripping to group them together."""
-        return (name or "").strip()
+        description rather than collapsing it to "Night".
+
+        Deliberately not trimmed: several MEWS products are named with a
+        trailing space ("Coke ", "Dental Kit ") and the real file preserves it,
+        so trimming here would make otherwise-identical rows differ."""
+        return name or ""
 
     def _rv_gl_overrides(self, property_name: str) -> dict:
         """Per-AccountingCategoryId GL overrides from rv_gl_mappings, keyed by
@@ -2202,7 +2266,7 @@ class SyncService:
         start_iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = (day + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        items_res, pays_res = await asyncio.gather(
+        items_res, pays_res, services_res = await asyncio.gather(
             mews_client.post(
                 "/api/connector/v1/orderItems/getAll",
                 {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso},
@@ -2215,24 +2279,33 @@ class SyncService:
                  "Limitation": {"Count": 1000}},
                 property_name=property_name,
             ),
+            mews_client.post(
+                "/api/connector/v1/services/getAll",
+                {"Limitation": {"Count": 100}},
+                property_name=property_name,
+            ),
         )
 
         overrides = self._rv_gl_overrides(property_name)
+        stay = self._resolve_stay_service(services_res.get("Services", []))
 
         # --- Revenue -------------------------------------------------------
+        live_items = [i for i in items_res.get("OrderItems", [])
+                      if i.get("AccountingState") != "Canceled"]
+        skipped_canceled = len(items_res.get("OrderItems", [])) - len(live_items)
+        segments = await self._rv_market_segments(
+            property_name, live_items, stay.get("Id") if stay else None)
+
         revenue, vat_total = {}, 0.0
-        skipped_canceled = 0
-        for item in items_res.get("OrderItems", []):
-            if item.get("AccountingState") == "Canceled":
-                skipped_canceled += 1
-                continue
+        for item in live_items:
             amount = item.get("Amount") or {}
             net = amount.get("NetValue") or 0.0
             name = self._rv_display_name(item.get("BillingName") or "")
             gl, dept = self._rv_revenue_gl(name, item.get("AccountingCategoryId"), overrides)
-            key = (gl, dept, name)
+            segment = segments.get(item.get("ServiceOrderId"), "") or ""
+            key = (gl, dept, name, segment)
             row = revenue.setdefault(key, {"gl_code": gl, "department": dept, "name": name,
-                                           "amount": 0.0, "count": 0})
+                                           "market_segment": segment, "amount": 0.0, "count": 0})
             row["amount"] += net
             row["count"] += 1
             for tax in (amount.get("TaxValues") or []):
@@ -2284,7 +2357,12 @@ class SyncService:
                 "unmapped": not mapped,
             })
 
-        revenue_rows = sorted(revenue.values(), key=lambda r: (r["gl_code"], r["name"]))
+        # A group whose postings cancel out (a rebate against its own original
+        # within the same billing name) nets to zero. MEWS omits those rows and
+        # so do we - a zero-value journal line carries no information and would
+        # just be noise in the ledger.
+        revenue_rows = sorted((r for r in revenue.values() if round(r["amount"], 2)),
+                              key=lambda r: (r["gl_code"], r["name"], r.get("market_segment") or ""))
         payment_rows.sort(key=lambda r: (r["gl_code"], r["name"]))
         revenue_net = sum(r["amount"] for r in revenue_rows)
         payments_total = sum(r["amount"] for r in payment_rows)
@@ -2411,7 +2489,7 @@ class SyncService:
         yyyymmdd = day.strftime("%Y%m%d")
         month_code = "0" + day.strftime("%m")
 
-        def row(gl, description, amount, natural_dc, dept):
+        def row(gl, description, amount, natural_dc, dept, market_segment=""):
             """natural_dc is the letter this kind of line carries when its
             amount is positive; a negative amount flips it and is written as
             a magnitude.
@@ -2424,15 +2502,20 @@ class SyncService:
             own row."""
             dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
             value = f"{abs(amount):.2f}"
+            # Fields 21-41 are blank except Analysis 6 (field 22), which the
+            # spec designates MARKET SEGMENT.
+            tail = [""] * 21
+            tail[1] = market_segment or ""
             return "|".join([
                 "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
                 f"RV{yyyymmdd}", (description or "")[:50], ddmmyyyy, "THB", value, "1", value,
                 "", "", dc, property_code, dept or "", "ZZ", "ZZ",
-            ] + [""] * 21)
+            ] + tail)
 
         lines = []
         for r in report.get("revenue", []):
-            lines.append(row(r["gl_code"], r["name"], r["amount"], "C", r.get("department")))
+            lines.append(row(r["gl_code"], r["name"], r["amount"], "C", r.get("department"),
+                             r.get("market_segment")))
         if report.get("vat"):
             lines.append(row(self._RV_VAT_GL[0], "VAT", report["vat"], "C", self._RV_VAT_GL[1]))
         for p in report.get("payments", []):
