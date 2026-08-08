@@ -22,6 +22,7 @@ interface RolePermissionRow {
   bills: boolean;
   rr3: boolean;
   st_files: boolean;
+  rv: boolean;
   bcp: boolean;
   admin: boolean;
   restricted_properties: string[] | null;
@@ -33,6 +34,7 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "bills", label: "Bills" },
   { key: "rr3", label: "RR3" },
   { key: "st_files", label: "ST Files" },
+  { key: "rv", label: "RV" },
   { key: "bcp", label: "BCP" },
   { key: "admin", label: "Admin" },
 ];
@@ -112,7 +114,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, bcp: false, admin: false, restricted_properties: null,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, rv: false, bcp: false, admin: false, restricted_properties: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {

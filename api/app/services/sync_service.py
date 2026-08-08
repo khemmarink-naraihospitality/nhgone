@@ -1978,6 +1978,321 @@ class SyncService:
         filename = f"{property_code}_ST_{yyyymmdd}.csv"
         return "\n".join(lines), filename
 
+    # ------------------------------------------------------------------ RV files
+    #
+    # The RV ("Revenue") file is the money-side sibling of the ST statistics
+    # file - same 41-field Infor SunSystems journal layout, same per-property
+    # code in field 17, but journal type PMSRV and one row per GL account
+    # instead of ten fixed metric rows.
+    #
+    # Payment Type (+ the External sub-type) -> GL account + department.
+    # Confirmed row-by-row against a real MEWS-generated RV file
+    # (MS_RV_20260807.csv, Lub d Bangkok Chinatown). The payment half of the
+    # file needs no extra MEWS permission: every distinction the file draws is
+    # already on the payment object itself.
+    _RV_PAYMENT_GL = {
+        "CashPayment":                   ("11110", "000", "Cash payment"),
+        "CreditCardPayment":             ("11403", "000", "Card payment"),
+        "ExternalPayment/OnlinePayment": ("11399", "000", "External payment (Online payment)"),
+        "ExternalPayment/WireTransfer":  ("11399", "000", "External payment (Wire transfer)"),
+        "ExternalPayment/Prepayment":    ("21201", "",    "External payment (Prepayment)"),
+        "ExternalPayment/Complimentary": ("60300", "241", "External payment (Complimentary)"),
+    }
+
+    # Revenue side: MEWS puts only an AccountingCategoryId GUID on each order
+    # item, and resolving those to GL codes needs accountingCategories/getAll -
+    # which currently 401s on all 8 properties because MEWS hasn't enabled the
+    # Accounting Categories permission on the Connector tokens. Until it is,
+    # GL codes are matched from the item's own BillingName using the table
+    # below, every entry verified against the real RV file. Order matters:
+    # first substring hit wins, so put the specific before the generic.
+    _RV_REVENUE_GL = [
+        ("room adjustment", "30005", "111"),
+        ("no show",         "30010", "111"),
+        ("early check in",  "30020", "111"),
+        ("service charge",  "30805", "111"),
+        ("breakfast",       "30105", "121"),
+        ("laundry",         "30445", "141"),
+        ("night",           "30001", "111"),
+    ]
+    _RV_REVENUE_GL_FALLBACK = ("30550", "122")   # products / minibar / retail
+    _RV_VAT_GL = ("21600", "")
+    _RV_GUEST_LEDGER_GL = ("21203", "000")
+
+    @staticmethod
+    def _rv_payment_key(payment: dict) -> str:
+        """Payments split across three different GL accounts purely on their
+        External sub-type (Online/Wire -> 11399 but Prepayment -> 21201 and
+        Complimentary -> 60300), so the sub-type is part of the lookup key."""
+        ptype = payment.get("Type") or ""
+        if ptype == "ExternalPayment":
+            sub = ((payment.get("Data") or {}).get("External") or {}).get("Type") or ""
+            return f"{ptype}/{sub}"
+        return ptype
+
+    @staticmethod
+    def _rv_display_name(name: str) -> str:
+        """The item's BillingName is used verbatim, both for grouping and as
+        the journal description. Accommodation comes through as
+        "Night 8/7/2026" and the real RV file keeps that date in the
+        description rather than collapsing it to "Night" - and since a report
+        covers a single day, every night item already shares one BillingName,
+        so nothing needs stripping to group them together."""
+        return (name or "").strip()
+
+    def _rv_gl_overrides(self, property_name: str) -> dict:
+        """Per-AccountingCategoryId GL overrides from rv_gl_mappings, keyed by
+        category id. Returns {} when the table doesn't exist yet or nothing has
+        been mapped - the BillingName defaults above then apply, so RV keeps
+        working before anyone has touched Admin (same graceful-degrade shape as
+        ftp_service.get_ftp_settings)."""
+        if not self.supabase:
+            return {}
+        try:
+            res = self.supabase.table("rv_gl_mappings").select(
+                "accounting_category_id, gl_code, department").eq("property", property_name).execute()
+        except Exception as e:
+            logger.info(f"RV: no rv_gl_mappings overrides for {property_name} ({e})")
+            return {}
+        return {r["accounting_category_id"]: r for r in (res.data or []) if r.get("accounting_category_id")}
+
+    def _rv_revenue_gl(self, billing_name: str, category_id: str, overrides: dict) -> tuple:
+        override = overrides.get(category_id or "")
+        if override and override.get("gl_code"):
+            return override["gl_code"], override.get("department") or ""
+        low = (billing_name or "").lower()
+        for keyword, gl, dept in self._RV_REVENUE_GL:
+            if keyword in low:
+                return gl, dept
+        return self._RV_REVENUE_GL_FALLBACK
+
+    async def get_rv_report(self, property_name: str, date: str) -> dict:
+        """
+        Builds the daily RV (Revenue) report for one property + one calendar
+        date in that property's own MEWS timezone - the revenue/payment
+        counterpart to get_st_files_report.
+
+        Two MEWS calls, both filtered to the property's own calendar day:
+          * orderItems/getAll over ConsumedUtc -> the revenue lines
+          * payments/getAll   over CreatedUtc  -> the settlement lines
+
+        The one non-obvious rule, and the one that had this off by 2.4x until
+        it was checked against a real RV file: order items whose
+        AccountingState is "Canceled" must be dropped. MEWS keeps the
+        superseded posting alongside its replacement (on 07-Aug Chinatown that
+        was 95 of 224 accommodation items, 197,478.21 of phantom revenue), and
+        the RV file counts only the survivors. Payments have no such twins -
+        every payment MEWS returned for that day was live.
+
+        VAT is summed from each surviving item's Amount.TaxValues rather than
+        derived from a rate, because MEWS already splits mixed-rate items for
+        us. Amounts are stored positive with a separate "dc" (Debit/Credit)
+        flag, matching how the Infor file itself represents sign.
+        """
+        property_tz = await self._resolve_property_timezone(property_name)
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
+        start_iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_iso = (day + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        items_res, pays_res = await asyncio.gather(
+            mews_client.post(
+                "/api/connector/v1/orderItems/getAll",
+                {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso},
+                 "Limitation": {"Count": 1000}},
+                property_name=property_name,
+            ),
+            mews_client.post(
+                "/api/connector/v1/payments/getAll",
+                {"CreatedUtc": {"StartUtc": start_iso, "EndUtc": end_iso},
+                 "Limitation": {"Count": 1000}},
+                property_name=property_name,
+            ),
+        )
+
+        overrides = self._rv_gl_overrides(property_name)
+
+        # --- Revenue -------------------------------------------------------
+        revenue, vat_total = {}, 0.0
+        skipped_canceled = 0
+        for item in items_res.get("OrderItems", []):
+            if item.get("AccountingState") == "Canceled":
+                skipped_canceled += 1
+                continue
+            amount = item.get("Amount") or {}
+            net = amount.get("NetValue") or 0.0
+            name = self._rv_display_name(item.get("BillingName") or "")
+            gl, dept = self._rv_revenue_gl(name, item.get("AccountingCategoryId"), overrides)
+            key = (gl, dept, name)
+            row = revenue.setdefault(key, {"gl_code": gl, "department": dept, "name": name,
+                                           "amount": 0.0, "count": 0})
+            row["amount"] += net
+            row["count"] += 1
+            for tax in (amount.get("TaxValues") or []):
+                vat_total += tax.get("Value") or 0.0
+
+        # --- Payments ------------------------------------------------------
+        # MEWS returns payments as negative (they credit the guest's ledger);
+        # the file shows the magnitude and carries the sign in the D/C flag.
+        payments = {}
+        for pay in pays_res.get("Payments", []):
+            if pay.get("State") == "Canceled":
+                continue
+            # GhostPayments are MEWS's internal balancing placeholders, not
+            # money - they net to zero across the day and have no journal row.
+            if pay.get("Type") == "GhostPayment":
+                continue
+            net = (pay.get("Amount") or {}).get("NetValue") or 0.0
+            if not net:
+                continue
+            key = self._rv_payment_key(pay)
+            mapped = self._RV_PAYMENT_GL.get(key)
+            # An unrecognised payment type must NOT be quietly booked to some
+            # real GL account - it's left unmapped so the UI can flag it and
+            # somebody decides where it belongs.
+            gl, dept, label = mapped if mapped else ("", "", key or "Unknown payment type")
+            row = payments.setdefault(key, {"gl_code": gl, "department": dept, "name": label,
+                                            "amount": 0.0, "count": 0, "unmapped": not mapped})
+            row["amount"] += -net          # flip to positive money-in
+            row["count"] += 1
+
+        revenue_rows = sorted(revenue.values(), key=lambda r: (r["gl_code"], r["name"]))
+        payment_rows = sorted(payments.values(), key=lambda r: r["gl_code"])
+        revenue_net = sum(r["amount"] for r in revenue_rows)
+        payments_total = sum(r["amount"] for r in payment_rows)
+
+        return {
+            "property": property_name,
+            "date": date,
+            "revenue": revenue_rows,
+            "payments": payment_rows,
+            "vat": round(vat_total, 2),
+            "vat_gl_code": self._RV_VAT_GL[0],
+            # Guest Ledger is the balancing row: whatever the day earned but
+            # didn't settle is still owed on somebody's open bill.
+            "guest_ledger": round(revenue_net + vat_total - payments_total, 2),
+            "guest_ledger_gl_code": self._RV_GUEST_LEDGER_GL[0],
+            "totals": {
+                "revenue_net": round(revenue_net, 2),
+                "vat": round(vat_total, 2),
+                "revenue_gross": round(revenue_net + vat_total, 2),
+                "payments": round(payments_total, 2),
+            },
+            "counts": {
+                "revenue_items": sum(r["count"] for r in revenue_rows),
+                "payment_items": sum(r["count"] for r in payment_rows),
+                "canceled_items_skipped": skipped_canceled,
+            },
+            # Surfaced in the UI so nobody has to guess why GL codes look
+            # generic: until MEWS enables Accounting Categories, revenue GL
+            # codes come from BillingName matching, not from MEWS itself.
+            "gl_source": "mews_categories" if overrides else "billing_name_defaults",
+        }
+
+    async def get_rv_list(self, property_name: str) -> list:
+        """RV List's per-day summary rows - reads exclusively from
+        rv_files_sync (recomputing history live would mean 2 MEWS calls per
+        row for what could be months), each row's totals taken from that
+        day's already-stored blob rather than recomputed here."""
+        if not self.supabase:
+            return []
+        res = self.supabase.table("rv_files_sync") \
+            .select("report_date, data, synced_at") \
+            .eq("property", property_name) \
+            .order("report_date", desc=True) \
+            .execute()
+        rows = []
+        for row in res.data or []:
+            blob = (row.get("data") or {}).get("blob", "")
+            if not blob:
+                continue
+            try:
+                report = json.loads(encryption_service.decrypt(blob))
+            except Exception as e:
+                logger.warning(f"RV List: failed to decrypt {property_name}/{row.get('report_date')}: {e}")
+                continue
+            totals = report.get("totals") or {}
+            rows.append({
+                "date": row.get("report_date"),
+                "revenue_net": totals.get("revenue_net", 0),
+                "vat": totals.get("vat", 0),
+                "revenue_gross": totals.get("revenue_gross", 0),
+                "payments": totals.get("payments", 0),
+                "guest_ledger": report.get("guest_ledger", 0),
+                "synced_at": row.get("synced_at"),
+            })
+        return rows
+
+    def get_rv_export(self, property_name: str, date_str: str) -> tuple:
+        """
+        Builds the pipe-delimited Infor "RV" revenue journal for one
+        already-imported day - the same 41-field layout as the ST file
+        (see get_st_report_export) with journal type PMSRV in fields 1-2 and
+        an "RV{yyyymmdd}" reference in field 7.
+
+        Layout confirmed field-by-field against a real MEWS-generated file
+        (MS_RV_20260807.csv):
+          PMSRV|PMSRV|{gl}|{ddmmyyyy}|0{mm}|{yyyy}|RV{yyyymmdd}|{description}
+            |{ddmmyyyy}|THB|{amount}|1|{amount}|||{D|C}|{code}|{dept}|ZZ|ZZ|...
+        Two differences from the ST file worth noting: the amount appears
+        again in field 13 (blank in ST), and field 18 is a real per-line
+        department code (always "111" in ST).
+
+        Sign convention, taken from the file itself rather than assumed:
+        revenue and VAT are Credits, payments and the Guest Ledger balance
+        are Debits, and anything negative (rebates, refunds) flips to the
+        opposite letter and is written as a positive magnitude.
+        """
+        if not self.supabase:
+            raise Exception("Supabase not initialized")
+        prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+            "property_name", property_name).limit(1).execute()
+        property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
+        if not property_code:
+            raise ValueError(f"No Property Code configured yet for {property_name} - set it in Admin > API")
+        res = self.supabase.table("rv_files_sync").select("data").eq(
+            "property", property_name).eq("report_date", date_str).limit(1).execute()
+        if not res.data:
+            raise ValueError(f"No imported RV report for {property_name} on {date_str} - import it first")
+        report = json.loads(encryption_service.decrypt((res.data[0].get("data") or {}).get("blob", "")))
+
+        unmapped = [p for p in report.get("payments", []) if p.get("unmapped")]
+        if unmapped:
+            raise ValueError(
+                "Cannot export: unmapped payment type(s) " +
+                ", ".join(p.get("name", "?") for p in unmapped) +
+                " have no GL account. Map them before exporting.")
+
+        day = datetime.strptime(date_str, "%Y-%m-%d")
+        ddmmyyyy = day.strftime("%d%m%Y")
+        yyyymmdd = day.strftime("%Y%m%d")
+        month_code = "0" + day.strftime("%m")
+
+        def row(gl, description, amount, natural_dc, dept):
+            """natural_dc is the letter this kind of line carries when its
+            amount is positive; a negative amount flips it and is written as
+            a magnitude."""
+            dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
+            value = f"{abs(amount):.2f}"
+            return "|".join([
+                "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
+                f"RV{yyyymmdd}", description, ddmmyyyy, "THB", value, "1", value,
+                "", "", dc, property_code, dept or "", "ZZ", "ZZ",
+            ] + [""] * 21)
+
+        lines = []
+        for r in report.get("revenue", []):
+            lines.append(row(r["gl_code"], r["name"], r["amount"], "C", r.get("department")))
+        if report.get("vat"):
+            lines.append(row(self._RV_VAT_GL[0], "VAT", report["vat"], "C", self._RV_VAT_GL[1]))
+        for p in report.get("payments", []):
+            lines.append(row(p["gl_code"], p["name"], p["amount"], "D", p.get("department")))
+        if report.get("guest_ledger"):
+            lines.append(row(self._RV_GUEST_LEDGER_GL[0], "Guest Ledger",
+                             report["guest_ledger"], "D", self._RV_GUEST_LEDGER_GL[1]))
+
+        filename = f"{property_code}_RV_{yyyymmdd}.csv"
+        return "\n".join(lines), filename
+
     async def send_st_files_daily_digest(self, date_str: str, mark_sent: bool = True,
                                           sent_date_str: str = None) -> dict:
         """

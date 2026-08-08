@@ -12,6 +12,7 @@ interface MenuPermissions {
   bills: boolean;
   rr3: boolean;
   st_files: boolean;
+  rv: boolean;
   bcp: boolean;
   admin: boolean;
 }
@@ -344,10 +345,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     bills: true,
     rr3: !isFinanceRole,
     st_files: !isFinanceRole,
+    rv: !isFinanceRole,
     bcp: !isFinanceRole,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.bcp;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.rv || perms.bcp;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -387,6 +389,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           )}
           {perms.st_files && (
             <Link href="/st-files" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>ST Files</Link>
+          )}
+          {perms.rv && (
+            <Link href="/rv" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rv" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RV</Link>
           )}
           {perms.bcp && (
             <Link href="/bcp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
