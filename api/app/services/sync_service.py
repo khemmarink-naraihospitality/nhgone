@@ -2046,6 +2046,85 @@ class SyncService:
             return f"{ptype}/{sub}"
         return ptype
 
+    # MEWS spells its card brands differently from the journal file
+    # ("MasterCard" on the API, "Mastercard" in the file); anything not listed
+    # is passed through as MEWS spells it.
+    _RV_CARD_TYPE_LABELS = {"MasterCard": "Mastercard"}
+    _RV_EXTERNAL_LABELS = {
+        "OnlinePayment": "Online payment",
+        "WireTransfer": "Wire transfer",
+        "Prepayment": "Prepayment",
+        "Complimentary": "Complimentary",
+    }
+
+    async def _rv_load_credit_cards(self, property_name: str, card_ids) -> dict:
+        """Card rows name the card itself - "Card payment (Mastercard ****8119
+        Virtual, B46FWB)" - but payments/getAll carries only a CreditCardId;
+        the brand, obfuscated number and Virtual flag come from
+        creditCards/getAll. Returns {} if the property's token lacks that
+        permission, in which case the description falls back to the payment's
+        own identifier rather than failing the whole report."""
+        ids = [i for i in (card_ids or []) if i]
+        if not ids:
+            return {}
+        cards = {}
+        for start in range(0, len(ids), 100):
+            try:
+                res = await mews_client.post(
+                    "/api/connector/v1/creditCards/getAll",
+                    {"CreditCardIds": ids[start:start + 100], "Limitation": {"Count": 100}},
+                    property_name=property_name,
+                )
+            except Exception as e:
+                logger.info(f"RV: creditCards/getAll unavailable for {property_name} ({e})")
+                return {}
+            for card in res.get("CreditCards", []):
+                cards[card.get("Id")] = card
+        return cards
+
+    def _rv_payment_description(self, pay: dict, cards: dict) -> str:
+        """Rebuilds the per-transaction narrative MEWS writes into field 8,
+        verified line-by-line against the real file."""
+        ptype = pay.get("Type") or ""
+        amount = pay.get("Amount") or {}
+        notes = (pay.get("Notes") or "").strip()
+
+        if ptype == "CashPayment":
+            # Money in is negative; a positive cash payment is money going back
+            # out, which the file names a refund rather than a payment.
+            label = "Cash refund" if (amount.get("NetValue") or 0.0) > 0 else "Cash payment"
+            text = f"{label} {amount.get('Currency') or ''}".strip()
+            return f"{text} ({notes})" if notes else text
+
+        if ptype == "CreditCardPayment":
+            card = cards.get(((pay.get("Data") or {}).get("CreditCard") or {}).get("CreditCardId"))
+            parts = []
+            if card:
+                brand = self._RV_CARD_TYPE_LABELS.get(card.get("Type"), card.get("Type") or "")
+                obfuscated = card.get("ObfuscatedNumber")
+                detail = f"{brand} ****{obfuscated}" if obfuscated else brand
+                if card.get("Format") == "Virtual":
+                    detail += " Virtual"
+                if detail:
+                    parts.append(detail)
+            if pay.get("Identifier"):
+                parts.append(str(pay["Identifier"]))
+            # Terminal payments often carry a second reference (the acquirer's
+            # own trace number) in Notes, which the file appends after the
+            # identifier - e.g. "(Mastercard ****2839, 642238, 0985064)".
+            if notes:
+                parts.append(notes)
+            return f"Card payment ({', '.join(parts)})" if parts else "Card payment"
+
+        if ptype == "ExternalPayment":
+            ext = (pay.get("Data") or {}).get("External") or {}
+            label = self._RV_EXTERNAL_LABELS.get(ext.get("Type"), ext.get("Type") or "")
+            identifier = ext.get("ExternalIdentifier")
+            inner = f"{label} - {identifier}" if identifier else label
+            return f"External payment ({inner})" if inner else "External payment"
+
+        return ptype or "Payment"
+
     @staticmethod
     def _rv_display_name(name: str) -> str:
         """The item's BillingName is used verbatim, both for grouping and as
@@ -2160,9 +2239,17 @@ class SyncService:
                 vat_total += tax.get("Value") or 0.0
 
         # --- Payments ------------------------------------------------------
+        # One journal row per transaction, not one per GL account. The real
+        # file does this and it can't be recovered later: the SunSystems PMSRV
+        # import profile runs with Consolidation "Not Specified", so whatever
+        # granularity arrives in the file is exactly what lands in the ledger.
+        # Aggregating here would permanently destroy the per-payment detail
+        # finance reconciles against (card, prepayment and voucher numbers all
+        # live in the description).
+        #
         # MEWS returns payments as negative (they credit the guest's ledger);
-        # the file shows the magnitude and carries the sign in the D/C flag.
-        payments = {}
+        # rows carry the magnitude and the sign moves into the D/C flag.
+        live_payments = []
         for pay in pays_res.get("Payments", []):
             if pay.get("State") == "Canceled":
                 continue
@@ -2170,22 +2257,35 @@ class SyncService:
             # money - they net to zero across the day and have no journal row.
             if pay.get("Type") == "GhostPayment":
                 continue
-            net = (pay.get("Amount") or {}).get("NetValue") or 0.0
-            if not net:
+            if not ((pay.get("Amount") or {}).get("NetValue") or 0.0):
                 continue
+            live_payments.append(pay)
+
+        cards = await self._rv_load_credit_cards(property_name, {
+            ((p.get("Data") or {}).get("CreditCard") or {}).get("CreditCardId")
+            for p in live_payments if p.get("Type") == "CreditCardPayment"
+        })
+
+        payment_rows = []
+        for pay in live_payments:
+            net = (pay.get("Amount") or {}).get("NetValue") or 0.0
             key = self._rv_payment_key(pay)
             mapped = self._RV_PAYMENT_GL.get(key)
             # An unrecognised payment type must NOT be quietly booked to some
             # real GL account - it's left unmapped so the UI can flag it and
             # somebody decides where it belongs.
-            gl, dept, label = mapped if mapped else ("", "", key or "Unknown payment type")
-            row = payments.setdefault(key, {"gl_code": gl, "department": dept, "name": label,
-                                            "amount": 0.0, "count": 0, "unmapped": not mapped})
-            row["amount"] += -net          # flip to positive money-in
-            row["count"] += 1
+            gl, dept, _ = mapped if mapped else ("", "", "")
+            payment_rows.append({
+                "gl_code": gl,
+                "department": dept,
+                "name": self._rv_payment_description(pay, cards) if mapped else (key or "Unknown payment type"),
+                "amount": -net,            # flip to positive money-in
+                "count": 1,
+                "unmapped": not mapped,
+            })
 
         revenue_rows = sorted(revenue.values(), key=lambda r: (r["gl_code"], r["name"]))
-        payment_rows = sorted(payments.values(), key=lambda r: r["gl_code"])
+        payment_rows.sort(key=lambda r: (r["gl_code"], r["name"]))
         revenue_net = sum(r["amount"] for r in revenue_rows)
         payments_total = sum(r["amount"] for r in payment_rows)
 
