@@ -2049,7 +2049,7 @@ class SyncService:
     # MEWS spells its card brands differently from the journal file
     # ("MasterCard" on the API, "Mastercard" in the file); anything not listed
     # is passed through as MEWS spells it.
-    _RV_CARD_TYPE_LABELS = {"MasterCard": "Mastercard"}
+    _RV_CARD_TYPE_LABELS = {"MasterCard": "Mastercard", "Jcb": "JCB"}
     _RV_EXTERNAL_LABELS = {
         "OnlinePayment": "Online payment",
         "WireTransfer": "Wire transfer",
@@ -2150,12 +2150,15 @@ class SyncService:
         ptype = pay.get("Type") or ""
         amount = pay.get("Amount") or {}
         notes = (pay.get("Notes") or "").strip()
+        # MEWS returns money in as negative, so a positive amount is money
+        # going back out. Every payment kind is renamed for that case in the
+        # real file - "Cash refund THB", "Card refund (...)", "External refund
+        # (Prepayment)" - and it is only the wording that changes; the D/C flag
+        # is derived from the amount separately.
+        verb = "refund" if (amount.get("NetValue") or 0.0) > 0 else "payment"
 
         if ptype == "CashPayment":
-            # Money in is negative; a positive cash payment is money going back
-            # out, which the file names a refund rather than a payment.
-            label = "Cash refund" if (amount.get("NetValue") or 0.0) > 0 else "Cash payment"
-            text = f"{label} {amount.get('Currency') or ''}".strip()
+            text = f"Cash {verb} {amount.get('Currency') or ''}".strip()
             return f"{text} ({notes})" if notes else text
 
         if ptype == "CreditCardPayment":
@@ -2176,14 +2179,14 @@ class SyncService:
             # identifier - e.g. "(Mastercard ****2839, 642238, 0985064)".
             if notes:
                 parts.append(notes)
-            return f"Card payment ({', '.join(parts)})" if parts else "Card payment"
+            return f"Card {verb} ({', '.join(parts)})" if parts else f"Card {verb}"
 
         if ptype == "ExternalPayment":
             ext = (pay.get("Data") or {}).get("External") or {}
             label = self._RV_EXTERNAL_LABELS.get(ext.get("Type"), ext.get("Type") or "")
             identifier = ext.get("ExternalIdentifier")
             inner = f"{label} - {identifier}" if identifier else label
-            return f"External payment ({inner})" if inner else "External payment"
+            return f"External {verb} ({inner})" if inner else f"External {verb}"
 
         return ptype or "Payment"
 
