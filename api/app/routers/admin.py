@@ -8,6 +8,7 @@ from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY
 from app.services.sync_service import sync_service
+from app.services import ftp_service
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -47,6 +48,18 @@ class PropertyApiSettingsUpdate(BaseModel):
 class SyncRetrySettingsUpdate(BaseModel):
     retry_count: int = 2
     retry_interval_hours: int = 1
+
+class FtpSettingsUpdate(BaseModel):
+    host: str
+    port: int = 21
+    username: Optional[str] = None
+    # Omitted/blank preserves the existing encrypted password, same
+    # semantics as SmtpSettingsUpdate.password below.
+    password: Optional[str] = None
+    remote_path: str = ""
+    enabled: bool = False
+    upload_hour: int = 4
+    upload_minute: int = 0
 
 class SmtpSettingsUpdate(BaseModel):
     host: str
@@ -278,6 +291,76 @@ async def save_sync_retry_settings(request: SyncRetrySettingsUpdate):
         else:
             admin_supabase.table("sync_retry_settings").insert(payload).execute()
         return {"status": "success", "message": "Retry settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/ftp-settings")
+async def get_ftp_settings_route():
+    """
+    Fetch the single global ST Files FTP upload settings row (Admin > Sync >
+    ST Files FTP Upload). The real password is never returned - only
+    whether one is set - same convention as GET /admin/smtp.
+    """
+    try:
+        data = ftp_service.get_ftp_settings()
+        data["password_set"] = bool(data.get("password"))
+        data.pop("password", None)
+        return {"status": "success", "data": data}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ftp-settings")
+async def save_ftp_settings(request: FtpSettingsUpdate):
+    """
+    Upsert the single global FTP settings row. If password is omitted/
+    blank, the existing encrypted password (if any) is preserved instead
+    of wiped - same convention as POST /admin/smtp.
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("ftp_settings").select("id, password").limit(1).execute()
+
+        payload = request.dict(exclude={"password"})
+        if request.password:
+            payload["password"] = encryption_service.encrypt(request.password)
+        elif existing.data:
+            payload["password"] = existing.data[0].get("password")
+
+        if existing.data:
+            admin_supabase.table("ftp_settings").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("ftp_settings").insert(payload).execute()
+
+        return {"status": "success", "message": "FTP settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/ftp-settings/upload-now")
+async def upload_ftp_now():
+    """
+    Manual "Upload Test Now" trigger (Admin > Sync > ST Files FTP Upload) -
+    connects and uploads immediately, bypassing the schedule. Targets
+    YESTERDAY's report, same as the real scheduled upload and the same
+    reasoning as the email digest's own "Send Test Now" (daily_auto_sync_st_files'
+    docstring: "today" would be an incomplete, still-in-progress day) - this
+    exercises the exact same path production uses. mark_sent=False so this
+    never marks anything as already-uploaded, meaning it can't suppress the
+    real scheduled upload for the same day.
+    """
+    try:
+        report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
+        result = await sync_service.send_st_files_ftp_upload(report_date_str, mark_sent=False)
+        if not result.get("uploaded"):
+            reason = result.get("reason") or "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
+            raise HTTPException(status_code=400, detail=f"Nothing uploaded - {reason}")
+        return {
+            "status": "success",
+            "message": f"Uploaded {len(result['included'])} file(s)",
+            "included": result["included"],
+            "skipped": result["skipped"],
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

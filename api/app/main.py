@@ -7,6 +7,7 @@ from app.routers import reservations, members, payments, admin, bills, resources
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service
+from app.services import ftp_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
 import asyncio
@@ -480,6 +481,49 @@ async def send_st_files_daily_email(match_hour_only: bool = False):
     except Exception as e:
         print(f"Error in send_st_files_daily_email: {str(e)}")
 
+async def send_st_files_ftp_upload_job(match_hour_only: bool = False):
+    """
+    Once-daily plain-FTP upload (Admin > Sync > ST Files FTP Upload) of
+    every ready property's ST export CSV to a single shared destination -
+    its own configurable upload_hour/minute, independent of the email
+    digest above (a separate feature the user asked for explicitly, not
+    piggybacked on the same schedule). Same hour-matching/dedup pattern as
+    send_st_files_daily_email: match_hour_only in production since Vercel's
+    cron only lands on the hour, last_sent_date on the settings row guards
+    against resending on a later tick within the matching hour.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    settings_row = ftp_service.get_ftp_settings()
+    if not settings_row.get("enabled"):
+        return
+
+    today_str = now.date().isoformat()
+    if settings_row.get("last_sent_date") == today_str:
+        return
+
+    hour_matches = now.hour == settings_row["upload_hour"]
+    if match_hour_only:
+        if not hour_matches:
+            return
+    elif not (hour_matches and now.minute == settings_row["upload_minute"]):
+        return
+
+    # Same reasoning as send_st_files_daily_email: uploads YESTERDAY's report
+    # (daily_auto_sync_st_files' own capture date), dedup marker keyed on
+    # TODAY (the actual upload day) so a later cron tick this hour is still caught.
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
+    try:
+        result = await sync_service.send_st_files_ftp_upload(report_date_str, sent_date_str=today_str)
+        if result["uploaded"]:
+            print(f"[{now.isoformat()}] ST Files FTP upload done: {len(result['included'])} uploaded, {len(result['skipped'])} skipped.")
+        else:
+            print(f"[{now.isoformat()}] ST Files FTP upload: nothing uploaded ({result.get('reason', 'no properties ready')}).")
+    except Exception as e:
+        print(f"Error in send_st_files_ftp_upload_job: {str(e)}")
+
 async def retry_failed_syncs():
     """
     Runs once daily at 09:00 Asia/Bangkok. Finds every (property, table) pair
@@ -708,6 +752,8 @@ async def start_scheduler():
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
     # ST Files daily email digest - own configurable send_hour/minute.
     scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
+    # ST Files daily FTP upload - own separate configurable upload_hour/minute.
+    scheduler.add_job(send_st_files_ftp_upload_job, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -735,6 +781,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
     # ST Files daily email digest - own configurable send_hour/minute.
     background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
+    # ST Files daily FTP upload - own separate configurable upload_hour/minute.
+    background_tasks.add_task(send_st_files_ftp_upload_job, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

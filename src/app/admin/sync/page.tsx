@@ -36,6 +36,22 @@ interface RetrySettings {
   retry_interval_hours: number;
 }
 
+interface FtpSettings {
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  remote_path: string;
+  enabled: boolean;
+  upload_hour: number;
+  upload_minute: number;
+}
+
+const emptyFtpSettings: FtpSettings = {
+  host: "", port: 21, username: "", password: "", remote_path: "",
+  enabled: false, upload_hour: 4, upload_minute: 0,
+};
+
 export default function AdminSyncPage() {
   const [properties, setProperties] = useState<PropertySyncSettings[]>([]);
   const [loading, setLoading] = useState(true);
@@ -44,6 +60,11 @@ export default function AdminSyncPage() {
 
   const [retrySettings, setRetrySettings] = useState<RetrySettings>({ retry_count: 2, retry_interval_hours: 1 });
   const [retrySaving, setRetrySaving] = useState(false);
+
+  const [ftpSettings, setFtpSettings] = useState<FtpSettings>(emptyFtpSettings);
+  const [ftpPasswordSet, setFtpPasswordSet] = useState(false);
+  const [ftpSaving, setFtpSaving] = useState(false);
+  const [ftpTesting, setFtpTesting] = useState(false);
 
   // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env
   // var points at a stale API deployment lacking newer endpoints/behavior
@@ -99,9 +120,70 @@ export default function AdminSyncPage() {
     }
   };
 
+  const fetchFtpSettings = async () => {
+    try {
+      const res = await fetch(`${apiUrl}/admin/ftp-settings`);
+      const result = await res.json();
+      if (result.status === "success" && result.data) {
+        const d = result.data;
+        setFtpSettings({
+          host: d.host || "",
+          port: d.port ?? 21,
+          username: d.username || "",
+          password: "",
+          remote_path: d.remote_path || "",
+          enabled: !!d.enabled,
+          upload_hour: d.upload_hour ?? 4,
+          upload_minute: d.upload_minute ?? 0,
+        });
+        setFtpPasswordSet(!!d.password_set);
+      }
+    } catch (err) {
+      console.error("Failed to fetch FTP settings:", err);
+    }
+  };
+
+  const handleSaveFtpSettings = async () => {
+    setFtpSaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/admin/ftp-settings`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(ftpSettings),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.detail || result.message);
+      setFtpSettings((s) => ({ ...s, password: "" }));
+      await fetchFtpSettings();
+    } catch (err: any) {
+      alert("Error saving FTP settings: " + err.message);
+    } finally {
+      setFtpSaving(false);
+    }
+  };
+
+  const handleFtpUploadTestNow = async () => {
+    setFtpTesting(true);
+    try {
+      const res = await fetch(`${apiUrl}/admin/ftp-settings/upload-now`, { method: "POST" });
+      const result = await res.json();
+      if (result.status === "success") {
+        const skippedNote = result.skipped?.length ? `\nSkipped: ${result.skipped.join("; ")}` : "";
+        alert(`${result.message}\nIncluded: ${result.included.join(", ") || "none"}${skippedNote}`);
+      } else {
+        alert("Error uploading: " + (result.detail || result.message));
+      }
+    } catch (err: any) {
+      alert("Error uploading: " + err.message);
+    } finally {
+      setFtpTesting(false);
+    }
+  };
+
   useEffect(() => {
     fetchProperties();
     fetchRetrySettings();
+    fetchFtpSettings();
   }, []);
 
   const handleToggleSync = async (prop: PropertySyncSettings) => {
@@ -213,8 +295,106 @@ export default function AdminSyncPage() {
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
+           <div>
+              <h3 className="text-sm font-bold text-slate-700">ST Files FTP Upload</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">One shared FTP destination for every property&apos;s ST export CSV, on its own daily schedule (separate from the ST Files Email digest above).</p>
+           </div>
+           <button
+             type="button"
+             onClick={() => setFtpSettings({ ...ftpSettings, enabled: !ftpSettings.enabled })}
+             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ${ftpSettings.enabled ? 'bg-emerald-500' : 'bg-slate-200'}`}
+           >
+             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${ftpSettings.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+           </button>
+        </div>
+        <div className="p-5">
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div className="md:col-span-2 space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Host</label>
+                 <input
+                   type="text"
+                   placeholder="ftp.example.com"
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={ftpSettings.host}
+                   onChange={(e) => setFtpSettings({ ...ftpSettings, host: e.target.value })}
+                 />
+              </div>
+              <div className="space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Port</label>
+                 <input
+                   type="number"
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={ftpSettings.port}
+                   onChange={(e) => setFtpSettings({ ...ftpSettings, port: parseInt(e.target.value) || 21 })}
+                 />
+              </div>
+              <div className="space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Upload Time (Bangkok)</label>
+                 <input
+                   type="time"
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={`${String(ftpSettings.upload_hour).padStart(2, "0")}:${String(ftpSettings.upload_minute).padStart(2, "0")}`}
+                   onChange={(e) => {
+                     const [h, m] = e.target.value.split(":").map(Number);
+                     setFtpSettings({ ...ftpSettings, upload_hour: h || 0, upload_minute: m || 0 });
+                   }}
+                 />
+              </div>
+              <div className="space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Username</label>
+                 <input
+                   type="text"
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={ftpSettings.username}
+                   onChange={(e) => setFtpSettings({ ...ftpSettings, username: e.target.value })}
+                 />
+              </div>
+              <div className="space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">
+                   Password {ftpPasswordSet && <span className="text-emerald-600 normal-case font-normal">(set - leave blank to keep)</span>}
+                 </label>
+                 <input
+                   type="password"
+                   placeholder={ftpPasswordSet ? "••••••••" : ""}
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={ftpSettings.password}
+                   onChange={(e) => setFtpSettings({ ...ftpSettings, password: e.target.value })}
+                 />
+              </div>
+              <div className="md:col-span-2 space-y-1">
+                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Remote Path</label>
+                 <input
+                   type="text"
+                   placeholder="/incoming/st-files (blank = root)"
+                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-900 outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                   value={ftpSettings.remote_path}
+                   onChange={(e) => setFtpSettings({ ...ftpSettings, remote_path: e.target.value })}
+                 />
+              </div>
+           </div>
+           <div className="flex gap-3">
+              <button
+                onClick={handleSaveFtpSettings}
+                disabled={ftpSaving}
+                className="px-5 py-2.5 bg-[#AAA024] text-white rounded-xl text-xs font-bold hover:bg-[#8f871e] transition-all disabled:opacity-50"
+              >
+                {ftpSaving ? "Saving..." : "Save"}
+              </button>
+              <button
+                onClick={handleFtpUploadTestNow}
+                disabled={ftpTesting}
+                className="px-5 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-bold transition-all disabled:opacity-50"
+              >
+                {ftpTesting ? "Uploading..." : "Upload Test Now"}
+              </button>
+           </div>
+        </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
+        <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
            <h3 className="text-sm font-bold text-slate-700">Property Settings</h3>
-           <button 
+           <button
              onClick={fetchProperties}
              className="p-2 text-slate-400 hover:text-[#AAA024] transition-colors"
              title="Refresh"

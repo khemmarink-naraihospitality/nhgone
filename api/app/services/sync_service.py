@@ -10,6 +10,7 @@ import asyncio
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY
+from app.services import ftp_service
 
 logger = logging.getLogger(__name__)
 
@@ -2049,6 +2050,60 @@ class SyncService:
                 logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
 
         return {"sent": True, "included": included, "skipped": skipped}
+
+    async def send_st_files_ftp_upload(self, date_str: str, mark_sent: bool = True,
+                                        sent_date_str: str = None) -> dict:
+        """
+        Uploads one CSV per property (the same file get_st_report_export
+        builds for the email digest and the manual Download button) to the
+        single global FTP destination (Admin > Sync > ST Files FTP Upload).
+        Properties missing a Property Code or that day's imported data are
+        silently skipped - the upload still runs for whoever's ready, same
+        tolerance as send_st_files_daily_digest above.
+
+        Shared by main.py's scheduled job (mark_sent=True) and admin.py's
+        manual "Upload Test Now" button (mark_sent=False, so testing never
+        suppresses that day's real scheduled upload via the last_sent_date
+        guard below) - same split, same reasoning as the email digest.
+        """
+        settings_row = ftp_service.get_ftp_settings()
+        if not settings_row["enabled"] or not settings_row["host"]:
+            return {"uploaded": False, "included": [], "skipped": [],
+                    "reason": "FTP upload is not configured or not enabled"}
+
+        props_res = self.supabase.table("property_api_settings").select("property_name").order("property_name").execute()
+
+        files, included, skipped = [], [], []
+        for p in (props_res.data or []):
+            prop = p["property_name"]
+            try:
+                text, filename = self.get_st_report_export(prop, date_str)
+                files.append((filename, text.encode("utf-8")))
+                included.append(prop)
+            except Exception as e:
+                skipped.append(f"{prop}: {str(e)[:150]}")
+
+        if not files:
+            return {"uploaded": False, "included": included, "skipped": skipped}
+
+        result = ftp_service.upload_files(settings_row, files)
+        if result.get("connection_error"):
+            return {"uploaded": False, "included": [], "skipped": skipped,
+                    "reason": f"FTP connection failed: {result['connection_error']}"}
+
+        if mark_sent:
+            marker_date = sent_date_str or date_str
+            try:
+                self.supabase.table("ftp_settings").update({"last_sent_date": marker_date}) \
+                    .eq("id", settings_row["id"]).execute()
+            except Exception as e:
+                logger.warning(f"ST Files FTP upload: failed to record last_sent_date: {e}")
+
+        return {
+            "uploaded": True,
+            "included": result["uploaded"],
+            "skipped": skipped + [f"{filename}: {err}" for filename, err in result["failed"]],
+        }
 
     # BCP timeline window: how far back/forward from "today" the reservations
     # grid covers. Wide enough to show most stays without blowing up capture
