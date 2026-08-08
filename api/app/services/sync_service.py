@@ -1758,10 +1758,14 @@ class SyncService:
             if in_window(res.get("EndUtc")):
                 departures.append({**reservation_row(res), "spaces": units})
                 departures_count += units
-            # Staying the night = still checked in when the day rolls over,
-            # which is the population MEWS bases Customers on (a guest who
-            # checked out that morning belongs to the previous day's file).
-            if parse_utc(res.get("EndUtc")) and parse_utc(res["EndUtc"]) > day_end_utc and stay_category(res):
+            # MEWS counts a guest against the day they slept there, plus
+            # same-day stays that never saw a night at all. So the only
+            # reservations left out are the ones that merely checked OUT
+            # during the day - they belong to the previous day's file.
+            end_utc = parse_utc(res.get("EndUtc"))
+            stays_the_night = end_utc is not None and end_utc > day_end_utc
+            day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
+            if (stays_the_night or day_use) and stay_category(res):
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
                     if cid:
