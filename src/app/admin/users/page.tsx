@@ -13,6 +13,13 @@ interface UserProfile {
   last_login: string;
   joined_at: string;
   created_at?: string;
+  // Both optional: older rows predate these two columns, and a database
+  // that hasn't run the migration yet simply won't return them at all -
+  // select("*") stays silent about a missing column rather than erroring,
+  // so every read site treats a missing value as "google" (the real
+  // default every pre-migration account was actually set up with).
+  auth_method?: "google" | "internal";
+  must_change_password?: boolean;
 }
 
 interface RolePermissionRow {
@@ -456,6 +463,7 @@ export default function AdminUsersPage() {
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">User Authentication</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Log-in</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
@@ -463,7 +471,7 @@ export default function AdminUsersPage() {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={6} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                <tr><td colSpan={7} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : filteredUsers.map((user) => (
                 <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors group ${user.status === 'Pending' ? 'bg-amber-50/50' : ''}`}>
                   <td className="px-6 py-5 text-sm font-bold text-slate-700">{user.full_name}</td>
@@ -476,6 +484,27 @@ export default function AdminUsersPage() {
                      }`}>
                        {user.role}
                      </span>
+                  </td>
+                  <td className="px-6 py-5">
+                     {(user.auth_method || "google") === "internal" ? (
+                       <div className="flex items-center gap-1.5">
+                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                           <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                           Internal
+                         </span>
+                         {user.must_change_password && (
+                           <span
+                             title="Still signing in with the emailed password - hasn't set their own yet"
+                             className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                           />
+                         )}
+                       </div>
+                     ) : (
+                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                         <svg className="w-3 h-3 shrink-0" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" /><path fill="#34A853" d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957273V13.0418C2.43818 15.9832 5.48182 18 9 18Z" /><path fill="#FBBC05" d="M3.96409 10.71C3.78409 10.1741 3.68182 9.60136 3.68182 9C3.68182 8.39864 3.78409 7.82591 3.96409 7.29V4.95818H0.957273C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957273 13.0418L3.96409 10.71Z" /><path fill="#EA4335" d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957273 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" /></svg>
+                         Google
+                       </span>
+                     )}
                   </td>
                   <td className="px-6 py-5">
                      <div className="flex items-center gap-1.5">
