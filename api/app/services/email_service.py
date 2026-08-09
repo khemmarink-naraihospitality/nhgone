@@ -91,6 +91,70 @@ def _escape_html(value: str) -> str:
     )
 
 
+def _branded_email(body_html: str, cta_label: str, cta_link: str, show_link: bool) -> str:
+    """The shared shell for the hardcoded (non-Admin-editable) system emails -
+    internal welcome, password reset, Google sign-in notice. Same look as
+    DEFAULT_WELCOME_TEMPLATE above and the login page itself, kept in one
+    place so the three can't drift apart.
+
+    show_link controls whether the CTA's URL is also printed as plain text
+    underneath: helpful for a plain app link somebody may want to copy, but
+    wrong for a single-use recovery token, which should only ever be reachable
+    by clicking (a visible one invites forwarding, and wraps badly enough in
+    some clients to arrive broken).
+
+    body_html is trusted markup built by the callers above; any user-supplied
+    value inside it must already have gone through _escape_html.
+    """
+    printed_link = (
+        f'<p style="margin:0; font-size:11px; color:#152A00; opacity:0.5; word-break:break-all;">{cta_link}</p>'
+        if show_link else ""
+    )
+    return f"""<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px 40px 32px 40px; text-align:center;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+          <tr>
+            <td style="border:1px solid rgba(21,42,0,0.1); padding:8px; border-radius:4px;">
+              <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" width="32" height="32" alt="NHG" style="display:block;" />
+            </td>
+          </tr>
+        </table>
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
+        {body_html}
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
+          <tr>
+            <td style="background-color:#152A00; border-radius:4px;">
+              <a href="{cta_link}" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">{cta_label}</a>
+            </td>
+          </tr>
+        </table>
+        {printed_link}
+      </td>
+    </tr>
+  </table>
+  <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
+</div>"""
+
+
+def _credential_box(email: str, password: str) -> str:
+    """The cream email/password panel in the internal welcome email."""
+    label = "margin:0 0 8px 0; font-size:10px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#152A00; opacity:0.5;"
+    value = "font-size:14px; color:#152A00; font-family: monospace;"
+    return f"""<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 32px 0; background:#FFEFD2; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+          <tr>
+            <td style="padding:16px 20px; text-align:left;">
+              <p style="{label}">Work Email</p>
+              <p style="margin:0 0 16px 0; {value}">{_escape_html(email)}</p>
+              <p style="{label}">Password</p>
+              <p style="margin:0; {value}">{_escape_html(password)}</p>
+            </td>
+          </tr>
+        </table>"""
+
+
 class EmailService:
     def _get_settings(self):
         supabase = get_supabase_client()
@@ -254,6 +318,101 @@ class EmailService:
             f"Narai Hospitality Group - NHGOne"
         )
         self.send_email(to_email, subject, html_body, text_body)
+
+    def send_internal_welcome_email(self, to_email: str, password: str, full_name: str = ""):
+        """Welcome email for auth_method="internal" accounts (see admin.py's
+        create_user) - unlike send_welcome_email, this one actually carries a
+        usable credential, so it's hardcoded here rather than being a token in
+        the shared Admin > Templates welcome design: that design is edited by
+        non-engineers, and a stray edit dropping the password token would
+        silently mail an unusable "your account is ready" email with no way to
+        sign in."""
+        greeting = full_name or to_email
+        app_link = settings.APP_BASE_URL
+        body = (
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'บัญชีของคุณถูกสร้างในระบบ NHGOne แล้ว เข้าสู่ระบบผ่านช่อง <b>Internal Auth</b> ด้วยข้อมูลด้านล่าง '
+            'ระบบจะให้คุณตั้งรหัสผ่านใหม่ทันทีหลังเข้าสู่ระบบครั้งแรก</p>'
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'Your NHGOne account has been created. Sign in via the <b>Internal Auth</b> link on the login page '
+            'with the credentials below - you will be asked to choose your own password straight away.</p>'
+            + _credential_box(to_email, password)
+        )
+        html_body = _branded_email(body, cta_label="Open NHGOne", cta_link=app_link, show_link=True)
+        text_body = (
+            f"Hi {greeting},\n\n"
+            f"Your NHGOne account has been created.\n\n"
+            f"Sign in at {app_link} via 'Internal Auth' with:\n"
+            f"Email: {to_email}\n"
+            f"Password: {password}\n\n"
+            f"You will be asked to choose your own password on first sign-in.\n\n"
+            f"Narai Hospitality Group - NHGOne"
+        )
+        self.send_email(to_email, subject="บัญชี NHGOne ของคุณถูกสร้างแล้ว / Your NHGOne account has been created",
+                        html_body=html_body, text_body=text_body)
+
+    def send_password_reset_email(self, to_email: str, reset_link: str, full_name: str = ""):
+        """The "Forgot password" email for Internal Auth accounts. reset_link
+        is a Supabase recovery action_link minted server-side (see the auth
+        router) - it carries a single-use token and lands on /reset-password,
+        so it is never escaped as HTML text, only used as an href."""
+        greeting = full_name or to_email
+        body = (
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'เราได้รับคำขอตั้งรหัสผ่านใหม่สำหรับบัญชี NHGOne ของคุณ กดปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ '
+            'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุภายใน 1 ชั่วโมง</p>'
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'We received a request to reset the password for your NHGOne account. Use the button below to choose '
+            'a new one. This link can only be used once and expires within the hour.</p>'
+            '<p style="margin:0 0 24px 0; font-size:13px; color:#152A00; text-align:left; line-height:1.6; opacity:0.7;">'
+            'ถ้าคุณไม่ได้เป็นคนขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมของคุณจะยังใช้งานได้ตามปกติ<br/>'
+            "If you didn't request this, you can ignore this email - your current password will keep working.</p>"
+        )
+        html_body = _branded_email(body, cta_label="Reset Password", cta_link=reset_link, show_link=False)
+        text_body = (
+            f"Hi {greeting},\n\n"
+            f"We received a request to reset the password for your NHGOne account.\n"
+            f"Open this link to choose a new one (single use, expires within the hour):\n\n"
+            f"{reset_link}\n\n"
+            f"If you didn't request this, you can ignore this email.\n\n"
+            f"Narai Hospitality Group - NHGOne"
+        )
+        self.send_email(to_email, subject="ตั้งรหัสผ่าน NHGOne ใหม่ / Reset your NHGOne password",
+                        html_body=html_body, text_body=text_body)
+
+    def send_google_signin_notice_email(self, to_email: str, full_name: str = ""):
+        """Sent when someone asks to reset the password on an account that
+        signs in with Google. There is no password to reset, but staying
+        silent would leave them waiting for a link that never arrives - and
+        answering differently in the HTTP response would leak which addresses
+        exist (see the auth router's docstring), so the correction is
+        delivered here, to the mailbox's real owner, instead."""
+        greeting = full_name or to_email
+        app_link = settings.APP_BASE_URL
+        body = (
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'มีคำขอตั้งรหัสผ่านใหม่สำหรับบัญชีนี้ แต่บัญชีของคุณเข้าสู่ระบบด้วย <b>Google</b> จึงไม่มีรหัสผ่านให้ตั้งใหม่ '
+            'กรุณาใช้ปุ่ม <b>Continue with Google</b> ที่หน้าเข้าสู่ระบบ</p>'
+            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
+            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
+            'Someone asked to reset the password for this account, but it signs in with <b>Google</b> - there is no '
+            'password to reset. Use <b>Continue with Google</b> on the login page instead.</p>'
+        )
+        html_body = _branded_email(body, cta_label="Open NHGOne", cta_link=app_link, show_link=True)
+        text_body = (
+            f"Hi {greeting},\n\n"
+            f"Someone asked to reset the password for this account, but it signs in with Google - "
+            f"there is no password to reset.\n\n"
+            f"Use 'Continue with Google' at {app_link}\n\n"
+            f"Narai Hospitality Group - NHGOne"
+        )
+        self.send_email(to_email, subject="เข้าสู่ระบบ NHGOne ด้วย Google / Sign in to NHGOne with Google",
+                        html_body=html_body, text_body=text_body)
 
     def send_rejection_email(self, to_email: str, full_name: str = ""):
         greeting = full_name or to_email

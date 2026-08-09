@@ -46,6 +46,110 @@ function PendingApprovalScreen({ email }: { email: string }) {
   );
 }
 
+function ForcePasswordChangeScreen({ email }: { email: string }) {
+  const router = useRouter();
+  const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push("/");
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError("");
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirm) {
+      setError("The two passwords do not match.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Your session expired. Please sign in again.");
+      const { error: pwError } = await supabase.auth.updateUser({ password });
+      if (pwError) throw pwError;
+      // Only cleared after the password itself actually changed, so a failed
+      // update leaves the account still gated behind this screen rather than
+      // waved through with the emailed password still live.
+      const { error: flagError } = await supabase
+        .from("profiles")
+        .update({ must_change_password: false })
+        .eq("id", user.id);
+      if (flagError) throw flagError;
+      // Full reload rather than router.push: re-runs the auth guard from
+      // scratch so the app shell mounts with the cleared flag.
+      window.location.href = "/dashboard";
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Could not update your password.");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#FFEFD2] p-4 font-sans text-[#152A00]">
+      <div className="relative w-full max-w-sm bg-white border border-[#152A00]/10 rounded-sm shadow-[20px_20px_60px_rgba(21,42,0,0.05)] p-8 md:p-10">
+        <div className="mx-auto mb-6 w-14 h-14 rounded-full bg-[#AAA024]/10 flex items-center justify-center">
+          <svg className="w-7 h-7 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+          </svg>
+        </div>
+        <h1 className="text-xl font-black font-display mb-3 tracking-tight text-center">Choose a New Password</h1>
+        <p className="text-sm text-[#152A00]/70 leading-relaxed mb-8 text-center">
+          <span className="font-bold">{email}</span> is signing in with a password that was emailed to you. Please replace it before continuing.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">New Password</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
+              autoFocus
+              required
+              className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Confirm Password</label>
+            <input
+              type="password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              placeholder="Re-enter your new password"
+              required
+              className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
+            />
+          </div>
+          {error && (
+            <p className="text-red-600 text-[11px] font-bold leading-relaxed bg-red-50 p-3 border-l-2 border-red-600">{error}</p>
+          )}
+          <button
+            type="submit"
+            disabled={saving}
+            className="w-full py-3 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
+          >
+            {saving ? "SAVING..." : "SET PASSWORD & CONTINUE"}
+          </button>
+        </form>
+        <button
+          onClick={handleSignOut}
+          className="w-full mt-3 py-3 border border-[#152A00]/20 rounded-sm text-[11px] font-bold tracked-caps text-[#152A00]/60 hover:border-[#152A00] hover:text-[#152A00] transition-all"
+        >
+          SIGN OUT
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // Auto sign-out after 5 minutes with no mouse/keyboard/touch/scroll activity
 // anywhere in the app - a shared front-desk workstation left unattended
 // otherwise stays logged into whichever staff account opened it.
@@ -55,9 +159,17 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const pathname = usePathname();
   const router = useRouter();
   const isLoginPage = pathname === "/";
+  // Where a Supabase recovery link lands. Deliberately outside the auth
+  // guard entirely: the visitor arrives holding a one-time recovery token
+  // rather than a normal session, and the page itself is what validates it.
+  const isResetPasswordPage = pathname === "/reset-password";
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null);
   const [userRole, setUserRole] = useState<string | null>(null);
   const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  // Set for an Internal Auth account still on the password that was emailed
+  // to it (profiles.must_change_password) - blocks the app shell behind
+  // ForcePasswordChangeScreen, the same way Pending does.
+  const [mustChangePasswordEmail, setMustChangePasswordEmail] = useState<string | null>(null);
   const [menuPermissions, setMenuPermissions] = useState<MenuPermissions | null>(null);
   // Distinguishes "haven't fetched yet" from "fetched, got nothing" (both
   // otherwise look like menuPermissions === null) - without this the admin
@@ -80,8 +192,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     const checkAuth = async () => {
+      // The reset-password page runs its own token check and must stay
+      // reachable with no session at all - never redirect away from it.
+      if (isResetPasswordPage) {
+        setIsAuthorized(true);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
-      
+
       if (!user) {
         if (!isLoginPage) {
           router.push("/");
@@ -94,9 +213,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
 
       // If user is logged in, must have a profile
       // We check by ID and fallback to Email to be absolute
+      // select("*") rather than an explicit column list, for the same reason
+      // role_permissions is read that way below: a column added in code
+      // before it exists in the database (must_change_password, auth_method)
+      // would make an explicit list fail the whole query - and here that
+      // means every user losing their profile and being signed out as
+      // unauthorized, not just one link going missing.
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("id, email, role, status")
+        .select("*")
         .eq("id", user.id)
         .single();
 
@@ -107,7 +232,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       if (!finalProfile && user.email) {
         const { data: emailProfile } = await supabase
           .from("profiles")
-          .select("id, email, role, status")
+          .select("*")
           .eq("email", user.email)
           .single();
         finalProfile = emailProfile;
@@ -182,9 +307,17 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         await supabase.auth.signOut();
         window.location.href = "/?error=inactive";
         setIsAuthorized(false);
+      } else if (finalProfile.must_change_password) {
+        // Internal Auth account still on the password that was emailed to it
+        // - a credential the user never chose and that sat in a mailbox in
+        // plain text. Gate the app behind the change screen until it's
+        // replaced (see ForcePasswordChangeScreen).
+        setMustChangePasswordEmail(finalProfile.email || user.email || "");
+        setIsAuthorized(true);
       } else {
         // Authorized!
         setPendingEmail(null);
+        setMustChangePasswordEmail(null);
         setUserRole(finalProfile.role || null);
         if (finalProfile.role) {
           // select("*") instead of an explicit column list: if a newly added
@@ -218,6 +351,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       if (event === 'SIGNED_OUT') {
         setIsAuthorized(false);
         setPendingEmail(null);
+        setMustChangePasswordEmail(null);
         setMenuPermissions(null);
         setPermissionsLoaded(false);
         router.push("/");
@@ -229,7 +363,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     return () => {
       subscription.unsubscribe();
     };
-  }, [pathname, isLoginPage, router]);
+  }, [pathname, isLoginPage, isResetPasswordPage, router]);
 
   const isSuperAdminRole = userRole === "Super Admin" || userRole?.toLowerCase() === "super_admin";
   const onAdminPath = pathname.startsWith("/admin");
@@ -252,7 +386,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // be sure the session is actually dead rather than relying on client
   // router state that a long-idle tab may have gone stale on.
   useEffect(() => {
-    if (!isAuthorized || isLoginPage || pendingEmail) return;
+    // Same exclusions as the Pending waiting screen: the reset-password page
+    // and the forced-change screen both show no app data and carry their own
+    // way out, and timing out mid-password-entry would just destroy the
+    // session the user is there to fix.
+    if (!isAuthorized || isLoginPage || pendingEmail || isResetPasswordPage || mustChangePasswordEmail) return;
     let timer: ReturnType<typeof setTimeout>;
     const handleIdleTimeout = async () => {
       await supabase.auth.signOut();
@@ -269,7 +407,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       clearTimeout(timer);
       activityEvents.forEach((evt) => window.removeEventListener(evt, resetTimer));
     };
-  }, [isAuthorized, isLoginPage, pendingEmail]);
+  }, [isAuthorized, isLoginPage, pendingEmail, isResetPasswordPage, mustChangePasswordEmail]);
 
   // Status poll - the Inactive/Pending checks in checkAuth above only re-run
   // on navigation (the effect is keyed on pathname), so a Super Admin
@@ -282,7 +420,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // non-destructive handling (the waiting screen keeps its own manual
   // sign-out button) - only Inactive forces a hard sign-out.
   useEffect(() => {
-    if (!isAuthorized || isLoginPage || pendingEmail) return;
+    if (!isAuthorized || isLoginPage || pendingEmail || isResetPasswordPage || mustChangePasswordEmail) return;
     const checkStillActive = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -296,7 +434,12 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     };
     const interval = setInterval(checkStillActive, 60_000);
     return () => clearInterval(interval);
-  }, [isAuthorized, isLoginPage, pendingEmail]);
+  }, [isAuthorized, isLoginPage, pendingEmail, isResetPasswordPage, mustChangePasswordEmail]);
+
+  // Stands alone with no shell and no guard - see isResetPasswordPage above.
+  if (isResetPasswordPage) {
+    return <>{children}</>;
+  }
 
   // Loading state to prevent flicker
   if (isAuthorized === null && !isLoginPage) {
@@ -316,6 +459,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // back on "/" sees the waiting screen instead of the login form again.
   if (pendingEmail) {
     return <PendingApprovalScreen email={pendingEmail} />;
+  }
+
+  // Same priority reasoning as pendingEmail above: takes precedence over
+  // isLoginPage so landing back on "/" mid-flow doesn't hand back the login
+  // form (and a route the user typed can't slip past it either).
+  if (mustChangePasswordEmail) {
+    return <ForcePasswordChangeScreen email={mustChangePasswordEmail} />;
   }
 
   if (isLoginPage) {

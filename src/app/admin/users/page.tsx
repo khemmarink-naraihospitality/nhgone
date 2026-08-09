@@ -250,7 +250,7 @@ export default function AdminUsersPage() {
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [newUser, setNewUser] = useState({ email: "", role: "User", full_name: "" });
+  const [newUser, setNewUser] = useState({ email: "", role: "User", full_name: "", auth_method: "google" });
   const [creating, setCreating] = useState(false);
   const [approvingUser, setApprovingUser] = useState<UserProfile | null>(null);
   const [approveRole, setApproveRole] = useState("User");
@@ -304,12 +304,14 @@ export default function AdminUsersPage() {
       const result = await response.json();
       if (result.status === "success") {
         setShowCreateModal(false);
-        setNewUser({ email: "", role: "User", full_name: "" });
+        setNewUser({ email: "", role: "User", full_name: "", auth_method: "google" });
         fetchUsers();
         if (!result.email_sent) {
           alert(
             `User created, but the welcome email failed to send: ${result.email_error || "unknown error"}. ` +
-            `Please share the password with them directly.`
+            (result.password
+              ? `Share this password with them directly: ${result.password}`
+              : `Please share the password with them directly.`)
           );
         }
       } else {
@@ -1043,9 +1045,45 @@ export default function AdminUsersPage() {
                     </div>
                  </div>
 
-                  <div className="flex items-center gap-3 ml-1 p-3 bg-white/5 rounded-xl border border-white/10">
-                     <svg className="w-5 h-5 text-[#AAA024] shrink-0" viewBox="0 0 18 18" fill="currentColor"><path d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" /><path d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957273V13.0418C2.43818 15.9832 5.48182 18 9 18Z" /><path d="M3.96409 10.71C3.78409 10.1741 3.68182 9.60136 3.68182 9C3.68182 8.39864 3.78409 7.82591 3.96409 7.29V4.95818H0.957273C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957273 13.0418L3.96409 10.71Z" /><path d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957273 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" /></svg>
-                     <p className="text-xs text-white/60 leading-relaxed">User จะ login ด้วย <span className="text-white font-bold">Google</span> โดยใช้ email ที่ลงทะเบียนนี้</p>
+                  <div className="space-y-2">
+                     <label className="text-xs font-bold text-white/60 ml-1">User Authentication</label>
+                     <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setNewUser({ ...newUser, auth_method: "google" })}
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                            newUser.auth_method === "google"
+                              ? "bg-[#AAA024]/10 border-[#AAA024]/50 ring-1 ring-[#AAA024]/40"
+                              : "bg-white/5 border-white/10 hover:border-white/20"
+                          }`}
+                        >
+                           <svg className="w-4 h-4 shrink-0" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" /><path fill="#34A853" d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957273V13.0418C2.43818 15.9832 5.48182 18 9 18Z" /><path fill="#FBBC05" d="M3.96409 10.71C3.78409 10.1741 3.68182 9.60136 3.68182 9C3.68182 8.39864 3.78409 7.82591 3.96409 7.29V4.95818H0.957273C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957273 13.0418L3.96409 10.71Z" /><path fill="#EA4335" d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957273 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" /></svg>
+                           <div>
+                              <p className="text-xs font-bold text-white leading-tight">Google</p>
+                              <p className="text-[10px] text-white/40 leading-tight">Authentication</p>
+                           </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setNewUser({ ...newUser, auth_method: "internal" })}
+                          className={`flex items-center gap-2.5 p-3 rounded-xl border text-left transition-all ${
+                            newUser.auth_method === "internal"
+                              ? "bg-[#AAA024]/10 border-[#AAA024]/50 ring-1 ring-[#AAA024]/40"
+                              : "bg-white/5 border-white/10 hover:border-white/20"
+                          }`}
+                        >
+                           <svg className="w-4 h-4 shrink-0 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                           <div>
+                              <p className="text-xs font-bold text-white leading-tight">Internal</p>
+                              <p className="text-[10px] text-white/40 leading-tight">Users</p>
+                           </div>
+                        </button>
+                     </div>
+                     <p className="text-[11px] text-white/40 leading-relaxed px-1">
+                        {newUser.auth_method === "google"
+                          ? <>User signs in with <span className="text-white/70 font-bold">Continue with Google</span> using this email address.</>
+                          : <>A password is generated and emailed to this address. User signs in via <span className="text-white/70 font-bold">Internal Auth</span> on the login page.</>}
+                     </p>
                   </div>
 
                  <button 

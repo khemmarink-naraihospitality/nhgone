@@ -12,6 +12,11 @@ function LoginContent() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  // Swaps the email/password form for the single-field reset request, rather
+  // than opening a separate page - the email is usually already typed.
+  const [forgotMode, setForgotMode] = useState(false);
+  const [forgotSending, setForgotSending] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -45,6 +50,29 @@ function LoginContent() {
       setErrorMsg(err.message || "Failed to login");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setForgotSending(true);
+    setErrorMsg("");
+    try {
+      // Same-origin path, not NEXT_PUBLIC_API_URL - see the Admin > Users
+      // create-user call for why that env var can't be trusted here.
+      await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+    } catch (err) {
+      console.error("Forgot password request failed", err);
+    } finally {
+      // Always the same confirmation, success or not: the endpoint itself is
+      // deliberately blind to whether the address exists (see its docstring),
+      // and a UI that reported failures would undo that.
+      setForgotSending(false);
+      setForgotSent(true);
     }
   };
 
@@ -123,7 +151,7 @@ function LoginContent() {
           )}
 
           {/* Conditional Email Input */}
-          {showEmailLogin && (
+          {showEmailLogin && !forgotMode && (
             <form onSubmit={handleEmailLogin} className="w-full space-y-6">
               <div className="space-y-2">
                 <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Work Email</label>
@@ -155,7 +183,71 @@ function LoginContent() {
               >
                 {loading ? "SIGNING IN..." : "LOGIN"}
               </button>
+
+              <button
+                type="button"
+                onClick={() => { setForgotMode(true); setErrorMsg(""); }}
+                className="w-full text-[10px] font-bold tracked-caps text-[#152A00]/50 hover:text-[#AAA024] transition-colors"
+              >
+                Forgot Password?
+              </button>
             </form>
+          )}
+
+          {/* Forgot-password request - replaces the sign-in form rather than
+              sitting below it, so there's only ever one submit button on
+              screen and the shared email field can't be ambiguous. */}
+          {showEmailLogin && forgotMode && (
+            forgotSent ? (
+              <div className="w-full text-center">
+                <div className="mx-auto mb-5 w-12 h-12 rounded-full bg-[#AAA024]/10 flex items-center justify-center">
+                  <svg className="w-6 h-6 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <p className="text-sm text-[#152A00]/70 leading-relaxed mb-8">
+                  If that email belongs to an NHGOne account, a reset link is on its way. It can only be used once and expires within the hour.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setForgotMode(false); setForgotSent(false); }}
+                  className="w-full py-3 border border-[#152A00] rounded-sm text-[11px] font-bold tracked-caps text-[#152A00] hover:bg-[#152A00] hover:text-[#FFEFD2] transition-all"
+                >
+                  BACK TO LOGIN
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleForgotPassword} className="w-full space-y-6">
+                <p className="text-xs text-[#152A00]/60 leading-relaxed">
+                  Enter your work email and we&apos;ll send you a link to set a new password.
+                </p>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Work Email</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    required
+                    className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={forgotSending}
+                  className="w-full py-3 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
+                >
+                  {forgotSending ? "SENDING..." : "SEND RESET LINK"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setForgotMode(false)}
+                  className="w-full text-[10px] font-bold tracked-caps text-[#152A00]/50 hover:text-[#AAA024] transition-colors"
+                >
+                  Back to Login
+                </button>
+              </form>
+            )
           )}
           
           <div className="mt-8 text-center text-[8px] text-gray-400 font-light italic tracked-caps leading-relaxed max-w-[280px]">

@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime, timedelta
 from typing import Optional
@@ -10,12 +11,21 @@ from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY, ST_F
 from app.services.sync_service import sync_service
 from app.services import ftp_service
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 class UserCreateRequest(BaseModel):
     email: str
     role: str = "User"
     full_name: str = ""
+    # "google" (default) - a random, never-shown password is generated purely
+    # so the Supabase Auth row exists; the user signs in via Google OAuth,
+    # which Supabase links to this account by email. "internal" - for users
+    # without a Google account on this email (e.g. a shared/contractor
+    # address): a real password is generated and emailed to them directly,
+    # for the login page's "Internal Auth" email/password form.
+    auth_method: str = "google"
 
 class SelfRegisterRequest(BaseModel):
     id: str
@@ -88,13 +98,15 @@ class StFilesEmailSettingsUpdate(BaseModel):
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
     """
-    Pre-register a user by email + role. A random password is generated internally
-    so the account exists in Supabase Auth — the user is expected to sign in via
-    Google OAuth (which Supabase will link to this account by email).
+    Pre-register a user by email + role. A strong random password is always
+    generated so the Supabase Auth row exists either way; whether it's ever
+    usable depends on auth_method - "google" throws it away (Google OAuth is
+    the real credential, linked by email), "internal" emails it to the user
+    for the login page's email/password form instead.
     """
+    is_internal = request.auth_method == "internal"
     try:
         admin_supabase = get_supabase_client()
-        # Generate a strong random password — the user will never see or use this
         random_password = secrets.token_urlsafe(32)
         auth_res = admin_supabase.auth.admin.create_user({
             "email": request.email,
@@ -108,19 +120,49 @@ async def create_user(request: UserCreateRequest):
         if not auth_res or not auth_res.user:
             raise HTTPException(status_code=400, detail="Failed to create auth user")
         user_id = auth_res.user.id
-        admin_supabase.table("profiles").upsert({
-            "id": user_id,
-            "email": request.email,
-            "full_name": request.full_name,
-            "role": request.role,
-            "status": "Active"
-        }).execute()
+        try:
+            admin_supabase.table("profiles").upsert({
+                "id": user_id,
+                "email": request.email,
+                "full_name": request.full_name,
+                "role": request.role,
+                "status": "Active",
+                "auth_method": "internal" if is_internal else "google",
+                # The emailed password is a delivery mechanism, not a
+                # credential the user chose - Navigation.tsx blocks the app
+                # behind a forced change screen until they replace it. Google
+                # accounts have no password to change, so the flag stays off.
+                "must_change_password": is_internal,
+            }).execute()
+        except Exception as profile_error:
+            # The auth user already exists at this point. Leaving it behind
+            # would take the address hostage - a retry would fail with "email
+            # already registered" while the person still can't sign in
+            # (no profile => the auth guard rejects them). Undo it so the
+            # admin can simply fix the cause and create the user again.
+            logger.error(f"Profile row failed for {request.email}, rolling back auth user: {profile_error}")
+            try:
+                admin_supabase.auth.admin.delete_user(user_id)
+            except Exception as cleanup_error:
+                logger.error(f"Rollback of orphaned auth user {user_id} failed: {cleanup_error}")
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Could not create the profile row: {profile_error}. "
+                    "If this mentions an unknown 'auth_method' or 'must_change_password' column, "
+                    "the profiles table still needs those two columns added."
+                ),
+            )
 
         email_sent = False
         email_error = None
         try:
-            # Send welcome email without credentials — user should use Google login
-            email_service.send_welcome_email(request.email, None, request.full_name)
+            if is_internal:
+                email_service.send_internal_welcome_email(request.email, random_password, request.full_name)
+            else:
+                # Google flow - no credentials in the email, the password is
+                # never shown to anyone, including this response below.
+                email_service.send_welcome_email(request.email, None, request.full_name)
             email_sent = True
         except Exception as e:
             email_error = str(e)
@@ -131,6 +173,10 @@ async def create_user(request: UserCreateRequest):
             "user_id": user_id,
             "email_sent": email_sent,
             "email_error": email_error,
+            # Only surfaced for internal accounts, and only so the admin has
+            # something to hand the user directly if the email above failed -
+            # a Google-flow password is unusable and never leaves the server.
+            "password": random_password if is_internal else None,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
