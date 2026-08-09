@@ -1082,7 +1082,7 @@ export default function AdminUsersPage() {
                      <p className="text-[11px] text-white/40 leading-relaxed px-1">
                         {newUser.auth_method === "google"
                           ? <>User signs in with <span className="text-white/70 font-bold">Continue with Google</span> using this email address.</>
-                          : <>A password is generated and emailed to this address. User signs in via <span className="text-white/70 font-bold">Internal Auth</span> on the login page.</>}
+                          : <>A password is generated and emailed to this address. User signs in via <span className="text-white/70 font-bold">Internal Users</span> on the login page.</>}
                      </p>
                   </div>
 

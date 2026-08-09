@@ -133,7 +133,7 @@ function LoginContent() {
               onClick={() => setShowEmailLogin(!showEmailLogin)}
               className="flex-shrink mx-4 text-[10px] font-bold tracked-caps text-[#AAA024] hover:text-[#152A00] transition-colors"
             >
-              INTERNAL AUTH
+              INTERNAL USERS
             </button>
             <div className="flex-grow border-t border-[#152A00]/10"></div>
           </div>
@@ -159,7 +159,7 @@ function LoginContent() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@company.com"
+                  placeholder="name@naraihospitality.com"
                   required
                   className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
                 />
@@ -227,7 +227,7 @@ function LoginContent() {
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="name@company.com"
+                    placeholder="name@naraihospitality.com"
                     required
                     className="w-full px-4 py-3 rounded-sm border border-[#152A00]/10 focus:border-[#AAA024] outline-none transition-all text-sm bg-[#FFEFD2]/10"
                   />

@@ -332,11 +332,11 @@ class EmailService:
         body = (
             f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
             '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'บัญชีของคุณถูกสร้างในระบบ NHGOne แล้ว เข้าสู่ระบบผ่านช่อง <b>Internal Auth</b> ด้วยข้อมูลด้านล่าง '
+            'บัญชีของคุณถูกสร้างในระบบ NHGOne แล้ว เข้าสู่ระบบผ่านช่อง <b>Internal Users</b> ด้วยข้อมูลด้านล่าง '
             'ระบบจะให้คุณตั้งรหัสผ่านใหม่ทันทีหลังเข้าสู่ระบบครั้งแรก</p>'
             f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
             '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'Your NHGOne account has been created. Sign in via the <b>Internal Auth</b> link on the login page '
+            'Your NHGOne account has been created. Sign in via the <b>Internal Users</b> link on the login page '
             'with the credentials below - you will be asked to choose your own password straight away.</p>'
             + _credential_box(to_email, password)
         )
@@ -344,7 +344,7 @@ class EmailService:
         text_body = (
             f"Hi {greeting},\n\n"
             f"Your NHGOne account has been created.\n\n"
-            f"Sign in at {app_link} via 'Internal Auth' with:\n"
+            f"Sign in at {app_link} via 'Internal Users' with:\n"
             f"Email: {to_email}\n"
             f"Password: {password}\n\n"
             f"You will be asked to choose your own password on first sign-in.\n\n"
