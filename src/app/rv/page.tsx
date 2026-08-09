@@ -44,6 +44,11 @@ interface RvReport {
   payments: JournalRow[];
   vat: number;
   vat_gl_code: string;
+  // Only set for properties whose chart defines a secondary_tax (e.g.
+  // Thailand's 1% provincial tax, reported under its own TaxRateCode).
+  secondary_tax?: number | null;
+  secondary_tax_gl_code?: string;
+  secondary_tax_label?: string;
   guest_ledger: number;
   guest_ledger_gl_code: string;
   totals: {
@@ -300,10 +305,18 @@ export default function RvPage() {
     const lines: { label: string; value: number; gl?: string; strong?: boolean; rule?: boolean }[] = [
       { label: "Revenue (net)", value: r.totals.revenue_net },
       { label: "VAT", value: r.totals.vat, gl: r.vat_gl_code },
+    ];
+    // Only a few properties report a second, genuinely separate tax under its
+    // own rate code (e.g. Thailand's 1% provincial tax) - shown only when the
+    // report actually carries one, so most properties' summary is unchanged.
+    if (r.secondary_tax) {
+      lines.push({ label: r.secondary_tax_label || "Secondary Tax", value: r.secondary_tax, gl: r.secondary_tax_gl_code });
+    }
+    lines.push(
       { label: "Revenue (gross)", value: r.totals.revenue_gross, strong: true, rule: true },
       { label: "Payments settled", value: r.totals.payments },
       { label: "Guest Ledger (still owed)", value: r.guest_ledger, gl: r.guest_ledger_gl_code, strong: true, rule: true },
-    ];
+    );
     return (
       <table className="w-full text-left border-collapse min-w-max">
         <thead>

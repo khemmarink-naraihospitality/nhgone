@@ -2057,22 +2057,216 @@ class SyncService:
             "vat": ("21600", ""),
             "guest_ledger": ("11401", "000"),
         },
+        "Lub d Philippines Makati": {
+            "payments": {
+                "CashPayment":                   ("11110", "0"),
+                "CreditCardPayment":             ("11403", "0"),
+                # Agoda's own prepayment account code, not a numbered GL - the
+                # file writes it literally as "DAG01" in field 3, confirmed
+                # against every one of Makati's 50 prepayment rows.
+                "ExternalPayment/Prepayment":    ("DAG01", ""),
+                "ExternalPayment/OnlinePayment": ("11406", "0"),
+                "ExternalPayment/WireTransfer":  ("11406", "0"),
+                "ExternalPayment/Invoice":       ("11402", "0"),
+            },
+            "revenue": [
+                ("room adjustment", "30005", "111"),
+                ("room upgrade",    "30005", "111"),
+                ("early check in",  "30020", "111"),
+                ("late check out",  "30025", "111"),
+                ("breakfast",       "11416", "000"),
+                ("laundry",         "30450", "141"),
+                ("transfer",        "30505", "134"),
+                # Not really "revenue" - a local-tax accrual liability - but it
+                # shares the same BillingName-driven journal mechanism, so it's
+                # listed here to keep it off the 30815 fallback, which is
+                # genuine miscellaneous revenue.
+                ("accrued - local tax", "21620", "0"),
+                ("night",           "30001", "111"),
+            ],
+            "fallback": ("30815", "141"),
+            "service_charge": ("30805", "111"),
+            "service_charge_exempt_gl": ("11416",),
+            "vat": ("21600", ""),
+            # PH-S is the real 12% VAT; the small PH-MA-CUSTOM* municipal
+            # surcharges land on the same 21600 as VAT in the file, so both
+            # are kept in the primary bucket.
+            "vat_tax_codes": {"PH-S", "PH-MA-CUSTOM-0.6%", "PH-MA-CUSTOM-0.75%"},
+            # Makati has no per-reservation "Service Charge" order item at all
+            # - unlike every other property, its 10% service charge exists
+            # ONLY as this TaxRateCode, and the file turns it into a single
+            # synthetic revenue line rather than a real transaction. Confirmed
+            # by both the amount (matches to within a day's normal drift) and
+            # field 20 carrying the same "ABBSU"/"V07" tax marker the VAT line
+            # itself carries.
+            "service_charge_tax_code": "PH-MA-SERVICE-1%",
+            "guest_ledger": ("11401", "000"),
+        },
+        "Lub d Phuket Patong": {
+            "payments": {
+                "CashPayment":                   ("11110", "000"),
+                "CreditCardPayment":             ("11403", "000"),
+                # Patong books its online gateway to the card account (11403),
+                # not a separate one - confirmed against all 5 online rows in
+                # its file, distinct from every other property checked so far.
+                "ExternalPayment/OnlinePayment": ("11403", "000"),
+                "ExternalPayment/Complimentary": ("11399", ""),
+            },
+            "revenue": [
+                ("room adjustment",     "30005", "111"),
+                ("rounding adjustment", "30005", "111"),
+                ("breakfast",           "11416", "000"),
+                ("laundry",             "30445", "141"),
+                ("transfer",            "30505", "134"),
+                ("night",               "30001", "111"),
+            ],
+            "fallback": ("30815", "141"),
+            "service_charge": ("30805", "111"),
+            "service_charge_exempt_gl": ("11416",),
+            "vat": ("21600", ""),
+            "vat_tax_codes": {"TH-2024-7%"},
+            # Provincial Tax is a genuinely separate 1% levy MEWS reports as
+            # its own TaxRateCode - unlike Makati's duplicate, this one really
+            # is money collected and belongs on its own line, confirmed exact
+            # against the file (Koh Samui and Marasca both matched to the
+            # satang on this same split).
+            "secondary_tax": {"codes": {"TH-PROVINCIAL-1%"}, "gl_code": "21609", "department": "", "label": "Provincial Tax"},
+            "guest_ledger": ("11401", "000"),
+        },
+        "Lub d Bangkok Siam": {
+            "payments": {
+                "CashPayment":                   ("11110", "0"),
+                "CreditCardPayment":             ("11403", "0"),
+                "ExternalPayment/OnlinePayment": ("11399", "0"),
+            },
+            "revenue": [
+                ("no show",     "30010", "111"),
+                # Siam calls its room service charge "Accommodation Service",
+                # which the generic service-charge matcher does not catch, so
+                # it is routed explicitly. Listed before "accommodation charge"
+                # since both share a prefix.
+                ("accommodation service", "30805", "111"),
+                ("accommodation charge",  "30001", "111"),
+                ("breakfast",   "30145", "121"),
+                ("laundry",     "30445", "141"),
+                ("miscellaneous", "30815", "141"),
+                ("night",       "30001", "111"),
+            ],
+            "fallback": ("30550", "122"),
+            "service_charge": ("30805", "111"),
+            "vat": ("21600", ""),
+            "guest_ledger": ("21203", "000"),
+        },
+        "Lub d Koh Samui Chaweng Beach": {
+            "payments": {
+                "CashPayment":                   ("11110", "000"),
+                "CreditCardPayment":             ("11403", "000"),
+                # Wire and PayPal are the only externals with their own GL;
+                # a card brand routed through ExternalPayment (Visa/MasterCard
+                # sub-type, seen when a card is charged manually rather than
+                # through the terminal) is booked to the same 11403 as a
+                # normal card payment, not split out.
+                "ExternalPayment/WireTransfer":  ("11204", "000"),
+                "ExternalPayment/PayPal":        ("11200", "000"),
+                "ExternalPayment/Visa":          ("11403", "000"),
+                "ExternalPayment/MasterCard":    ("11403", "000"),
+            },
+            "revenue": [
+                ("room adjustment", "30005", "111"),
+                ("room upgrade",    "30005", "111"),
+                ("no show",         "30010", "111"),
+                ("breakfast",       "11416", "000"),
+                ("laundry",         "30445", "141"),
+                ("cancellation",    "30705", "111"),
+                ("night",           "30001", "111"),
+            ],
+            "fallback": ("30815", "141"),
+            "service_charge": ("30805", "111"),
+            "service_charge_exempt_gl": ("11416",),
+            "vat": ("21600", ""),
+            "vat_tax_codes": {"TH-2024-7%"},
+            "secondary_tax": {"codes": {"TH-PROVINCIAL-1%"}, "gl_code": "21609", "department": "", "label": "VAT"},
+            "guest_ledger": ("21203", "000"),
+        },
+        "Marasca Samui": {
+            "payments": {
+                "CashPayment":                   ("11110", "000"),
+                "CreditCardPayment":             ("11403", "000"),
+                "ExternalPayment/WireTransfer":  ("11203", "000"),
+            },
+            "revenue": [
+                ("room adjustment", "30005", "111"),
+                ("breakfast include in room", "30100", "121"),
+                ("breakfast",       "30105", "121"),
+                # Order matters: the "- Dinner" variants must be checked before
+                # their plain "Food"/"Beverage" counterparts, which would
+                # otherwise swallow them (both share the same substring).
+                ("beverage cabanas - dinner",       "30215", "121"),
+                ("discount beverage cabanas - dinner", "30215", "121"),
+                ("beverage",         "30210", "121"),
+                ("food cabanas - dinner",  "30115", "121"),
+                ("discount food cabanas - dinner", "30115", "121"),
+                ("food in room dining - dinner", "30115", "128"),
+                ("food",              "30110", "121"),
+                ("spa",               "30545", "136"),
+                # A tip is a guest-owed liability the property passes through
+                # to staff, not the property's own revenue - it belongs on
+                # 21668, matching how Koh Tao's file treats the same line.
+                ("tip",                "21668", "0"),
+                # Only beer has its own account (30240); every other snack
+                # item (Salted Mixed Roots/Potato/Cashews/Peanuts, ...) shares
+                # the generic 30140 fallback below.
+                ("singha",             "30240", "127"),
+                # Marasca's per-outlet service charge lines don't share a word
+                # with their own outlet's food/beverage line ("Service Charge
+                # Cabanas" vs "Food Cabanas"), so the generic same-department
+                # inference below can't find them - listed explicitly instead.
+                ("service charge cabanas",         "30805", "121"),
+                ("service charge in room dining",  "30805", "128"),
+                ("service charge the pantry",      "30805", "126"),
+                ("service charge nightly",         "30805", "111"),
+                ("night",            "30001", "111"),
+            ],
+            "fallback": ("30140", "127"),   # retail snacks bucket
+            "service_charge": ("30805", "111"),
+            "vat": ("21600", ""),
+            "vat_tax_codes": {"TH-2024-7%"},
+            "secondary_tax": {"codes": {"TH-PROVINCIAL-1%"}, "gl_code": "21609", "department": "", "label": "VAT"},
+            "guest_ledger": ("21203", "000"),
+        },
     }
 
-    # Market segment codes ARE shared across the group - Chinatown's and Siem
-    # Reap's files agree on all seven - so this is keyed by segment name, not by
-    # property. Recovered by matching each segment's accommodation revenue
-    # against the file bucket for bucket; Siem Reap reconciled exactly on every
-    # one of the seven. "Travel Agent" really does map to a blank code. A
-    # segment not listed here also yields blank, which is a value the files
-    # themselves use and so cannot break the import.
+    # Some properties assign a NUMBERED code to a segment that every other
+    # property leaves blank - Koh Tao books "Travel Agent" to 107 rather than
+    # blank, confirmed against its own file (five segments reconciled exactly,
+    # with no blank Night bucket at all). This overrides the shared table
+    # above for that one property/segment pair; Koh Tao itself is not on the
+    # verified-properties list below for an unrelated reason (see the note on
+    # _RV_CHARTS), but the override is recorded now so it's ready once that's
+    # resolved.
+    _RV_MARKET_SEGMENT_OVERRIDES = {
+        "Lub d Koh Tao Tanote Bay": {"Travel Agent": "107"},
+    }
+
+    # Market segment codes ARE shared across the group by default - eight
+    # properties' files agree on the common ones - so this is keyed by segment
+    # name, not by property, with _RV_MARKET_SEGMENT_OVERRIDES above for the
+    # one known exception. "104" is a coarser SunSystems-side bucket that more
+    # than one MEWS business segment rolls into (Makati books both "Corporate
+    # FIT" and "Government" to it). "Travel Agent" really does map to a blank
+    # code at every property except the override. A segment not listed here
+    # also yields blank, which is a value the files themselves use and so
+    # cannot break the import.
     _RV_MARKET_SEGMENT_CODES = {
         "Own Web":              "100",
         "Online Travel Agent":  "101",
         "Direct Host":          "102",
         "Direct Reservation":   "103",
+        "Corporate FIT":        "104",
+        "Government":           "104",
         "Social Chats":         "105",
         "Group Leisure Series": "106",
+        "Group Leisure Ad-Hoc": "106",
         "Travel Agent":         "",
     }
 
@@ -2096,7 +2290,13 @@ class SyncService:
         "WireTransfer": "Wire transfer",
         "Prepayment": "Prepayment",
         "Complimentary": "Complimentary",
+        "MasterCard": "Mastercard",   # a card externally charged (not via terminal) still gets MEWS's card-brand spelling
     }
+
+    # Marasca books every cash payment as the flat label "Cash on Sales" - no
+    # currency, no notes suffix - unlike every other property's "Cash payment
+    # THB (...)" pattern. Confirmed against all 17 of its cash rows.
+    _RV_CASH_LABEL_OVERRIDES = {"Marasca Samui": "Cash on Sales"}
 
     async def _rv_market_segments(self, property_name: str, items: list, stay_service_id) -> dict:
         """Maps stay-service ServiceOrderIds to their market segment code.
@@ -2111,7 +2311,7 @@ class SyncService:
         contains a single non-reservation id.
 
         Degrades to {} (every row blank) if the lookups fail."""
-        codes = self._RV_MARKET_SEGMENT_CODES
+        codes = {**self._RV_MARKET_SEGMENT_CODES, **self._RV_MARKET_SEGMENT_OVERRIDES.get(property_name, {})}
         if not stay_service_id:
             return {}
         ids = sorted({i["ServiceOrderId"] for i in items
@@ -2164,7 +2364,7 @@ class SyncService:
                 cards[card.get("Id")] = card
         return cards
 
-    def _rv_payment_description(self, pay: dict, cards: dict) -> str:
+    def _rv_payment_description(self, pay: dict, cards: dict, property_name: str = "") -> str:
         """Rebuilds the per-transaction narrative MEWS writes into field 8,
         verified line-by-line against the real file."""
         ptype = pay.get("Type") or ""
@@ -2183,6 +2383,9 @@ class SyncService:
         verb = "refund" if (amount.get("NetValue") or 0.0) > 0 else "payment"
 
         if ptype == "CashPayment":
+            override = self._RV_CASH_LABEL_OVERRIDES.get(property_name)
+            if override:
+                return override
             text = f"Cash {verb} {amount.get('Currency') or ''}".strip()
             return f"{text} ({notes})" if notes else text
 
@@ -2281,7 +2484,15 @@ class SyncService:
         low = (billing_name or "").lower()
         base = next(((gl, dept) for keyword, gl, dept in chart.get("revenue", []) if keyword in low), None)
         service_charge = chart.get("service_charge")
-        if service_charge and self._rv_is_service_charge(low):
+        # Most properties book a product's own service charge to the separate
+        # service-charge account (breakfast SVC -> 30805 at Chinatown/Siam).
+        # Makati, Patong and Koh Samui do the opposite for breakfast - "Included
+        # Breakfast SVC (Adults)" and its VAT stay on breakfast's own account
+        # (11416), never splitting out - confirmed against every SVC/VAT line
+        # in their files. service_charge_exempt_gl lists any base account a
+        # property keeps intact like this.
+        exempt = base and base[0] in chart.get("service_charge_exempt_gl", ())
+        if service_charge and self._rv_is_service_charge(low) and not exempt:
             # Service charge on a product keeps that product's department
             # (breakfast SVC -> 121); a bare room service charge has no base
             # product and falls back to accommodation's own department.
@@ -2349,7 +2560,24 @@ class SyncService:
         segments = await self._rv_market_segments(
             property_name, live_items, stay.get("Id") if stay else None)
 
-        revenue, vat_total = {}, 0.0
+        # A property's TaxValues array isn't always "just VAT". Makati stacks a
+        # duplicate service-charge component onto every item under the same
+        # array (PH-MA-SERVICE), which would double the real 12% VAT if summed
+        # blindly; vat_tax_codes, when the chart sets it, restricts the primary
+        # bucket to the codes that are genuinely output tax. secondary_tax
+        # captures a second, truly separate levy several properties report
+        # under its own TaxRateCode (Thailand's 1% provincial tax) - real
+        # money, its own account, not a duplicate of anything.
+        vat_codes = chart.get("vat_tax_codes")
+        secondary = chart.get("secondary_tax")
+        secondary_codes = (secondary or {}).get("codes") or set()
+        # Makati has no real order item for its service charge at all - see
+        # the chart comment - so its total is accumulated from this one
+        # TaxRateCode instead and turned into a synthetic revenue row below.
+        sc_tax_code = chart.get("service_charge_tax_code")
+        sc_tax_total = 0.0
+
+        revenue, vat_total, secondary_tax_total = {}, 0.0, 0.0
         currencies = Counter()
         for item in live_items:
             amount = item.get("Amount") or {}
@@ -2365,7 +2593,21 @@ class SyncService:
             row["amount"] += net
             row["count"] += 1
             for tax in (amount.get("TaxValues") or []):
-                vat_total += tax.get("Value") or 0.0
+                code, value = tax.get("Code"), tax.get("Value") or 0.0
+                if sc_tax_code and code == sc_tax_code:
+                    sc_tax_total += value
+                elif code in secondary_codes:
+                    secondary_tax_total += value
+                elif vat_codes is None or code in vat_codes:
+                    vat_total += value
+
+        if sc_tax_code and round(sc_tax_total, 2):
+            sc_gl, sc_dept = chart.get("service_charge") or ("", "")
+            key = (sc_gl, sc_dept, "Service charge", "")
+            row = revenue.setdefault(key, {"gl_code": sc_gl, "department": sc_dept, "name": "Service charge",
+                                           "market_segment": "", "amount": 0.0, "count": 0})
+            row["amount"] += sc_tax_total
+            row["count"] += 1
 
         # --- Payments ------------------------------------------------------
         # One journal row per transaction, not one per GL account. The real
@@ -2407,7 +2649,7 @@ class SyncService:
             payment_rows.append({
                 "gl_code": gl,
                 "department": dept,
-                "name": self._rv_payment_description(pay, cards) if mapped else (key or "Unknown payment type"),
+                "name": self._rv_payment_description(pay, cards, property_name) if mapped else (key or "Unknown payment type"),
                 "amount": -net,            # flip to positive money-in
                 "count": 1,
                 "unmapped": not mapped,
@@ -2422,6 +2664,7 @@ class SyncService:
         payment_rows.sort(key=lambda r: (r["gl_code"], r["name"]))
         revenue_net = sum(r["amount"] for r in revenue_rows)
         payments_total = sum(r["amount"] for r in payment_rows)
+        total_tax = vat_total + secondary_tax_total
 
         return {
             "property": property_name,
@@ -2434,14 +2677,22 @@ class SyncService:
             # the day's items (the most common one, if a day ever mixes them).
             "currency": (currencies.most_common(1)[0][0] if currencies else "THB"),
             "vat_gl_code": (chart.get("vat") or ("", ""))[0],
+            # A second, genuinely separate tax several properties report under
+            # its own TaxRateCode (Thailand's 1% provincial tax) - not present
+            # for properties whose chart doesn't define secondary_tax.
+            "secondary_tax": round(secondary_tax_total, 2) if secondary else None,
+            "secondary_tax_gl_code": (secondary or {}).get("gl_code", ""),
+            "secondary_tax_label": (secondary or {}).get("label", ""),
             # Guest Ledger is the balancing row: whatever the day earned but
             # didn't settle is still owed on somebody's open bill.
-            "guest_ledger": round(revenue_net + vat_total - payments_total, 2),
+            "guest_ledger": round(revenue_net + total_tax - payments_total, 2),
             "guest_ledger_gl_code": (chart.get("guest_ledger") or ("", ""))[0],
             "totals": {
                 "revenue_net": round(revenue_net, 2),
                 "vat": round(vat_total, 2),
-                "revenue_gross": round(revenue_net + vat_total, 2),
+                # Includes the secondary tax (where the property has one) -
+                # this is the true amount the guest was actually charged.
+                "revenue_gross": round(revenue_net + total_tax, 2),
                 "payments": round(payments_total, 2),
             },
             "counts": {
@@ -2579,6 +2830,9 @@ class SyncService:
         if report.get("vat"):
             vat_gl = chart.get("vat") or ("", "")
             lines.append(row(vat_gl[0], "VAT", report["vat"], "C", vat_gl[1]))
+        if report.get("secondary_tax"):
+            lines.append(row(report["secondary_tax_gl_code"], report["secondary_tax_label"] or "VAT",
+                             report["secondary_tax"], "C", ""))
         for p in report.get("payments", []):
             lines.append(row(p["gl_code"], p["name"], p["amount"], "D", p.get("department")))
         if report.get("guest_ledger"):
