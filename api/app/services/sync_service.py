@@ -2016,8 +2016,10 @@ class SyncService:
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
+                ("room upgrade",    "30005", "111"),
                 ("no show",         "30010", "111"),
                 ("early check in",  "30020", "111"),
+                ("late check out",  "30025", "111"),
                 ("breakfast",       "30105", "121"),
                 ("laundry",         "30445", "141"),
                 ("night",           "30001", "111"),
@@ -2072,6 +2074,7 @@ class SyncService:
             "revenue": [
                 ("room adjustment", "30005", "111"),
                 ("room upgrade",    "30005", "111"),
+                ("room charge discount", "30005", "111"),
                 ("early check in",  "30020", "111"),
                 ("late check out",  "30025", "111"),
                 ("breakfast",       "11416", "000"),
@@ -2082,16 +2085,23 @@ class SyncService:
                 # listed here to keep it off the 30815 fallback, which is
                 # genuine miscellaneous revenue.
                 ("accrued - local tax", "21620", "0"),
+                # A real order item, not a TaxValues component - a correction
+                # against the VAT account itself, so it belongs on 21600 like
+                # the VAT line it's adjusting, not the misc fallback.
+                ("vat adjustment",  "21600", "0"),
                 ("night",           "30001", "111"),
             ],
             "fallback": ("30815", "141"),
             "service_charge": ("30805", "111"),
             "service_charge_exempt_gl": ("11416",),
             "vat": ("21600", ""),
-            # PH-S is the real 12% VAT; the small PH-MA-CUSTOM* municipal
-            # surcharges land on the same 21600 as VAT in the file, so both
-            # are kept in the primary bucket.
-            "vat_tax_codes": {"PH-S", "PH-MA-CUSTOM-0.6%", "PH-MA-CUSTOM-0.75%"},
+            # PH-S is the real 12% VAT and is all "VAT" is in the file. The
+            # PH-MA-CUSTOM* municipal surcharges share the same GL (21600) but
+            # post as their OWN separate line labeled "Makati local tax" -
+            # confirmed against the file, which shows both as distinct rows
+            # under 21600, not one combined total - so they ride the
+            # secondary_tax mechanism below instead of being summed in here.
+            "vat_tax_codes": {"PH-S"},
             # Makati has no per-reservation "Service Charge" order item at all
             # - unlike every other property, its 10% service charge exists
             # ONLY as this TaxRateCode, and the file turns it into a single
@@ -2100,6 +2110,8 @@ class SyncService:
             # field 20 carrying the same "ABBSU"/"V07" tax marker the VAT line
             # itself carries.
             "service_charge_tax_code": "PH-MA-SERVICE-1%",
+            "secondary_tax": {"codes": {"PH-MA-CUSTOM-0.6%", "PH-MA-CUSTOM-0.75%"}, "gl_code": "21600",
+                              "department": "", "label": "Makati local tax"},
             "guest_ledger": ("11401", "000"),
         },
         "Lub d Phuket Patong": {
@@ -2111,13 +2123,17 @@ class SyncService:
                 # its file, distinct from every other property checked so far.
                 "ExternalPayment/OnlinePayment": ("11403", "000"),
                 "ExternalPayment/Complimentary": ("11399", ""),
+                "ExternalPayment/Invoice":       ("11402", "000"),
             },
             "revenue": [
                 ("room adjustment",     "30005", "111"),
+                ("room upgrade",        "30005", "111"),
                 ("rounding adjustment", "30005", "111"),
+                ("no show",             "30010", "111"),
                 ("breakfast",           "11416", "000"),
                 ("laundry",             "30445", "141"),
                 ("transfer",            "30505", "134"),
+                ("cancellation",        "30705", "111"),
                 ("night",               "30001", "111"),
             ],
             "fallback": ("30815", "141"),
@@ -2141,6 +2157,7 @@ class SyncService:
             },
             "revenue": [
                 ("no show",     "30010", "111"),
+                ("rounding adjustment", "30005", "111"),
                 # Siam calls its room service charge "Accommodation Service",
                 # which the generic service-charge matcher does not catch, so
                 # it is routed explicitly. Listed before "accommodation charge"
@@ -2155,6 +2172,12 @@ class SyncService:
             "fallback": ("30550", "122"),
             "service_charge": ("30805", "111"),
             "vat": ("21600", ""),
+            # Unlike every other property, Siam's real file books VAT as one
+            # row PER market segment (100/101/102/blank) rather than one
+            # combined total - the four rows sum to exactly the same figure a
+            # single row would, confirmed against the file, so this is purely
+            # how the line is split, not a different total.
+            "vat_by_segment": True,
             "guest_ledger": ("21203", "000"),
         },
         "Lub d Koh Samui Chaweng Beach": {
@@ -2162,21 +2185,26 @@ class SyncService:
                 "CashPayment":                   ("11110", "000"),
                 "CreditCardPayment":             ("11403", "000"),
                 # Wire and PayPal are the only externals with their own GL;
-                # a card brand routed through ExternalPayment (Visa/MasterCard
-                # sub-type, seen when a card is charged manually rather than
-                # through the terminal) is booked to the same 11403 as a
+                # a card brand routed through ExternalPayment (Visa/MasterCard/
+                # Amex sub-type, seen when a card is charged manually rather
+                # than through the terminal) is booked to the same 11403 as a
                 # normal card payment, not split out.
                 "ExternalPayment/WireTransfer":  ("11204", "000"),
                 "ExternalPayment/PayPal":        ("11200", "000"),
                 "ExternalPayment/Visa":          ("11403", "000"),
                 "ExternalPayment/MasterCard":    ("11403", "000"),
+                "ExternalPayment/Amex":          ("11403", "000"),
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
                 ("room upgrade",    "30005", "111"),
+                # Matches both "Late Check Out" and the file's actual
+                # "Late Check-out" (hyphenated, lowercase o) - confirmed live.
+                ("late check",      "30025", "111"),
                 ("no show",         "30010", "111"),
                 ("breakfast",       "11416", "000"),
                 ("laundry",         "30445", "141"),
+                ("transfer",        "30505", "134"),
                 ("cancellation",    "30705", "111"),
                 ("night",           "30001", "111"),
             ],
@@ -2193,9 +2221,15 @@ class SyncService:
                 "CashPayment":                   ("11110", "000"),
                 "CreditCardPayment":             ("11403", "000"),
                 "ExternalPayment/WireTransfer":  ("11203", "000"),
+                "ExternalPayment/Invoice":       ("11402", "000"),
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
+                # A real order item literally named "VAT", separate from the
+                # TaxValues-derived total already summed elsewhere - confirmed
+                # against the file, which carries both as distinct 21600 rows.
+                ("vat",             "21600", "000"),
+                ("airport",         "30505", "134"),
                 ("breakfast include in room", "30100", "121"),
                 ("breakfast",       "30105", "121"),
                 # Order matters: the "- Dinner" variants must be checked before
@@ -2394,8 +2428,21 @@ class SyncService:
             parts = []
             if card:
                 brand = self._RV_CARD_TYPE_LABELS.get(card.get("Type"), card.get("Type") or "")
-                obfuscated = card.get("ObfuscatedNumber")
-                detail = f"{brand} ****{obfuscated}" if obfuscated else brand
+                # ObfuscatedNumber is usually just the last 4 digits ("9428"),
+                # but a Physical card can carry the full BIN+last4 masked PAN
+                # ("478448******7470") and a Virtual token can be all mask
+                # with no real digits at all ("****...****", 32 chars) - the
+                # real file always normalizes to "****" + the last 4 real
+                # digits, or the literal 8-asterisk placeholder when there are
+                # none, never the raw field verbatim.
+                obfuscated = card.get("ObfuscatedNumber") or ""
+                digit_runs = re.findall(r"\d+", obfuscated)
+                if digit_runs:
+                    detail = f"{brand} ****{digit_runs[-1][-4:]}"
+                elif obfuscated:
+                    detail = f"{brand} ********"
+                else:
+                    detail = brand
                 if card.get("Format") == "Virtual":
                     detail += " Virtual"
                 if detail:
@@ -2578,6 +2625,7 @@ class SyncService:
         sc_tax_total = 0.0
 
         revenue, vat_total, secondary_tax_total = {}, 0.0, 0.0
+        vat_by_segment = Counter()
         currencies = Counter()
         for item in live_items:
             amount = item.get("Amount") or {}
@@ -2600,12 +2648,18 @@ class SyncService:
                     secondary_tax_total += value
                 elif vat_codes is None or code in vat_codes:
                     vat_total += value
+                    vat_by_segment[segment] += value
 
         if sc_tax_code and round(sc_tax_total, 2):
             sc_gl, sc_dept = chart.get("service_charge") or ("", "")
             key = (sc_gl, sc_dept, "Service charge", "")
             row = revenue.setdefault(key, {"gl_code": sc_gl, "department": sc_dept, "name": "Service charge",
-                                           "market_segment": "", "amount": 0.0, "count": 0})
+                                           "market_segment": "", "amount": 0.0, "count": 0,
+                                           # Not a real order item - the whole
+                                           # row is summed from a TaxValues
+                                           # component, like VAT itself, and
+                                           # the file marks it the same way.
+                                           "tax_derived": True})
             row["amount"] += sc_tax_total
             row["count"] += 1
 
@@ -2672,6 +2726,12 @@ class SyncService:
             "revenue": revenue_rows,
             "payments": payment_rows,
             "vat": round(vat_total, 2),
+            # Per-market-segment VAT breakdown - only Siam's file actually
+            # splits the VAT line this way (see vat_by_segment on the chart);
+            # every other property posts the total above as one row and
+            # ignores this. Rounds away the blank-segment bucket only when
+            # it's genuinely zero, same rule as the revenue rows.
+            "vat_by_segment": {seg: round(amt, 2) for seg, amt in vat_by_segment.items() if round(amt, 2)},
             # Field 10 of the journal. Siem Reap posts in USD, not THB, so this
             # cannot be assumed - it is the currency MEWS actually stamped on
             # the day's items (the most common one, if a day ever mixes them).
@@ -2800,7 +2860,7 @@ class SyncService:
         month_code = "0" + day.strftime("%m")
         currency = report.get("currency") or "THB"
 
-        def row(gl, description, amount, natural_dc, dept, market_segment=""):
+        def row(gl, description, amount, natural_dc, dept, market_segment="", tax_derived=False):
             """natural_dc is the letter this kind of line carries when its
             amount is positive; a negative amount flips it and is written as
             a magnitude.
@@ -2810,29 +2870,51 @@ class SyncService:
             truncates to exactly that. It matters more than it looks: the
             SunSystems import profile posts with "Post if no errors", so one
             over-length line rejects the entire day's journal, not just its
-            own row."""
+            own row. A raw newline embedded in free-text guest/payment notes
+            (seen live: a Notes field of literally "EXTEND\\n") is just as
+            fatal - split into "|".join(lines) it breaks one logical row into
+            two ragged ones - so newlines are collapsed to spaces first; a
+            literal "|" would misalign every field after it the same way, so
+            that's stripped too."""
+            # Collapse embedded newlines/pipes to a space (not .strip() - a
+            # few real product names carry a deliberate trailing space, e.g.
+            # "Coke ", that the real file preserves and this must not eat).
+            desc_clean = re.sub(r"[\r\n|]+", " ", description or "")
             dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
             value = f"{abs(amount):.2f}"
             # Fields 21-41 are blank except Analysis 6 (field 22), which the
-            # spec designates MARKET SEGMENT.
+            # spec designates MARKET SEGMENT, and - on lines whose amount was
+            # summed from TaxValues rather than posted as its own order item
+            # (VAT, the secondary/local tax, and Makati's synthetic Service
+            # Charge row) - Analysis 1/5 (fields 21/25), which the real file
+            # always stamps "ABBSU"/"V07" on those lines and only those.
             tail = [""] * 21
             tail[1] = market_segment or ""
+            if tax_derived:
+                tail[0] = "ABBSU"
+                tail[4] = "V07"
             return "|".join([
                 "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
-                f"RV{yyyymmdd}", (description or "")[:50], ddmmyyyy, currency, value, "1", value,
+                f"RV{yyyymmdd}", desc_clean[:50], ddmmyyyy, currency, value, "1", value,
                 "", "", dc, property_code, dept or "", "ZZ", "ZZ",
             ] + tail)
 
         lines = []
         for r in report.get("revenue", []):
             lines.append(row(r["gl_code"], r["name"], r["amount"], "C", r.get("department"),
-                             r.get("market_segment")))
-        if report.get("vat"):
+                             r.get("market_segment"), tax_derived=bool(r.get("tax_derived"))))
+        vat_by_segment = report.get("vat_by_segment")
+        if chart.get("vat_by_segment") and vat_by_segment:
             vat_gl = chart.get("vat") or ("", "")
-            lines.append(row(vat_gl[0], "VAT", report["vat"], "C", vat_gl[1]))
+            for segment, amount in vat_by_segment.items():
+                if round(amount, 2):
+                    lines.append(row(vat_gl[0], "VAT", amount, "C", vat_gl[1], segment, tax_derived=True))
+        elif report.get("vat"):
+            vat_gl = chart.get("vat") or ("", "")
+            lines.append(row(vat_gl[0], "VAT", report["vat"], "C", vat_gl[1], tax_derived=True))
         if report.get("secondary_tax"):
             lines.append(row(report["secondary_tax_gl_code"], report["secondary_tax_label"] or "VAT",
-                             report["secondary_tax"], "C", ""))
+                             report["secondary_tax"], "C", "", tax_derived=True))
         for p in report.get("payments", []):
             lines.append(row(p["gl_code"], p["name"], p["amount"], "D", p.get("department")))
         if report.get("guest_ledger"):
