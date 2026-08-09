@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBaseUrl } from "@/lib/url";
@@ -26,7 +26,7 @@ function LoginContent() {
     ? "Your account has been deactivated. Please contact the IT Department."
     : errorMsg;
 
-  const handleEmailLogin = async (e: React.FormEvent) => {
+  const handleEmailLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
@@ -153,7 +153,7 @@ function LoginContent() {
                 disabled={loading}
                 className="w-full py-3 bg-[#152A00] text-[#FFEFD2] rounded-sm text-[11px] font-bold tracked-caps hover:bg-[#250719] transition-all active:scale-[0.985] disabled:opacity-70"
               >
-                {loading ? "AUTHENTICATING..." : "AUTHORIZE ACCESS"}
+                {loading ? "SIGNING IN..." : "LOGIN"}
               </button>
             </form>
           )}
