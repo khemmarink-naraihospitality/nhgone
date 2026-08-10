@@ -79,36 +79,16 @@ DEFAULT_WELCOME_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px
   <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
 </div>"""
 
-
-def _escape_html(value: str) -> str:
-    return (
-        str(value or "")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-    )
-
-
-def _branded_email(body_html: str, cta_label: str, cta_link: str, show_link: bool) -> str:
-    """The shared shell for the hardcoded (non-Admin-editable) system emails -
-    internal welcome, password reset, Google sign-in notice. Same look as
-    DEFAULT_WELCOME_TEMPLATE above and the login page itself, kept in one
-    place so the three can't drift apart.
-
-    show_link controls whether the CTA's URL is also printed as plain text
-    underneath: helpful for a plain app link somebody may want to copy, but
-    wrong for a single-use recovery token, which should only ever be reachable
-    by clicking (a visible one invites forwarding, and wraps badly enough in
-    some clients to arrive broken).
-
-    body_html is trusted markup built by the callers above; any user-supplied
-    value inside it must already have gone through _escape_html.
-    """
-    printed_link = (
-        f'<p style="margin:0; font-size:11px; color:#152A00; opacity:0.5; word-break:break-all;">{cta_link}</p>'
-        if show_link else ""
-    )
-    return f"""<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+# Same Admin > Templates > Email pattern as WELCOME_TEMPLATE_KEY above, for the
+# Internal Auth "set your password" email (admin.py's create_user). The
+# <<SetPasswordLink>> token carries a single-use Supabase recovery link - an
+# admin edit that deletes it from the template leaves the button pointing
+# nowhere, which is why this was hardcoded originally; now Admin-editable by
+# deliberate choice (matching Billing/RR3's existing trust model) rather than
+# by oversight.
+INTERNAL_WELCOME_TEMPLATE_KEY = "internal_welcome"
+DEFAULT_INTERNAL_WELCOME_SUBJECT = "Set your NHGOne password"
+DEFAULT_INTERNAL_WELCOME_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
     <tr>
       <td style="padding:40px 40px 32px 40px; text-align:center;">
@@ -121,21 +101,115 @@ def _branded_email(body_html: str, cta_label: str, cta_link: str, show_link: boo
         </table>
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
-        {body_html}
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b><<FullName>></b>,</p>
+        <p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">Your NHGOne account has been created. Click below to set your password, then sign in via <b>Internal Users</b> on the login page. This link can only be used once and expires within the hour.</p>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
           <tr>
             <td style="background-color:#152A00; border-radius:4px;">
-              <a href="{cta_link}" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">{cta_label}</a>
+              <a href="<<SetPasswordLink>>" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">Set Password</a>
             </td>
           </tr>
         </table>
-        {printed_link}
       </td>
     </tr>
   </table>
   <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
 </div>"""
 
+# The "Forgot password" email for Internal Auth accounts. <<ResetLink>> is the
+# same kind of single-use recovery token as <<SetPasswordLink>> above - same
+# tradeoff, same deliberate choice to make it Admin-editable anyway.
+PASSWORD_RESET_TEMPLATE_KEY = "password_reset"
+DEFAULT_PASSWORD_RESET_SUBJECT = "ตั้งรหัสผ่าน NHGOne ใหม่ / Reset your NHGOne password"
+DEFAULT_PASSWORD_RESET_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px 40px 32px 40px; text-align:center;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+          <tr>
+            <td style="border:1px solid rgba(21,42,0,0.1); padding:8px; border-radius:4px;">
+              <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" width="32" height="32" alt="NHG" style="display:block;" />
+            </td>
+          </tr>
+        </table>
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b><<FullName>></b>,</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">เราได้รับคำขอตั้งรหัสผ่านใหม่สำหรับบัญชี NHGOne ของคุณ กดปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุภายใน 1 ชั่วโมง</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b><<FullName>></b>,</p>
+        <p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">We received a request to reset the password for your NHGOne account. Use the button below to choose a new one. This link can only be used once and expires within the hour.</p>
+        <p style="margin:0 0 24px 0; font-size:13px; color:#152A00; text-align:left; line-height:1.6; opacity:0.7;">ถ้าคุณไม่ได้เป็นคนขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมของคุณจะยังใช้งานได้ตามปกติ<br/>If you didn't request this, you can ignore this email - your current password will keep working.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
+          <tr>
+            <td style="background-color:#152A00; border-radius:4px;">
+              <a href="<<ResetLink>>" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">Reset Password</a>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
+</div>"""
+
+# Sent when a "Forgot password" request lands on a Google-auth account -
+# there's no password to reset, so this just redirects them. <<AppLink>> is a
+# plain sign-in URL, not a single-use token, so it's safe to print visibly
+# (show_link=True in the old hardcoded version) as well as use as the CTA.
+GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY = "google_signin_notice"
+DEFAULT_GOOGLE_SIGNIN_NOTICE_SUBJECT = "เข้าสู่ระบบ NHGOne ด้วย Google / Sign in to NHGOne with Google"
+DEFAULT_GOOGLE_SIGNIN_NOTICE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px 40px 32px 40px; text-align:center;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+          <tr>
+            <td style="border:1px solid rgba(21,42,0,0.1); padding:8px; border-radius:4px;">
+              <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" width="32" height="32" alt="NHG" style="display:block;" />
+            </td>
+          </tr>
+        </table>
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b><<FullName>></b>,</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">มีคำขอตั้งรหัสผ่านใหม่สำหรับบัญชีนี้ แต่บัญชีของคุณเข้าสู่ระบบด้วย <b>Google</b> จึงไม่มีรหัสผ่านให้ตั้งใหม่ กรุณาใช้ปุ่ม <b>Continue with Google</b> ที่หน้าเข้าสู่ระบบ</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b><<FullName>></b>,</p>
+        <p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">Someone asked to reset the password for this account, but it signs in with <b>Google</b> - there is no password to reset. Use <b>Continue with Google</b> on the login page instead.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
+          <tr>
+            <td style="background-color:#152A00; border-radius:4px;">
+              <a href="<<AppLink>>" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">Open NHGOne</a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:0; font-size:11px; color:#152A00; opacity:0.5; word-break:break-all;"><<AppLink>></p>
+      </td>
+    </tr>
+  </table>
+  <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
+</div>"""
+
+# Sent by DELETE /admin/users/{id} (Admin > Users > Delete Account) - the
+# simple non-branded design here is the original hardcoded look, kept as-is
+# rather than switched to the branded card shell above since there's no CTA
+# link involved.
+REJECTION_TEMPLATE_KEY = "rejection"
+DEFAULT_REJECTION_SUBJECT = "Your NHGOne access was not authorized / การเข้าใช้งาน NHGOne ของคุณไม่ได้รับอนุญาต"
+DEFAULT_REJECTION_TEMPLATE = """<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #152A00;">
+  <h2 style="color: #152A00;">NHGOne</h2>
+  <p>Hi <<FullName>>,<br/>Your account has not been authorized to access NHGOne. If you believe this is a mistake, please contact your system administrator.</p>
+  <p>สวัสดีคุณ <<FullName>>,<br/>บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
+  <p style="color: #999; font-size: 12px; margin-top: 24px;">Narai Hospitality Group — NHGOne</p>
+</div>"""
+
+
+def _escape_html(value: str) -> str:
+    return (
+        str(value or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 class EmailService:
@@ -255,18 +329,19 @@ class EmailService:
             "is_default": True,
         }
 
-    def get_welcome_template(self) -> dict:
+    def _get_template(self, template_key: str, default_subject: str, default_template: str) -> dict:
         """
-        Returns the admin-edited welcome email (Admin > Templates > Email),
-        or the built-in default (with is_default=True) if none has been
-        saved yet - same fallback shape/reasoning as rr3.py's
-        get_rr3_template (printing/sending must keep working even if the
-        table is missing or empty).
+        Shared lookup for the simple (subject + html_template, no extra
+        delivery config) Admin > Templates > Email rows - welcome, internal
+        welcome, password reset, Google sign-in notice, rejection. Falls back
+        to the built-in default (is_default=True) if the table is missing or
+        no row has been saved yet - same fallback shape/reasoning as rr3.py's
+        get_rr3_template (printing/sending must keep working either way).
         """
         try:
             supabase = get_supabase_client()
             res = supabase.table("email_templates").select("subject, html_template") \
-                .eq("template_key", WELCOME_TEMPLATE_KEY).limit(1).execute()
+                .eq("template_key", template_key).limit(1).execute()
             if res.data:
                 return {
                     "subject": res.data[0]["subject"],
@@ -274,8 +349,23 @@ class EmailService:
                     "is_default": False,
                 }
         except Exception as e:
-            logger.warning(f"email_templates lookup failed, using default template: {e}")
-        return {"subject": DEFAULT_WELCOME_SUBJECT, "html_template": DEFAULT_WELCOME_TEMPLATE, "is_default": True}
+            logger.warning(f"email_templates ({template_key}) lookup failed, using default: {e}")
+        return {"subject": default_subject, "html_template": default_template, "is_default": True}
+
+    def get_welcome_template(self) -> dict:
+        return self._get_template(WELCOME_TEMPLATE_KEY, DEFAULT_WELCOME_SUBJECT, DEFAULT_WELCOME_TEMPLATE)
+
+    def get_internal_welcome_template(self) -> dict:
+        return self._get_template(INTERNAL_WELCOME_TEMPLATE_KEY, DEFAULT_INTERNAL_WELCOME_SUBJECT, DEFAULT_INTERNAL_WELCOME_TEMPLATE)
+
+    def get_password_reset_template(self) -> dict:
+        return self._get_template(PASSWORD_RESET_TEMPLATE_KEY, DEFAULT_PASSWORD_RESET_SUBJECT, DEFAULT_PASSWORD_RESET_TEMPLATE)
+
+    def get_google_signin_notice_template(self) -> dict:
+        return self._get_template(GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, DEFAULT_GOOGLE_SIGNIN_NOTICE_SUBJECT, DEFAULT_GOOGLE_SIGNIN_NOTICE_TEMPLATE)
+
+    def get_rejection_template(self) -> dict:
+        return self._get_template(REJECTION_TEMPLATE_KEY, DEFAULT_REJECTION_SUBJECT, DEFAULT_REJECTION_TEMPLATE)
 
     def send_welcome_email(self, to_email: str, password: str | None, full_name: str = ""):
         greeting = full_name or to_email
@@ -308,18 +398,21 @@ class EmailService:
         is created with a random one nobody is ever told, and set_password_link
         is a Supabase recovery action_link (same generate_link mechanism the
         forgot-password flow uses) that lands on /reset-password and lets the
-        user choose their own on the spot. Hardcoded here rather than a token
-        in the shared Admin > Templates welcome design, so a stray template
-        edit can't drop the link and mail an unusable "your account is ready"
-        email with no way in."""
+        user choose their own on the spot. Admin > Templates > Email >
+        Internal Welcome; an edit that drops <<SetPasswordLink>> from the
+        button sends an email with no way in, which is why this stayed
+        hardcoded until it didn't - see INTERNAL_WELCOME_TEMPLATE_KEY above."""
         greeting = full_name or to_email
-        body = (
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'Your NHGOne account has been created. Click below to set your password, then sign in via '
-            '<b>Internal Users</b> on the login page. This link can only be used once and expires within the hour.</p>'
-        )
-        html_body = _branded_email(body, cta_label="Set Password", cta_link=set_password_link, show_link=False)
+        template = self.get_internal_welcome_template()
+        tokens = {
+            "FullName": _escape_html(greeting),
+            "SetPasswordLink": set_password_link,  # not escaped - used as an href, must stay a valid URL
+        }
+        subject = template["subject"]
+        html_body = template["html_template"]
+        for key, value in tokens.items():
+            subject = subject.replace(f"<<{key}>>", value)
+            html_body = html_body.replace(f"<<{key}>>", value)
         text_body = (
             f"Hi {greeting},\n\n"
             f"Your NHGOne account has been created. Open this link to set your password "
@@ -327,29 +420,25 @@ class EmailService:
             f"{set_password_link}\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
-        self.send_email(to_email, subject="Set your NHGOne password",
-                        html_body=html_body, text_body=text_body)
+        self.send_email(to_email, subject, html_body, text_body)
 
     def send_password_reset_email(self, to_email: str, reset_link: str, full_name: str = ""):
         """The "Forgot password" email for Internal Auth accounts. reset_link
         is a Supabase recovery action_link minted server-side (see the auth
-        router) - it carries a single-use token and lands on /reset-password,
-        so it is never escaped as HTML text, only used as an href."""
+        router) - it carries a single-use token and is only ever used as an
+        href, never printed as visible text. Admin > Templates > Email >
+        Password Reset."""
         greeting = full_name or to_email
-        body = (
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'เราได้รับคำขอตั้งรหัสผ่านใหม่สำหรับบัญชี NHGOne ของคุณ กดปุ่มด้านล่างเพื่อตั้งรหัสผ่านใหม่ '
-            'ลิงก์นี้ใช้ได้ครั้งเดียวและจะหมดอายุภายใน 1 ชั่วโมง</p>'
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'We received a request to reset the password for your NHGOne account. Use the button below to choose '
-            'a new one. This link can only be used once and expires within the hour.</p>'
-            '<p style="margin:0 0 24px 0; font-size:13px; color:#152A00; text-align:left; line-height:1.6; opacity:0.7;">'
-            'ถ้าคุณไม่ได้เป็นคนขอ ให้ละเว้นอีเมลนี้ รหัสผ่านเดิมของคุณจะยังใช้งานได้ตามปกติ<br/>'
-            "If you didn't request this, you can ignore this email - your current password will keep working.</p>"
-        )
-        html_body = _branded_email(body, cta_label="Reset Password", cta_link=reset_link, show_link=False)
+        template = self.get_password_reset_template()
+        tokens = {
+            "FullName": _escape_html(greeting),
+            "ResetLink": reset_link,  # not escaped - used as an href, must stay a valid URL
+        }
+        subject = template["subject"]
+        html_body = template["html_template"]
+        for key, value in tokens.items():
+            subject = subject.replace(f"<<{key}>>", value)
+            html_body = html_body.replace(f"<<{key}>>", value)
         text_body = (
             f"Hi {greeting},\n\n"
             f"We received a request to reset the password for your NHGOne account.\n"
@@ -358,8 +447,7 @@ class EmailService:
             f"If you didn't request this, you can ignore this email.\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
-        self.send_email(to_email, subject="ตั้งรหัสผ่าน NHGOne ใหม่ / Reset your NHGOne password",
-                        html_body=html_body, text_body=text_body)
+        self.send_email(to_email, subject, html_body, text_body)
 
     def send_google_signin_notice_email(self, to_email: str, full_name: str = ""):
         """Sent when someone asks to reset the password on an account that
@@ -367,20 +455,20 @@ class EmailService:
         silent would leave them waiting for a link that never arrives - and
         answering differently in the HTTP response would leak which addresses
         exist (see the auth router's docstring), so the correction is
-        delivered here, to the mailbox's real owner, instead."""
+        delivered here, to the mailbox's real owner, instead. Admin >
+        Templates > Email > Google Sign-in Notice."""
         greeting = full_name or to_email
         app_link = settings.APP_BASE_URL
-        body = (
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'มีคำขอตั้งรหัสผ่านใหม่สำหรับบัญชีนี้ แต่บัญชีของคุณเข้าสู่ระบบด้วย <b>Google</b> จึงไม่มีรหัสผ่านให้ตั้งใหม่ '
-            'กรุณาใช้ปุ่ม <b>Continue with Google</b> ที่หน้าเข้าสู่ระบบ</p>'
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'Someone asked to reset the password for this account, but it signs in with <b>Google</b> - there is no '
-            'password to reset. Use <b>Continue with Google</b> on the login page instead.</p>'
-        )
-        html_body = _branded_email(body, cta_label="Open NHGOne", cta_link=app_link, show_link=True)
+        template = self.get_google_signin_notice_template()
+        tokens = {
+            "FullName": _escape_html(greeting),
+            "AppLink": app_link,  # not escaped - used as both href and display text, must stay a valid URL
+        }
+        subject = template["subject"]
+        html_body = template["html_template"]
+        for key, value in tokens.items():
+            subject = subject.replace(f"<<{key}>>", value)
+            html_body = html_body.replace(f"<<{key}>>", value)
         text_body = (
             f"Hi {greeting},\n\n"
             f"Someone asked to reset the password for this account, but it signs in with Google - "
@@ -388,20 +476,19 @@ class EmailService:
             f"Use 'Continue with Google' at {app_link}\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
-        self.send_email(to_email, subject="เข้าสู่ระบบ NHGOne ด้วย Google / Sign in to NHGOne with Google",
-                        html_body=html_body, text_body=text_body)
+        self.send_email(to_email, subject, html_body, text_body)
 
     def send_rejection_email(self, to_email: str, full_name: str = ""):
+        """Sent by DELETE /admin/users/{id} (Admin > Users > Delete Account).
+        Admin > Templates > Email > Rejection."""
         greeting = full_name or to_email
-        subject = "Your NHGOne access was not authorized / การเข้าใช้งาน NHGOne ของคุณไม่ได้รับอนุญาต"
-        html_body = f"""
-        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #152A00;">
-          <h2 style="color: #152A00;">NHGOne</h2>
-          <p>Hi {greeting},<br/>Your account has not been authorized to access NHGOne. If you believe this is a mistake, please contact your system administrator.</p>
-          <p>สวัสดีคุณ {greeting},<br/>บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
-          <p style="color: #999; font-size: 12px; margin-top: 24px;">Narai Hospitality Group — NHGOne</p>
-        </div>
-        """
+        template = self.get_rejection_template()
+        tokens = {"FullName": _escape_html(greeting)}
+        subject = template["subject"]
+        html_body = template["html_template"]
+        for key, value in tokens.items():
+            subject = subject.replace(f"<<{key}>>", value)
+            html_body = html_body.replace(f"<<{key}>>", value)
         text_body = (
             f"Hi {greeting},\n\n"
             f"Your account has not been authorized to access NHGOne. "

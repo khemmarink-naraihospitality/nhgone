@@ -7,7 +7,11 @@ from fastapi import APIRouter, HTTPException, Body
 from pydantic import BaseModel
 from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
-from app.services.email_service import email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY
+from app.services.email_service import (
+    email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
+    INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
+    GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, REJECTION_TEMPLATE_KEY,
+)
 from app.services.sync_service import sync_service
 from app.services import ftp_service
 
@@ -595,6 +599,68 @@ async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate
         return {"status": "success", "message": "ST Files email settings saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+def _save_simple_email_template(template_key: str, request: EmailTemplateUpdate, label: str):
+    """Shared save for the simple (subject + html_template, no delivery
+    config) Admin > Templates > Email tabs - internal welcome, password
+    reset, Google sign-in notice, rejection. Same upsert-by-template_key
+    shape as save_email_template/save_st_files_daily_email_template above."""
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", template_key).limit(1).execute()
+        payload = {
+            "template_key": template_key,
+            "subject": request.subject,
+            "html_template": request.html_template,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": f"{label} template saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/email-template/internal-welcome")
+async def get_internal_welcome_email_template():
+    """The Internal Auth "set your password" email (Admin > Templates >
+    Email > Internal Welcome) - see INTERNAL_WELCOME_TEMPLATE_KEY's docstring
+    for why the <<SetPasswordLink>> token needs to survive an edit."""
+    return {"status": "success", "data": email_service.get_internal_welcome_template()}
+
+@router.post("/email-template/internal-welcome")
+async def save_internal_welcome_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(INTERNAL_WELCOME_TEMPLATE_KEY, request, "Internal Welcome")
+
+@router.get("/email-template/password-reset")
+async def get_password_reset_email_template():
+    """The "Forgot password" email for Internal Auth accounts (Admin >
+    Templates > Email > Password Reset)."""
+    return {"status": "success", "data": email_service.get_password_reset_template()}
+
+@router.post("/email-template/password-reset")
+async def save_password_reset_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(PASSWORD_RESET_TEMPLATE_KEY, request, "Password Reset")
+
+@router.get("/email-template/google-signin-notice")
+async def get_google_signin_notice_email_template():
+    """Sent when a "Forgot password" request lands on a Google-auth account
+    (Admin > Templates > Email > Google Sign-in Notice)."""
+    return {"status": "success", "data": email_service.get_google_signin_notice_template()}
+
+@router.post("/email-template/google-signin-notice")
+async def save_google_signin_notice_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, request, "Google Sign-in Notice")
+
+@router.get("/email-template/rejection")
+async def get_rejection_email_template():
+    """Sent by DELETE /admin/users/{id} (Admin > Templates > Email > Rejection)."""
+    return {"status": "success", "data": email_service.get_rejection_template()}
+
+@router.post("/email-template/rejection")
+async def save_rejection_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(REJECTION_TEMPLATE_KEY, request, "Rejection")
 
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():

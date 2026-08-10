@@ -4,7 +4,15 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
-type TemplateType = "billing" | "rr3" | "email" | "st_files_email";
+type TemplateType =
+  | "billing"
+  | "rr3"
+  | "email"
+  | "internal_welcome_email"
+  | "password_reset_email"
+  | "google_signin_notice_email"
+  | "rejection_email"
+  | "st_files_email";
 
 interface TokenDoc {
   name: string;
@@ -71,6 +79,25 @@ const EMAIL_TOKENS: TokenDoc[] = [
   { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
 ];
 
+const INTERNAL_WELCOME_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "New user's full name (falls back to their email if blank)" },
+  { name: "SetPasswordLink", description: "Single-use Supabase link that lets them choose their password - must stay in the button's href. Removing it sends an email with no way in." },
+];
+
+const PASSWORD_RESET_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "Account holder's full name (falls back to their email if blank)" },
+  { name: "ResetLink", description: "Single-use Supabase link that lets them choose a new password - must stay in the button's href. Removing it sends an email with no way in." },
+];
+
+const GOOGLE_SIGNIN_NOTICE_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "Account holder's full name (falls back to their email if blank)" },
+  { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
+];
+
+const REJECTION_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "The removed/rejected user's full name (falls back to their email if blank)" },
+];
+
 const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
   { name: "Date", description: "Report date (DD/MM/YYYY)" },
   { name: "PropertyCount", description: "Number of properties included in this email" },
@@ -114,11 +141,51 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     previewable: true,
   },
   email: {
-    label: "Email",
+    label: "Welcome Email",
     endpoint: "/admin/email-template",
     tokens: EMAIL_TOKENS,
     defaultNote: "No welcome email template saved yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Sent when a new user is created (Admin > Users > Create New User).",
+    tokenNote: "Sent when a new Google-auth user is created (Admin > Users > Create New User).",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+  },
+  internal_welcome_email: {
+    label: "Internal Welcome",
+    endpoint: "/admin/email-template/internal-welcome",
+    tokens: INTERNAL_WELCOME_EMAIL_TOKENS,
+    defaultNote: "No Internal Welcome template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent when a new Internal Auth user is created - carries a single-use set-password link, not a password.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+  },
+  password_reset_email: {
+    label: "Password Reset",
+    endpoint: "/admin/email-template/password-reset",
+    tokens: PASSWORD_RESET_EMAIL_TOKENS,
+    defaultNote: "No Password Reset template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent by the login page's \"Forgot password\" link, Internal Auth accounts only.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+  },
+  google_signin_notice_email: {
+    label: "Google Sign-in Notice",
+    endpoint: "/admin/email-template/google-signin-notice",
+    tokens: GOOGLE_SIGNIN_NOTICE_EMAIL_TOKENS,
+    defaultNote: "No Google Sign-in Notice template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent instead of a reset link when \"Forgot password\" is used on a Google-auth account.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+  },
+  rejection_email: {
+    label: "Rejection",
+    endpoint: "/admin/email-template/rejection",
+    tokens: REJECTION_EMAIL_TOKENS,
+    defaultNote: "No Rejection template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent by Admin > Users > Delete Account.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
@@ -200,6 +267,21 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     FullName: "John Doe",
     Email: "john.doe@example.com",
     AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+  }),
+  internal_welcome_email: () => ({
+    FullName: "John Doe",
+    SetPasswordLink: "https://one.naraihospitalitygroup.com/reset-password#token=sample",
+  }),
+  password_reset_email: () => ({
+    FullName: "John Doe",
+    ResetLink: "https://one.naraihospitalitygroup.com/reset-password#token=sample",
+  }),
+  google_signin_notice_email: () => ({
+    FullName: "John Doe",
+    AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+  }),
+  rejection_email: () => ({
+    FullName: "John Doe",
   }),
   st_files_email: () => ({
     Date: "06/08/2026",
@@ -346,7 +428,7 @@ export default function TemplatesPage() {
     <div className="p-8 bg-white min-h-screen text-slate-900 font-sans">
       <PageHeader
         title="Templates"
-        description="Edit the printable HTML templates per property (Billing, RR3), the welcome email sent when a new user is created, and the daily ST Files export email."
+        description="Edit the printable HTML templates per property (Billing, RR3), every system email (account creation, password reset, access rejection), and the daily ST Files export email."
       >
         <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
           {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
