@@ -9,3 +9,4 @@ apscheduler
 gunicorn
 uvloop
 cryptography
+openpyxl

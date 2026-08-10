@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
-from app.routers import reservations, members, payments, admin, auth, bills, resources, rr3, st_files, bcp, rv
+from app.routers import reservations, members, payments, admin, auth, bills, resources, rr3, st_files, bcp, rv, rr4, tm30
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service
@@ -46,6 +46,8 @@ app.include_router(rr3.router)
 app.include_router(st_files.router)
 app.include_router(rv.router)
 app.include_router(bcp.router)
+app.include_router(rr4.router)
+app.include_router(tm30.router)
 
 # Shared by daily_auto_sync and retry_failed_syncs (below) - avoids Supabase's
 # ~60s statement timeout on bulk writes by chunking, with a retry-at-half-size

@@ -12,6 +12,11 @@ from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY, _escape_html
 from app.services import ftp_service
+from app.services.rr4_tm30_reference import RR4_NATIONALITY_CODE, TM30_NATIONALITY_CODE
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font
+from openpyxl.utils import get_column_letter
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +164,17 @@ _RR3_PROPERTY_THAI_NAMES = {
     "Lub d Phuket Patong": "หลับดี ภูเก็ต ป่าตอง",
     "Lub d Siem Reap": "หลับดี เสียมเรียบ",
     "Marasca Samui": "มาราสก้า สมุย",
+}
+
+# The RR4 (ร.ร.๔) hotel-register filing needs the property's Thai REGISTERED
+# name, which is not always the same string as _RR3_PROPERTY_THAI_NAMES above
+# (that one backs guest-facing RR3 cards, a different, less formal use) -
+# confirmed distinct for Chinatown ("หลับดี บางกอก ไชน่าทาว์น" here vs
+# "หลับดี แบงค็อก เยาวราช" there) against the real RR4 file it already
+# produces. The other 7 properties fall back to the RR3 name below until
+# their own exact registered name is supplied and added here.
+_RR4_PROPERTY_THAI_NAMES = {
+    "Lub d Bangkok Chinatown": "หลับดี บางกอก ไชน่าทาว์น",
 }
 
 
@@ -1526,6 +1542,344 @@ class SyncService:
         "Lub d Koh Tao Tanote Bay",
         "Lub d Philippines Makati",
     }
+
+    _RR4_TM30_ACTIVE_STATES = {"Confirmed", "Started", "Processed", "Optional"}
+
+    async def _rr4_tm30_fetch_day(self, property_name: str, date: str):
+        """
+        Shared fetch for RR4/TM30: resolves the property's own calendar-day
+        window and pulls every active-state reservation colliding with it -
+        the same un-versioned Extent-join reservations/getAll call
+        get_rr3_cards and get_st_files_report both use. Returns (day,
+        day_start_utc, day_end_utc, reservations, customers_map,
+        resources_map); `day` is the tz-aware property-local midnight for
+        the report date, reused by callers to format the header date.
+        """
+        property_tz = await self._resolve_property_timezone(property_name)
+        day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
+        day_start_utc = day.astimezone(timezone.utc)
+        day_end_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+        start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        resv_res = await mews_client.post(
+            "/api/connector/v1/reservations/getAll",
+            {"StartUtc": start_iso, "EndUtc": end_iso,
+             "Extent": {"Reservations": True, "Customers": True, "Resources": True}},
+            property_name=property_name,
+        )
+        reservations = [r for r in resv_res.get("Reservations", [])
+                        if r.get("State") in self._RR4_TM30_ACTIVE_STATES]
+        customers_map = {c["Id"]: c for c in resv_res.get("Customers", []) if c.get("Id")}
+        resources_map = {r["Id"]: r for r in resv_res.get("Resources", []) if r.get("Id")}
+        return day, day_start_utc, day_end_utc, reservations, customers_map, resources_map
+
+    @staticmethod
+    def _rr4_tm30_guest_ids(res: dict) -> list:
+        """CustomerId + CompanionIds, deduped, order-preserved - CompanionIds
+        already includes the owner's own CustomerId as one of its entries
+        (same shape used throughout BCP/ST Files/RR3), so a plain
+        set-membership dedupe is enough rather than special-casing it."""
+        ids = [res.get("CustomerId")] + (res.get("CompanionIds") or [])
+        seen, out = set(), []
+        for cid in ids:
+            if cid and cid not in seen:
+                seen.add(cid)
+                out.append(cid)
+        return out
+
+    @staticmethod
+    def _rr4_tm30_identity_card(c: dict) -> str:
+        identity_card = c.get("IdentityCard")
+        identity_cards = c.get("IdentityCards")
+        if isinstance(identity_card, dict):
+            return identity_card.get("Number", "")
+        if isinstance(identity_cards, list) and identity_cards:
+            return identity_cards[0].get("Number", "")
+        return ""
+
+    async def get_rr4_report(self, property_name: str, date: str) -> dict:
+        """
+        Builds the daily RR4 (ร.ร.๔) hotel guest register: every guest whose
+        stay overlaps the given day (Thai and foreign alike), in the Thai
+        Hotel Act's column layout - a direct port of the "RR4-TM30-
+        Chinatown-Gen" Google Sheet's RR4 tab (fed from MEWS's own "Customer
+        profiles In house" report), reverse-engineered from its formulas.
+        See rr4_tm30_reference.py for the nationality code table.
+
+        occupation/willGo/willGoCountry/timeCheckOut are fixed constants in
+        the source sheet, not derived per guest - kept identical here rather
+        than "improved", since that's what the real filed form already does.
+
+        "Stay overlaps the day" reuses get_st_files_report's Customers-tab
+        rule (stays_the_night or day_use) rather than BCP's narrower
+        State=="Started" test, so a same-day arrival or departure still
+        appears on the register even before front desk has checked them in.
+        """
+        day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
+            await self._rr4_tm30_fetch_day(property_name, date)
+
+        def parse_utc(ts):
+            if not ts:
+                return None
+            try:
+                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                return None
+
+        def in_window(ts):
+            t = parse_utc(ts)
+            return t is not None and day_start_utc <= t < day_end_utc
+
+        def buddhist_date(ts):
+            t = parse_utc(ts)
+            if not t:
+                return ""
+            local = t.astimezone(day.tzinfo)
+            return f"{local.day:02d}/{local.month:02d}/{local.year + 543}"
+
+        def time_hhmm(ts):
+            t = parse_utc(ts)
+            if not t:
+                return ""
+            local = t.astimezone(day.tzinfo)
+            return f"{local.hour:02d}.{local.minute:02d}"
+
+        rows = []
+        for res in reservations:
+            end_utc = parse_utc(res.get("EndUtc"))
+            stays_the_night = end_utc is not None and end_utc > day_end_utc
+            day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
+            if not (stays_the_night or day_use):
+                continue
+            room = resources_map.get(res.get("AssignedResourceId"), {})
+            for guest_id in self._rr4_tm30_guest_ids(res):
+                c = customers_map.get(guest_id)
+                if not c:
+                    continue
+                nationality_code = c.get("NationalityCode", "")
+                rr4_code = RR4_NATIONALITY_CODE.get(nationality_code, "")
+                nationality_name = _rr3_country_name(nationality_code)
+                passport = c.get("Passport") or {}
+                rows.append({
+                    "date_check_in": buddhist_date(res.get("StartUtc")),
+                    "time_check_in": time_hhmm(res.get("StartUtc")),
+                    "room_no": room.get("Name", ""),
+                    "title_en": "MS." if c.get("Sex") == "Female" else "MR.",
+                    "name_en": c.get("FirstName", ""),
+                    "middle_name_en": c.get("SecondLastName", ""),
+                    "surname_en": c.get("LastName", ""),
+                    "nationality": rr4_code,
+                    "pid": self._rr4_tm30_identity_card(c),
+                    "passport": passport.get("Number", ""),
+                    "issued_by": rr4_code,
+                    "address": nationality_name,
+                    "address_country": rr4_code,
+                    "occupation": "16",
+                    "come_from": nationality_name,
+                    "come_from_country": rr4_code,
+                    "will_go": "Thailand",
+                    "will_go_country": "99",
+                    "date_check_out": buddhist_date(res.get("EndUtc")),
+                    "time_check_out": "12.00",
+                    "data_status": 1,
+                    "_sort_start": res.get("StartUtc") or "",
+                })
+        rows.sort(key=lambda r: (r["_sort_start"], r["room_no"]))
+        for i, r in enumerate(rows, start=1):
+            r["row_no"] = i
+            del r["_sort_start"]
+
+        return {
+            "property": property_name,
+            "property_thai_name": _RR4_PROPERTY_THAI_NAMES.get(
+                property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)),
+            "date": date,
+            "date_buddhist": f"{day.day:02d}/{day.month:02d}/{day.year + 543}",
+            "rows": rows,
+        }
+
+    _RR4_COLUMNS = [
+        ("row_no", "เลข\nลำดับ"), ("date_check_in", "วันที่เข้าพัก"), ("time_check_in", "เวลาที่เข้าพัก"),
+        ("room_no", "ห้องพักเลขที่"), ("title_th", "คำนำหน้าชื่อ"), ("name_th", "ชื่อ"),
+        ("middle_name_th", "ชื่อกลาง"), ("surname_th", "นามสกุล"), ("title_en", "คำนำหน้าชื่อ(ภาษาอังกฤษ)"),
+        ("name_en", "ชื่อ(ภาษาอังกฤษ)"), ("middle_name_en", "ชื่อกลาง(ภาษาอังกฤษ)"),
+        ("surname_en", "นามสกุล(ภาษาอังกฤษ)"), ("nationality", "สัญชาติ"),
+        ("pid", "เลขประจำตัวประชาชน"), ("passport", "ใบสำคัญประจำตัวคนต่างด้าวหรือหนังสือเดินทาง"),
+        ("issued_by", "หนังสือเดิททางออกให้โดย"), ("address", "ที่อยู่ปัจจุบัน"),
+        ("address_country", "ประเทศที่อยู่ปัจจุบัน"), ("occupation", "อาชีพ"),
+        ("come_from", "มาจากตำบล อำเภอจังหวัด หรือประเทศ"), ("come_from_country", "มาจากประเทศ"),
+        ("will_go", "จะไปที่ อำเภอจังหวัด หรือประเทศใด"), ("will_go_country", "จะไปประเทศ"),
+        ("date_check_out", "วันที่จะออก"), ("time_check_out", "เวลาที่จะออก"),
+        ("data_status", "สถานะข้อมูล"), ("remarks", "หมายเหตุ"),
+    ]
+
+    async def get_rr4_export(self, property_name: str, date: str) -> tuple:
+        """Renders get_rr4_report to the .xlsx layout the reference sheet
+        uses (merged title/property/date header, then the Thai column
+        headers, then one row per guest). Returns (bytes, filename)."""
+        report = await self.get_rr4_report(property_name, date)
+        n_cols = len(self._RR4_COLUMNS)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "RR4"
+
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 4)
+        ws.cell(1, 1, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
+        ws.merge_cells(start_row=1, start_column=n_cols - 3, end_row=1, end_column=n_cols)
+        ws.cell(1, n_cols - 3, "ร.ร.๔").font = Font(bold=True, size=13)
+        ws.cell(1, 1).alignment = Alignment(horizontal="center")
+        ws.cell(1, n_cols - 3).alignment = Alignment(horizontal="center")
+
+        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
+        ws.cell(2, 1, f"{report['property_thai_name']}   ประจำวันที่ {report['date_buddhist']}").alignment = \
+            Alignment(horizontal="center")
+
+        header_row = 3
+        for col, (key, label) in enumerate(self._RR4_COLUMNS, start=1):
+            cell = ws.cell(header_row, col, label)
+            cell.font = Font(bold=True, size=9)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[get_column_letter(col)].width = 14
+
+        for i, row in enumerate(report["rows"], start=1):
+            for col, (key, _label) in enumerate(self._RR4_COLUMNS, start=1):
+                ws.cell(header_row + i, col, row.get(key, ""))
+
+        buf = BytesIO()
+        wb.save(buf)
+
+        property_code = property_name
+        if self.supabase:
+            try:
+                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+                    "property_name", property_name).limit(1).execute()
+                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
+            except Exception:
+                pass
+        yyyymmdd = date.replace("-", "")
+        filename = f"{property_code}_RR4_{yyyymmdd}.xlsx"
+        return buf.getvalue(), filename
+
+    async def get_tm30_report(self, property_name: str, date: str) -> dict:
+        """
+        Builds the daily TM30 foreign-national arrival notification: guests
+        ARRIVING (checking in) on the given day, filtered to non-Thai
+        nationals only - a direct port of the reference sheet's TM30-Gen
+        tab (fed from MEWS's "Customer profiles Arrival" report) followed by
+        its TM30 tab's own filter (`Nationality <> 'THA' AND name is not
+        null`). See rr4_tm30_reference.py for the alpha-3 nationality table.
+
+        "Arriving" reuses get_st_files_report's Arrivals-tab rule
+        (in_window(StartUtc)) exactly.
+        """
+        day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
+            await self._rr4_tm30_fetch_day(property_name, date)
+
+        def parse_utc(ts):
+            if not ts:
+                return None
+            try:
+                return datetime.fromisoformat(ts.replace("Z", "+00:00"))
+            except Exception:
+                return None
+
+        def in_window(ts):
+            t = parse_utc(ts)
+            return t is not None and day_start_utc <= t < day_end_utc
+
+        def gregorian_date(ts):
+            t = parse_utc(ts)
+            if not t:
+                return ""
+            local = t.astimezone(day.tzinfo)
+            return f"{local.day:02d}/{local.month:02d}/{local.year}"
+
+        rows = []
+        for res in reservations:
+            if not in_window(res.get("StartUtc")):
+                continue
+            for guest_id in self._rr4_tm30_guest_ids(res):
+                c = customers_map.get(guest_id)
+                if not c or not (c.get("FirstName") or c.get("LastName")):
+                    continue
+                nationality_code = c.get("NationalityCode", "")
+                if nationality_code == "TH":
+                    continue  # Thai nationals are out of scope for TM30
+                tm30_code = TM30_NATIONALITY_CODE.get(nationality_code, "")
+                if not tm30_code:
+                    continue  # can't resolve a code -> not a real "foreign" match (or unmapped territory); skip rather than file a blank Nationality
+                identity_card = self._rr4_tm30_identity_card(c)
+                passport = (c.get("Passport") or {}).get("Number", "")
+                rows.append({
+                    "first_name": c.get("FirstName", ""),
+                    "middle_name": c.get("SecondLastName", ""),
+                    "last_name": c.get("LastName", ""),
+                    # Matches the reference sheet's own formula exactly -
+                    # defaults to F for anything that isn't literally "Male"
+                    # (opposite default from RR4's title, which defaults
+                    # unknown/blank Sex to MR. - the two source tabs disagree
+                    # with each other, not a bug introduced here).
+                    "gender": "M" if c.get("Sex") == "Male" else "F",
+                    "passport_no": identity_card or passport,
+                    "nationality": tm30_code,
+                    "birth_date": gregorian_date(c.get("BirthDate")),
+                    "check_out_date": gregorian_date(res.get("EndUtc")),
+                    "phone": c.get("Phone", ""),
+                })
+
+        return {
+            "property": property_name,
+            "property_thai_name": _RR4_PROPERTY_THAI_NAMES.get(
+                property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)),
+            "date": date,
+            "rows": rows,
+        }
+
+    _TM30_COLUMNS = [
+        ("first_name", "ชื่อ\nFirst Name *"), ("middle_name", "ชื่อกลาง\nMiddle Name"),
+        ("last_name", "นามสกุล\nLast Name"), ("gender", "เพศ\nGender *"),
+        ("passport_no", "เลขหนังสือเดินทาง\nPassport No. *"), ("nationality", "สัญชาติ\nNationality *"),
+        ("birth_date", "วัน เดือน ปี เกิด\nBirth Date DD/MM/YYYY"),
+        ("check_out_date", "วันที่แจ้งออกจากที่พัก\nCheck-out Date DD/MM/YYYY"),
+        ("phone", "เบอร์โทรศัพท์\nPhone No."),
+    ]
+
+    async def get_tm30_export(self, property_name: str, date: str) -> tuple:
+        """Renders get_tm30_report to the .xlsx layout the government
+        upload template uses (bilingual header row, one row per foreign
+        arrival). Returns (bytes, filename)."""
+        report = await self.get_tm30_report(property_name, date)
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "TM30"
+
+        for col, (key, label) in enumerate(self._TM30_COLUMNS, start=1):
+            cell = ws.cell(1, col, label)
+            cell.font = Font(bold=True, size=9)
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            ws.column_dimensions[get_column_letter(col)].width = 18
+
+        for i, row in enumerate(report["rows"], start=1):
+            for col, (key, _label) in enumerate(self._TM30_COLUMNS, start=1):
+                ws.cell(1 + i, col, row.get(key, ""))
+
+        buf = BytesIO()
+        wb.save(buf)
+
+        property_code = property_name
+        if self.supabase:
+            try:
+                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+                    "property_name", property_name).limit(1).execute()
+                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
+            except Exception:
+                pass
+        yyyymmdd = date.replace("-", "")
+        filename = f"{property_code}_TM30_{yyyymmdd}.xlsx"
+        return buf.getvalue(), filename
 
     @staticmethod
     def _st_report_counts(report: dict) -> dict:
