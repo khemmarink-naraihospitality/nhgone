@@ -139,21 +139,6 @@ def _branded_email(body_html: str, cta_label: str, cta_link: str, show_link: boo
 </div>"""
 
 
-def _credential_box(email: str, password: str) -> str:
-    """The cream email/password panel in the internal welcome email."""
-    label = "margin:0 0 8px 0; font-size:10px; font-weight:700; letter-spacing:0.05em; text-transform:uppercase; color:#152A00; opacity:0.5;"
-    value = "font-size:14px; color:#152A00; font-family: monospace;"
-    return f"""<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 32px 0; background:#FFEFD2; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
-          <tr>
-            <td style="padding:16px 20px; text-align:left;">
-              <p style="{label}">Work Email</p>
-              <p style="margin:0 0 16px 0; {value}">{_escape_html(email)}</p>
-              <p style="{label}">Password</p>
-              <p style="margin:0; {value}">{_escape_html(password)}</p>
-            </td>
-          </tr>
-        </table>"""
-
 
 class EmailService:
     def _get_settings(self):
@@ -319,34 +304,32 @@ class EmailService:
         )
         self.send_email(to_email, subject, html_body, text_body)
 
-    def send_internal_welcome_email(self, to_email: str, password: str, full_name: str = ""):
+    def send_internal_welcome_email(self, to_email: str, set_password_link: str, full_name: str = ""):
         """Welcome email for auth_method="internal" accounts (see admin.py's
-        create_user) - unlike send_welcome_email, this one actually carries a
-        usable credential, so it's hardcoded here rather than being a token in
-        the shared Admin > Templates welcome design: that design is edited by
-        non-engineers, and a stray edit dropping the password token would
-        silently mail an unusable "your account is ready" email with no way to
-        sign in."""
+        create_user). No password travels in this email at all - the account
+        is created with a random one nobody is ever told, and set_password_link
+        is a Supabase recovery action_link (same generate_link mechanism the
+        forgot-password flow uses) that lands on /reset-password and lets the
+        user choose their own on the spot. Hardcoded here rather than a token
+        in the shared Admin > Templates welcome design, so a stray template
+        edit can't drop the link and mail an unusable "your account is ready"
+        email with no way in."""
         greeting = full_name or to_email
-        app_link = settings.APP_BASE_URL
         body = (
             f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
             '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'Your NHGOne account has been created. Sign in via the <b>Internal Users</b> link on the login page '
-            'with the credentials below - you will be asked to choose your own password straight away.</p>'
-            + _credential_box(to_email, password)
+            'Your NHGOne account has been created. Click below to set your password, then sign in via '
+            '<b>Internal Users</b> on the login page. This link can only be used once and expires within the hour.</p>'
         )
-        html_body = _branded_email(body, cta_label="Open NHGOne", cta_link=app_link, show_link=True)
+        html_body = _branded_email(body, cta_label="Set Password", cta_link=set_password_link, show_link=False)
         text_body = (
             f"Hi {greeting},\n\n"
-            f"Your NHGOne account has been created.\n\n"
-            f"Sign in at {app_link} via 'Internal Users' with:\n"
-            f"Email: {to_email}\n"
-            f"Password: {password}\n\n"
-            f"You will be asked to choose your own password on first sign-in.\n\n"
+            f"Your NHGOne account has been created. Open this link to set your password "
+            f"(single use, expires within the hour):\n\n"
+            f"{set_password_link}\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
-        self.send_email(to_email, subject="Your NHGOne account has been created",
+        self.send_email(to_email, subject="Set your NHGOne password",
                         html_body=html_body, text_body=text_body)
 
     def send_password_reset_email(self, to_email: str, reset_link: str, full_name: str = ""):

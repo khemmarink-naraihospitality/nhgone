@@ -99,10 +99,11 @@ class StFilesEmailSettingsUpdate(BaseModel):
 async def create_user(request: UserCreateRequest):
     """
     Pre-register a user by email + role. A strong random password is always
-    generated so the Supabase Auth row exists either way; whether it's ever
-    usable depends on auth_method - "google" throws it away (Google OAuth is
-    the real credential, linked by email), "internal" emails it to the user
-    for the login page's email/password form instead.
+    generated so the Supabase Auth row exists, but nobody is ever told it -
+    "google" throws it away entirely (Google OAuth is the real credential,
+    linked by email); "internal" emails a Supabase recovery link instead (the
+    same generate_link mechanism POST /auth/forgot-password uses) so the user
+    sets their own password on /reset-password rather than receiving one.
     """
     is_internal = request.auth_method == "internal"
     try:
@@ -156,12 +157,19 @@ async def create_user(request: UserCreateRequest):
 
         email_sent = False
         email_error = None
+        set_password_link = None
         try:
             if is_internal:
-                email_service.send_internal_welcome_email(request.email, random_password, request.full_name)
+                link_res = admin_supabase.auth.admin.generate_link({
+                    "type": "recovery",
+                    "email": request.email,
+                    "options": {"redirect_to": f"{settings.APP_BASE_URL}/reset-password"},
+                })
+                set_password_link = link_res.properties.action_link
+                email_service.send_internal_welcome_email(request.email, set_password_link, request.full_name)
             else:
-                # Google flow - no credentials in the email, the password is
-                # never shown to anyone, including this response below.
+                # Google flow - no credentials or links in the email; the
+                # throwaway password above is never shown to anyone.
                 email_service.send_welcome_email(request.email, None, request.full_name)
             email_sent = True
         except Exception as e:
@@ -175,8 +183,8 @@ async def create_user(request: UserCreateRequest):
             "email_error": email_error,
             # Only surfaced for internal accounts, and only so the admin has
             # something to hand the user directly if the email above failed -
-            # a Google-flow password is unusable and never leaves the server.
-            "password": random_password if is_internal else None,
+            # a Google-flow account has no link or password to share.
+            "set_password_link": set_password_link,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

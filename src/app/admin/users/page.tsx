@@ -316,9 +316,9 @@ export default function AdminUsersPage() {
         if (!result.email_sent) {
           alert(
             `User created, but the welcome email failed to send: ${result.email_error || "unknown error"}. ` +
-            (result.password
-              ? `Share this password with them directly: ${result.password}`
-              : `Please share the password with them directly.`)
+            (result.set_password_link
+              ? `Share this set-password link with them directly: ${result.set_password_link}`
+              : `Please share access details with them directly.`)
           );
         }
       } else {
@@ -1111,7 +1111,7 @@ export default function AdminUsersPage() {
                      <p className="text-[11px] text-white/40 leading-relaxed px-1">
                         {newUser.auth_method === "google"
                           ? <>User signs in with <span className="text-white/70 font-bold">Continue with Google</span> using this email address.</>
-                          : <>A password is generated and emailed to this address. User signs in via <span className="text-white/70 font-bold">Internal Users</span> on the login page.</>}
+                          : <>A set-password link is emailed to this address. User sets their own password and signs in via <span className="text-white/70 font-bold">Internal Users</span> on the login page.</>}
                      </p>
                   </div>
 
