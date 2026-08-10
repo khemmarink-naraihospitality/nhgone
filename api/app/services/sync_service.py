@@ -10,7 +10,7 @@ import asyncio
 from collections import Counter
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
-from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY
+from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY, _escape_html
 from app.services import ftp_service
 
 logger = logging.getLogger(__name__)
@@ -1915,6 +1915,103 @@ class SyncService:
             })
         return rows
 
+    def _get_st_report_row(self, property_name: str, date_str: str) -> dict:
+        """
+        Property Code + the 10 ST metric totals for one already-imported
+        (property, date) report - shared by get_st_report_export (the
+        pipe-delimited CSV) and the ST Files daily digest email's summary
+        table, so both read the exact same numbers off the same blob.
+        Raises the same two ValueErrors get_st_report_export always has:
+        missing Property Code, or no imported report for that date.
+        """
+        prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+            "property_name", property_name).limit(1).execute()
+        property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
+        if not property_code:
+            raise ValueError(f"No ST Property Code configured yet for {property_name} - set it in Admin > API Settings")
+        res = self.supabase.table("st_files_sync").select("data").eq(
+            "property", property_name).eq("report_date", date_str).limit(1).execute()
+        if not res.data:
+            raise ValueError(f"No imported report for {property_name} on {date_str} - import it first")
+        blob = (res.data[0].get("data") or {}).get("blob", "")
+        report = json.loads(encryption_service.decrypt(blob))
+        totals = {
+            "spaces": sum(c.get("count", 0) for c in report.get("spaces", [])),
+            "occupied": sum(c.get("count", 0) for c in report.get("occupied", [])),
+            "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
+            "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
+            "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
+            **self._st_report_counts(report),
+            "complimentary": report.get("complimentary", 0),
+        }
+        return {"property_code": property_code, "totals": totals}
+
+    # The 10 metric columns for the ST Files daily digest email's summary
+    # table, in the same order _ST_REPORT_METRICS uses (confirmed against
+    # the source Google Sheet). "No. of Day" has no totals key - like the
+    # CSV export, it's always 1 (this row represents one day of data).
+    _ST_FILES_TABLE_METRIC_COLUMNS = [
+        ("Spaces", "spaces"),
+        ("Occupied", "occupied"),
+        ("House Uses", "house_use"),
+        ("Out of Order", "out_of_order"),
+        ("Availability", "availability"),
+        ("Customers", "customers"),
+        ("Arrivals", "arrivals"),
+        ("Departures", "departures"),
+        ("Complimentary", "complimentary"),
+        ("No. of Day", None),
+    ]
+
+    @classmethod
+    def _build_st_files_summary_table(cls, rows: list) -> str:
+        """
+        Pre-built HTML for the <<StatsTable>> token in the ST Files daily
+        digest email (Admin > Templates > ST Files Email) - same "dynamic
+        row count, can't be a simple <<Token>> substitution" reasoning as
+        RR3's <<IdBoxes>>. rows: list of {"property_name", "property_code",
+        "totals": {...}} in display order (one per property included in
+        that day's send). Table-based layout + inline styles throughout,
+        matching every other email in this app, for the same Outlook
+        compatibility reason.
+        """
+        if not rows:
+            return '<p style="margin:0; font-size:12px; color:#152A00; opacity:0.6;">No properties included.</p>'
+
+        header_cells = "".join(
+            f'<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; '
+            f'text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; line-height:1.3;">{label}</th>'
+            for label, _ in cls._ST_FILES_TABLE_METRIC_COLUMNS
+        )
+        body_rows = []
+        for i, row in enumerate(rows):
+            totals = row["totals"]
+            bg = "#ffffff" if i % 2 == 0 else "#FFEFD2"
+            data_cells = "".join(
+                f'<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; '
+                f'font-variant-numeric:tabular-nums;">{1 if key is None else totals.get(key, 0)}</td>'
+                for _, key in cls._ST_FILES_TABLE_METRIC_COLUMNS
+            )
+            body_rows.append(
+                f'<tr style="background:{bg}; border-bottom:1px solid rgba(21,42,0,0.08);">'
+                f'<td style="padding:7px 10px; text-align:left; font-size:12px; color:#152A00; '
+                f'font-weight:700; white-space:nowrap;">{_escape_html(row["property_name"])}</td>'
+                f'<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; '
+                f'font-variant-numeric:tabular-nums;">{_escape_html(row["property_code"])}</td>'
+                f'{data_cells}</tr>'
+            )
+        return (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">'
+            '<thead><tr style="background:#152A00;">'
+            '<th style="padding:8px 10px; text-align:left; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2; white-space:nowrap;">Property</th>'
+            '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2;">Code</th>'
+            f'{header_cells}</tr></thead>'
+            f'<tbody>{"".join(body_rows)}</tbody>'
+            '</table>'
+        )
+
     def get_st_report_export(self, property_name: str, date_str: str) -> tuple:
         """
         Builds the legacy pipe-delimited "ST" statistics submission file
@@ -1943,26 +2040,8 @@ class SyncService:
         """
         if not self.supabase:
             raise Exception("Supabase not initialized")
-        prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
-            "property_name", property_name).limit(1).execute()
-        property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None)
-        if not property_code:
-            raise ValueError(f"No ST Property Code configured yet for {property_name} - set it in Admin > API Settings")
-        res = self.supabase.table("st_files_sync").select("data").eq(
-            "property", property_name).eq("report_date", date_str).limit(1).execute()
-        if not res.data:
-            raise ValueError(f"No imported report for {property_name} on {date_str} - import it first")
-        blob = (res.data[0].get("data") or {}).get("blob", "")
-        report = json.loads(encryption_service.decrypt(blob))
-        totals = {
-            "spaces": sum(c.get("count", 0) for c in report.get("spaces", [])),
-            "occupied": sum(c.get("count", 0) for c in report.get("occupied", [])),
-            "house_use": sum(c.get("count", 0) for c in report.get("house_use", [])),
-            "out_of_order": sum(c.get("count", 0) for c in report.get("out_of_order", [])),
-            "availability": sum(c.get("count", 0) for c in report.get("availability", [])),
-            **self._st_report_counts(report),
-            "complimentary": report.get("complimentary", 0),
-        }
+        row = self._get_st_report_row(property_name, date_str)
+        property_code, totals = row["property_code"], row["totals"]
         day = datetime.strptime(date_str, "%Y-%m-%d")
         ddmmyyyy = day.strftime("%d%m%Y")
         yyyymmdd = day.strftime("%Y%m%d")
@@ -2951,13 +3030,17 @@ class SyncService:
         settings_row = email_service.get_st_files_daily_settings()
         props_res = self.supabase.table("property_api_settings").select("property_name").order("property_name").execute()
 
-        attachments, included, skipped = [], [], []
+        attachments, included, skipped, table_rows = [], [], [], []
         for p in (props_res.data or []):
             prop = p["property_name"]
             try:
                 text, filename = self.get_st_report_export(prop, date_str)
                 attachments.append((filename, text.encode("utf-8")))
                 included.append(prop)
+                # Same (property, date) lookup get_st_report_export just did,
+                # so it's guaranteed to succeed too - no new failure mode.
+                row = self._get_st_report_row(prop, date_str)
+                table_rows.append({"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]})
             except Exception as e:
                 skipped.append(f"{prop}: {str(e)[:150]}")
 
@@ -2973,7 +3056,8 @@ class SyncService:
         html_body = settings_row["html_template"] \
             .replace("<<Date>>", date_display) \
             .replace("<<PropertyCount>>", str(len(included))) \
-            .replace("<<PropertyList>>", ", ".join(included))
+            .replace("<<PropertyList>>", ", ".join(included)) \
+            .replace("<<StatsTable>>", self._build_st_files_summary_table(table_rows))
 
         email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
 

@@ -32,13 +32,13 @@ DEFAULT_ST_FILES_DAILY_HOUR = 3
 DEFAULT_ST_FILES_DAILY_MINUTE = 0
 DEFAULT_ST_FILES_DAILY_SUBJECT = "NHGOne ST Files — <<Date>>"
 DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
     <tr>
-      <td style="padding:40px 40px 32px 40px;">
+      <td style="padding:40px;">
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files Daily Export</p>
-        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily ST statistics export for <b><<Date>></b>, attached as one CSV per property (<<PropertyCount>> included).</p>
-        <p style="margin:0; font-size:11px; color:#152A00; opacity:0.5;"><<PropertyList>></p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily ST statistics export for <b><<Date>></b>, attached as one CSV per property (<<PropertyCount>> included).</p>
+        <<StatsTable>>
       </td>
     </tr>
   </table>

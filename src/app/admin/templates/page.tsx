@@ -102,6 +102,7 @@ const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
   { name: "Date", description: "Report date (DD/MM/YYYY)" },
   { name: "PropertyCount", description: "Number of properties included in this email" },
   { name: "PropertyList", description: "Comma-separated list of included property names" },
+  { name: "StatsTable", description: "Pre-built HTML table, one row per property: Property, Code, Spaces, Occupied, House Uses, Out of Order, Availability, Customers, Arrivals, Departures, Complimentary, No. of Day" },
 ];
 
 const TEMPLATE_CONFIG: Record<TemplateType, {
@@ -287,8 +288,49 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Date: "06/08/2026",
     PropertyCount: "8",
     PropertyList: "Lub d Bangkok Chinatown, Lub d Bangkok Siam, Lub d Koh Samui Chaweng Beach, Lub d Koh Tao Tanote Bay, Lub d Philippines Makati, Lub d Phuket Patong, Lub d Siem Reap, Marasca Samui",
+    StatsTable: buildStFilesStatsTableSample(),
   }),
 };
+
+// Mirrors sync_service.py's _build_st_files_summary_table byte-for-byte
+// (column order, colors, alternating row shading) so the Preview tab shows
+// what the real digest actually renders, not a generic placeholder table.
+function buildStFilesStatsTableSample(): string {
+  const columns = ["Spaces", "Occupied", "House Uses", "Out of Order", "Availability", "Customers", "Arrivals", "Departures", "Complimentary", "No. of Day"];
+  const rows = [
+    { name: "Lub d Bangkok Chinatown", code: "MS", values: [176, 150, 2, 1, 23, 140, 30, 28, 0, 1] },
+    { name: "Lub d Bangkok Siam", code: "SM", values: [88, 84, 0, 4, 0, 83, 32, 31, 0, 1] },
+    { name: "Lub d Siem Reap", code: "SR", values: [40, 35, 0, 0, 5, 30, 6, 5, 0, 1] },
+  ];
+  const headerCells = columns
+    .map((c) => `<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; line-height:1.3;">${c}</th>`)
+    .join("");
+  const bodyRows = rows
+    .map((r, i) => {
+      const bg = i % 2 === 0 ? "#ffffff" : "#FFEFD2";
+      const dataCells = r.values
+        .map((v) => `<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; font-variant-numeric:tabular-nums;">${v}</td>`)
+        .join("");
+      return (
+        `<tr style="background:${bg}; border-bottom:1px solid rgba(21,42,0,0.08);">` +
+        `<td style="padding:7px 10px; text-align:left; font-size:12px; color:#152A00; font-weight:700; white-space:nowrap;">${r.name}</td>` +
+        `<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; font-variant-numeric:tabular-nums;">${r.code}</td>` +
+        dataCells +
+        `</tr>`
+      );
+    })
+    .join("");
+  return (
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">' +
+    '<thead><tr style="background:#152A00;">' +
+    '<th style="padding:8px 10px; text-align:left; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; white-space:nowrap;">Property</th>' +
+    '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2;">Code</th>' +
+    headerCells +
+    "</tr></thead>" +
+    `<tbody>${bodyRows}</tbody>` +
+    "</table>"
+  );
+}
 
 function renderPreviewHtml(template: string, sample: Record<string, string>): string {
   let result = template;
