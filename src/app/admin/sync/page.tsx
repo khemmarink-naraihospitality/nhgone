@@ -23,6 +23,13 @@ interface PropertySyncSettings {
   st_files_sync_enabled: boolean;
   st_files_sync_hour: number | null;
   st_files_sync_minute: number | null;
+  // RR4/TM30's own independent schedule, separate again from ST Files above
+  // - the two government filings can be captured on a different clock than
+  // the occupancy report (or not at all). Imports YESTERDAY's date in the
+  // property's own timezone, matching /rr4-tm30's manual default.
+  rr4_tm30_sync_enabled: boolean;
+  rr4_tm30_sync_hour: number | null;
+  rr4_tm30_sync_minute: number | null;
 }
 
 const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] = [
@@ -104,7 +111,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -282,6 +289,9 @@ export default function AdminSyncPage() {
           st_files_sync_enabled: editingProperty.st_files_sync_enabled,
           st_files_sync_hour: editingProperty.st_files_sync_hour,
           st_files_sync_minute: editingProperty.st_files_sync_minute,
+          rr4_tm30_sync_enabled: editingProperty.rr4_tm30_sync_enabled,
+          rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour,
+          rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute,
         })
         .eq("id", editingProperty.id);
       
@@ -471,15 +481,16 @@ export default function AdminSyncPage() {
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Property Name</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Data Mart Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">ST Files Sync</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">RR4/TM30 Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Auto-Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={5} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+                <tr><td colSpan={6} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : properties.length === 0 ? (
-                <tr><td colSpan={5} className="py-20 text-center text-slate-400 text-sm">No properties configured. Add properties via API Setting first.</td></tr>
+                <tr><td colSpan={6} className="py-20 text-center text-slate-400 text-sm">No properties configured. Add properties via API Setting first.</td></tr>
               ) : properties.map((prop) => (
                 <tr key={prop.id} className="hover:bg-slate-50/50 transition-colors group">
                   <td className="px-6 py-5">
@@ -495,6 +506,15 @@ export default function AdminSyncPage() {
                     {prop.st_files_sync_enabled ? (
                       <span className="bg-emerald-50 text-emerald-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-emerald-100">
                         {String(prop.st_files_sync_hour ?? 0).padStart(2, '0')}:{String(prop.st_files_sync_minute ?? 0).padStart(2, '0')}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-sm">Off</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    {prop.rr4_tm30_sync_enabled ? (
+                      <span className="bg-sky-50 text-sky-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-sky-100">
+                        {String(prop.rr4_tm30_sync_hour ?? 0).padStart(2, '0')}:{String(prop.rr4_tm30_sync_minute ?? 0).padStart(2, '0')}
                       </span>
                     ) : (
                       <span className="text-slate-300 text-sm">Off</span>
@@ -728,6 +748,63 @@ export default function AdminSyncPage() {
                                className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
                                value={editingProperty.st_files_sync_minute ?? 0}
                                onChange={(e) => setEditingProperty({...editingProperty, st_files_sync_minute: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* RR4/TM30 card */}
+                 <div className="rounded-2xl border border-sky-500/20 bg-gradient-to-b from-sky-500/[0.07] to-transparent overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                       <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-sky-500/15 flex items-center justify-center shrink-0">
+                             <svg className="w-[18px] h-[18px] text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" /></svg>
+                          </div>
+                          <div className="min-w-0">
+                             <div className="text-[13px] font-bold text-white">RR4 / TM30 Sync</div>
+                             <div className="text-[10px] text-white/40 truncate">Yesterday&apos;s guest register + foreign-arrival filing</div>
+                          </div>
+                       </div>
+                       <button
+                         onClick={() => setEditingProperty({
+                           ...editingProperty,
+                           rr4_tm30_sync_enabled: !editingProperty.rr4_tm30_sync_enabled,
+                           // Defaults to 02:00 the first time this is turned on -
+                           // late enough that the previous day is fully closed out.
+                           rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour ?? 2,
+                           rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute ?? 0,
+                         })}
+                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ${editingProperty.rr4_tm30_sync_enabled ? 'bg-sky-500' : 'bg-white/10'}`}
+                       >
+                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.rr4_tm30_sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                       </button>
+                    </div>
+
+                    <div className="px-5 pb-5">
+                       <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="23"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.rr4_tm30_sync_hour ?? 2}
+                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_hour: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                          </div>
+                          <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="59"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.rr4_tm30_sync_minute ?? 0}
+                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_minute: parseInt(e.target.value) || 0})}
                              />
                              <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
                           </div>

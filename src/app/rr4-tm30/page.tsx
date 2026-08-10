@@ -79,12 +79,28 @@ interface Tm30Report {
   rows: Tm30Row[];
 }
 
+interface ListRow {
+  date: string;
+  rr4_rows: number;
+  tm30_rows: number;
+  synced_at?: string;
+}
+
+type DataSource = "live" | "database";
+
 const TABS = [
   { key: "rr4", label: "RR4" },
   { key: "tm30", label: "TM30" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
+
+const fmtDateTime = (v?: string) => {
+  if (!v) return "-";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return v;
+  return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+};
 
 const thCls = "p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap";
 const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap";
@@ -95,8 +111,12 @@ export default function Rr4Tm30Page() {
   const [rr4Report, setRr4Report] = useState<Rr4Report | null>(null);
   const [tm30Report, setTm30Report] = useState<Tm30Report | null>(null);
   const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabKey>("rr4");
+  const [dataSource, setDataSource] = useState<DataSource>("database");
+  const [listRows, setListRows] = useState<ListRow[]>([]);
+  const [listLoading, setListLoading] = useState(false);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -123,31 +143,88 @@ export default function Rr4Tm30Page() {
     fetchProperties();
   }, []);
 
+  // Auto-loads as soon as a property is selected. dataSource defaults to
+  // "database" so this is a fast cached read, not a live MEWS call - same
+  // behaviour as ST Files.
   useEffect(() => {
-    if (selectedProperty) fetchReports();
+    if (selectedProperty) {
+      fetchReports();
+      fetchList();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
 
-  const fetchReports = async () => {
+  // Accepts an override date/source so the Files table's View button can jump
+  // straight to a given day without racing the date/dataSource state setters
+  // it calls right before this (setState is async, so reading the plain
+  // `date`/`dataSource` closure vars here would still see the old day).
+  const fetchReports = async (opts?: { date?: string; source?: DataSource }) => {
     if (!selectedProperty) return;
+    const targetDate = opts?.date ?? date;
+    const source = opts?.source ?? dataSource;
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams({ property_name: selectedProperty, date });
+      const params = new URLSearchParams({ property_name: selectedProperty, date: targetDate });
+      const endpoint = source === "database" ? "managed" : "report";
       const [rr4Res, tm30Res] = await Promise.all([
-        fetch(`/api/rr4/report?${params.toString()}`),
-        fetch(`/api/tm30/report?${params.toString()}`),
+        fetch(`/api/rr4/${endpoint}?${params.toString()}`),
+        fetch(`/api/tm30/${endpoint}?${params.toString()}`),
       ]);
       const rr4Result = await rr4Res.json();
       const tm30Result = await tm30Res.json();
       if (rr4Result.status !== "success") throw new Error(rr4Result.detail || "Failed to fetch RR4 report");
       if (tm30Result.status !== "success") throw new Error(tm30Result.detail || "Failed to fetch TM30 report");
+      if (source === "database" && !rr4Result.data) {
+        setRr4Report(null);
+        setTm30Report(null);
+        throw new Error(`No imported report for ${selectedProperty} on ${targetDate} yet - switch MODE to MEWS, or use "Import To Data Mart" first.`);
+      }
       setRr4Report(rr4Result.data);
       setTm30Report(tm30Result.data);
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Per-day history rows - always reads from the Database (rr4_tm30_sync).
+  // Non-critical if it fails, so no error banner for it.
+  const fetchList = async () => {
+    if (!selectedProperty) return;
+    setListLoading(true);
+    try {
+      const params = new URLSearchParams({ property_name: selectedProperty });
+      const res = await fetch(`/api/rr4/list?${params.toString()}`);
+      const result = await res.json();
+      if (result.status === "success") setListRows(result.data || []);
+    } catch {
+      // swallow - the single-day report above is the primary view
+    } finally {
+      setListLoading(false);
+    }
+  };
+
+  const handleImport = async () => {
+    if (!selectedProperty) return;
+    setImporting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/rr4/sync-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_name: selectedProperty, start_date: date, end_date: date }),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.message || result.detail || "Import failed");
+      if (result.errors?.length) throw new Error(`Import finished with errors: ${result.errors.join("; ")}`);
+      alert(`Imported RR4/TM30 for ${selectedProperty} ${date} to Data Mart.`);
+      fetchList();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -160,16 +237,17 @@ export default function Rr4Tm30Page() {
     return match ? match[1] : fallback;
   };
 
-  const handleDownload = async (kind: TabKey) => {
+  const handleDownload = async (kind: TabKey, rowDate?: string) => {
     if (!selectedProperty) return;
+    const targetDate = rowDate ?? date;
     try {
-      const params = new URLSearchParams({ property_name: selectedProperty, date });
+      const params = new URLSearchParams({ property_name: selectedProperty, date: targetDate });
       const res = await fetch(`/api/${kind}/export?${params.toString()}`);
       if (!res.ok) {
         const result = await res.json().catch(() => null);
         throw new Error(result?.detail || "Download failed");
       }
-      const filename = filenameFromResponse(res, `${kind.toUpperCase()}_${selectedProperty}_${date}.xlsx`);
+      const filename = filenameFromResponse(res, `${kind.toUpperCase()}_${selectedProperty}_${targetDate}.xlsx`);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -262,19 +340,28 @@ export default function Rr4Tm30Page() {
     </table>
   );
 
-  // One row per generated file for the loaded day - the Files section's
-  // equivalent of ST Files' per-day history table. RR4/TM30 are built live
-  // from MEWS rather than cached in a sync table, so this lists the two
-  // files the currently-loaded day can produce rather than a date history.
-  const fileRows = [
-    { key: "rr4" as TabKey, label: "RR4", description: "ทะเบียนผู้เข้าพักในโรงแรม (ร.ร.๔)", count: rr4Report?.rows.length ?? null },
-    { key: "tm30" as TabKey, label: "TM30", description: "แจ้งที่พักคนต่างด้าว (ตม.30)", count: tm30Report?.rows.length ?? null },
-  ];
-
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-[100rem] mx-auto">
-        <PageHeader title="RR4 / TM30" />
+        <PageHeader title="RR4 / TM30">
+          <div className="flex flex-col items-end gap-1">
+            <span className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps">Mode</span>
+            <div className="flex border border-[var(--text-primary)]/14 bg-[var(--paper)]">
+              <button
+                onClick={() => setDataSource("live")}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "live" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
+              >
+                MEWS
+              </button>
+              <button
+                onClick={() => setDataSource("database")}
+                className={`px-6 py-2 text-[10px] font-bold tracked-caps transition-all ${dataSource === "database" ? "bg-[#152A00] text-[#FFEFD2]" : "text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"}`}
+              >
+                NHG
+              </button>
+            </div>
+          </div>
+        </PageHeader>
 
         <CollapsibleSection
           open={headerOpen}
@@ -314,6 +401,13 @@ export default function Rr4Tm30Page() {
             </div>
             <button onClick={() => fetchReports()} disabled={loading} className="btn-brand btn-primary h-[46px]">
               {loading ? "Loading..." : "Fetch Report"}
+            </button>
+            <button
+              onClick={handleImport}
+              disabled={importing || !selectedProperty}
+              className="px-6 py-2 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap h-[46px] disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              {importing ? "Importing..." : "Import To Data Mart"}
             </button>
           </div>
         </CollapsibleSection>
@@ -378,55 +472,63 @@ export default function Rr4Tm30Page() {
         <div className="mt-8">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-serif text-[var(--text-primary)]">RR4 &amp; TM30 Files</h2>
-            {loading && <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Loading...</span>}
+            {listLoading && <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Loading...</span>}
           </div>
           <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-max">
               <thead>
                 <tr className="bg-[var(--text-primary)]/5">
-                  <th className={thCls}>File</th>
-                  <th className={thCls}>Description</th>
                   <th className={thCls}>Date</th>
-                  <th className={`${thCls} text-right`}>Rows</th>
-                  <th className={thCls}>Format</th>
-                  <th className={thCls}>Actions</th>
+                  <th className={`${thCls} text-right`}>RR4 Rows</th>
+                  <th className={`${thCls} text-right`}>TM30 Rows</th>
+                  <th className={thCls}>Imported</th>
+                  <th className={thCls}>Files</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--text-primary)]/5">
-                {!rr4Report && !tm30Report ? (
+                {listRows.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
-                      {selectedProperty ? "Fetch a report above to generate files." : "Select a property to generate RR4/TM30 files."}
+                    <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                      {selectedProperty ? "No imported days yet - use “Import To Data Mart” above, or wait for the nightly auto-import." : "Select a property to see imported RR4/TM30 history."}
                     </td>
                   </tr>
-                ) : fileRows.map((f) => (
-                  <tr key={f.key} className={activeTab === f.key ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
-                    <td className={`${tdCls} font-bold`}>
-                      {f.label}
-                      {activeTab === f.key && <span className="ml-2 text-[9px] font-bold tracked-caps text-emerald-700">Viewing</span>}
-                    </td>
-                    <td className={tdCls}>{f.description}</td>
-                    <td className={tdCls}>{date}</td>
-                    <td className={`${tdCls} text-right`}>{f.count ?? "-"}</td>
-                    <td className={tdCls}>.xlsx</td>
-                    <td className={tdCls}>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => { setActiveTab(f.key); setDataOpen(true); }}
-                          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => handleDownload(f.key)}
-                          className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                        >
-                          Download
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                ) : listRows.map((r) => {
+                  // Highlights whichever row's day is currently loaded above.
+                  const isActive = !!rr4Report && dataSource === "database" && rr4Report.date === r.date;
+                  return (
+                    <tr key={r.date} className={isActive ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
+                      <td className={`${tdCls} font-bold`}>
+                        {r.date}
+                        {isActive && <span className="ml-2 text-[9px] font-bold tracked-caps text-emerald-700">Viewing</span>}
+                      </td>
+                      <td className={`${tdCls} text-right`}>{r.rr4_rows}</td>
+                      <td className={`${tdCls} text-right`}>{r.tm30_rows}</td>
+                      <td className={tdCls}>{fmtDateTime(r.synced_at)}</td>
+                      <td className={tdCls}>
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => { setDate(r.date); setDataSource("database"); setDataOpen(true); fetchReports({ date: r.date, source: "database" }); }}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => handleDownload("rr4", r.date)}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            RR4 .xlsx
+                          </button>
+                          <button
+                            onClick={() => handleDownload("tm30", r.date)}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            TM30 .xlsx
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

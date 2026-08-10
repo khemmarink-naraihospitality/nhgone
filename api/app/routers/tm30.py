@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import Response
 
 from app.services.sync_service import sync_service
+from app.routers.rr4 import read_managed_day
 
 router = APIRouter(prefix="/tm30", tags=["TM30"])
 
@@ -17,6 +18,25 @@ async def get_report(
         return {"status": "success", "data": report}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/managed")
+async def get_managed(
+    property_name: str = Query(...),
+    date: str = Query(...),
+):
+    """Database mode: return the cached TM30 report for one (property, date).
+    Reads the same rr4_tm30_sync row /rr4/managed does - both reports are
+    stored together (see rr4.sync_rr4_tm30_day)."""
+    try:
+        payload = read_managed_day(property_name, date)
+        if not payload:
+            return {"status": "success", "data": None}
+        report = payload.get("tm30") or {}
+        report["_synced_at"] = payload.get("_synced_at")
+        return {"status": "success", "data": report}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

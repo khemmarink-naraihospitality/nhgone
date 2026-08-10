@@ -242,6 +242,22 @@ async def _sync_st_files_for_property(prop, prop_id, date_str, sync_type="auto")
         print(f"Error syncing ST Files for {prop}: {e}")
         return False
 
+async def _sync_rr4_tm30_for_property(prop, prop_id, date_str, sync_type="auto"):
+    """RR4 and TM30 are captured together in one row (see
+    rr4.sync_rr4_tm30_day) since they share a single MEWS call. Same shape as
+    _sync_st_files_for_property above - its own function, on its own
+    schedule, deliberately outside _TARGET_TABLE_SYNC_FN's per-table loops."""
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
+    try:
+        await rr4.sync_rr4_tm30_day(prop, date_str)
+        _log_sync(prop, prop_id, "RR4/TM30", "success", 1, f"{label} RR4/TM30 Sync: {date_str}", sync_type)
+        return True
+    except Exception as e:
+        err = str(e)[:1000]
+        _log_sync(prop, prop_id, "RR4/TM30", "error", 0, f"{label} RR4/TM30 Sync Failed: {err}", sync_type)
+        print(f"Error syncing RR4/TM30 for {prop}: {e}")
+        return False
+
 _TARGET_TABLE_SYNC_FN = {
     "Reservations": (_sync_reservations, "sync_reservations"),
     "Customers": (_sync_members, "sync_members"),
@@ -433,6 +449,91 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
                 _log_sync(p["property_name"], p["id"], "ST Files", "error", 0,
                           f"Auto ST Files Sync Failed: sync lock still busy for {report_date_str}", "auto")
 
+async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
+    """
+    RR4/TM30's own auto-import schedule (Admin > Sync's "RR4/TM30 Auto
+    Import" section, rr4_tm30_sync_enabled/rr4_tm30_sync_hour/
+    rr4_tm30_sync_minute on property_api_settings) - a third independent
+    clock alongside the 5-table daily_auto_sync and ST Files, for the same
+    reason ST Files got its own: a property may want the government filings
+    captured at a different time than its data sync, or not at all.
+
+    Always syncs YESTERDAY's date in the property's own timezone, matching
+    both /rr4-tm30's manual default (getYesterday() in the frontend) and ST
+    Files' reasoning: at the default 02:00 run time "today" is an
+    in-progress day only hours old, before that day's check-ins have
+    actually happened.
+
+    Same match_hour_only split as daily_auto_sync/daily_auto_sync_st_files:
+    exact minute match locally (per-minute tick), hour-only in production
+    (Vercel's cron is hourly and not guaranteed to land on :00).
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, rr4_tm30_sync_hour, rr4_tm30_sync_minute") \
+            .eq("rr4_tm30_sync_enabled", True)
+        if match_hour_only:
+            query = query.eq("rr4_tm30_sync_hour", now.hour)
+        else:
+            query = query.eq("rr4_tm30_sync_hour", now.hour).eq("rr4_tm30_sync_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        # Swallows a missing-column error gracefully (e.g. the migration
+        # adding these 3 columns hasn't been run yet) rather than taking
+        # down this whole background task.
+        print(f"Error in daily_auto_sync_rr4_tm30 (fetching properties): {str(e)}")
+        return
+
+    if not items:
+        return
+
+    print(f"[{now.isoformat()}] RR4/TM30 auto-import: {len(items)} propert(y/ies) scheduled...")
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
+
+    async def import_one(p) -> bool:
+        """False only when the lock was unavailable - i.e. worth retrying.
+        A genuine sync failure is logged by _sync_rr4_tm30_for_property and
+        counts as handled."""
+        prop, prop_id = p["property_name"], p["id"]
+        try:
+            lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                "target_property_id": prop_id, "timeout_mins": 15
+            }).execute().data
+        except Exception as lock_err:
+            print(f"RR4/TM30 auto-import lock error for {prop}: {lock_err}")
+            return False
+        if not lock_acquired:
+            print(f"RR4/TM30 auto-import for {prop}: sync lock busy.")
+            return False
+
+        try:
+            await _sync_rr4_tm30_for_property(prop, prop_id, report_date_str)
+        finally:
+            try:
+                sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+            except Exception:
+                pass
+        return True
+
+    # Same deferred-retry pass daily_auto_sync_st_files uses: the every-5-minute
+    # BCP capture takes this same per-property lock, so a property whose capture
+    # overlaps this tick would otherwise be silently skipped for the whole day.
+    deferred = []
+    for p in items:
+        if not await import_one(p):
+            deferred.append(p)
+
+    if deferred:
+        await asyncio.sleep(20)
+        for p in deferred:
+            if not await import_one(p):
+                _log_sync(p["property_name"], p["id"], "RR4/TM30", "error", 0,
+                          f"Auto RR4/TM30 Sync Failed: sync lock still busy for {report_date_str}", "auto")
+
 async def send_st_files_daily_email(match_hour_only: bool = False):
     """
     Once-daily email (Admin > Templates > ST Files Email) with every ready
@@ -607,15 +708,16 @@ async def retry_scheduled_syncs():
     property's OWN schedule instead of a fixed 09:00, and for a configurable
     count/spacing instead of a fixed two (Admin > Sync's Retry Policy card,
     backed by sync_retry_settings - see sync_service.get_sync_retry_settings;
-    default is 2 retries, 60 minutes apart). Covers BOTH of a property's
-    independent schedules: the 5-table Data Mart sync (sync_hour/minute) and
-    ST Files (st_files_sync_hour/minute, which a property can run on a
-    completely different clock, or not at all - see daily_auto_sync_st_files'
-    own docstring). A property can be due for either, both, or neither on any
-    given tick; retries whatever's still "error" or has no sync_logs row at
-    all yet for today (the scheduled run never fired - e.g. a cold start/
-    outage at that exact minute, not just a logged failure). Already-
-    succeeded tables/ST Files are left untouched.
+    default is 2 retries, 60 minutes apart). Covers ALL THREE of a property's
+    independent schedules: the 5-table Data Mart sync (sync_hour/minute),
+    ST Files (st_files_sync_hour/minute) and RR4/TM30
+    (rr4_tm30_sync_hour/minute) - each of which a property can run on a
+    completely different clock, or not at all (see daily_auto_sync_st_files'
+    and daily_auto_sync_rr4_tm30's own docstrings). A property can be due for
+    any combination of them on a given tick; retries whatever's still "error"
+    or has no sync_logs row at all yet for today (the scheduled run never
+    fired - e.g. a cold start/outage at that exact minute, not just a logged
+    failure). Already-succeeded tables are left untouched.
 
     Runs on its OWN dedicated Vercel Cron entry (/sync/retry-check,
     */5 * * * * - see vercel.json), separate from the hourly /sync/auto,
@@ -653,7 +755,8 @@ async def retry_scheduled_syncs():
         props_res = sync_service.supabase.table("property_api_settings") \
             .select("id, property_name, sync_enabled, sync_hour, sync_minute, "
                      "sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, "
-                     "st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute") \
+                     "st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, "
+                     "rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute") \
             .execute()
     except Exception as e:
         print(f"Error in retry_scheduled_syncs (fetching properties): {str(e)}")
@@ -679,8 +782,10 @@ async def retry_scheduled_syncs():
             prop_settings.get("sync_hour"), prop_settings.get("sync_minute"))
         due_st_files = bool(prop_settings.get("st_files_sync_enabled")) and is_due(
             prop_settings.get("st_files_sync_hour"), prop_settings.get("st_files_sync_minute"))
-        if due_data_mart or due_st_files:
-            due.append((prop_settings, due_data_mart, due_st_files))
+        due_rr4_tm30 = bool(prop_settings.get("rr4_tm30_sync_enabled")) and is_due(
+            prop_settings.get("rr4_tm30_sync_hour"), prop_settings.get("rr4_tm30_sync_minute"))
+        if due_data_mart or due_st_files or due_rr4_tm30:
+            due.append((prop_settings, due_data_mart, due_st_files, due_rr4_tm30))
 
     if not due:
         return
@@ -692,7 +797,7 @@ async def retry_scheduled_syncs():
     report_date = yesterday_bkk.date().isoformat()
     now_iso = now.astimezone(timezone.utc).isoformat()
 
-    for prop_settings, due_data_mart, due_st_files in due:
+    for prop_settings, due_data_mart, due_st_files, due_rr4_tm30 in due:
         prop = prop_settings["property_name"]
         prop_id = prop_settings["id"]
 
@@ -724,11 +829,14 @@ async def retry_scheduled_syncs():
         retry_st_files = due_st_files and (
             "ST Files" not in latest_by_table or latest_by_table["ST Files"].get("status") == "error"
         )
+        retry_rr4_tm30 = due_rr4_tm30 and (
+            "RR4/TM30" not in latest_by_table or latest_by_table["RR4/TM30"].get("status") == "error"
+        )
 
-        if not to_retry and not retry_st_files:
+        if not to_retry and not retry_st_files and not retry_rr4_tm30:
             continue
 
-        labels = to_retry + (["ST Files"] if retry_st_files else [])
+        labels = to_retry + (["ST Files"] if retry_st_files else []) + (["RR4/TM30"] if retry_rr4_tm30 else [])
         print(f"[{now.isoformat()}] Scheduled retry: {prop} still missing/failing {labels}, retrying...")
 
         try:
@@ -748,6 +856,8 @@ async def retry_scheduled_syncs():
                 await fn(prop, prop_id, now_iso, report_date, sync_type="retry")
             if retry_st_files:
                 await _sync_st_files_for_property(prop, prop_id, report_date, sync_type="retry")
+            if retry_rr4_tm30:
+                await _sync_rr4_tm30_for_property(prop, prop_id, report_date, sync_type="retry")
         except Exception as e:
             print(f"Error during scheduled retry for {prop}: {str(e)}")
         finally:
@@ -787,6 +897,8 @@ async def start_scheduler():
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # ST Files' own independent schedule (st_files_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
+    # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
+    scheduler.add_job(daily_auto_sync_rr4_tm30, 'cron', second=0)
     # ST Files daily email digest - own configurable send_hour/minute.
     scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
     # ST Files daily FTP upload - own separate configurable upload_hour/minute.
@@ -818,6 +930,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # own docstring for why the hourly tick here couldn't support that.
     # ST Files' own independent schedule.
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
+    # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
+    background_tasks.add_task(daily_auto_sync_rr4_tm30, match_hour_only=True)
     # ST Files daily email digest - own configurable send_hour/minute.
     background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
     # ST Files daily FTP upload - own separate configurable upload_hour/minute.
