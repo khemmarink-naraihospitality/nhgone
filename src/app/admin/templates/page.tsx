@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -363,6 +363,15 @@ export default function TemplatesPage() {
   const [sendTime, setSendTime] = useState("03:00");
   const [enabled, setEnabled] = useState(true);
   const [sendingTest, setSendingTest] = useState(false);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  // Resize iframe to fit its content (no scrollbars)
+  const handleIframeLoad = () => {
+    if (iframeRef.current?.contentDocument) {
+      const height = iframeRef.current.contentDocument.documentElement.scrollHeight;
+      iframeRef.current.style.height = Math.max(height + 20, 540) + "px";
+    }
+  };
 
   // Same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that env var is set
   // (in Vercel) to a stale API deployment that predates the template endpoints,
@@ -593,9 +602,12 @@ export default function TemplatesPage() {
               {config.previewable && viewMode === "preview" ? (
                 <div className="bg-slate-100 rounded-2xl p-5 border border-slate-200/70">
                   <iframe
+                    ref={iframeRef}
                     title={`${config.label} preview`}
                     srcDoc={renderPreviewHtml(html, PREVIEW_SAMPLE_BUILDERS[templateType]())}
-                    className="w-full h-[540px] bg-white rounded-xl border border-slate-200/70 shadow-md"
+                    onLoad={handleIframeLoad}
+                    className="w-full bg-white rounded-xl border border-slate-200/70 shadow-md"
+                    style={{ minHeight: "540px" }}
                   />
                 </div>
               ) : (
