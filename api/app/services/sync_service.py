@@ -1506,6 +1506,27 @@ class SyncService:
         ("90108", "No. of Day", None, "PMSST"),
     ]
 
+    # Field 9 (currency) isn't THB everywhere - confirmed against real
+    # ST files for every property on 09-Aug-2026: Makati (Philippines) files
+    # in PHP and Siem Reap (Cambodia) in USD, every other property in THB.
+    _ST_REPORT_CURRENCY = {
+        "Lub d Philippines Makati": "PHP",
+        "Lub d Siem Reap": "USD",
+    }
+
+    # Field 7's date suffix isn't uniformly yyyymmdd - confirmed against real
+    # ST files for all 8 properties on 09-Aug-2026: the "No. of Day" row
+    # always uses ddmmyyyy ("ST09082026") regardless of property, while the
+    # other 9 metric rows use ddmmyyyy for these four properties and
+    # yyyymmdd ("ST20260809") for every other property. Single-day sample -
+    # revisit if a second day's files contradict the grouping.
+    _ST_REPORT_DDMMYYYY_REF_PROPERTIES = {
+        "Lub d Bangkok Chinatown",
+        "Lub d Koh Samui Chaweng Beach",
+        "Lub d Koh Tao Tanote Bay",
+        "Lub d Philippines Makati",
+    }
+
     @staticmethod
     def _st_report_counts(report: dict) -> dict:
         """
@@ -1752,11 +1773,6 @@ class SyncService:
         def headcount(res):
             return (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
 
-        def stay_category(res):
-            """The Room/Bed category the assigned space itself belongs to."""
-            cat_id = resource_category.get(res.get("AssignedResourceId")) or res.get("RequestedCategoryId")
-            return cat_id if categories.get(cat_id, {}).get("in_report") else None
-
         def space_categories(res):
             """One entry per space the reservation occupies. Booking a parent
             (whole dorm, whole two-bedroom suite) counts once per CHILD space,
@@ -1799,7 +1815,14 @@ class SyncService:
             end_utc = parse_utc(res.get("EndUtc"))
             stays_the_night = end_utc is not None and end_utc > day_end_utc
             day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
-            if (stays_the_night or day_use) and stay_category(res):
+            # units (from space_categories) already expands a whole-dorm/
+            # whole-suite booking to its child spaces the same way Arrivals/
+            # Departures do - reusing it here (rather than the old
+            # stay_category, which only checked the assigned resource's OWN
+            # category and so silently dropped every guest in a whole-space
+            # booking) was the fix for Makati's Customers count undercounting
+            # by exactly one such booking's headcount on 09-Aug-2026.
+            if (stays_the_night or day_use) and units:
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
                     if cid:
@@ -2046,12 +2069,17 @@ class SyncService:
         ddmmyyyy = day.strftime("%d%m%Y")
         yyyymmdd = day.strftime("%Y%m%d")
         month_code = "0" + day.strftime("%m")
+        currency = self._ST_REPORT_CURRENCY.get(property_name, "THB")
+        main_ref = ddmmyyyy if property_name in self._ST_REPORT_DDMMYYYY_REF_PROPERTIES else yyyymmdd
         lines = []
         for code, label, key, record_type in self._ST_REPORT_METRICS:
             value = 1 if key is None else totals.get(key, 0)
+            # "No. of Day" always references ddmmyyyy regardless of property;
+            # every other row follows main_ref (see _ST_REPORT_DDMMYYYY_REF_PROPERTIES).
+            ref_suffix = ddmmyyyy if key is None else main_ref
             fields = [
                 "PMSST", record_type, code, ddmmyyyy, month_code, str(day.year),
-                f"ST{yyyymmdd}", label, ddmmyyyy, "THB", str(value), "1",
+                f"ST{ref_suffix}", label, ddmmyyyy, currency, str(value), "1",
                 "", "", "", "D", property_code, "111", "ZZ", "ZZ",
             ] + [""] * 21
             lines.append("|".join(fields))
@@ -2102,6 +2130,10 @@ class SyncService:
                 ("breakfast",       "30105", "121"),
                 ("laundry",         "30445", "141"),
                 ("night",           "30001", "111"),
+                # A tiny rounding remainder MEWS posts as its own order item
+                # rather than folding into the Night line - confirmed against
+                # the file, which books it to the same 30001/111 as Night.
+                ("room revenue",    "30001", "111"),
             ],
             "fallback": ("30550", "122"),        # products / minibar / retail
             # Service charge is its own account but keeps the DEPARTMENT of
