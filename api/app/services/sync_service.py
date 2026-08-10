@@ -2275,6 +2275,12 @@ class SyncService:
                 # since both share a prefix.
                 ("accommodation service", "30805", "111"),
                 ("accommodation charge",  "30001", "111"),
+                # "Service Charge F&B" doesn't mention "breakfast" or any other
+                # base-product keyword, so the generic same-department
+                # inference (base[1] from a matched base product) can't find
+                # it and it fell back to department 111 - confirmed against
+                # the file, which books it to 121 like breakfast itself.
+                ("service charge f&b", "30805", "121"),
                 ("breakfast",   "30145", "121"),
                 ("laundry",     "30445", "141"),
                 ("miscellaneous", "30815", "141"),
@@ -2370,6 +2376,9 @@ class SyncService:
                 ("service charge in room dining",  "30805", "128"),
                 ("service charge the pantry",      "30805", "126"),
                 ("service charge nightly",         "30805", "111"),
+                # A distinct GL from the 30140 retail-snacks fallback -
+                # confirmed against the file's "Miscellaneous Cabanas" line.
+                ("miscellaneous cabanas",           "30815", "121"),
                 ("night",            "30001", "111"),
             ],
             "fallback": ("30140", "127"),   # retail snacks bucket
@@ -2398,10 +2407,15 @@ class SyncService:
     # name, not by property, with _RV_MARKET_SEGMENT_OVERRIDES above for the
     # one known exception. "104" is a coarser SunSystems-side bucket that more
     # than one MEWS business segment rolls into (Makati books both "Corporate
-    # FIT" and "Government" to it). "Travel Agent" really does map to a blank
-    # code at every property except the override. A segment not listed here
-    # also yields blank, which is a value the files themselves use and so
-    # cannot break the import.
+    # FIT" and "Government" to it). "106" is likewise a Group bucket that both
+    # the Leisure and Business pairs roll into - confirmed against Koh Samui's
+    # 09-Aug-2026 file, where a "Group Business Series" reservation (Night
+    # 1,769.16 + its 10% service charge) posted to segment 106 exactly like
+    # a Group Leisure one; the code previously only listed the Leisure pair,
+    # so a Group Business booking fell through to blank instead. "Travel
+    # Agent" really does map to a blank code at every property except the
+    # override. A segment not listed here also yields blank, which is a value
+    # the files themselves use and so cannot break the import.
     _RV_MARKET_SEGMENT_CODES = {
         "Own Web":              "100",
         "Online Travel Agent":  "101",
@@ -2411,6 +2425,8 @@ class SyncService:
         "Government":           "104",
         "Social Chats":         "105",
         "Group Leisure Series": "106",
+        "Group Business Series": "106",
+        "Group Business Ad-Hoc": "106",
         "Group Leisure Ad-Hoc": "106",
         "Travel Agent":         "",
     }
