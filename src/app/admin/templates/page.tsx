@@ -429,21 +429,26 @@ export default function TemplatesPage() {
       <PageHeader
         title="Templates"
         description="Edit the printable HTML templates per property (Billing, RR3), every system email (account creation, password reset, access rejection), and the daily ST Files export email."
-      >
-        <div className="flex bg-slate-100 rounded-2xl p-1 gap-1">
-          {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
-            <button
-              key={t}
-              onClick={() => setTemplateType(t)}
-              className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${templateType === t ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
-            >
-              {TEMPLATE_CONFIG[t].label}
-            </button>
-          ))}
-        </div>
-      </PageHeader>
+      />
 
-      <div className="mt-8 flex flex-col gap-6">
+      {/* Own row rather than PageHeader's title-row slot: that row is a
+          shrink-0 flex item, so once there were 8 tabs (up from 4) its
+          natural one-line width squeezed the title/description column down
+          to almost nothing instead of wrapping. flex-wrap here lets the
+          pills spill onto a second line on narrower screens instead. */}
+      <div className="mt-4 flex flex-wrap bg-slate-100 rounded-2xl p-1 gap-1 w-fit max-w-full">
+        {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTemplateType(t)}
+            className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${templateType === t ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+          >
+            {TEMPLATE_CONFIG[t].label}
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-6">
         <div className="bg-white border border-slate-200/80 rounded-[28px] p-8 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">
           {config.perProperty && (
             <div className="space-y-1.5 mb-6 max-w-sm">
