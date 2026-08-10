@@ -240,20 +240,42 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str):
     """
-    Removes a user's profile (Pending or Active) and emails them that access
-    was not authorized. Only the profiles row is deleted, not the underlying
-    Supabase Auth user — if they sign in again, self_register above will
-    re-create a fresh Pending profile so they can be reviewed again.
+    Removes a user's profile and emails them that access was not authorized.
+
+    What happens to the underlying Supabase Auth user depends on the status
+    being deleted from:
+      * Pending  - kept. This is a signup rejection, not a real account
+        removal, and self_register above relies on the Auth user still
+        existing: if they sign in again, it re-creates a fresh Pending
+        profile so they can be reviewed again rather than being silently
+        locked out.
+      * Active/Inactive - deleted along with the profile. This is a
+        deliberate "remove this account" action, and leaving the Auth user
+        behind orphaned took the email address hostage - POST /admin/users
+        would fail with "already registered" on any attempt to reuse it,
+        with no way to recover short of finding and deleting that row by
+        hand (which is exactly what came up twice in one day before this
+        existed).
     """
     try:
         admin_supabase = get_supabase_client()
-        existing = admin_supabase.table("profiles").select("email, full_name").eq("id", user_id).limit(1).execute()
+        existing = admin_supabase.table("profiles").select("email, full_name, status").eq("id", user_id).limit(1).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="User not found")
         email = existing.data[0]["email"]
         full_name = existing.data[0].get("full_name") or ""
+        was_pending = existing.data[0].get("status") == "Pending"
 
         admin_supabase.table("profiles").delete().eq("id", user_id).execute()
+
+        if not was_pending:
+            try:
+                admin_supabase.auth.admin.delete_user(user_id)
+            except Exception as e:
+                # Profile is already gone either way - log and continue
+                # rather than failing a delete that, from the admin's point
+                # of view, already succeeded.
+                logger.error(f"Auth user cleanup failed for {email} ({user_id}): {e}")
 
         email_sent = False
         email_error = None
