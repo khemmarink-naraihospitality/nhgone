@@ -63,8 +63,8 @@ DEFAULT_WELCOME_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px
         </table>
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
-        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b><<FullName>></b>,</p>
-        <p style="margin:0 0 32px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">Your NHGOne account has been created and is ready to use. Sign in with <b>Continue with Google</b> using <b><<Email>></b>.</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:center;">Hi <b><<FullName>></b>,</p>
+        <p style="margin:0 0 32px 0; font-size:14px; color:#152A00; text-align:center; line-height:1.6;">Your NHGOne account has been created and is ready to use. Sign in with <b>Continue with Google</b> using <b><<Email>></b>.</p>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
           <tr>
             <td style="background-color:#152A00; border-radius:4px;">
