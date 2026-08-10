@@ -300,7 +300,12 @@ function buildStFilesStatsTableSample(): string {
   const rows = [
     { name: "Lub d Bangkok Chinatown", code: "MS", values: [176, 150, 2, 1, 23, 140, 30, 28, 0, 1] },
     { name: "Lub d Bangkok Siam", code: "SM", values: [88, 84, 0, 4, 0, 83, 32, 31, 0, 1] },
+    { name: "Lub d Koh Samui Chaweng Beach", code: "SU", values: [60, 55, 1, 0, 4, 50, 10, 9, 1, 1] },
+    { name: "Lub d Koh Tao Tanote Bay", code: "KT", values: [30, 25, 1, 0, 4, 22, 4, 4, 0, 1] },
+    { name: "Lub d Philippines Makati", code: "MK", values: [45, 40, 0, 0, 5, 38, 8, 7, 0, 1] },
+    { name: "Lub d Phuket Patong", code: "PT", values: [70, 60, 0, 2, 8, 55, 12, 11, 0, 1] },
     { name: "Lub d Siem Reap", code: "SR", values: [40, 35, 0, 0, 5, 30, 6, 5, 0, 1] },
+    { name: "Marasca Samui", code: "S2", values: [20, 15, 0, 0, 5, 13, 3, 2, 0, 1] },
   ];
   const headerCells = columns
     .map((c) => `<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; line-height:1.3;">${c}</th>`)
