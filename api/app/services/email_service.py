@@ -195,11 +195,20 @@ DEFAULT_GOOGLE_SIGNIN_NOTICE_TEMPLATE = """<div style="background-color:#FFEFD2;
 # link involved.
 REJECTION_TEMPLATE_KEY = "rejection"
 DEFAULT_REJECTION_SUBJECT = "Your NHGOne access was not authorized / การเข้าใช้งาน NHGOne ของคุณไม่ได้รับอนุญาต"
-DEFAULT_REJECTION_TEMPLATE = """<div style="font-family: sans-serif; max-width: 480px; margin: 0 auto; color: #152A00;">
-  <h2 style="color: #152A00;">NHGOne</h2>
-  <p>Hi <<FullName>>,<br/>Your account has not been authorized to access NHGOne. If you believe this is a mistake, please contact your system administrator.</p>
-  <p>สวัสดีคุณ <<FullName>>,<br/>บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
-  <p style="color: #999; font-size: 12px; margin-top: 24px;">Narai Hospitality Group — NHGOne</p>
+DEFAULT_REJECTION_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Access Request</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; line-height:1.6;">Hi <<FullName>>,</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; line-height:1.6;">Your account has not been authorized to access NHGOne. If you believe this is a mistake, please contact your system administrator.</p>
+        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; line-height:1.6;">สวัสดีคุณ <<FullName>>,</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
+      </td>
+    </tr>
+  </table>
+  <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">Narai Hospitality Group — NHGOne</p>
 </div>"""
 
 
