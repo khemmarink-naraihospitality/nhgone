@@ -49,7 +49,7 @@ DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; paddi
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.
 # Table-based layout + inline styles throughout since email clients (Outlook
 # especially) don't reliably support flexbox/external CSS.
-DEFAULT_WELCOME_SUBJECT = "บัญชี NHGOne ของคุณถูกสร้างแล้ว / Your NHGOne account has been created"
+DEFAULT_WELCOME_SUBJECT = "Your NHGOne account has been created"
 DEFAULT_WELCOME_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
     <tr>
@@ -63,8 +63,6 @@ DEFAULT_WELCOME_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px
         </table>
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
-        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b><<FullName>></b>,</p>
-        <p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">บัญชีของคุณถูกสร้างในระบบ NHGOne แล้ว ใช้ <b>Continue with Google</b> ด้วยบัญชี Google ที่ลงทะเบียนนี้: <b><<Email>></b></p>
         <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b><<FullName>></b>,</p>
         <p style="margin:0 0 32px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">Your NHGOne account has been created and is ready to use. Sign in with <b>Continue with Google</b> using <b><<Email>></b>.</p>
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
