@@ -330,10 +330,6 @@ class EmailService:
         greeting = full_name or to_email
         app_link = settings.APP_BASE_URL
         body = (
-            f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">สวัสดีคุณ <b>{_escape_html(greeting)}</b>,</p>'
-            '<p style="margin:0 0 16px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
-            'บัญชีของคุณถูกสร้างในระบบ NHGOne แล้ว เข้าสู่ระบบผ่านช่อง <b>Internal Users</b> ด้วยข้อมูลด้านล่าง '
-            'ระบบจะให้คุณตั้งรหัสผ่านใหม่ทันทีหลังเข้าสู่ระบบครั้งแรก</p>'
             f'<p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:left;">Hi <b>{_escape_html(greeting)}</b>,</p>'
             '<p style="margin:0 0 24px 0; font-size:14px; color:#152A00; text-align:left; line-height:1.6;">'
             'Your NHGOne account has been created. Sign in via the <b>Internal Users</b> link on the login page '
@@ -350,7 +346,7 @@ class EmailService:
             f"You will be asked to choose your own password on first sign-in.\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
-        self.send_email(to_email, subject="บัญชี NHGOne ของคุณถูกสร้างแล้ว / Your NHGOne account has been created",
+        self.send_email(to_email, subject="Your NHGOne account has been created",
                         html_body=html_body, text_body=text_body)
 
     def send_password_reset_email(self, to_email: str, reset_link: str, full_name: str = ""):
