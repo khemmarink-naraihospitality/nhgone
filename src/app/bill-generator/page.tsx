@@ -50,6 +50,8 @@ export default function BillGeneratorPage() {
   const [page, setPage] = useState(0);
   const [billNumberFilter, setBillNumberFilter] = useState("");
   const [sortConfig, setSortConfig] = useState<{ key: keyof Bill; direction: "asc" | "desc" } | null>(null);
+  // Inline API-documentation blurb, same pattern as ST Files/RV/BCP/RR4-TM30/RR3/Data Mart - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
   const DEFAULT_PROPERTY = "Lub d Koh Tao Tanote Bay";
   const [startDate, setStartDate] = useState("2025-01-01");
@@ -342,6 +344,53 @@ export default function BillGeneratorPage() {
               MEWS Bill Selected ({selectedIds.length})
             </button>
           </div>
+        </div>
+
+        {/* Property/date-range/API-docs-toggle - always visible right above
+            the table, same pattern as ST Files/RV/BCP/RR4-TM30/RR3/Data
+            Mart's own info bar. No "Imported" field - Database mode has no
+            single report timestamp, each bill row has its own synced_at. */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
+          <span className="font-bold">{selectedProperty}</span>
+          <span>{startDate} – {endDate}</span>
+          <span className="uppercase tracked-caps text-[9px] font-bold text-[var(--text-primary)]/40">{dataSource === "live" ? "MEWS (live)" : "NHG (database)"}</span>
+          <button
+            onClick={() => setApiDocsOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+          >
+            <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            API Documentation &amp; Data Sources
+          </button>
+        </div>
+
+        <div className="mb-6">
+          {apiDocsOpen && (
+            <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+              <p className="text-[10px] leading-relaxed">Bills reads from one of two sources, toggled by the Mode switch above:</p>
+
+              <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                <div className="font-bold text-[var(--text-primary)] mb-1">MEWS (live)</div>
+                <div className="text-[10px] space-y-0.5">
+                  <div><span className="text-[var(--text-primary)]/40">Calls:</span> bills/getAll + orderItems/getAll (per-bill line items, for Net Amount/VAT/Total)</div>
+                  <div><span className="text-[var(--text-primary)]/40">Cost:</span> always current, but the same order-items call the NHG import needs - not a faster header-only fetch</div>
+                </div>
+              </div>
+
+              <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                <div className="font-bold text-[var(--text-primary)] mb-1">NHG (database)</div>
+                <div className="text-[10px] space-y-0.5">
+                  <div>Reads from this app&apos;s own <span className="font-mono">bills_sync</span> table (bill headers + order items + owner address/tax ID), populated by the nightly auto-sync or by fetching a range in MEWS mode. Faster once a range has been backfilled.</div>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                <span className="font-bold">NHG Bill</span> renders this app&apos;s own printable invoice template (<span className="font-mono">GET /bills/{"{id}"}/invoice</span> - checks bills_sync first, falls back to live only if not cached). <span className="font-bold">MEWS Bill</span> fetches MEWS&apos;s own generated PDF directly (<span className="font-mono">bills/getPdf</span>).
+              </div>
+            </div>
+          )}
         </div>
 
         {error ? (
