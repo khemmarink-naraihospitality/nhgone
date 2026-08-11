@@ -828,6 +828,8 @@ export default function BcpPage() {
   // Single toggle covering About BCP / Select Property & Snapshot / the
   // status bar - see CollapsibleSection above.
   const [headerOpen, setHeaderOpen] = useState(false);
+  // Inline API-documentation blurb, same pattern as ST Files/RV - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState<ReservationRow | null>(null);
   const [selectedRoom, setSelectedRoom] = useState<RoomRow | null>(null);
   // Draft text for the Room Properties page's editable Number field - kept
@@ -4409,30 +4411,6 @@ export default function BcpPage() {
           </div>
         ) : snapshot && (
           <>
-            <CollapsibleSection open={headerOpen}>
-              <div className={`flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border ${
-                stale && !isLiveFallback
-                  ? "bg-amber-50 border-amber-300 text-amber-800"
-                  : "bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70"
-              }`}>
-                <span className="font-bold">{snapshot.property}</span>
-                <span>Data as of: <b>{fmtDateTime(snapshot.captured_utc)}</b> (Asia/Bangkok)</span>
-                {isLiveFallback ? (
-                  <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">LIVE — not stored</span>
-                ) : (
-                  <span>({ageMinutes < 60 ? `${ageMinutes} min ago` : `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min ago`})</span>
-                )}
-                {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
-                {(mainTab === "timeline" || mainTab === "rooms") && (
-                  <>
-                    <span>Arrivals today: {todayStats.arrivals}</span>
-                    <span>Departures today: {todayStats.departures}</span>
-                    <span>In-house today: {todayStats.inHouse}</span>
-                  </>
-                )}
-              </div>
-            </CollapsibleSection>
-
             <div className="no-print flex flex-wrap items-center gap-4 mb-4">
               <div className="flex border-b border-[var(--text-primary)]/14 overflow-x-auto overflow-y-hidden max-w-full">
                 {(
@@ -4516,6 +4494,82 @@ export default function BcpPage() {
                     placeholder="Search guest, room, action, or user"
                     className="flex-1 min-w-[200px] sm:flex-none sm:w-80 px-3 py-2 text-[12px] border border-[var(--text-primary)]/20 bg-white text-black focus:outline-none focus:border-[var(--text-primary)]/50 placeholder:text-black/40"
                   />
+                </div>
+              )}
+            </div>
+
+            {/* Property/Data-as-of/API-docs-toggle - always visible right
+                above the per-tab content (not gated behind headerOpen
+                anymore), same pattern as ST Files/RV's own info bar. */}
+            <div className={`no-print flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border ${
+              stale && !isLiveFallback
+                ? "bg-amber-50 border-amber-300 text-amber-800"
+                : "bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70"
+            }`}>
+              <span className="font-bold">{snapshot.property}</span>
+              <span>Data as of: <b>{fmtDateTime(snapshot.captured_utc)}</b> (Asia/Bangkok)</span>
+              {isLiveFallback ? (
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded">LIVE — not stored</span>
+              ) : (
+                <span>({ageMinutes < 60 ? `${ageMinutes} min ago` : `${Math.floor(ageMinutes / 60)} h ${ageMinutes % 60} min ago`})</span>
+              )}
+              {stale && !isLiveFallback && <span className="font-bold">⚠ Snapshot is over 2 hours old</span>}
+              {(mainTab === "timeline" || mainTab === "rooms") && (
+                <>
+                  <span>Arrivals today: {todayStats.arrivals}</span>
+                  <span>Departures today: {todayStats.departures}</span>
+                  <span>In-house today: {todayStats.inHouse}</span>
+                </>
+              )}
+              <button
+                onClick={() => setApiDocsOpen((o) => !o)}
+                className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+              >
+                <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                API Documentation &amp; Data Sources
+              </button>
+            </div>
+
+            <div className="no-print mb-4">
+              {apiDocsOpen && (
+                <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+                  <p className="text-[10px] leading-relaxed">Every BCP snapshot (captured automatically every 5 minutes, or on demand via Capture Now) is built from one MEWS Connector API call set:</p>
+
+                  <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                    <div className="font-bold text-[var(--text-primary)] mb-1">1. Timeline (the reservation grid)</div>
+                    <div className="text-[10px] space-y-0.5">
+                      <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
+                      <div><span className="text-[var(--text-primary)]/40">Filters:</span> window = today −7 days to today +8 days, in the property&apos;s own MEWS timezone; State ≠ Canceled</div>
+                    </div>
+                  </div>
+
+                  <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                    <div className="font-bold text-[var(--text-primary)] mb-1">2. Room/category structure</div>
+                    <div className="text-[10px] space-y-0.5">
+                      <div>• services/getAll (resolve the Stay/Reservable service)</div>
+                      <div>• resourceCategories/getAll (category names + MEWS&apos;s own display Ordering)</div>
+                      <div>• resourceCategoryAssignments/getAll (which room belongs to which category)</div>
+                      <div>• resources/getAll (room list, incl. parent→child dorm/suite structure)</div>
+                    </div>
+                  </div>
+
+                  <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                    <div className="font-bold text-[var(--text-primary)] mb-1">3. Reservation detail panel</div>
+                    <div className="text-[10px] space-y-0.5">
+                      <div>• orderItems/getAll (chunked 100 IDs - rate vs. product charge breakdown, gross/net)</div>
+                      <div>• bills/getAll (chunked 1000 IDs - bill display name for the Billing tab)</div>
+                      <div>• serviceOrderNotes/getAll (chunked 100 IDs - reservation notes; permission-gated, degrades to empty)</div>
+                      <div>• payments/getAll (chunked 100 Account IDs - per-guest payment history)</div>
+                      <div>• reservationGroups/getAll, rates/getAll, companies/getAll, businessSegments/getAll (deduplicated window-wide - group/rate/company/travel-agency/segment names)</div>
+                    </div>
+                  </div>
+
+                  <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                    The <span className="font-bold">Rooms (HK)</span> housekeeping state and <span className="font-bold">Action Logs</span> tab are this app&apos;s own data (front-desk overrides + audit trail), not re-fetched from MEWS on every view. See the <span className="font-bold">Read Me</span> at the top of the page for how to use BCP during an outage.
+                  </div>
                 </div>
               )}
             </div>
