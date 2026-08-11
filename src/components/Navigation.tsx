@@ -576,7 +576,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           Pro 11") gets the full-width hamburger layout instead of a fixed
           192px sidebar eating a quarter of an already-narrow screen -
           iPad landscape (1024px+) still gets the full desktop sidebar. */}
-      <div className="lg:hidden flex items-center justify-between px-4 py-3 bg-[#152A00] border-b border-[#FFEFD2]/10 sticky top-0 z-40 shrink-0">
+      <div className="app-topbar print:hidden lg:hidden flex items-center justify-between px-4 py-3 bg-[#152A00] border-b border-[#FFEFD2]/10 sticky top-0 z-40 shrink-0">
         <button
           onClick={() => setMobileNavOpen(true)}
           aria-label="Open menu"
@@ -594,7 +594,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       </div>
 
       {mobileNavOpen && (
-        <div className="lg:hidden fixed inset-0 z-50 flex">
+        <div className="print:hidden lg:hidden fixed inset-0 z-50 flex">
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
           <div className="relative w-72 max-w-[82vw] h-full bg-[#152A00] p-4 flex flex-col gap-6 overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between">
@@ -614,7 +614,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
-      <aside className="w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+      <aside className="print:hidden w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300">
         <div className="flex items-center gap-4 mb-2">
           <div className="bg-white p-1.5 rounded-sm">
             <img

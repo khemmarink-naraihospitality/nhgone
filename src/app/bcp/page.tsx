@@ -5034,7 +5034,14 @@ export default function BcpPage() {
             actually prints, same pattern as the housekeeping sheet above. */}
         {regCardFor && rr3Template && (
           <div
-            className="hidden print:block"
+            // print:fixed pulls this out of the page's own p-8 flow (and
+            // any ancestor padding above it) entirely, so the template's
+            // own 210mm x 297mm sizing starts flush at the paper's origin
+            // instead of the page's padding adding extra height on top of
+            // it and pushing the card onto a 2nd page - confirmed live:
+            // without this the Reg Card printed as "2 pages" even after
+            // the leaking top bar (see globals.css .app-topbar) was fixed.
+            className="hidden print:block print:fixed print:inset-0"
             dangerouslySetInnerHTML={{
               __html: renderRr3Template(rr3Template, {
                 ...buildRegCardTokens(regCardGuestFor || ownerGuestIdentity(regCardFor), regCardFor, snapshot?.property || "", effectiveRoomNumber(regCardFor.room)),

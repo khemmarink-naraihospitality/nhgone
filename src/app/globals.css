@@ -145,6 +145,16 @@ h1, h2, h3, .h-display {
   :root { --bg-primary: #fff !important; --paper: #fff !important; }
   body { background: #fff !important; }
   aside { display: none !important; }
+  /* Navigation.tsx's mobile top bar (logo/hamburger/UserHeader) leaked into
+     printed output in production - confirmed live on a Reg Card print,
+     pushing the card onto a 2nd page. Root cause was simply that its
+     print:hidden Tailwind class had never actually been committed/deployed
+     (same for the <aside> and mobile-drawer overlay's own print:hidden -
+     all three were added alongside this rule). Kept as a real-CSS backstop
+     in addition to the Tailwind class rather than relying on the utility
+     class alone, since a build/deploy gap like that is exactly the kind of
+     thing that's easy to miss again. */
+  .app-topbar { display: none !important; }
   /* main is the shell's outer flex column, but the element that actually
      scrolls (and whose scrollbar gets rasterized onto every printed page)
      is its inner overflow-y-auto wrapper - both must go overflow:visible. */
