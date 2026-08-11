@@ -2149,6 +2149,18 @@ class SyncService:
                 return [requested]
             return []
 
+        def requested_is_space_type(res):
+            """True if the guest actually booked a per-space (Room/Bed)
+            product - as opposed to a whole-unit private-hire product like
+            Chinatown's "TRIBE HIDEOUT - ALL YOURS!" (Type=Dorm, its own
+            category, distinct from the per-bed "1 BED IN..." product) that
+            happens to land on the same parent resource. Res#92258 on
+            10-Aug-2026 (7 guests booked into the whole dorm as one MDD-type
+            unit) proved MEWS's own Customers figure excludes these, while a
+            genuine per-bed guest who merely got assigned the parent resource
+            for capacity reasons (the Makati case below) still counts."""
+            return categories.get(res.get("RequestedCategoryId"), {}).get("in_report", False)
+
         arrivals, departures = [], []
         arrivals_count = departures_count = customers_count = 0
         night_guest_ids = set()
@@ -2175,8 +2187,12 @@ class SyncService:
             # stay_category, which only checked the assigned resource's OWN
             # category and so silently dropped every guest in a whole-space
             # booking) was the fix for Makati's Customers count undercounting
-            # by exactly one such booking's headcount on 09-Aug-2026.
-            if (stays_the_night or day_use) and units:
+            # by exactly one such booking's headcount on 09-Aug-2026. But that
+            # expansion alone overcounts a *whole-unit private-hire* booking
+            # (guest requests the Dorm/Suite-type product itself, not a
+            # Room/Bed) - requested_is_space_type excludes exactly those,
+            # per Chinatown's Res#92258 on 10-Aug-2026.
+            if (stays_the_night or day_use) and units and requested_is_space_type(res):
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
                     if cid:
