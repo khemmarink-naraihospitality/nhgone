@@ -607,15 +607,6 @@ export default function StFilesPage() {
 
         {report && (
           <div>
-            <CollapsibleSection open={headerOpen}>
-              <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-4">
-                <span className="font-bold">{report.parameters.property}</span>
-                <span>{report.parameters.date}</span>
-                <span>Space types: {report.parameters.space_types.join(", ")}</span>
-                {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
-              </div>
-            </CollapsibleSection>
-
             <button
               onClick={() => setStatsOpen((o) => !o)}
               className="flex items-center gap-2 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
@@ -626,7 +617,7 @@ export default function StFilesPage() {
 
             {statsOpen && (
               <>
-                <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
+                <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-4">
                   {TABS.map((t) => {
                     const count = tabCount(t.key);
                     return (
@@ -643,6 +634,16 @@ export default function StFilesPage() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Property/date/space-types/Imported - always visible right
+                    above the table (not gated behind headerOpen/Details
+                    anymore), same position as RR4/TM30's own params bar. */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                  <span className="font-bold">{report.parameters.property}</span>
+                  <span>{report.parameters.date}</span>
+                  <span>Space types: {report.parameters.space_types.join(", ")}</span>
+                  {report._synced_at && <span className="ml-auto">Imported: {fmtDateTime(report._synced_at)}</span>}
                 </div>
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
