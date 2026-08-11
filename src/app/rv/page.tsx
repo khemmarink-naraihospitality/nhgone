@@ -118,6 +118,8 @@ export default function RvPage() {
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(true);
+  // Inline API-documentation blurb, same pattern as ST Files - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
   const getYesterday = () => {
     const d = new Date();
@@ -489,17 +491,68 @@ export default function RvPage() {
                   })}
                 </div>
 
-                {/* Property/date/counts/Imported - always visible right
-                    above the table (not gated behind headerOpen/Details
-                    anymore), same position as RR4/TM30's own params bar. */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                {/* Property/date/Imported/API-docs-toggle - all on one line,
+                    always visible right above the table (not gated behind
+                    headerOpen/Details anymore), same position as ST Files'
+                    own params bar. Imported sits left, API Documentation
+                    toggle follows it in natural reading order. */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
                   <span className="font-bold">{report.property}</span>
                   <span>{report.date}</span>
-                  <span>{report.counts.revenue_items} revenue items · {report.counts.payment_items} payments</span>
-                  {report.counts.canceled_items_skipped > 0 && (
-                    <span>{report.counts.canceled_items_skipped} canceled items excluded</span>
+                  {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
+                  {/* Inline API-documentation toggle - explains where the
+                      on-screen Revenue Data itself comes from. */}
+                  <button
+                    onClick={() => setApiDocsOpen((o) => !o)}
+                    className="no-print flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    API Documentation &amp; Data Sources
+                  </button>
+                </div>
+
+                <div className="no-print mb-6">
+                  {apiDocsOpen && (
+                    <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+                      <p className="text-[10px] leading-relaxed">Revenue Data is built from two primary MEWS Connector API calls, plus supporting lookups:</p>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">1. Order Items API</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> Revenue tab - every posted charge grouped by GL account</div>
+                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> orderItems/getAll</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> ConsumedUtc = the property&apos;s calendar day (its own MEWS timezone)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Rule:</span> items with AccountingState=Canceled are dropped - MEWS keeps the superseded posting alongside its replacement, and the RV file counts only the survivor</div>
+                        </div>
+                      </div>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">2. Payments API</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> Payments tab - how the day was settled (cash, card, online, prepayment, complimentary)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> payments/getAll</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> CreatedUtc = the property&apos;s calendar day; State=Canceled excluded</div>
+                        </div>
+                      </div>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">3. Supporting APIs</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div>• services/getAll (resolve the Stay/Reservable service, for market-segment scoping)</div>
+                          <div>• reservations/getAll (chunked 100 IDs, Stay-service items only - resolves each order item&apos;s BusinessSegmentId)</div>
+                          <div>• businessSegments/getAll (segment names -&gt; the RV file&apos;s own segment codes)</div>
+                          <div>• creditCards/getAll (chunked 100 IDs - card brand/number for the payment description; degrades gracefully if the token lacks this permission)</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                        VAT is summed from each item&apos;s own Amount.TaxValues rather than derived from a rate, since MEWS already splits mixed-rate items. Per-property GL account mapping is in <span className="font-bold">Admin → API Settings → Chart of Accounts</span>.
+                      </div>
+                    </div>
                   )}
-                  {report._synced_at && <span className="ml-auto">Imported: {fmtDateTime(report._synced_at)}</span>}
                 </div>
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
