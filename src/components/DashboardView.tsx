@@ -103,6 +103,8 @@ export default function DashboardView({
   const [syncing, setSyncing] = useState(false);
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [syncStatus, setSyncStatus] = useState<{inserted: number, skipped: number} | null>(null);
+  // Inline API-documentation blurb, same pattern as ST Files/RV/BCP/RR4-TM30/RR3 - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
   // Pagination State
   const [currentPage, setCurrentPage] = useState(1);
@@ -528,6 +530,57 @@ export default function DashboardView({
               </button>
             </div>
           </div>
+        </div>
+
+        {/* Property/date-range/API-docs-toggle - always visible right above
+            the table, same pattern as ST Files/RV/BCP/RR4-TM30/RR3's own
+            info bar. No "Imported" field here - each row of a saved/NHG
+            section can have its own synced_at, there's no single "report"
+            timestamp for the whole table the way the other pages have. */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
+          <span className="font-bold">{selectedProperty}</span>
+          <span>{startDate} – {endDate}</span>
+          <span className="uppercase tracked-caps text-[9px] font-bold text-[var(--text-primary)]/40">{dataSource === "live" ? "MEWS (live)" : "NHG (database)"} · {activeSection}</span>
+          <button
+            onClick={() => setApiDocsOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+          >
+            <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            API Documentation &amp; Data Sources
+          </button>
+        </div>
+
+        <div className="mb-6">
+          {apiDocsOpen && (
+            <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+              <p className="text-[10px] leading-relaxed">Data Mart reads from one of two sources per section, toggled by the MEWS/NHG switch above:</p>
+
+              <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                <div className="font-bold text-[var(--text-primary)] mb-1">MEWS (live)</div>
+                <div className="text-[10px] space-y-0.5">
+                  <div><span className="text-[var(--text-primary)]/40">Reservations:</span> reservations/getAll/2023-06-06, filtered by CollidingUtc, cursor-paginated (500/chunk)</div>
+                  <div><span className="text-[var(--text-primary)]/40">Members:</span> customers/getAll</div>
+                  <div><span className="text-[var(--text-primary)]/40">Payments:</span> payments/getAll</div>
+                  <div><span className="text-[var(--text-primary)]/40">Bills:</span> bills/getAll + orderItems/getAll (per-bill line items)</div>
+                  <div><span className="text-[var(--text-primary)]/40">Resources:</span> resources/getAll</div>
+                </div>
+              </div>
+
+              <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                <div className="font-bold text-[var(--text-primary)] mb-1">NHG (database)</div>
+                <div className="text-[10px] space-y-0.5">
+                  <div>Reads directly from this app&apos;s own Supabase tables (reservations_sync / members_sync / payments / bills_sync / resources_sync), populated by the nightly auto-sync or by clicking <span className="font-bold">Import To Data Mart</span> in MEWS mode. PII fields (names, emails, phone numbers) are Fernet-encrypted at rest and decrypted on read.</div>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                Each row&apos;s own <span className="font-bold">synced_at</span> (visible in the exported Excel) reflects when that specific record was last written, not a single report timestamp.
+              </div>
+            </div>
+          )}
         </div>
 
         {error ? (
