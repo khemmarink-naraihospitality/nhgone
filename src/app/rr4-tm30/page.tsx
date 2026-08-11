@@ -473,9 +473,8 @@ export default function Rr4Tm30Page() {
                     (not gated behind headerOpen anymore), same pattern as
                     ST Files/RV/BCP's own info bar. */}
                 <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
-                  <span className="font-bold">{rr4Report?.property_thai_name || selectedProperty}</span>
+                  <span className="font-bold">{selectedProperty}</span>
                   <span>{rr4Report?.date}</span>
-                  {rr4Report && <span>ประจำวันที่ {rr4Report.date_buddhist}</span>}
                   {activeSyncedAt && <span>Imported: {fmtDateTime(activeSyncedAt)}</span>}
                   <button
                     onClick={() => setApiDocsOpen((o) => !o)}
