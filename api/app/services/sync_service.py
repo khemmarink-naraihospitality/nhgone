@@ -1501,18 +1501,6 @@ class SyncService:
     # the shorter name).
     _COMPLIMENTARY_RATE_NAMES = {"Complimentary", "Complimentary Room"}
 
-    # "Customers" is deliberately scoped to ONE specific Rate, not every
-    # guest staying the night - explicit, confirmed instruction from the
-    # user (2026-08-11), matching the exact "Rates" filter on MEWS's own
-    # Reports > Availability screen they cross-check this number against
-    # (Mode: Availability, Status: Optional/Confirmed, Rate mode: Sales
-    # rate, Rates: Flexible Rate Room Only). Confirmed live this rate is a
-    # real, in-use Rate name at Chinatown (629 total rates checked) - it's
-    # just rarely booked, so Customers will read 0 or near-0 on most days.
-    # That is the intended behavior, not a bug - do not "fix" it by
-    # widening this filter without the same explicit confirmation.
-    _ST_REPORT_CUSTOMERS_RATE_NAMES = {"Flexible Rate Room Only"}
-
     # ST Files List's "Download" file - the legacy pipe-delimited PMSST/RMSST
     # statistics export. Field layout confirmed against the source Google
     # Sheet formula itself (see get_st_report_export's docstring) - field 5
@@ -2188,8 +2176,7 @@ class SyncService:
             # category and so silently dropped every guest in a whole-space
             # booking) was the fix for Makati's Customers count undercounting
             # by exactly one such booking's headcount on 09-Aug-2026.
-            rate_name = rates_by_id.get(res.get("RateId"), {}).get("Name")
-            if (stays_the_night or day_use) and units and rate_name in self._ST_REPORT_CUSTOMERS_RATE_NAMES:
+            if (stays_the_night or day_use) and units:
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
                     if cid:
