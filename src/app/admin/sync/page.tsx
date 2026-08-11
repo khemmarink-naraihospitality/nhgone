@@ -30,6 +30,12 @@ interface PropertySyncSettings {
   rr4_tm30_sync_enabled: boolean;
   rr4_tm30_sync_hour: number | null;
   rr4_tm30_sync_minute: number | null;
+  // RV Files' own independent schedule - the revenue journal can run on a
+  // different clock than any of the other three (or not at all). Always
+  // imports YESTERDAY's Bangkok date, same reasoning as RR4/TM30.
+  rv_sync_enabled: boolean;
+  rv_sync_hour: number | null;
+  rv_sync_minute: number | null;
 }
 
 const SYNC_TABLE_OPTIONS: { key: keyof PropertySyncSettings; label: string }[] = [
@@ -82,6 +88,8 @@ const HISTORY_TAG: Record<string, { label: string; cls: string }> = {
   "Resources":    { label: "RESOURCES",    cls: "bg-sky-50 text-sky-600 border-sky-100" },
   "ST Files":     { label: "ST FILES",     cls: "bg-rose-50 text-rose-600 border-rose-100" },
   "ST Files FTP": { label: "ST FILES FTP", cls: "bg-cyan-50 text-cyan-600 border-cyan-100" },
+  "RR4/TM30":     { label: "RR4/TM30",     cls: "bg-sky-50 text-sky-600 border-sky-100" },
+  "RV Files":     { label: "RV FILES",     cls: "bg-orange-50 text-orange-600 border-orange-100" },
 };
 
 export default function AdminSyncPage() {
@@ -111,7 +119,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -292,6 +300,9 @@ export default function AdminSyncPage() {
           rr4_tm30_sync_enabled: editingProperty.rr4_tm30_sync_enabled,
           rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour,
           rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute,
+          rv_sync_enabled: editingProperty.rv_sync_enabled,
+          rv_sync_hour: editingProperty.rv_sync_hour,
+          rv_sync_minute: editingProperty.rv_sync_minute,
         })
         .eq("id", editingProperty.id);
       
@@ -482,6 +493,7 @@ export default function AdminSyncPage() {
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Data Mart Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">ST Files Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">RR4/TM30 Sync</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">RV Files Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Auto-Sync</th>
                 <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
@@ -515,6 +527,15 @@ export default function AdminSyncPage() {
                     {prop.rr4_tm30_sync_enabled ? (
                       <span className="bg-sky-50 text-sky-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-sky-100">
                         {String(prop.rr4_tm30_sync_hour ?? 0).padStart(2, '0')}:{String(prop.rr4_tm30_sync_minute ?? 0).padStart(2, '0')}
+                      </span>
+                    ) : (
+                      <span className="text-slate-300 text-sm">Off</span>
+                    )}
+                  </td>
+                  <td className="px-6 py-5 text-center">
+                    {prop.rv_sync_enabled ? (
+                      <span className="bg-orange-50 text-orange-700 px-3 py-1.5 rounded-lg text-sm font-mono font-bold border border-orange-100">
+                        {String(prop.rv_sync_hour ?? 0).padStart(2, '0')}:{String(prop.rv_sync_minute ?? 0).padStart(2, '0')}
                       </span>
                     ) : (
                       <span className="text-slate-300 text-sm">Off</span>
@@ -805,6 +826,63 @@ export default function AdminSyncPage() {
                                className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
                                value={editingProperty.rr4_tm30_sync_minute ?? 0}
                                onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_minute: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
+                       </div>
+                    </div>
+                 </div>
+
+                 {/* RV Files card */}
+                 <div className="rounded-2xl border border-orange-500/20 bg-gradient-to-b from-orange-500/[0.07] to-transparent overflow-hidden">
+                    <div className="flex items-center justify-between px-5 py-4">
+                       <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center shrink-0">
+                             <svg className="w-[18px] h-[18px] text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3v-6m-3 6v-9m12 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2h14a2 2 0 002-2z" /></svg>
+                          </div>
+                          <div className="min-w-0">
+                             <div className="text-[13px] font-bold text-white">RV Files Sync</div>
+                             <div className="text-[10px] text-white/40 truncate">Yesterday&apos;s revenue journal, same as manual &quot;Import To Data Mart&quot;</div>
+                          </div>
+                       </div>
+                       <button
+                         onClick={() => setEditingProperty({
+                           ...editingProperty,
+                           rv_sync_enabled: !editingProperty.rv_sync_enabled,
+                           // Defaults to 02:00 the first time this is turned on -
+                           // late enough that the previous day is fully closed out.
+                           rv_sync_hour: editingProperty.rv_sync_hour ?? 2,
+                           rv_sync_minute: editingProperty.rv_sync_minute ?? 0,
+                         })}
+                         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none shrink-0 ${editingProperty.rv_sync_enabled ? 'bg-orange-500' : 'bg-white/10'}`}
+                       >
+                         <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${editingProperty.rv_sync_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                       </button>
+                    </div>
+
+                    <div className="px-5 pb-5">
+                       <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="23"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.rv_sync_hour ?? 2}
+                               onChange={(e) => setEditingProperty({...editingProperty, rv_sync_hour: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                          </div>
+                          <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
+                          <div className="flex flex-col items-center">
+                             <input
+                               type="number"
+                               min="0"
+                               max="59"
+                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.rv_sync_minute ?? 0}
+                               onChange={(e) => setEditingProperty({...editingProperty, rv_sync_minute: parseInt(e.target.value) || 0})}
                              />
                              <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
                           </div>
