@@ -489,7 +489,7 @@ export default function Rr4Tm30Page() {
                   </button>
                 </div>
 
-                <div className="no-print mb-4">
+                <div className="no-print mb-6">
                   {apiDocsOpen && (
                     <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
                       <p className="text-[10px] leading-relaxed">RR4 (Thai Hotel Act guest register) and TM30 (Immigration foreign-arrival notification) share one MEWS Connector API call:</p>
@@ -497,31 +497,19 @@ export default function Rr4Tm30Page() {
                       <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
                         <div className="font-bold text-[var(--text-primary)] mb-1">Reservations API</div>
                         <div className="text-[10px] space-y-0.5">
-                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> both the RR4 and TM30 tabs - one guest register, filtered/formatted two ways</div>
                           <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
-                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> window = the property&apos;s own calendar day (its own MEWS timezone); Status=Confirmed, Checked in, Checked out, Optional</div>
+                          <div><span className="text-[var(--text-primary)]/40">Common filters:</span> Service=Stay (Accommodation) | Status=Confirmed, Checked in, Checked out, Optional | window = the property&apos;s own calendar day (its own MEWS timezone)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Customer profiles Arrival tab:</span> Mode=Arrival | Interval=Previous day</div>
+                          <div><span className="text-[var(--text-primary)]/40">Customer profiles In house tab:</span> Mode=In house | Interval=Last day</div>
                         </div>
                       </div>
 
                       <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
-                        Nationality/occupation code lookups (RR4&apos;s and TM30&apos;s own government-form dictionaries) are static reference tables in this app, not a MEWS call. Per-tab parameters (Service/Mode/Status/Interval) are shown in the reference bar below.
+                        Nationality/occupation code lookups (RR4&apos;s and TM30&apos;s own government-form dictionaries) are static reference tables in this app, not a MEWS call.
                       </div>
                     </div>
                   )}
                 </div>
-
-                {(() => {
-                  const activeParams = TABS.find((t) => t.key === activeTab)?.params;
-                  if (!activeParams) return null;
-                  return (
-                    <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
-                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SERVICE</span>{activeParams.service}</span>
-                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">MODE</span>{activeParams.mode}</span>
-                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">STATUS</span>{activeParams.status}</span>
-                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">INTERVAL</span>{activeParams.interval}</span>
-                    </div>
-                  );
-                })()}
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
                   {activeTab === "rr4" ? rr4Table(rr4Report?.rows || []) : tm30Table(tm30Report?.rows || [])}
