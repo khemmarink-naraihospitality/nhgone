@@ -857,6 +857,11 @@ export default function BcpPage() {
   const [editRoomType, setEditRoomType] = useState("");
   const [roomTypeChangeReason, setRoomTypeChangeReason] = useState("");
   const [savingRoomTypeChange, setSavingRoomTypeChange] = useState(false);
+  // OK stays clickable even with Reason blank - clicking it with nothing
+  // typed focuses this input instead of the button just sitting disabled,
+  // so the required field is obvious rather than silently unexplained.
+  const arrivalReasonInputRef = useRef<HTMLInputElement>(null);
+  const roomTypeReasonInputRef = useRef<HTMLInputElement>(null);
   // Billing tab's Process Payment modal - reads the reservation's own
   // itemized breakdown (already computed there) plus a Payment Note, and on
   // Save flips Billing Status permanently from "To be paid" to "Paid" (see
@@ -2143,7 +2148,11 @@ export default function BcpPage() {
   // requiring the reservation to be reselected, same as every other override
   // here), and logs it for the Action Log.
   const handleSaveArrivalChange = () => {
-    if (!selectedReservation || !snapshot?.property || !arrivalChangeReason.trim()) return;
+    if (!selectedReservation || !snapshot?.property) return;
+    if (!arrivalChangeReason.trim()) {
+      arrivalReasonInputRef.current?.focus();
+      return;
+    }
     const newCheckIn = fromBangkokInput(editArrivalDate, editArrivalTime);
     const newCheckOut = fromBangkokInput(editDepartureDate, editDepartureTime);
     if (!newCheckIn || !newCheckOut) return;
@@ -2194,7 +2203,11 @@ export default function BcpPage() {
   // from the property's own resource categories (snapshot.rooms) rather than
   // free text, so it always matches a category the property actually has.
   const handleSaveRoomTypeChange = () => {
-    if (!selectedReservation || !snapshot?.property || !roomTypeChangeReason.trim() || !editRoomType.trim()) return;
+    if (!selectedReservation || !snapshot?.property || !editRoomType.trim()) return;
+    if (!roomTypeChangeReason.trim()) {
+      roomTypeReasonInputRef.current?.focus();
+      return;
+    }
     const previousCategory = selectedReservation.category || "-";
     if (editRoomType === previousCategory) return;
     const reason = roomTypeChangeReason.trim();
@@ -3757,6 +3770,7 @@ export default function BcpPage() {
               <div>
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
                 <input
+                  ref={arrivalReasonInputRef}
                   value={arrivalChangeReason}
                   onChange={(e) => setArrivalChangeReason(e.target.value)}
                   placeholder="Reason for changing arrival/departure"
@@ -3767,7 +3781,6 @@ export default function BcpPage() {
                 onClick={handleSaveArrivalChange}
                 disabled={
                   savingArrivalChange ||
-                  !arrivalChangeReason.trim() ||
                   (editArrivalDate === toBangkokInputDate(res.check_in) &&
                     editArrivalTime === toBangkokInputTime(res.check_in) &&
                     editDepartureDate === toBangkokInputDate(res.check_out) &&
@@ -3797,6 +3810,7 @@ export default function BcpPage() {
               <div>
                 <div className="text-[11px] text-[var(--text-primary)]/50 mb-1">Reason *</div>
                 <input
+                  ref={roomTypeReasonInputRef}
                   value={roomTypeChangeReason}
                   onChange={(e) => setRoomTypeChangeReason(e.target.value)}
                   placeholder="Reason for changing room type"
@@ -3805,7 +3819,7 @@ export default function BcpPage() {
               </div>
               <button
                 onClick={handleSaveRoomTypeChange}
-                disabled={savingRoomTypeChange || !roomTypeChangeReason.trim() || !editRoomType.trim() || editRoomType === (res.category || "")}
+                disabled={savingRoomTypeChange || !editRoomType.trim() || editRoomType === (res.category || "")}
                 className="self-start px-6 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-blue-700 transition-colors"
               >
                 {savingRoomTypeChange ? "Saving..." : "OK"}
