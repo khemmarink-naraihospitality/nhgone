@@ -664,7 +664,7 @@ export default function StFilesPage() {
                   </button>
                 </div>
 
-                <div className="no-print">
+                <div className="no-print mb-6">
                   {apiDocsOpen && (
                     <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
                       <p className="text-[10px] leading-relaxed">Statistic Data is built from two distinct MEWS Connector API call sets:</p>
@@ -674,7 +674,7 @@ export default function StFilesPage() {
                         <div className="text-[10px] space-y-0.5">
                           <div><span className="text-[var(--text-primary)]/40">Feeds:</span> Spaces, Occupied, House uses, Out of order, Availability</div>
                           <div><span className="text-[var(--text-primary)]/40">Calls:</span> services/getAvailability (versioned 2024-01-22 + legacy un-versioned)</div>
-                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Services=Stay | Mode=Availability | Interval=Previous day | Status=Optional, Confirmed | Amount=Gross value | Space types=Room, Bed | Rate mode=Sales rate</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Services=Stay | Mode=Availability | Interval=Previous day | Status=Optional, Confirmed | Amount=Gross value | Space types=Room, Bed | Space categories=- | Rate mode=Sales rate | Rates=Flexible Rate Room Only</div>
                         </div>
                       </div>
 
@@ -701,21 +701,6 @@ export default function StFilesPage() {
                       </div>
                     </div>
                   )}
-                </div>
-                {/* MEWS's own reference report config for this data (Reports >
-                    Availability screen) - static reference text, not wired to
-                    live settings, so anyone cross-checking against MEWS's own
-                    report knows exactly which filters to set to match. */}
-                <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11px] px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.03] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SERVICES</span>Stay (Accommodation)</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">MODE</span>Availability</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">INTERVAL</span>Previous day</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">STATUS</span>Optional, Confirmed</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">AMOUNT PART</span>Gross value</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SPACE TYPES</span>Room, Bed</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SPACE CATEGORIES</span>-</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATE MODE</span>Sales rate</span>
-                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATES</span>Flexible Rate Room Only</span>
                 </div>
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
