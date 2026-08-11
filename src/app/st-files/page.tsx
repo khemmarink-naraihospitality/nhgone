@@ -159,6 +159,9 @@ export default function StFilesPage() {
   // Statistic Data (tabs + table) - expanded by default, unlike headerOpen,
   // since it's the page's main content rather than supporting detail.
   const [statsOpen, setStatsOpen] = useState(true);
+  // Inline API-documentation blurb (separate from the full Read Me doc
+  // linked at the top of the page) - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
   const getYesterday = () => {
     const d = new Date();
@@ -638,12 +641,68 @@ export default function StFilesPage() {
 
                 {/* Property/date/space-types/Imported - always visible right
                     above the table (not gated behind headerOpen/Details
-                    anymore), same position as RR4/TM30's own params bar. */}
+                    anymore), same position as RR4/TM30's own params bar.
+                    Imported sits left (not ml-auto'd to the far right
+                    anymore) so the API Documentation toggle can follow it
+                    in natural reading order. */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
                   <span className="font-bold">{report.parameters.property}</span>
                   <span>{report.parameters.date}</span>
                   <span>Space types: {report.parameters.space_types.join(", ")}</span>
-                  {report._synced_at && <span className="ml-auto">Imported: {fmtDateTime(report._synced_at)}</span>}
+                  {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
+                </div>
+
+                {/* Inline API-documentation blurb - deliberately separate
+                    from the full Read Me doc linked at the top of the page
+                    (that one covers the export FILE format; this one covers
+                    where the on-screen data itself comes from). */}
+                <div className="no-print">
+                  <button
+                    onClick={() => setApiDocsOpen((o) => !o)}
+                    className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors px-4 py-2 border border-t-0 bg-[var(--paper)] border-[var(--text-primary)]/14 w-full text-left"
+                  >
+                    <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    API Documentation &amp; Data Sources
+                  </button>
+                  {apiDocsOpen && (
+                    <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+                      <p className="text-[10px] leading-relaxed">Statistic Data is built from two distinct MEWS Connector API call sets:</p>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">1. Availability API</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> Spaces, Occupied, House uses, Out of order, Availability</div>
+                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> services/getAvailability (versioned 2024-01-22 + legacy un-versioned)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Services=Stay | Mode=Availability | Interval=Previous day | Status=Optional, Confirmed | Amount=Gross value | Space types=Room, Bed | Rate mode=Sales rate</div>
+                        </div>
+                      </div>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">2. Reservations API</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> Customers (headcount), Arrivals, Departures</div>
+                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Status=Confirmed, Started, Processed, Optional | Stays the night OR same-day arrival+departure</div>
+                        </div>
+                      </div>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">3. Supporting APIs</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div>• resourceCategories/getAll (Room &amp; Bed types only)</div>
+                          <div>• resources/getAll (room names &amp; parent-child dorm/suite assignments)</div>
+                          <div>• resourceBlocks/getAll (named Out of Order &amp; House use blocks)</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                        For the full export FILE format field map, see the <span className="font-bold">Read Me</span> link at the top of the page.
+                      </div>
+                    </div>
+                  )}
                 </div>
                 {/* MEWS's own reference report config for this data (Reports >
                     Availability screen) - static reference text, not wired to
