@@ -88,9 +88,21 @@ interface ListRow {
 
 type DataSource = "live" | "database";
 
+// Tab order/labels match the two source MEWS "Customer profiles" reports
+// the reference workflow pulls from (ImportCP/ImportInhouse in the original
+// Google Sheet) rather than the RR4/TM30 output document names - Arrival
+// feeds TM30 (foreign arrivals only), In house feeds RR4 (everyone staying
+// that day). Shown to staff as its own info box below the tab bar so it's
+// clear which underlying MEWS query produced the rows on screen.
 const TABS = [
-  { key: "rr4", label: "RR4" },
-  { key: "tm30", label: "TM30" },
+  {
+    key: "tm30", label: "Customer profiles Arrival",
+    params: { service: "Stay (Accommodation)", mode: "Arrival", status: "Confirmed, Checked in, Checked out, Optional", interval: "Previous day" },
+  },
+  {
+    key: "rr4", label: "Customer profiles In house",
+    params: { service: "Stay (Accommodation)", mode: "In house", status: "Confirmed, Checked in, Checked out, Optional", interval: "Last day" },
+  },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
@@ -113,7 +125,7 @@ export default function Rr4Tm30Page() {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabKey>("rr4");
+  const [activeTab, setActiveTab] = useState<TabKey>("tm30");
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [listRows, setListRows] = useState<ListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
@@ -436,7 +448,7 @@ export default function Rr4Tm30Page() {
 
             {dataOpen && (
               <>
-                <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-6">
+                <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-4">
                   {TABS.map((t) => {
                     const count = t.key === "rr4" ? rr4Report?.rows.length : tm30Report?.rows.length;
                     return (
@@ -454,6 +466,19 @@ export default function Rr4Tm30Page() {
                     );
                   })}
                 </div>
+
+                {(() => {
+                  const activeParams = TABS.find((t) => t.key === activeTab)?.params;
+                  if (!activeParams) return null;
+                  return (
+                    <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--text-primary)]/[0.03] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SERVICE</span>{activeParams.service}</span>
+                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">MODE</span>{activeParams.mode}</span>
+                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">STATUS</span>{activeParams.status}</span>
+                      <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">INTERVAL</span>{activeParams.interval}</span>
+                    </div>
+                  );
+                })()}
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
                   {activeTab === "rr4" ? rr4Table(rr4Report?.rows || []) : tm30Table(tm30Report?.rows || [])}
