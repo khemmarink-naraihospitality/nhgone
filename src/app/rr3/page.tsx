@@ -46,6 +46,8 @@ export default function Rr3Page() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [sortConfig, setSortConfig] = useState<{ key: keyof Rr3Card; direction: "asc" | "desc" } | null>(null);
   const [detailCard, setDetailCard] = useState<Rr3Card | null>(null);
+  // Inline API-documentation blurb, same pattern as ST Files/RV/BCP/RR4-TM30 - collapsed by default.
+  const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
   const getDefaultRange = () => {
     const now = new Date();
@@ -218,6 +220,44 @@ export default function Rr3Page() {
           >
             Print Selected ({selectedIds.length})
           </button>
+        </div>
+
+        {/* Property/date-range/API-docs-toggle - always visible right above
+            the table, same pattern as ST Files/RV/BCP/RR4-TM30's own info bar. */}
+        <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
+          <span className="font-bold">{selectedProperty}</span>
+          <span>{startDate} – {endDate}</span>
+          <button
+            onClick={() => setApiDocsOpen((o) => !o)}
+            className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+          >
+            <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+            API Documentation &amp; Data Sources
+          </button>
+        </div>
+
+        <div className="mb-6">
+          {apiDocsOpen && (
+            <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+              <p className="text-[10px] leading-relaxed">RR3 (ร.ร.๓ lodger registration cards) is built from one MEWS Connector API call, fetched live on every request - there is no Database/import mode for this page:</p>
+
+              <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                <div className="font-bold text-[var(--text-primary)] mb-1">Reservations API</div>
+                <div className="text-[10px] space-y-0.5">
+                  <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
+                  <div><span className="text-[var(--text-primary)]/40">Filters:</span> StartUtc/EndUtc = the selected date range; results are re-filtered client-side to each reservation&apos;s own StartUtc falling in range</div>
+                  <div><span className="text-[var(--text-primary)]/40">Rows:</span> one card per guest (CompanionIds if present, else the reservation&apos;s own CustomerId) - a reservation with 3 guests produces 3 cards</div>
+                </div>
+              </div>
+
+              <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                The printed card template (Admin → Templates → RR3 tab) is shared across all properties, not per-property.
+              </div>
+            </div>
+          )}
         </div>
 
         {error ? (
