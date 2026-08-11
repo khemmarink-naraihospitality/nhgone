@@ -1247,7 +1247,29 @@ export default function BcpPage() {
     const windowStart = windowDays[0];
     const totalDays = windowDays.length;
     return snapshot.reservations
-      .map((res) => {
+      .map((raw) => {
+        // Same override merge frontDeskRows applies just below, and for the
+        // same reason (see its comment) - this one was missing it, which
+        // was the actual bug behind "I edited Arrival/Departure and it
+        // reverted": the edit saves to bcp_arrival_overrides and reads back
+        // into arrivalOverrides correctly, but the Timeline grid's bar (and
+        // the reservation detail panel, which opens from a bar click using
+        // this exact object as `res`) was still built from the raw
+        // snapshot value, so the panel re-seeded itself with the
+        // pre-override check_in/check_out every time it (re)opened. Also
+        // needed for the bar's own room row (roomIdx) and column position
+        // (inDay/outDay), which must reflect Chg Room / Arrival-Departure
+        // overrides too, not just the Front Desk table.
+        const overriddenRoom = roomChangeOverrides[raw.number];
+        const arrivalOverride = arrivalOverrides[raw.number];
+        const roomTypeOverride = roomTypeOverrides[raw.number];
+        const res = {
+          ...raw,
+          ...(overriddenRoom && overriddenRoom !== raw.room ? { room: overriddenRoom } : {}),
+          ...(arrivalOverride?.check_in ? { check_in: arrivalOverride.check_in } : {}),
+          ...(arrivalOverride?.check_out ? { check_out: arrivalOverride.check_out } : {}),
+          ...(roomTypeOverride ? { category: roomTypeOverride.category } : {}),
+        };
         const roomIdx = roomIndexByName.get(res.room);
         if (roomIdx === undefined) return null;
         const inDay = toBangkokDay(res.check_in);
@@ -1261,7 +1283,7 @@ export default function BcpPage() {
         return { res, roomIdx, colStart: clippedStart + 4, colSpan: clippedEnd - clippedStart };
       })
       .filter((b): b is NonNullable<typeof b> => b !== null);
-  }, [snapshot?.reservations, windowDays, roomIndexByName]);
+  }, [snapshot?.reservations, windowDays, roomIndexByName, roomChangeOverrides, arrivalOverrides, roomTypeOverrides]);
 
   const todayStats = useMemo(() => {
     if (!snapshot?.reservations) return { arrivals: 0, departures: 0, inHouse: 0 };
@@ -1314,13 +1336,17 @@ export default function BcpPage() {
     const today = snapshot.date;
     return snapshot.reservations
       .map((raw) => {
-        // Chg Room's override is applied here, once, so every downstream
-        // consumer of r.room (this table, sort, search, the detail panel,
-        // Reg Card tokens, Check In/Out log details) automatically shows
-        // the room the guest is actually in instead of the stale
-        // pre-change one, without each needing its own fix. Arrival/
+        // Chg Room's override is applied here so every downstream consumer
+        // of r.room fed from THIS array (this table, sort, search, Reg Card
+        // tokens, Check In/Out log details) shows the room the guest is
+        // actually in instead of the stale pre-change one. Arrival/
         // Departure and Room Type overrides (Properties tab) are merged the
-        // same way, for the same reason.
+        // same way, for the same reason. The Timeline grid's `bars` memo
+        // above maps snapshot.reservations independently (it needs each
+        // bar's own roomIdx/column math, which this array doesn't compute)
+        // and must apply the identical merge itself - it doesn't inherit
+        // this one automatically. Keep both in sync if a new override type
+        // is added.
         const overriddenRoom = roomChangeOverrides[raw.number];
         const arrivalOverride = arrivalOverrides[raw.number];
         const roomTypeOverride = roomTypeOverrides[raw.number];
