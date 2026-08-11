@@ -639,11 +639,26 @@ export default function StFilesPage() {
                 {/* Property/date/space-types/Imported - always visible right
                     above the table (not gated behind headerOpen/Details
                     anymore), same position as RR4/TM30's own params bar. */}
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
                   <span className="font-bold">{report.parameters.property}</span>
                   <span>{report.parameters.date}</span>
                   <span>Space types: {report.parameters.space_types.join(", ")}</span>
                   {report._synced_at && <span className="ml-auto">Imported: {fmtDateTime(report._synced_at)}</span>}
+                </div>
+                {/* MEWS's own reference report config for this data (Reports >
+                    Availability screen) - static reference text, not wired to
+                    live settings, so anyone cross-checking against MEWS's own
+                    report knows exactly which filters to set to match. */}
+                <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11px] px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.03] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SERVICES</span>Stay (Accommodation)</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">MODE</span>Availability</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">INTERVAL</span>Previous day</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">STATUS</span>Optional, Confirmed</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">AMOUNT PART</span>Gross value</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SPACE TYPES</span>Room, Bed</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SPACE CATEGORIES</span>-</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATE MODE</span>Sales rate</span>
+                  <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATES</span>Flexible Rate Room Only</span>
                 </div>
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
