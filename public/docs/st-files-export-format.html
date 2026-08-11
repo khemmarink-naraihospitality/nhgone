@@ -224,6 +224,74 @@
   </div>
 
   <section>
+    <h2>Data sources — MEWS Connector API</h2>
+    <p class="section-note">
+      Before any of this gets exported as a file, the Statistic Data tabs
+      themselves are built from two distinct MEWS Connector API call sets —
+      each responsible for a different half of the report, with its own
+      filter configuration.
+    </p>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">1. Availability API</h3>
+    <p class="section-note">
+      Drives the <b>Spaces</b>, <b>Occupied</b>, <b>House uses</b>,
+      <b>Out of order</b> and <b>Availability</b> tabs — all precomputed by
+      MEWS itself, not derived by hand.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Call</th><th>Feeds</th></tr></thead>
+        <tbody>
+          <tr><td class="val">services/getAvailability/2024-01-22</td><td class="meaning">Occupied, House uses, Out of order, Active resources (Spaces)</td></tr>
+          <tr><td class="val">services/getAvailability</td><td class="meaning">Availability — the legacy un-versioned endpoint's own free-to-sell number</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:14px;">Filter configuration (matches MEWS's own <b>Reports → Availability</b> screen exactly):</p>
+    <div class="prop-grid">
+      <div class="prop-pill"><span>Services</span><span class="code">Stay (Accommodation)</span></div>
+      <div class="prop-pill"><span>Mode</span><span class="code">Availability</span></div>
+      <div class="prop-pill"><span>Interval</span><span class="code">Previous day</span></div>
+      <div class="prop-pill"><span>Status</span><span class="code">Optional, Confirmed</span></div>
+      <div class="prop-pill"><span>Amount part</span><span class="code">Gross value</span></div>
+      <div class="prop-pill"><span>Space types</span><span class="code">Room, Bed</span></div>
+      <div class="prop-pill"><span>Rate mode</span><span class="code">Sales rate</span></div>
+    </div>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">2. Reservations API</h3>
+    <p class="section-note">
+      Drives the <b>Customers</b>, <b>Arrivals</b> and <b>Departures</b>
+      tabs — these three are <i>not</i> a MEWS-precomputed number. They're
+      derived here, reservation by reservation, from a live join.
+    </p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Call</th><th>Feeds</th></tr></thead>
+        <tbody>
+          <tr><td class="val">reservations/getAll</td><td class="meaning">Extent join: Reservations + Customers + Resources, for every reservation colliding with the target day</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="section-note" style="margin-top:14px;">Population filter — a reservation counts only if it is <code>Confirmed / Started / Processed / Optional</code> <b>and</b> either stays the night (checkout after the day ends) or is a same-day arrival+departure (day-use). A guest who merely checks <i>out</i> that morning belongs to the previous day's file, not this one.</p>
+
+    <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">3. Supporting calls</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Call</th><th>Purpose</th></tr></thead>
+        <tbody>
+          <tr><td class="val">resourceCategories/getAll</td><td class="meaning">Resolves which categories are Room/Bed type (per-property <code>st_space_types</code> setting) vs. everything else</td></tr>
+          <tr><td class="val">resources/getAll</td><td class="meaning">Room/space names, plus parent → child mapping for whole-dorm and whole-suite bookings</td></tr>
+          <tr><td class="val">resourceBlocks/getAll</td><td class="meaning">Named Out of Order / House use blocks (the row-level detail behind those two tabs)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="section-note" style="margin-top:16px;">
+      💡 To cross-check against MEWS's own report, open <b>Reports → Availability</b> on the MEWS side and set the same filters listed above — the Statistic Data tabs' own info bar on the page also shows this configuration for quick reference.
+    </p>
+  </section>
+
+  <section>
     <h2>Source formula</h2>
     <p class="section-note">The "Spaces" row's own formula from the property's Google Sheet ("Siam-ST"), cell A1 — this is what resolved fields 5 and 17.</p>
     <pre>="PMSST|RMSST|"&"90107"&"|"&text('Parameters-Availability'!$B$7,"ddmmyyyy")
@@ -349,12 +417,23 @@
       <b>within that same day</b> (a day-use stay that never sees a
       night). A guest who merely checks <i>out</i> that morning — having
       arrived on a previous day — is not counted; they belong to the
-      previous day's file. Unlike Arrivals/Departures, a parent-resource
-      booking is <b>not</b> expanded here — it's filed under the assigned
-      space's own category, which for a whole-dorm booking is a
-      Type&nbsp;=&nbsp;Dorm category outside the reported Room/Bed set, so
-      it contributes 0 to Customers even though it contributed several
-      Arrivals.
+      previous day's file.
+    </p>
+    <p class="section-note">
+      A parent-resource booking (whole dorm, whole suite) <b>is</b> expanded
+      here, same as Arrivals/Departures — a guest who booked one bed but
+      landed on the parent resource for capacity reasons still counts
+      (Makati, 09-Aug-2026: fixed an undercount of exactly one such
+      booking's headcount). The one exception is a <b>whole-unit
+      private-hire product</b> — a category that is itself Type&nbsp;=&nbsp;Dorm/Suite,
+      sold as one thing rather than N beds/rooms (e.g. Chinatown's "TRIBE
+      HIDEOUT&nbsp;-&nbsp;ALL&nbsp;YOURS!", distinct from its per-bed "1&nbsp;BED&nbsp;IN..."
+      product even though both land on the same physical resource). MEWS's
+      own Customers figure excludes those — confirmed on Chinatown,
+      10-Aug-2026: a 7-guest whole-dorm-as-one-unit booking was the entire
+      209-vs-216 gap. The distinguishing signal is what the guest
+      <i>requested</i> (a Room/Bed category vs. the whole-unit category),
+      not where they ended up.
     </p>
 
     <h3 style="font-family:var(--serif); font-weight:600; font-size:15px; margin:24px 0 8px;">Which space categories count is per-property</h3>

@@ -159,8 +159,6 @@ export default function StFilesPage() {
   // Statistic Data (tabs + table) - expanded by default, unlike headerOpen,
   // since it's the page's main content rather than supporting detail.
   const [statsOpen, setStatsOpen] = useState(true);
-  // README/API documentation section - collapsed by default.
-  const [readmeOpen, setReadmeOpen] = useState(false);
 
   const getYesterday = () => {
     const d = new Date();
@@ -661,58 +659,6 @@ export default function StFilesPage() {
                   <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SPACE CATEGORIES</span>-</span>
                   <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATE MODE</span>Sales rate</span>
                   <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">RATES</span>Flexible Rate Room Only</span>
-                </div>
-
-                {/* README: API documentation and data sources */}
-                <div className="no-print mb-6">
-                  <button
-                    onClick={() => setReadmeOpen(!readmeOpen)}
-                    className="flex items-center gap-1.5 text-[11px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors mb-2"
-                  >
-                    <svg className={`w-4 h-4 transition-transform ${readmeOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                    📋 API DOCUMENTATION & DATA SOURCES
-                  </button>
-                  {readmeOpen && (
-                    <div className="px-4 py-3 border border-[var(--text-primary)]/14 bg-[var(--text-primary)]/[0.02] text-[11px] text-[var(--text-primary)]/70 space-y-3 mb-6">
-                      <div>
-                        <div className="font-bold text-[var(--text-primary)] mb-1">Availability Report</div>
-                        <p className="text-[10px] leading-relaxed">Statistic Files uses two distinct MEWS Connector API call sets to build this daily report:</p>
-                      </div>
-
-                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
-                        <div className="font-bold text-[var(--text-primary)] mb-1">1. Availability API</div>
-                        <div className="text-[10px] space-y-0.5">
-                          <div><span className="text-[var(--text-primary)]/40">Metrics:</span> Spaces, Occupied, House uses, Out of order, Availability</div>
-                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> services/getAvailability (versioned 2024-01-22 + legacy un-versioned)</div>
-                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Services=Stay | Mode=Availability | Interval=Previous day | Status=Optional, Confirmed | Amount=Gross value | Space types=Room, Bed | Rate mode=Sales rate</div>
-                        </div>
-                      </div>
-
-                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
-                        <div className="font-bold text-[var(--text-primary)] mb-1">2. Reservations API</div>
-                        <div className="text-[10px] space-y-0.5">
-                          <div><span className="text-[var(--text-primary)]/40">Metrics:</span> Customers (headcount), Arrivals, Departures</div>
-                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (with Extent join: Reservations, Customers, Resources)</div>
-                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> Interval=Previous day | Status=Optional, Confirmed | Stays the night OR same-day arrival+departure</div>
-                        </div>
-                      </div>
-
-                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
-                        <div className="font-bold text-[var(--text-primary)] mb-1">3. Supporting APIs</div>
-                        <div className="text-[10px] space-y-0.5">
-                          <div>• resourceCategories/getAll (filter Room &amp; Bed types only)</div>
-                          <div>• resources/getAll (room/space names &amp; parent-child dorm/suite assignments)</div>
-                          <div>• resourceBlocks/getAll (named Out of Order &amp; House use blocks)</div>
-                        </div>
-                      </div>
-
-                      <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2 mt-2">
-                        💡 This configuration exactly matches the MEWS Connector &quot;Availability report&quot; in Reports &gt; Availability screen. Cross-check live data by using these same filters on the MEWS side.
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
