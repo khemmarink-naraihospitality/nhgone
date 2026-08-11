@@ -639,27 +639,22 @@ export default function StFilesPage() {
                   })}
                 </div>
 
-                {/* Property/date/space-types/Imported - always visible right
-                    above the table (not gated behind headerOpen/Details
-                    anymore), same position as RR4/TM30's own params bar.
-                    Imported sits left (not ml-auto'd to the far right
-                    anymore) so the API Documentation toggle can follow it
-                    in natural reading order. */}
+                {/* Property/date/Imported/API-docs-toggle - all on one line,
+                    always visible right above the table (not gated behind
+                    headerOpen/Details anymore), same position as RR4/TM30's
+                    own params bar. Space types dropped from here - it's
+                    already shown in the filter reference bar below. */}
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
                   <span className="font-bold">{report.parameters.property}</span>
                   <span>{report.parameters.date}</span>
-                  <span>Space types: {report.parameters.space_types.join(", ")}</span>
                   {report._synced_at && <span>Imported: {fmtDateTime(report._synced_at)}</span>}
-                </div>
-
-                {/* Inline API-documentation blurb - deliberately separate
-                    from the full Read Me doc linked at the top of the page
-                    (that one covers the export FILE format; this one covers
-                    where the on-screen data itself comes from). */}
-                <div className="no-print">
+                  {/* Inline API-documentation toggle - deliberately separate
+                      from the full Read Me doc linked at the top of the page
+                      (that one covers the export FILE format; this one
+                      covers where the on-screen data itself comes from). */}
                   <button
                     onClick={() => setApiDocsOpen((o) => !o)}
-                    className="flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors px-4 py-2 border border-t-0 bg-[var(--paper)] border-[var(--text-primary)]/14 w-full text-left"
+                    className="no-print flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
                   >
                     <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -667,6 +662,9 @@ export default function StFilesPage() {
                     <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
                     API Documentation &amp; Data Sources
                   </button>
+                </div>
+
+                <div className="no-print">
                   {apiDocsOpen && (
                     <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
                       <p className="text-[10px] leading-relaxed">Statistic Data is built from two distinct MEWS Connector API call sets:</p>
