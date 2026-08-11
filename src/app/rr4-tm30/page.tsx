@@ -58,6 +58,9 @@ interface Rr4Report {
   date: string;
   date_buddhist: string;
   rows: Rr4Row[];
+  // Present only in Database (NHG) mode - when this row was imported. Live
+  // (MEWS) mode has no meaningful value for this, since it's fetched now.
+  _synced_at?: string;
 }
 
 interface Tm30Row {
@@ -77,6 +80,7 @@ interface Tm30Report {
   property_thai_name: string;
   date: string;
   rows: Tm30Row[];
+  _synced_at?: string;
 }
 
 interface ListRow {
@@ -470,12 +474,24 @@ export default function Rr4Tm30Page() {
                 {(() => {
                   const activeParams = TABS.find((t) => t.key === activeTab)?.params;
                   if (!activeParams) return null;
+                  // Only meaningful in Database (NHG) mode - Live (MEWS) mode
+                  // has no "imported at" since it's fetched right now. Same
+                  // "Imported: ..." wording/placement as ST Files/RV Files'
+                  // own report info bar, and BCP's "Data as of" on its
+                  // Timeline - here pinned to the trailing edge of this
+                  // already-always-visible params row (not tucked inside the
+                  // collapsed Details section) so it's visible without
+                  // expanding anything.
+                  const activeSyncedAt = activeTab === "rr4" ? rr4Report?._synced_at : tm30Report?._synced_at;
                   return (
-                    <div className="flex flex-wrap gap-x-8 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--text-primary)]/[0.03] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
+                    <div className="flex flex-wrap items-center gap-x-8 gap-y-1 text-[11px] px-4 py-3 border bg-[var(--text-primary)]/[0.03] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70 mb-6">
                       <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">SERVICE</span>{activeParams.service}</span>
                       <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">MODE</span>{activeParams.mode}</span>
                       <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">STATUS</span>{activeParams.status}</span>
                       <span><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">INTERVAL</span>{activeParams.interval}</span>
+                      {activeSyncedAt && (
+                        <span className="ml-auto"><span className="font-bold text-[var(--text-primary)]/50 tracked-caps text-[9px] mr-1.5">IMPORTED</span>{fmtDateTime(activeSyncedAt)}</span>
+                      )}
                     </div>
                   );
                 })()}
