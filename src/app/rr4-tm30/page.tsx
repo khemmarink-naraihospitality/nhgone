@@ -440,47 +440,6 @@ export default function Rr4Tm30Page() {
 
         {(rr4Report || tm30Report) && (
           <div>
-            {/* Property/date/Imported/API-docs-toggle - always visible
-                (not gated behind headerOpen anymore), same pattern as
-                ST Files/RV/BCP's own info bar. */}
-            <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
-              <span className="font-bold">{rr4Report?.property_thai_name || selectedProperty}</span>
-              <span>{rr4Report?.date}</span>
-              {rr4Report && <span>ประจำวันที่ {rr4Report.date_buddhist}</span>}
-              {activeSyncedAt && <span>Imported: {fmtDateTime(activeSyncedAt)}</span>}
-              <button
-                onClick={() => setApiDocsOpen((o) => !o)}
-                className="no-print flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
-              >
-                <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                API Documentation &amp; Data Sources
-              </button>
-            </div>
-
-            <div className="no-print mb-4">
-              {apiDocsOpen && (
-                <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
-                  <p className="text-[10px] leading-relaxed">RR4 (Thai Hotel Act guest register) and TM30 (Immigration foreign-arrival notification) share one MEWS Connector API call:</p>
-
-                  <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
-                    <div className="font-bold text-[var(--text-primary)] mb-1">Reservations API</div>
-                    <div className="text-[10px] space-y-0.5">
-                      <div><span className="text-[var(--text-primary)]/40">Feeds:</span> both the RR4 and TM30 tabs - one guest register, filtered/formatted two ways</div>
-                      <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
-                      <div><span className="text-[var(--text-primary)]/40">Filters:</span> window = the property&apos;s own calendar day (its own MEWS timezone); Status=Confirmed, Checked in, Checked out, Optional</div>
-                    </div>
-                  </div>
-
-                  <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
-                    Nationality/occupation code lookups (RR4&apos;s and TM30&apos;s own government-form dictionaries) are static reference tables in this app, not a MEWS call. Per-tab parameters (Service/Mode/Status/Interval) are shown in the reference bar below.
-                  </div>
-                </div>
-              )}
-            </div>
-
             <button
               onClick={() => setDataOpen((o) => !o)}
               className="flex items-center gap-2 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
@@ -508,6 +467,47 @@ export default function Rr4Tm30Page() {
                       </button>
                     );
                   })}
+                </div>
+
+                {/* Property/date/Imported/API-docs-toggle - always visible
+                    (not gated behind headerOpen anymore), same pattern as
+                    ST Files/RV/BCP's own info bar. */}
+                <div className="flex flex-wrap items-center gap-3 text-[11px] px-4 py-3 border bg-[var(--paper)] border-[var(--text-primary)]/14 text-[var(--text-primary)]/70">
+                  <span className="font-bold">{rr4Report?.property_thai_name || selectedProperty}</span>
+                  <span>{rr4Report?.date}</span>
+                  {rr4Report && <span>ประจำวันที่ {rr4Report.date_buddhist}</span>}
+                  {activeSyncedAt && <span>Imported: {fmtDateTime(activeSyncedAt)}</span>}
+                  <button
+                    onClick={() => setApiDocsOpen((o) => !o)}
+                    className="no-print flex items-center gap-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    <svg className={`w-3 h-3 transition-transform ${apiDocsOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    API Documentation &amp; Data Sources
+                  </button>
+                </div>
+
+                <div className="no-print mb-4">
+                  {apiDocsOpen && (
+                    <div className="px-4 py-3 border border-t-0 bg-[var(--text-primary)]/[0.02] border-[var(--text-primary)]/14 text-[11px] text-[var(--text-primary)]/70 space-y-3">
+                      <p className="text-[10px] leading-relaxed">RR4 (Thai Hotel Act guest register) and TM30 (Immigration foreign-arrival notification) share one MEWS Connector API call:</p>
+
+                      <div className="border-l-2 border-[var(--text-primary)]/20 pl-3">
+                        <div className="font-bold text-[var(--text-primary)] mb-1">Reservations API</div>
+                        <div className="text-[10px] space-y-0.5">
+                          <div><span className="text-[var(--text-primary)]/40">Feeds:</span> both the RR4 and TM30 tabs - one guest register, filtered/formatted two ways</div>
+                          <div><span className="text-[var(--text-primary)]/40">Calls:</span> reservations/getAll (Extent join: Reservations, Customers, Resources)</div>
+                          <div><span className="text-[var(--text-primary)]/40">Filters:</span> window = the property&apos;s own calendar day (its own MEWS timezone); Status=Confirmed, Checked in, Checked out, Optional</div>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] text-[var(--text-primary)]/50 border-t border-[var(--text-primary)]/10 pt-2">
+                        Nationality/occupation code lookups (RR4&apos;s and TM30&apos;s own government-form dictionaries) are static reference tables in this app, not a MEWS call. Per-tab parameters (Service/Mode/Status/Interval) are shown in the reference bar below.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {(() => {
