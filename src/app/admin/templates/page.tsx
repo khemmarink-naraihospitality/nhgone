@@ -670,18 +670,34 @@ export default function TemplatesPage() {
               {/* Context selector - its own visually distinct strip, since
                   everything below it is scoped to whichever property is
                   chosen here (same "pick the context, then configure it"
-                  shape as Billing's own property picker above). */}
-              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
-                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest shrink-0">Property</span>
-                <select
-                  value={recipProperty}
-                  onChange={(e) => setRecipProperty(e.target.value)}
-                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 text-slate-900"
-                >
-                  {properties.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+                  shape as Billing's own property picker above). Time to
+                  Send rides in the same row/strip, not gated behind
+                  recipLoading like Enabled/To/Cc/Bcc below - same reasoning
+                  as Property itself staying interactive while a fetch is
+                  in flight. */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest shrink-0">Property</span>
+                  <select
+                    value={recipProperty}
+                    onChange={(e) => setRecipProperty(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 text-slate-900"
+                  >
+                    {properties.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest shrink-0">Time to Send</span>
+                  <input
+                    type="time"
+                    value={recipSendTime}
+                    onChange={(e) => setRecipSendTime(e.target.value)}
+                    className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 text-slate-900"
+                  />
+                  <span className="text-[10px] text-slate-400 shrink-0">Asia/Bangkok</span>
+                </div>
               </div>
 
               {recipLoading ? (
@@ -690,28 +706,17 @@ export default function TemplatesPage() {
                 </div>
               ) : (
                 <>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
-                    <div className="flex items-start gap-2.5">
-                      <button
-                        type="button"
-                        onClick={() => setRecipEnabled(!recipEnabled)}
-                        className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${recipEnabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
-                      >
-                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${recipEnabled ? "translate-x-5" : ""}`} />
-                      </button>
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">Enabled for {recipProperty || "this property"}</div>
-                        <div className="text-xs text-slate-400 mt-0.5">Send this property its own separate email instead of it joining the bundled ST Files Email.</div>
-                      </div>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
-                      <input
-                        type="time"
-                        value={recipSendTime}
-                        onChange={(e) => setRecipSendTime(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
-                      />
+                  <div className="flex items-start gap-2.5 mb-5">
+                    <button
+                      type="button"
+                      onClick={() => setRecipEnabled(!recipEnabled)}
+                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${recipEnabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${recipEnabled ? "translate-x-5" : ""}`} />
+                    </button>
+                    <div>
+                      <div className="text-sm font-medium text-slate-700">Enabled for {recipProperty || "this property"}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Send this property its own separate email instead of it joining the bundled ST Files Email.</div>
                     </div>
                   </div>
 
