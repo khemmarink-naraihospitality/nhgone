@@ -3669,15 +3669,21 @@ class SyncService:
         except Exception as e:
             logger.warning(f"sync_logs insert failed ({target}): {e}")
 
-    async def send_st_files_ftp_upload(self, date_str: str, mark_sent: bool = True,
-                                        sent_date_str: str = None, sync_type: str = "auto") -> dict:
+    async def send_ftp_upload(self, date_str: str, mark_sent: bool = True,
+                               sent_date_str: str = None, sync_type: str = "auto") -> dict:
         """
-        Uploads one CSV per property (the same file get_st_report_export
-        builds for the email digest and the manual Download button) to the
-        single global FTP destination (Admin > Sync > ST Files FTP Upload).
-        Properties missing a Property Code or that day's imported data are
-        silently skipped - the upload still runs for whoever's ready, same
-        tolerance as send_st_files_daily_digest above.
+        Uploads each property's report CSV(s) to the single global FTP
+        destination (Admin > Sync > FTP Upload). Which report type(s) get
+        included is controlled by ftp_settings.upload_st_files/
+        upload_rv_files (that card's two checkboxes) - independent of each
+        other, both can be on at once, uploading both files for a property
+        in the same connection. ST uses get_st_report_export (same file the
+        email digest/manual Download button build); RV uses get_rv_export,
+        which can additionally raise for reasons ST never does (no verified
+        GL chart of accounts, unmapped payment types) - caught by the same
+        per-property try/except tolerance ST already used, just doubled.
+        Properties not ready for a given type are silently skipped for that
+        type only - the upload still runs for whoever/whatever's ready.
 
         Shared by main.py's scheduled job (mark_sent=True, sync_type="auto")
         and admin.py's manual "Upload Test Now" button (mark_sent=False so
@@ -3685,47 +3691,59 @@ class SyncService:
         last_sent_date guard below, sync_type="manual") - same split, same
         reasoning as the email digest.
 
-        Logs one sync_logs row per property attempted (target_table="ST
-        Files FTP") so Admin > Sync's History widget and Activity Log can
-        both show it - this used to be print()-only, invisible outside a
-        Vercel function's own runtime logs.
+        Logs one sync_logs row per property+type attempted, target_table=
+        "ST Files FTP" or "RV Files FTP" so each page's own History widget
+        (and the Activity Log) shows only the type it cares about.
         """
         settings_row = ftp_service.get_ftp_settings()
         if not settings_row["enabled"] or not settings_row["host"]:
             return {"uploaded": False, "included": [], "skipped": [],
                     "reason": "FTP upload is not configured or not enabled"}
+        upload_st = settings_row.get("upload_st_files", True)
+        upload_rv = settings_row.get("upload_rv_files", False)
+        if not upload_st and not upload_rv:
+            return {"uploaded": False, "included": [], "skipped": [],
+                    "reason": "No file type selected to upload (Admin > Sync > FTP Upload)"}
 
         props_res = self.supabase.table("property_api_settings").select("id, property_name").order("property_name").execute()
         prop_ids = {p["property_name"]: p["id"] for p in (props_res.data or [])}
 
         files, included, skipped = [], [], []
         for prop, prop_id in prop_ids.items():
-            try:
-                text, filename = self.get_st_report_export(prop, date_str)
-                files.append((filename, text.encode("utf-8"), prop, prop_id))
-                included.append(prop)
-            except Exception as e:
-                skipped.append(f"{prop}: {str(e)[:150]}")
+            if upload_st:
+                try:
+                    text, filename = self.get_st_report_export(prop, date_str)
+                    files.append((filename, text.encode("utf-8"), prop, prop_id, "ST Files FTP"))
+                    included.append(f"{prop} (ST)")
+                except Exception as e:
+                    skipped.append(f"{prop} (ST): {str(e)[:150]}")
+            if upload_rv:
+                try:
+                    text, filename = self.get_rv_export(prop, date_str)
+                    files.append((filename, text.encode("utf-8"), prop, prop_id, "RV Files FTP"))
+                    included.append(f"{prop} (RV)")
+                except Exception as e:
+                    skipped.append(f"{prop} (RV): {str(e)[:150]}")
 
         if not files:
             return {"uploaded": False, "included": included, "skipped": skipped}
 
-        result = ftp_service.upload_files(settings_row, [(f, d) for f, d, _, _ in files])
+        result = ftp_service.upload_files(settings_row, [(f, d) for f, d, _, _, _ in files])
         if result.get("connection_error"):
-            for _, _, prop, prop_id in files:
-                self._log_sync_row(prop, prop_id, "ST Files FTP", "error", 0,
+            for _, _, prop, prop_id, target_table in files:
+                self._log_sync_row(prop, prop_id, target_table, "error", 0,
                                     f"FTP Upload Failed: {result['connection_error']}", sync_type)
             return {"uploaded": False, "included": [], "skipped": skipped,
                     "reason": f"FTP connection failed: {result['connection_error']}"}
 
         failed_names = {name for name, _ in result["failed"]}
-        for filename, _, prop, prop_id in files:
+        for filename, _, prop, prop_id, target_table in files:
             if filename in failed_names:
                 err = next(e for name, e in result["failed"] if name == filename)
-                self._log_sync_row(prop, prop_id, "ST Files FTP", "error", 0,
+                self._log_sync_row(prop, prop_id, target_table, "error", 0,
                                     f"FTP Upload Failed: {filename}: {err}", sync_type)
             else:
-                self._log_sync_row(prop, prop_id, "ST Files FTP", "success", 1,
+                self._log_sync_row(prop, prop_id, target_table, "success", 1,
                                     f"FTP Upload: {filename} -> {settings_row['host']}", sync_type)
 
         if mark_sent:
@@ -3734,7 +3752,7 @@ class SyncService:
                 self.supabase.table("ftp_settings").update({"last_sent_date": marker_date}) \
                     .eq("id", settings_row["id"]).execute()
             except Exception as e:
-                logger.warning(f"ST Files FTP upload: failed to record last_sent_date: {e}")
+                logger.warning(f"FTP upload: failed to record last_sent_date: {e}")
 
         return {
             "uploaded": True,

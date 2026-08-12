@@ -60,11 +60,14 @@ interface FtpSettings {
   enabled: boolean;
   upload_hour: number;
   upload_minute: number;
+  upload_st_files: boolean;
+  upload_rv_files: boolean;
 }
 
 const emptyFtpSettings: FtpSettings = {
   host: "", port: 21, username: "", password: "", remote_path: "",
   enabled: false, upload_hour: 4, upload_minute: 0,
+  upload_st_files: true, upload_rv_files: false,
 };
 
 interface SyncLogRow {
@@ -178,6 +181,8 @@ export default function AdminSyncPage() {
           enabled: !!d.enabled,
           upload_hour: d.upload_hour ?? 4,
           upload_minute: d.upload_minute ?? 0,
+          upload_st_files: d.upload_st_files ?? true,
+          upload_rv_files: !!d.upload_rv_files,
         });
         setFtpPasswordSet(!!d.password_set);
       }
@@ -378,8 +383,8 @@ export default function AdminSyncPage() {
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex items-center justify-between border-b border-slate-100 bg-slate-50/50">
            <div>
-              <h3 className="text-sm font-bold text-slate-700">ST Files FTP Upload</h3>
-              <p className="text-[11px] text-slate-400 mt-0.5">One shared FTP destination for every property&apos;s ST export CSV, on its own daily schedule (separate from the ST Files Email digest above).</p>
+              <h3 className="text-sm font-bold text-slate-700">FTP Upload</h3>
+              <p className="text-[11px] text-slate-400 mt-0.5">One shared FTP destination for every property&apos;s export CSV(s), on its own daily schedule (separate from the ST Files Email digest above).</p>
            </div>
            <button
              type="button"
@@ -390,6 +395,29 @@ export default function AdminSyncPage() {
            </button>
         </div>
         <div className="p-5">
+           <div className="mb-4">
+              <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Upload</label>
+              <div className="flex gap-5 mt-1.5 ml-1">
+                 <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                   <input
+                     type="checkbox"
+                     className="w-4 h-4 accent-[#AAA024]"
+                     checked={ftpSettings.upload_st_files}
+                     onChange={(e) => setFtpSettings({ ...ftpSettings, upload_st_files: e.target.checked })}
+                   />
+                   ST Files
+                 </label>
+                 <label className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                   <input
+                     type="checkbox"
+                     className="w-4 h-4 accent-[#AAA024]"
+                     checked={ftpSettings.upload_rv_files}
+                     onChange={(e) => setFtpSettings({ ...ftpSettings, upload_rv_files: e.target.checked })}
+                   />
+                   RV Files
+                 </label>
+              </div>
+           </div>
            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
               <div className="md:col-span-2 space-y-1">
                  <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Host</label>

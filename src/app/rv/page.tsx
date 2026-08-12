@@ -84,9 +84,10 @@ interface RvListRow {
 // History section - past import syncs for this property, read straight
 // from sync_logs (same table Admin > Sync's own Recent Activity widget
 // reads, and the same pattern ST Files' own /st-files History section
-// uses), scoped here to just this property and target_table="RV Files".
-// RV has no FTP-upload or email-digest feature yet (unlike ST Files) - the
-// table/tag-map shape is kept the same as ST Files' for when it does.
+// uses), scoped here to just this property. RV has no email-digest feature
+// yet (unlike ST Files), but does now share ST's FTP Upload feature
+// (Admin > Sync > FTP Upload's "RV Files" checkbox) - target_table="RV
+// Files FTP" for that path, same "FTP UPLOAD" tag/color ST Files' own uses.
 interface HistoryLogRow {
   id: string;
   created_at: string;
@@ -96,10 +97,11 @@ interface HistoryLogRow {
   message: string;
 }
 
-const HISTORY_TARGET_TABLES = ["RV Files"] as const;
+const HISTORY_TARGET_TABLES = ["RV Files", "RV Files FTP"] as const;
 
 const HISTORY_TAG: Record<string, { label: string; cls: string }> = {
   "RV Files": { label: "IMPORT", cls: "bg-orange-500/10 text-orange-700 border-orange-500/20" },
+  "RV Files FTP": { label: "FTP UPLOAD", cls: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20" },
 };
 
 type DataSource = "live" | "database";

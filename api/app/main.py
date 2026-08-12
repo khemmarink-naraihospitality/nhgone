@@ -744,16 +744,19 @@ async def send_st_files_per_property_emails(match_hour_only: bool = False):
         except Exception as e:
             print(f"Error in send_st_files_per_property_emails for {p['property_name']}: {str(e)}")
 
-async def send_st_files_ftp_upload_job(match_hour_only: bool = False):
+async def send_ftp_upload_job(match_hour_only: bool = False):
     """
-    Once-daily plain-FTP upload (Admin > Sync > ST Files FTP Upload) of
-    every ready property's ST export CSV to a single shared destination -
-    its own configurable upload_hour/minute, independent of the email
-    digest above (a separate feature the user asked for explicitly, not
-    piggybacked on the same schedule). Same hour-matching/dedup pattern as
-    send_st_files_daily_email: match_hour_only in production since Vercel's
-    cron only lands on the hour, last_sent_date on the settings row guards
-    against resending on a later tick within the matching hour.
+    Once-daily plain-FTP upload (Admin > Sync > FTP Upload) of every ready
+    property's export CSV(s) to a single shared destination - its own
+    configurable upload_hour/minute, independent of the email digest above
+    (a separate feature the user asked for explicitly, not piggybacked on
+    the same schedule). Which report type(s) get uploaded (ST/RV, or both)
+    is decided inside send_ftp_upload via ftp_settings.upload_st_files/
+    upload_rv_files - this job itself doesn't care. Same hour-matching/
+    dedup pattern as send_st_files_daily_email: match_hour_only in
+    production since Vercel's cron only lands on the hour, last_sent_date
+    on the settings row guards against resending on a later tick within
+    the matching hour.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     if not sync_service.supabase:
@@ -779,13 +782,13 @@ async def send_st_files_ftp_upload_job(match_hour_only: bool = False):
     # TODAY (the actual upload day) so a later cron tick this hour is still caught.
     report_date_str = (now.date() - timedelta(days=1)).isoformat()
     try:
-        result = await sync_service.send_st_files_ftp_upload(report_date_str, sent_date_str=today_str)
+        result = await sync_service.send_ftp_upload(report_date_str, sent_date_str=today_str)
         if result["uploaded"]:
-            print(f"[{now.isoformat()}] ST Files FTP upload done: {len(result['included'])} uploaded, {len(result['skipped'])} skipped.")
+            print(f"[{now.isoformat()}] FTP upload done: {len(result['included'])} uploaded, {len(result['skipped'])} skipped.")
         else:
-            print(f"[{now.isoformat()}] ST Files FTP upload: nothing uploaded ({result.get('reason', 'no properties ready')}).")
+            print(f"[{now.isoformat()}] FTP upload: nothing uploaded ({result.get('reason', 'no properties ready')}).")
     except Exception as e:
-        print(f"Error in send_st_files_ftp_upload_job: {str(e)}")
+        print(f"Error in send_ftp_upload_job: {str(e)}")
 
 async def retry_failed_syncs():
     """
@@ -1071,8 +1074,9 @@ async def start_scheduler():
     scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
     # ST Files per-property emails - each opted-in property's own send time.
     scheduler.add_job(send_st_files_per_property_emails, 'cron', second=0)
-    # ST Files daily FTP upload - own separate configurable upload_hour/minute.
-    scheduler.add_job(send_st_files_ftp_upload_job, 'cron', second=0)
+    # Daily FTP upload (ST and/or RV, per ftp_settings' checkboxes) - own
+    # separate configurable upload_hour/minute.
+    scheduler.add_job(send_ftp_upload_job, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -1108,8 +1112,9 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
     # ST Files per-property emails - each opted-in property's own send time.
     background_tasks.add_task(send_st_files_per_property_emails, match_hour_only=True)
-    # ST Files daily FTP upload - own separate configurable upload_hour/minute.
-    background_tasks.add_task(send_st_files_ftp_upload_job, match_hour_only=True)
+    # Daily FTP upload (ST and/or RV, per ftp_settings' checkboxes) - own
+    # separate configurable upload_hour/minute.
+    background_tasks.add_task(send_ftp_upload_job, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

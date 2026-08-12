@@ -9,11 +9,14 @@ from app.services.encryption import encryption_service
 
 logger = logging.getLogger(__name__)
 
-# Single global row (Admin > Sync > ST Files FTP Upload) - one plain-FTP
-# destination shared by every property; each property's own export is
-# already disambiguated by its Property Code filename (e.g.
-# MS_ST_20260808.csv, from sync_service.get_st_report_export), so one
-# destination folder is enough for all of them.
+# Single global row (Admin > Sync > FTP Upload) - one plain-FTP destination
+# shared by every property; each property's own export is already
+# disambiguated by its Property Code + report-type filename (e.g.
+# MS_ST_20260808.csv / MS_RV_20260808.csv, from sync_service.
+# get_st_report_export/get_rv_export), so one destination folder is enough
+# for all of them. upload_st_files/upload_rv_files (the card's checkboxes)
+# independently control which report type(s) actually get uploaded - see
+# sync_service.send_ftp_upload.
 FTP_SETTINGS_TABLE = "ftp_settings"
 DEFAULT_FTP_PORT = 21
 DEFAULT_FTP_UPLOAD_HOUR = 4
@@ -31,6 +34,8 @@ def _defaults() -> dict:
         "enabled": False,
         "upload_hour": DEFAULT_FTP_UPLOAD_HOUR,
         "upload_minute": DEFAULT_FTP_UPLOAD_MINUTE,
+        "upload_st_files": True,
+        "upload_rv_files": False,
         "last_sent_date": None,
     }
 
@@ -65,6 +70,8 @@ def get_ftp_settings() -> dict:
         "enabled": bool(row.get("enabled")),
         "upload_hour": row["upload_hour"] if row.get("upload_hour") is not None else DEFAULT_FTP_UPLOAD_HOUR,
         "upload_minute": row["upload_minute"] if row.get("upload_minute") is not None else DEFAULT_FTP_UPLOAD_MINUTE,
+        "upload_st_files": bool(row["upload_st_files"]) if row.get("upload_st_files") is not None else True,
+        "upload_rv_files": bool(row.get("upload_rv_files")),
         "last_sent_date": row.get("last_sent_date"),
     }
 
