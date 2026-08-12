@@ -227,7 +227,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     previewable: true,
   },
   st_files_email: {
-    label: "ST Files Email",
+    label: "All Property",
     endpoint: "/admin/email-template/st-files-daily",
     tokens: ST_FILES_EMAIL_TOKENS,
     defaultNote: "No ST Files daily email configured yet - showing the built-in default. Save to customize it.",
@@ -238,7 +238,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasScheduleFields: true,
   },
   st_files_email_per_property: {
-    label: "ST Files Email (Per-Property)",
+    label: "Per-Property",
     endpoint: "/admin/email-template/st-files-daily-per-property",
     tokens: ST_FILES_EMAIL_PER_PROPERTY_TOKENS,
     defaultNote: "No per-property ST Files email configured yet - showing the built-in default. Save to customize it.",
