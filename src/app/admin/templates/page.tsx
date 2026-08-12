@@ -696,7 +696,7 @@ export default function TemplatesPage() {
                     onChange={(e) => setRecipSendTime(e.target.value)}
                     className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 text-slate-900"
                   />
-                  <span className="text-[10px] text-slate-400 shrink-0">Asia/Bangkok</span>
+                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest shrink-0">Asia/Bangkok</span>
                 </div>
               </div>
 
