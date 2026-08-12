@@ -628,7 +628,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         </div>
       )}
 
-      <aside className="print:hidden w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300">
+      <aside className={`print:hidden ${onAdminPath ? "w-56" : "w-48"} border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300`}>
         {onAdminPath ? (
           // Admin-only badge, replacing the plain NHGOne logo header while
           // inside /admin/* - visually marks "you're in a different,
