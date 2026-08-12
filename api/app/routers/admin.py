@@ -99,6 +99,9 @@ class StFilesEmailSettingsUpdate(BaseModel):
     send_minute: int
     enabled: bool = True
 
+class StFilesPerPropertySendNow(BaseModel):
+    property_name: str
+
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
     """
@@ -688,6 +691,29 @@ async def send_st_files_daily_email_now():
             "included": result["included"],
             "skipped": result["skipped"],
         }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/email-template/st-files-daily-per-property/send-now")
+async def send_st_files_per_property_email_now(request: StFilesPerPropertySendNow):
+    """
+    "Save and Test Email" trigger (Admin > Templates > Statistic Files >
+    Per-Property) - sends ONE property's own ST Files email immediately
+    using whatever is currently saved for it (the frontend saves first,
+    then calls this), independent of that property's own st_files_email_
+    hour/_minute schedule. Same YESTERDAY's-report/mark_sent=False
+    convention as send_st_files_daily_email_now above, so a test send here
+    can never suppress the real scheduled send for today.
+    """
+    try:
+        report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
+        result = await sync_service.send_st_files_property_email(
+            request.property_name, report_date_str, mark_sent=False, sync_type="manual")
+        if not result["sent"]:
+            raise HTTPException(status_code=400, detail=result["skipped"])
+        return {"status": "success", "message": f"Sent for {request.property_name}"}
     except HTTPException:
         raise
     except Exception as e:

@@ -523,7 +523,7 @@ export default function TemplatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipProperty, templateType]);
 
-  const handleSaveRecipients = async () => {
+  const handleSaveAndTestRecipients = async () => {
     if (!recipProperty || !recipHtml.trim() || !recipSubject.trim()) return;
     setRecipSaving(true);
     try {
@@ -542,7 +542,18 @@ export default function TemplatesPage() {
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
-      alert(`Settings saved for ${recipProperty}`);
+
+      const res = await fetch(`${apiUrl}/admin/email-template/st-files-daily-per-property/send-now`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_name: recipProperty }),
+      });
+      const result = await res.json();
+      if (result.status === "success") {
+        alert(`Settings saved for ${recipProperty}\n${result.message}`);
+      } else {
+        alert(`Settings saved for ${recipProperty}\nError sending test email: ` + (result.detail || result.message));
+      }
     } catch (err: any) {
       alert("Error saving recipients: " + err.message);
     } finally {
@@ -839,11 +850,11 @@ export default function TemplatesPage() {
                   )}
 
                   <button
-                    onClick={handleSaveRecipients}
+                    onClick={handleSaveAndTestRecipients}
                     disabled={recipSaving}
-                    className="mt-5 px-6 py-2.5 bg-[#AAA024] hover:bg-[#8f871e] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AAA024]/20 transition-all active:scale-[0.98] disabled:opacity-50"
+                    className="mt-6 w-full py-4 bg-[#AAA024] hover:bg-[#8f871e] text-white rounded-2xl font-bold shadow-xl shadow-[#AAA024]/20 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
-                    {recipSaving ? "Saving..." : "Save"}
+                    {recipSaving ? "Saving & Sending..." : "Save and Test Email"}
                   </button>
                 </>
               )}
