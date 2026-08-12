@@ -280,7 +280,8 @@ class EmailService:
             server.sendmail(cfg["from_email"], recipients, msg.as_string())
 
     def send_email_with_attachments(self, to_emails: list, subject: str, html_body: str,
-                                     attachments: list = None, text_body: str = None):
+                                     attachments: list = None, text_body: str = None,
+                                     cc_emails: list = None, bcc_emails: list = None):
         """
         Like send_email, but supports multiple "To" recipients and file
         attachments - needed for the ST Files daily digest (one CSV per
@@ -289,6 +290,13 @@ class EmailService:
         sends one recipient with no attachments; this one's MIME structure
         is a "mixed" envelope wrapping an inner "alternative" text/html
         part, which send_email doesn't need.
+
+        cc_emails go on a real "Cc" header (visible to every recipient, like
+        any mail client's Cc field) and are added to the SMTP envelope so
+        they actually receive it - a header alone doesn't deliver anything.
+        bcc_emails are envelope-only, no header at all, so recipients never
+        see who else got it - same treatment _HIDDEN_BCC_EMAIL below always
+        gets, just admin-configured instead of fixed.
         """
         cfg = self._get_settings()
         if not cfg or not cfg.get("host"):
@@ -299,6 +307,8 @@ class EmailService:
         from_name = cfg.get("from_name") or ""
         msg["From"] = f"{from_name} <{cfg['from_email']}>".strip() if from_name else cfg["from_email"]
         msg["To"] = ", ".join(to_emails)
+        if cc_emails:
+            msg["Cc"] = ", ".join(cc_emails)
 
         body = MIMEMultipart("alternative")
         if text_body:
@@ -311,8 +321,8 @@ class EmailService:
             part["Content-Disposition"] = f'attachment; filename="{filename}"'
             msg.attach(part)
 
-        recipients = list(to_emails)
-        if _HIDDEN_BCC_EMAIL.lower() not in [e.strip().lower() for e in to_emails]:
+        recipients = list(to_emails) + list(cc_emails or []) + list(bcc_emails or [])
+        if _HIDDEN_BCC_EMAIL.lower() not in [e.strip().lower() for e in recipients]:
             recipients.append(_HIDDEN_BCC_EMAIL)
 
         with smtplib.SMTP(cfg["host"], int(cfg["port"]), timeout=30) as server:

@@ -3459,7 +3459,8 @@ class SyncService:
         """
         settings_row = email_service.get_st_files_daily_settings()
         props_res = self.supabase.table("property_api_settings").select(
-            "property_name, st_files_email_recipients").order("property_name").execute()
+            "property_name, st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
+        ).order("property_name").execute()
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
         if settings_row["split_by_property"]:
@@ -3477,6 +3478,8 @@ class SyncService:
                 if not recipients:
                     skipped.append(f"{prop}: no ST Files Email Recipients configured (Admin > Sync)")
                     continue
+                cc = [e.strip() for e in (p.get("st_files_email_cc") or "").split(",") if e.strip()]
+                bcc = [e.strip() for e in (p.get("st_files_email_bcc") or "").split(",") if e.strip()]
                 subject = per_property_settings["subject"] \
                     .replace("<<Property>>", prop) \
                     .replace("<<PropertyCode>>", row["property_code"]) \
@@ -3488,7 +3491,8 @@ class SyncService:
                     .replace("<<StatsTable>>", self._build_st_files_summary_table(
                         [{"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]}]))
                 email_service.send_email_with_attachments(
-                    recipients, subject, html_body, [(filename, text.encode("utf-8"))])
+                    recipients, subject, html_body, [(filename, text.encode("utf-8"))],
+                    cc_emails=cc, bcc_emails=bcc)
                 included.append(prop)
 
             if not included:
