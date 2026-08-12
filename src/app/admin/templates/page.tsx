@@ -306,7 +306,10 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     BankName: "", Branch: "", CNo: "", CDateF: "",
   }),
   rr3: () => ({
-    HotelName: "ลับ ดี กรุงเทพ ไชน่าทาวน์",
+    // Matches sync_service.py's real _RR3_PROPERTY_THAI_NAMES["Lub d Bangkok
+    // Chinatown"] exactly - the actual value get_rr3_cards uses when
+    // printing a real card, not an independently-typed placeholder.
+    HotelName: "หลับดี แบงค็อก เยาวราช",
     FirstName: "John",
     LastName: "Doe",
     IdBoxes: "1234567890123".split("").map((d) => `<span class="s4">${d}</span>`).join(""),
