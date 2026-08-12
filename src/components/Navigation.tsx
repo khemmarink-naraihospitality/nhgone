@@ -598,12 +598,26 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           <div className="absolute inset-0 bg-black/50" onClick={() => setMobileNavOpen(false)} />
           <div className="relative w-72 max-w-[82vw] h-full bg-[#152A00] p-4 flex flex-col gap-6 overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="bg-white p-1.5 rounded-sm">
-                  <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
+              {onAdminPath ? (
+                <div className="flex items-center gap-3 px-3 py-3 bg-[#FFEFD2]/10 border border-[#FFEFD2]/20 rounded-sm flex-1 mr-2">
+                  <div className="w-8 h-8 rounded-sm bg-[#FFEFD2]/15 flex items-center justify-center shrink-0">
+                    <svg className="w-4 h-4 text-[#FFEFD2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-[13px] font-bold font-display text-white tracking-tight leading-none">ADMIN CONSOLE</div>
+                    <div className="text-[9px] font-bold tracked-caps text-[#FFEFD2]/60 mt-1">SUPER ADMIN ACCESS</div>
+                  </div>
                 </div>
-                <div className="text-xl font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
-              </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="bg-white p-1.5 rounded-sm">
+                    <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
+                  </div>
+                  <div className="text-xl font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
+                </div>
+              )}
               <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" className="p-2 text-white/60 hover:text-white">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
@@ -615,18 +629,40 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       )}
 
       <aside className="print:hidden w-48 border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300">
-        <div className="flex items-center gap-4 mb-2">
-          <div className="bg-white p-1.5 rounded-sm">
-            <img
-              src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
-              alt="NHG Logo"
-              className="w-8 h-8 object-contain"
-            />
+        {onAdminPath ? (
+          // Admin-only badge, replacing the plain NHGOne logo header while
+          // inside /admin/* - visually marks "you're in a different,
+          // higher-privilege area" the way EXIT ADMIN already does at the
+          // bottom of this same sidebar.
+          <div className="flex items-center gap-3 mb-2 px-3 py-3 bg-[#FFEFD2]/10 border border-[#FFEFD2]/20 rounded-sm">
+            <div className="w-8 h-8 rounded-sm bg-[#FFEFD2]/15 flex items-center justify-center shrink-0">
+              <svg className="w-4 h-4 text-[#FFEFD2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </div>
+            <div className="min-w-0">
+              <div className="text-[13px] font-bold font-display text-white tracking-tight leading-none">
+                ADMIN CONSOLE
+              </div>
+              <div className="text-[9px] font-bold tracked-caps text-[#FFEFD2]/60 mt-1">
+                SUPER ADMIN ACCESS
+              </div>
+            </div>
           </div>
-          <div className="text-xl font-bold font-display text-white tracking-tight leading-none">
-            NHGOne
+        ) : (
+          <div className="flex items-center gap-4 mb-2">
+            <div className="bg-white p-1.5 rounded-sm">
+              <img
+                src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
+                alt="NHG Logo"
+                className="w-8 h-8 object-contain"
+              />
+            </div>
+            <div className="text-xl font-bold font-display text-white tracking-tight leading-none">
+              NHGOne
+            </div>
           </div>
-        </div>
+        )}
         {navLinks}
 
         <div className="mt-auto pb-4">{exitAdminLink}</div>
