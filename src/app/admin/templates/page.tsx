@@ -463,6 +463,7 @@ export default function TemplatesPage() {
   const [recipViewMode, setRecipViewMode] = useState<"preview" | "code">("preview");
   const [recipLoading, setRecipLoading] = useState(false);
   const [recipSaving, setRecipSaving] = useState(false);
+  const [recipSendingTest, setRecipSendingTest] = useState(false);
 
   // Resize iframe to fit its content (no scrollbars)
   const handleIframeLoad = () => {
@@ -523,7 +524,7 @@ export default function TemplatesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recipProperty, templateType]);
 
-  const handleSaveAndTestRecipients = async () => {
+  const handleSaveRecipients = async () => {
     if (!recipProperty || !recipHtml.trim() || !recipSubject.trim()) return;
     setRecipSaving(true);
     try {
@@ -542,7 +543,18 @@ export default function TemplatesPage() {
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
+      alert(`Settings saved for ${recipProperty}`);
+    } catch (err: any) {
+      alert("Error saving recipients: " + err.message);
+    } finally {
+      setRecipSaving(false);
+    }
+  };
 
+  const handleSendTestNowRecipients = async () => {
+    if (!recipProperty) return;
+    setRecipSendingTest(true);
+    try {
       const res = await fetch(`${apiUrl}/admin/email-template/st-files-daily-per-property/send-now`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -550,14 +562,14 @@ export default function TemplatesPage() {
       });
       const result = await res.json();
       if (result.status === "success") {
-        alert(`Settings saved for ${recipProperty}\n${result.message}`);
+        alert(result.message);
       } else {
-        alert(`Settings saved for ${recipProperty}\nError sending test email: ` + (result.detail || result.message));
+        alert("Error sending: " + (result.detail || result.message));
       }
     } catch (err: any) {
-      alert("Error saving recipients: " + err.message);
+      alert("Error sending: " + err.message);
     } finally {
-      setRecipSaving(false);
+      setRecipSendingTest(false);
     }
   };
 
@@ -850,11 +862,18 @@ export default function TemplatesPage() {
                   )}
 
                   <button
-                    onClick={handleSaveAndTestRecipients}
+                    onClick={handleSaveRecipients}
                     disabled={recipSaving}
                     className="mt-6 w-full py-4 bg-[#AAA024] hover:bg-[#8f871e] text-white rounded-2xl font-bold shadow-xl shadow-[#AAA024]/20 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
-                    {recipSaving ? "Saving & Sending..." : "Save and Test Email"}
+                    {recipSaving ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={handleSendTestNowRecipients}
+                    disabled={recipSendingTest}
+                    className="mt-3 w-full py-3.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {recipSendingTest ? "Sending..." : "Send Test Now"}
                   </button>
                 </>
               )}
