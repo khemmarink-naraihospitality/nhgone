@@ -23,6 +23,11 @@ interface PropertySyncSettings {
   st_files_sync_enabled: boolean;
   st_files_sync_hour: number | null;
   st_files_sync_minute: number | null;
+  // This property's own recipient list for the ST Files daily email's
+  // "Split by property" mode (Admin > Templates > ST Files Email) - unused
+  // while that mode is off. Null/blank means this property is skipped from
+  // the split send, same as a missing ST Property Code.
+  st_files_email_recipients: string | null;
   // RR4/TM30's own independent schedule, separate again from ST Files above
   // - the two government filings can be captured on a different clock than
   // the occupancy report (or not at all). Imports YESTERDAY's date in the
@@ -119,7 +124,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, st_files_email_recipients, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -297,6 +302,7 @@ export default function AdminSyncPage() {
           st_files_sync_enabled: editingProperty.st_files_sync_enabled,
           st_files_sync_hour: editingProperty.st_files_sync_hour,
           st_files_sync_minute: editingProperty.st_files_sync_minute,
+          st_files_email_recipients: editingProperty.st_files_email_recipients,
           rr4_tm30_sync_enabled: editingProperty.rr4_tm30_sync_enabled,
           rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour,
           rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute,
@@ -773,6 +779,17 @@ export default function AdminSyncPage() {
                              <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
                           </div>
                           <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
+                       </div>
+                       <div className="mt-3 space-y-1.5">
+                          <label className="text-[9px] font-bold text-white/25 uppercase tracking-widest ml-1">Email Recipients (comma-separated)</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. manager@lubd.com"
+                            className="w-full bg-black/20 border border-white/5 rounded-xl px-3 py-2.5 text-sm text-white placeholder:text-white/20 outline-none focus:border-emerald-500/40"
+                            value={editingProperty.st_files_email_recipients ?? ""}
+                            onChange={(e) => setEditingProperty({...editingProperty, st_files_email_recipients: e.target.value})}
+                          />
+                          <p className="text-[10px] text-white/25 ml-1">Only used when Admin &gt; Templates &gt; ST Files Email has &quot;Split by property&quot; turned on.</p>
                        </div>
                     </div>
                  </div>

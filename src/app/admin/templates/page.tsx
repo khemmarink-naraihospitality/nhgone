@@ -12,7 +12,8 @@ type TemplateType =
   | "password_reset_email"
   | "google_signin_notice_email"
   | "rejection_email"
-  | "st_files_email";
+  | "st_files_email"
+  | "st_files_email_per_property";
 
 interface TokenDoc {
   name: string;
@@ -103,6 +104,13 @@ const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
   { name: "PropertyCount", description: "Number of properties included in this email" },
   { name: "PropertyList", description: "Comma-separated list of included property names" },
   { name: "StatsTable", description: "Pre-built HTML table, one row per property: Property, Code, Spaces, Occupied, House Uses, Out of Order, Availability, Customers, Arrivals, Departures, Complimentary, No. of Day" },
+];
+
+const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "Report date (DD/MM/YYYY)" },
+  { name: "Property", description: "This email's one property name" },
+  { name: "PropertyCode", description: "This property's ST Property Code" },
+  { name: "StatsTable", description: "Same pre-built HTML table as the bundled email, but with just this one property's row" },
 ];
 
 const TEMPLATE_CONFIG: Record<TemplateType, {
@@ -196,11 +204,21 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     endpoint: "/admin/email-template/st-files-daily",
     tokens: ST_FILES_EMAIL_TOKENS,
     defaultNote: "No ST Files daily email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Sent once a day (Time to Send below) with every ready property's ST Files export CSV attached.",
+    tokenNote: "Sent once a day (Time to Send below) with every ready property's ST Files export CSV attached. Turn on \"Split by property\" below to send one separate email per property instead - each to that property's own recipients (Admin > Sync), using the \"ST Files Email (Per-Property)\" template.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
     hasScheduleFields: true,
+  },
+  st_files_email_per_property: {
+    label: "ST Files Email (Per-Property)",
+    endpoint: "/admin/email-template/st-files-daily-per-property",
+    tokens: ST_FILES_EMAIL_PER_PROPERTY_TOKENS,
+    defaultNote: "No per-property ST Files email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "One shared template, used to send a separate email per property when the ST Files Email tab's \"Split by property\" toggle is on. Recipients are set per property at Admin > Sync, not here - the schedule (time to send) is shared with the bundled ST Files Email tab.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
   },
 };
 
@@ -290,14 +308,20 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     PropertyList: "Lub d Bangkok Chinatown, Lub d Bangkok Siam, Lub d Koh Samui Chaweng Beach, Lub d Koh Tao Tanote Bay, Lub d Philippines Makati, Lub d Phuket Patong, Lub d Siem Reap, Marasca Samui",
     StatsTable: buildStFilesStatsTableSample(),
   }),
+  st_files_email_per_property: () => ({
+    Date: "06/08/2026",
+    Property: "Lub d Bangkok Chinatown",
+    PropertyCode: "MS",
+    StatsTable: buildStFilesStatsTableSample(1),
+  }),
 };
 
 // Mirrors sync_service.py's _build_st_files_summary_table byte-for-byte
 // (column order, colors, alternating row shading) so the Preview tab shows
 // what the real digest actually renders, not a generic placeholder table.
-function buildStFilesStatsTableSample(): string {
+function buildStFilesStatsTableSample(limit?: number): string {
   const columns = ["Spaces", "Occupied", "House Uses", "Out of Order", "Availability", "Customers", "Arrivals", "Departures", "Complimentary", "No. of Day"];
-  const rows = [
+  const allRows = [
     { name: "Lub d Bangkok Chinatown", code: "MS", values: [176, 150, 2, 1, 23, 140, 30, 28, 0, 1] },
     { name: "Lub d Bangkok Siam", code: "SM", values: [88, 84, 0, 4, 0, 83, 32, 31, 0, 1] },
     { name: "Lub d Koh Samui Chaweng Beach", code: "SU", values: [60, 55, 1, 0, 4, 50, 10, 9, 1, 1] },
@@ -307,6 +331,7 @@ function buildStFilesStatsTableSample(): string {
     { name: "Lub d Siem Reap", code: "SR", values: [40, 35, 0, 0, 5, 30, 6, 5, 0, 1] },
     { name: "Marasca Samui", code: "S2", values: [20, 15, 0, 0, 5, 13, 3, 2, 0, 1] },
   ];
+  const rows = limit ? allRows.slice(0, limit) : allRows;
   const headerCells = columns
     .map((c) => `<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; line-height:1.3;">${c}</th>`)
     .join("");
@@ -362,6 +387,9 @@ export default function TemplatesPage() {
   const [recipients, setRecipients] = useState("");
   const [sendTime, setSendTime] = useState("03:00");
   const [enabled, setEnabled] = useState(true);
+  // ST Files Email tab only - toggles between the bundled single email and
+  // N separate per-property emails (Admin > Sync's own recipients).
+  const [splitByProperty, setSplitByProperty] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -410,6 +438,7 @@ export default function TemplatesPage() {
             const m = result.data.send_minute ?? 0;
             setSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
             setEnabled(result.data.enabled !== false);
+            setSplitByProperty(!!result.data.split_by_property);
           }
         } else {
           alert("Error loading template: " + (result.detail || result.message));
@@ -442,6 +471,7 @@ export default function TemplatesPage() {
         body.send_hour = h;
         body.send_minute = m;
         body.enabled = enabled;
+        body.split_by_property = splitByProperty;
       }
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
@@ -548,15 +578,17 @@ export default function TemplatesPage() {
 
               {config.hasScheduleFields && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className="space-y-1.5">
+                  <div className={`space-y-1.5 ${splitByProperty ? "opacity-40" : ""}`}>
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">To (comma-separated)</label>
                     <input
                       type="text"
                       value={recipients}
                       onChange={(e) => setRecipients(e.target.value)}
+                      disabled={splitByProperty}
                       placeholder="khemmarin.k@lubd.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900 disabled:cursor-not-allowed"
                     />
+                    {splitByProperty && <p className="text-[11px] text-slate-400 ml-1">Not used while Split by property is on - see Admin &gt; Sync for per-property recipients.</p>}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
@@ -576,6 +608,19 @@ export default function TemplatesPage() {
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-5" : ""}`} />
                     </button>
                     <span className="text-sm font-medium text-slate-700">Enabled</span>
+                  </div>
+                  <div className="flex items-start gap-2.5 md:col-span-2 pt-2 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setSplitByProperty(!splitByProperty)}
+                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${splitByProperty ? "bg-[#AAA024]" : "bg-slate-300"}`}
+                    >
+                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${splitByProperty ? "translate-x-5" : ""}`} />
+                    </button>
+                    <div>
+                      <div className="text-sm font-medium text-slate-700">Split by property</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Send one separate email per property (each to that property&apos;s own recipients, set at Admin &gt; Sync) instead of the single bundled email above. Uses the &quot;ST Files Email (Per-Property)&quot; template.</div>
+                    </div>
                   </div>
                 </div>
               )}

@@ -9,6 +9,7 @@ from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
 from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
+    ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, REJECTION_TEMPLATE_KEY,
 )
@@ -98,6 +99,7 @@ class StFilesEmailSettingsUpdate(BaseModel):
     send_hour: int
     send_minute: int
     enabled: bool = True
+    split_by_property: bool = False
 
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
@@ -591,6 +593,7 @@ async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate
             "send_hour": request.send_hour,
             "send_minute": request.send_minute,
             "enabled": request.enabled,
+            "split_by_property": request.split_by_property,
         }
         if existing.data:
             admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
@@ -662,6 +665,21 @@ async def get_rejection_email_template():
 async def save_rejection_email_template(request: EmailTemplateUpdate):
     return _save_simple_email_template(REJECTION_TEMPLATE_KEY, request, "Rejection")
 
+@router.get("/email-template/st-files-daily-per-property")
+async def get_st_files_daily_per_property_email_template():
+    """
+    The per-property variant of the ST Files daily digest (Admin >
+    Templates > ST Files Email (Per-Property)) - subject/body only, no
+    delivery config of its own. Used to send N separate emails (one per
+    property, each to that property's own Admin > Sync recipients) when
+    the main ST Files Email tab's "Split by property" toggle is on.
+    """
+    return {"status": "success", "data": email_service.get_st_files_daily_per_property_template()}
+
+@router.post("/email-template/st-files-daily-per-property")
+async def save_st_files_daily_per_property_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY, request, "ST Files Email (Per-Property)")
+
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():
     """
@@ -670,9 +688,10 @@ async def send_st_files_daily_email_now():
     YESTERDAY's report, same as the real scheduled send (see
     daily_auto_sync_st_files' docstring on why "today" would be an
     incomplete, still-in-progress day) - this is meant to test the exact
-    same path production uses, not a different one. mark_sent=False so
-    this never marks anything as already-sent, meaning it can't suppress
-    the real scheduled send for the same day.
+    same path production uses, not a different one, including whichever
+    delivery mode (bundled vs. split-by-property) is currently saved.
+    mark_sent=False so this never marks anything as already-sent, meaning
+    it can't suppress the real scheduled send for the same day.
     """
     try:
         report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
@@ -681,9 +700,14 @@ async def send_st_files_daily_email_now():
             skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
         settings_row = email_service.get_st_files_daily_settings()
+        message = (
+            f"Sent {len(result['included'])} separate email(s), one per property"
+            if settings_row["split_by_property"]
+            else f"Sent to {settings_row['recipients']}"
+        )
         return {
             "status": "success",
-            "message": f"Sent to {settings_row['recipients']}",
+            "message": message,
             "included": result["included"],
             "skipped": result["skipped"],
         }

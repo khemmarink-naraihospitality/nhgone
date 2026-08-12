@@ -3434,6 +3434,18 @@ class SyncService:
         Property Code or that day's data are silently skipped, not fatal -
         the digest still goes out for whoever's ready.
 
+        Two delivery modes, chosen by the same settings row's
+        split_by_property flag (Admin > Templates > ST Files Email):
+          - off (default): the original behavior - ONE email to the shared
+            `recipients` list, every ready property's CSV attached, the
+            multi-property stats table in the body.
+          - on: N separate emails, one per ready property, each to that
+            property's own property_api_settings.st_files_email_recipients
+            (Admin > Sync's per-property edit panel) using the
+            st_files_daily_per_property template. A property with no
+            recipients configured is skipped, not fatal, same as a missing
+            Property Code.
+
         Shared by main.py's scheduled send_st_files_daily_email
         (mark_sent=True, the real send) and admin.py's manual "Send Test
         Now" button (mark_sent=False, so testing never suppresses that
@@ -3446,7 +3458,44 @@ class SyncService:
         boundary. Defaults to date_str for callers where they're the same.
         """
         settings_row = email_service.get_st_files_daily_settings()
-        props_res = self.supabase.table("property_api_settings").select("property_name").order("property_name").execute()
+        props_res = self.supabase.table("property_api_settings").select(
+            "property_name, st_files_email_recipients").order("property_name").execute()
+        date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+
+        if settings_row["split_by_property"]:
+            per_property_settings = email_service.get_st_files_daily_per_property_template()
+            included, skipped = [], []
+            for p in (props_res.data or []):
+                prop = p["property_name"]
+                try:
+                    text, filename = self.get_st_report_export(prop, date_str)
+                    row = self._get_st_report_row(prop, date_str)
+                except Exception as e:
+                    skipped.append(f"{prop}: {str(e)[:150]}")
+                    continue
+                recipients = [e.strip() for e in (p.get("st_files_email_recipients") or "").split(",") if e.strip()]
+                if not recipients:
+                    skipped.append(f"{prop}: no ST Files Email Recipients configured (Admin > Sync)")
+                    continue
+                subject = per_property_settings["subject"] \
+                    .replace("<<Property>>", prop) \
+                    .replace("<<PropertyCode>>", row["property_code"]) \
+                    .replace("<<Date>>", date_display)
+                html_body = per_property_settings["html_template"] \
+                    .replace("<<Property>>", prop) \
+                    .replace("<<PropertyCode>>", row["property_code"]) \
+                    .replace("<<Date>>", date_display) \
+                    .replace("<<StatsTable>>", self._build_st_files_summary_table(
+                        [{"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]}]))
+                email_service.send_email_with_attachments(
+                    recipients, subject, html_body, [(filename, text.encode("utf-8"))])
+                included.append(prop)
+
+            if not included:
+                return {"sent": False, "included": included, "skipped": skipped}
+            if mark_sent:
+                self._mark_st_files_daily_sent(settings_row, sent_date_str or date_str)
+            return {"sent": True, "included": included, "skipped": skipped}
 
         attachments, included, skipped, table_rows = [], [], [], []
         for p in (props_res.data or []):
@@ -3469,7 +3518,6 @@ class SyncService:
         if not recipients:
             return {"sent": False, "included": included, "skipped": skipped}
 
-        date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
         subject = settings_row["subject"].replace("<<Date>>", date_display)
         html_body = settings_row["html_template"] \
             .replace("<<Date>>", date_display) \
@@ -3480,28 +3528,38 @@ class SyncService:
         email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
 
         if mark_sent:
-            marker_date = sent_date_str or date_str
-            try:
-                existing = self.supabase.table("email_templates").select("id") \
-                    .eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
-                if existing.data:
-                    self.supabase.table("email_templates").update({"last_sent_date": marker_date}) \
-                        .eq("id", existing.data[0]["id"]).execute()
-                else:
-                    self.supabase.table("email_templates").insert({
-                        "template_key": ST_FILES_DAILY_TEMPLATE_KEY,
-                        "subject": settings_row["subject"],
-                        "html_template": settings_row["html_template"],
-                        "recipients": settings_row["recipients"],
-                        "send_hour": settings_row["send_hour"],
-                        "send_minute": settings_row["send_minute"],
-                        "enabled": True,
-                        "last_sent_date": marker_date,
-                    }).execute()
-            except Exception as e:
-                logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
+            self._mark_st_files_daily_sent(settings_row, sent_date_str or date_str)
 
         return {"sent": True, "included": included, "skipped": skipped}
+
+    def _mark_st_files_daily_sent(self, settings_row: dict, marker_date: str):
+        """
+        Same-day dedup guard for send_st_files_daily_digest, shared by both
+        its bundled and split-by-property paths - writes marker_date onto
+        the single st_files_daily row's last_sent_date regardless of which
+        mode actually sent, since it's one guard for "did today's digest go
+        out at all", not per-mode.
+        """
+        try:
+            existing = self.supabase.table("email_templates").select("id") \
+                .eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
+            if existing.data:
+                self.supabase.table("email_templates").update({"last_sent_date": marker_date}) \
+                    .eq("id", existing.data[0]["id"]).execute()
+            else:
+                self.supabase.table("email_templates").insert({
+                    "template_key": ST_FILES_DAILY_TEMPLATE_KEY,
+                    "subject": settings_row["subject"],
+                    "html_template": settings_row["html_template"],
+                    "recipients": settings_row["recipients"],
+                    "send_hour": settings_row["send_hour"],
+                    "send_minute": settings_row["send_minute"],
+                    "enabled": True,
+                    "split_by_property": settings_row["split_by_property"],
+                    "last_sent_date": marker_date,
+                }).execute()
+        except Exception as e:
+            logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
 
     def _log_sync_row(self, prop, prop_id, target, status, count, msg, sync_type="auto"):
         """

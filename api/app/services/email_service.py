@@ -44,6 +44,28 @@ DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; paddi
   </table>
 </div>"""
 
+# Sentinel key for the per-property variant of the same digest (Admin >
+# Templates > ST Files Email (Per-Property)) - one shared template used to
+# send N separate emails (one per property) instead of the single bundled
+# one above, when st_files_daily's own split_by_property flag is on. Deliver
+# config (recipients) lives per-property on property_api_settings.
+# st_files_email_recipients instead, not on this row - schedule (send_hour/
+# send_minute/enabled) is still shared, read off the st_files_daily row.
+ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY = "st_files_daily_per_property"
+DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT = "NHGOne ST Files — <<Property>> — <<Date>>"
+DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files Daily Export</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily ST statistics export for <b><<Property>></b> (<<PropertyCode>>), <b><<Date>></b>, attached as a CSV.</p>
+        <<StatsTable>>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.
@@ -311,7 +333,7 @@ class EmailService:
         try:
             supabase = get_supabase_client()
             res = supabase.table("email_templates").select(
-                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
+                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date, split_by_property"
             ).eq("template_key", ST_FILES_DAILY_TEMPLATE_KEY).limit(1).execute()
             if res.data:
                 row = res.data[0]
@@ -323,6 +345,7 @@ class EmailService:
                     "send_minute": row["send_minute"] if row.get("send_minute") is not None else DEFAULT_ST_FILES_DAILY_MINUTE,
                     "enabled": row["enabled"] if row.get("enabled") is not None else True,
                     "last_sent_date": row.get("last_sent_date"),
+                    "split_by_property": bool(row.get("split_by_property")),
                     "is_default": False,
                 }
         except Exception as e:
@@ -335,8 +358,19 @@ class EmailService:
             "send_minute": DEFAULT_ST_FILES_DAILY_MINUTE,
             "enabled": True,
             "last_sent_date": None,
+            "split_by_property": False,
             "is_default": True,
         }
+
+    def get_st_files_daily_per_property_template(self) -> dict:
+        """The shared per-property variant (Admin > Templates > ST Files
+        Email (Per-Property)) - subject/body only, no delivery config of its
+        own; see ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY's docstring."""
+        return self._get_template(
+            ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
+            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
+            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
+        )
 
     def _get_template(self, template_key: str, default_subject: str, default_template: str) -> dict:
         """
