@@ -15,6 +15,27 @@ type TemplateType =
   | "st_files_email"
   | "st_files_email_per_property";
 
+// Top-level tab groups - "System Email" bundles the 5 account-lifecycle
+// emails (welcome/reset/rejection/etc) under one umbrella tab instead of
+// each getting its own top-level pill, so the row doesn't grow a new pill
+// every time another system email gets added. Groups with a single child
+// behave exactly like a plain tab (no sub-tab row rendered for them).
+type TemplateGroup = "billing" | "rr3" | "system_email" | "st_files_email" | "st_files_email_per_property";
+
+const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateType[] }> = {
+  billing: { label: "Billing", children: ["billing"] },
+  rr3: { label: "RR3", children: ["rr3"] },
+  system_email: {
+    label: "System Email",
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "rejection_email"],
+  },
+  st_files_email: { label: "ST Files Email", children: ["st_files_email"] },
+  st_files_email_per_property: { label: "ST Files Email (Per-Property)", children: ["st_files_email_per_property"] },
+};
+
+const groupOf = (t: TemplateType): TemplateGroup =>
+  (Object.keys(GROUP_CONFIG) as TemplateGroup[]).find((g) => GROUP_CONFIG[g].children.includes(t)) || "billing";
+
 interface TokenDoc {
   name: string;
   description: string;
@@ -376,6 +397,7 @@ function renderPreviewHtml(template: string, sample: Record<string, string>): st
 
 export default function TemplatesPage() {
   const [templateType, setTemplateType] = useState<TemplateType>("billing");
+  const [activeGroup, setActiveGroup] = useState<TemplateGroup>("billing");
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [html, setHtml] = useState("");
@@ -585,21 +607,41 @@ export default function TemplatesPage() {
       />
 
       {/* Own row rather than PageHeader's title-row slot: that row is a
-          shrink-0 flex item, so once there were 8 tabs (up from 4) its
+          shrink-0 flex item, so once there were several top-level tabs its
           natural one-line width squeezed the title/description column down
           to almost nothing instead of wrapping. flex-wrap here lets the
           pills spill onto a second line on narrower screens instead. */}
       <div className="mt-4 flex flex-wrap bg-slate-100 rounded-2xl p-1 gap-1 w-fit max-w-full">
-        {(Object.keys(TEMPLATE_CONFIG) as TemplateType[]).map((t) => (
+        {(Object.keys(GROUP_CONFIG) as TemplateGroup[]).map((g) => (
           <button
-            key={t}
-            onClick={() => setTemplateType(t)}
-            className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${templateType === t ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+            key={g}
+            onClick={() => {
+              setActiveGroup(g);
+              // Jumping into a group lands on its first child unless we're
+              // already somewhere inside it (re-clicking the active group's
+              // own pill shouldn't reset which sub-tab is open).
+              if (groupOf(templateType) !== g) setTemplateType(GROUP_CONFIG[g].children[0]);
+            }}
+            className={`px-6 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all whitespace-nowrap ${activeGroup === g ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
           >
-            {TEMPLATE_CONFIG[t].label}
+            {GROUP_CONFIG[g].label}
           </button>
         ))}
       </div>
+
+      {GROUP_CONFIG[activeGroup].children.length > 1 && (
+        <div className="mt-2 flex flex-wrap gap-1 w-fit max-w-full">
+          {GROUP_CONFIG[activeGroup].children.map((t) => (
+            <button
+              key={t}
+              onClick={() => setTemplateType(t)}
+              className={`px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${templateType === t ? "bg-slate-200 text-[#152A00]" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              {TEMPLATE_CONFIG[t].label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mt-6 flex flex-col gap-6">
         <div className="bg-white border border-slate-200/80 rounded-[28px] p-8 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">
