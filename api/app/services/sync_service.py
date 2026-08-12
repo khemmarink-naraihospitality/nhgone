@@ -3434,17 +3434,19 @@ class SyncService:
         Property Code or that day's data are silently skipped, not fatal -
         the digest still goes out for whoever's ready.
 
-        Two delivery modes, chosen by the same settings row's
-        split_by_property flag (Admin > Templates > ST Files Email):
-          - off (default): the original behavior - ONE email to the shared
-            `recipients` list, every ready property's CSV attached, the
-            multi-property stats table in the body.
+        Two delivery modes, chosen by the PER-PROPERTY template's own
+        `enabled` flag (Admin > Templates > ST Files Email (Per-Property) -
+        deliberately not the bundled st_files_daily row's enabled, which
+        only gates the bundled mode itself):
+          - off (default): the original bundled behavior - ONE email to the
+            shared `recipients` list, every ready property's CSV attached,
+            the multi-property stats table in the body.
           - on: N separate emails, one per ready property, each to that
-            property's own property_api_settings.st_files_email_recipients
-            (Admin > Sync's per-property edit panel) using the
-            st_files_daily_per_property template. A property with no
-            recipients configured is skipped, not fatal, same as a missing
-            Property Code.
+            property's own property_api_settings.st_files_email_recipients/
+            _cc/_bcc (Admin > Templates > ST Files Email (Per-Property)'s
+            own per-property panel) using the st_files_daily_per_property
+            template. A property with no recipients (To) configured is
+            skipped, not fatal, same as a missing Property Code.
 
         Shared by main.py's scheduled send_st_files_daily_email
         (mark_sent=True, the real send) and admin.py's manual "Send Test
@@ -3458,13 +3460,17 @@ class SyncService:
         boundary. Defaults to date_str for callers where they're the same.
         """
         settings_row = email_service.get_st_files_daily_settings()
+        per_property_settings = email_service.get_st_files_daily_per_property_template()
         props_res = self.supabase.table("property_api_settings").select(
             "property_name, st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
         ).order("property_name").execute()
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
-        if settings_row["split_by_property"]:
-            per_property_settings = email_service.get_st_files_daily_per_property_template()
+        # Which of the two modes runs is decided by the PER-PROPERTY
+        # template's own `enabled` flag (Admin > Templates > ST Files Email
+        # (Per-Property)) - not the bundled st_files_daily row. Mirrors that
+        # tab's own "Enabled" switch, independent of the bundled tab's.
+        if per_property_settings["enabled"]:
             included, skipped = [], []
             for p in (props_res.data or []):
                 prop = p["property_name"]
@@ -3476,7 +3482,7 @@ class SyncService:
                     continue
                 recipients = [e.strip() for e in (p.get("st_files_email_recipients") or "").split(",") if e.strip()]
                 if not recipients:
-                    skipped.append(f"{prop}: no ST Files Email Recipients configured (Admin > Sync)")
+                    skipped.append(f"{prop}: no ST Files Email Recipients configured (Admin > Templates > ST Files Email (Per-Property))")
                     continue
                 cc = [e.strip() for e in (p.get("st_files_email_cc") or "").split(",") if e.strip()]
                 bcc = [e.strip() for e in (p.get("st_files_email_bcc") or "").split(",") if e.strip()]
@@ -3559,7 +3565,6 @@ class SyncService:
                     "send_hour": settings_row["send_hour"],
                     "send_minute": settings_row["send_minute"],
                     "enabled": True,
-                    "split_by_property": settings_row["split_by_property"],
                     "last_sent_date": marker_date,
                 }).execute()
         except Exception as e:

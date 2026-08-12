@@ -127,6 +127,11 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   // triggered-by-an-action template, so these stay optional or every
   // other tab would need to carry unused schedule fields too.
   hasScheduleFields?: boolean;
+  // ST Files Email (Per-Property) only - its own on/off switch (this tab's
+  // mode, independent of the bundled tab's own Enabled) plus a per-property
+  // To/Cc/Bcc panel, both edited on this tab rather than a schedule.
+  hasEnabledToggle?: boolean;
+  hasPerPropertyRecipients?: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -215,10 +220,12 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     endpoint: "/admin/email-template/st-files-daily-per-property",
     tokens: ST_FILES_EMAIL_PER_PROPERTY_TOKENS,
     defaultNote: "No per-property ST Files email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Reserved for a future per-property send mode of the ST Files daily digest - not wired up to any delivery yet.",
+    tokenNote: "When Enabled, this replaces the bundled ST Files Email for that day's send: one separate email per property instead of one combined email. Set each property's own To/Cc/Bcc below.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
+    hasEnabledToggle: true,
+    hasPerPropertyRecipients: true,
   },
 };
 
@@ -390,6 +397,20 @@ export default function TemplatesPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
+  // ST Files Email (Per-Property) tab only (config.hasEnabledToggle) - this
+  // tab's own mode switch, separate from the bundled tab's `enabled` above.
+  const [perPropertyEnabled, setPerPropertyEnabled] = useState(false);
+
+  // Same tab's per-property To/Cc/Bcc panel (config.hasPerPropertyRecipients)
+  // - reads/writes property_api_settings directly, independent of the
+  // template save above (different resource, different save action).
+  const [recipProperty, setRecipProperty] = useState("");
+  const [recipTo, setRecipTo] = useState("");
+  const [recipCc, setRecipCc] = useState("");
+  const [recipBcc, setRecipBcc] = useState("");
+  const [recipLoading, setRecipLoading] = useState(false);
+  const [recipSaving, setRecipSaving] = useState(false);
+
   // Resize iframe to fit its content (no scrollbars)
   const handleIframeLoad = () => {
     if (iframeRef.current?.contentDocument) {
@@ -412,10 +433,56 @@ export default function TemplatesPage() {
         const names = data.map((p) => p.property_name);
         setProperties(names);
         setSelectedProperty(names[0]);
+        setRecipProperty(names[0]);
       }
     };
     fetchProperties();
   }, []);
+
+  // ST Files Email (Per-Property)'s own To/Cc/Bcc panel - reads/writes
+  // property_api_settings directly (same pattern Admin > Sync already uses
+  // for this table), independent of the template save above.
+  useEffect(() => {
+    if (!config.hasPerPropertyRecipients || !recipProperty) return;
+    const fetchRecipients = async () => {
+      setRecipLoading(true);
+      try {
+        const { data } = await supabase
+          .from("property_api_settings")
+          .select("st_files_email_recipients, st_files_email_cc, st_files_email_bcc")
+          .eq("property_name", recipProperty)
+          .single();
+        setRecipTo(data?.st_files_email_recipients || "");
+        setRecipCc(data?.st_files_email_cc || "");
+        setRecipBcc(data?.st_files_email_bcc || "");
+      } finally {
+        setRecipLoading(false);
+      }
+    };
+    fetchRecipients();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recipProperty, templateType]);
+
+  const handleSaveRecipients = async () => {
+    if (!recipProperty) return;
+    setRecipSaving(true);
+    try {
+      const { error } = await supabase
+        .from("property_api_settings")
+        .update({
+          st_files_email_recipients: recipTo,
+          st_files_email_cc: recipCc,
+          st_files_email_bcc: recipBcc,
+        })
+        .eq("property_name", recipProperty);
+      if (error) throw error;
+      alert(`Recipients saved for ${recipProperty}`);
+    } catch (err: any) {
+      alert("Error saving recipients: " + err.message);
+    } finally {
+      setRecipSaving(false);
+    }
+  };
 
   useEffect(() => {
     if (config.perProperty && !selectedProperty) return;
@@ -435,6 +502,9 @@ export default function TemplatesPage() {
             const m = result.data.send_minute ?? 0;
             setSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
             setEnabled(result.data.enabled !== false);
+          }
+          if (config.hasEnabledToggle) {
+            setPerPropertyEnabled(!!result.data.enabled);
           }
         } else {
           alert("Error loading template: " + (result.detail || result.message));
@@ -467,6 +537,9 @@ export default function TemplatesPage() {
         body.send_hour = h;
         body.send_minute = m;
         body.enabled = enabled;
+      }
+      if (config.hasEnabledToggle) {
+        body.enabled = perPropertyEnabled;
       }
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
@@ -543,6 +616,88 @@ export default function TemplatesPage() {
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
+            </div>
+          )}
+
+          {config.hasEnabledToggle && (
+            <div className="flex items-start gap-2.5 mb-6 pb-6 border-b border-slate-100">
+              <button
+                type="button"
+                onClick={() => setPerPropertyEnabled(!perPropertyEnabled)}
+                className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${perPropertyEnabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${perPropertyEnabled ? "translate-x-5" : ""}`} />
+              </button>
+              <div>
+                <div className="text-sm font-medium text-slate-700">Enabled</div>
+                <div className="text-xs text-slate-400 mt-0.5">Send N separate per-property emails instead of the bundled ST Files Email tab&apos;s one combined email.</div>
+              </div>
+            </div>
+          )}
+
+          {config.hasPerPropertyRecipients && (
+            <div className="mb-6 pb-6 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-700 mb-4">Per-Property Recipients</h3>
+              <div className="space-y-1.5 mb-4 max-w-sm">
+                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property</label>
+                <select
+                  value={recipProperty}
+                  onChange={(e) => setRecipProperty(e.target.value)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                >
+                  {properties.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+              {recipLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#AAA024]"></div>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">To</label>
+                      <input
+                        type="text"
+                        value={recipTo}
+                        onChange={(e) => setRecipTo(e.target.value)}
+                        placeholder="e.g. manager@lubd.com"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Cc</label>
+                      <input
+                        type="text"
+                        value={recipCc}
+                        onChange={(e) => setRecipCc(e.target.value)}
+                        placeholder="optional"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Bcc</label>
+                      <input
+                        type="text"
+                        value={recipBcc}
+                        onChange={(e) => setRecipBcc(e.target.value)}
+                        placeholder="optional"
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-2 ml-1">Comma-separated for multiple addresses. A property with no To configured is skipped when this mode sends.</p>
+                  <button
+                    onClick={handleSaveRecipients}
+                    disabled={recipSaving}
+                    className="mt-4 px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {recipSaving ? "Saving..." : `Save Recipients for ${recipProperty || "..."}`}
+                  </button>
+                </>
+              )}
             </div>
           )}
 

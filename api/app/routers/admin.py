@@ -99,7 +99,11 @@ class StFilesEmailSettingsUpdate(BaseModel):
     send_hour: int
     send_minute: int
     enabled: bool = True
-    split_by_property: bool = False
+
+class StFilesPerPropertyEmailTemplateUpdate(BaseModel):
+    subject: str
+    html_template: str
+    enabled: bool = False
 
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
@@ -593,7 +597,6 @@ async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate
             "send_hour": request.send_hour,
             "send_minute": request.send_minute,
             "enabled": request.enabled,
-            "split_by_property": request.split_by_property,
         }
         if existing.data:
             admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
@@ -669,16 +672,33 @@ async def save_rejection_email_template(request: EmailTemplateUpdate):
 async def get_st_files_daily_per_property_email_template():
     """
     The per-property variant of the ST Files daily digest (Admin >
-    Templates > ST Files Email (Per-Property)) - subject/body only, no
-    delivery config of its own. Used to send N separate emails (one per
-    property, each to that property's own Admin > Sync recipients) when
-    the main ST Files Email tab's "Split by property" toggle is on.
+    Templates > ST Files Email (Per-Property)) - subject/body plus its own
+    `enabled` flag, this tab's own mode switch (independent of the bundled
+    ST Files Email tab's enabled). When on, that day's send goes out as N
+    separate emails (one per property, each to that property's own To/Cc/
+    Bcc, edited on this same tab) instead of the bundled tab's one email.
     """
     return {"status": "success", "data": email_service.get_st_files_daily_per_property_template()}
 
 @router.post("/email-template/st-files-daily-per-property")
-async def save_st_files_daily_per_property_email_template(request: EmailTemplateUpdate):
-    return _save_simple_email_template(ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY, request, "ST Files Email (Per-Property)")
+async def save_st_files_daily_per_property_email_template(request: StFilesPerPropertyEmailTemplateUpdate):
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY).limit(1).execute()
+        payload = {
+            "template_key": ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
+            "subject": request.subject,
+            "html_template": request.html_template,
+            "enabled": request.enabled,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": "ST Files Email (Per-Property) settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():
@@ -699,10 +719,11 @@ async def send_st_files_daily_email_now():
         if not result.get("sent"):
             skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
+        per_property_settings = email_service.get_st_files_daily_per_property_template()
         settings_row = email_service.get_st_files_daily_settings()
         message = (
             f"Sent {len(result['included'])} separate email(s), one per property"
-            if settings_row["split_by_property"]
+            if per_property_settings["enabled"]
             else f"Sent to {settings_row['recipients']}"
         )
         return {
