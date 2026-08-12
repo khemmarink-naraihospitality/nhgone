@@ -204,7 +204,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     endpoint: "/admin/email-template/st-files-daily",
     tokens: ST_FILES_EMAIL_TOKENS,
     defaultNote: "No ST Files daily email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Sent once a day (Time to Send below) with every ready property's ST Files export CSV attached. Turn on \"Split by property\" below to send one separate email per property instead - each to that property's own recipients (Admin > Sync), using the \"ST Files Email (Per-Property)\" template.",
+    tokenNote: "Sent once a day (Time to Send below) with every ready property's ST Files export CSV attached.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
@@ -215,7 +215,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     endpoint: "/admin/email-template/st-files-daily-per-property",
     tokens: ST_FILES_EMAIL_PER_PROPERTY_TOKENS,
     defaultNote: "No per-property ST Files email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "One shared template, used to send a separate email per property when the ST Files Email tab's \"Split by property\" toggle is on. Recipients are set per property at Admin > Sync, not here - the schedule (time to send) is shared with the bundled ST Files Email tab.",
+    tokenNote: "Reserved for a future per-property send mode of the ST Files daily digest - not wired up to any delivery yet.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
@@ -387,9 +387,6 @@ export default function TemplatesPage() {
   const [recipients, setRecipients] = useState("");
   const [sendTime, setSendTime] = useState("03:00");
   const [enabled, setEnabled] = useState(true);
-  // ST Files Email tab only - toggles between the bundled single email and
-  // N separate per-property emails (Admin > Sync's own recipients).
-  const [splitByProperty, setSplitByProperty] = useState(false);
   const [sendingTest, setSendingTest] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
@@ -438,7 +435,6 @@ export default function TemplatesPage() {
             const m = result.data.send_minute ?? 0;
             setSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
             setEnabled(result.data.enabled !== false);
-            setSplitByProperty(!!result.data.split_by_property);
           }
         } else {
           alert("Error loading template: " + (result.detail || result.message));
@@ -471,7 +467,6 @@ export default function TemplatesPage() {
         body.send_hour = h;
         body.send_minute = m;
         body.enabled = enabled;
-        body.split_by_property = splitByProperty;
       }
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
@@ -578,17 +573,15 @@ export default function TemplatesPage() {
 
               {config.hasScheduleFields && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                  <div className={`space-y-1.5 ${splitByProperty ? "opacity-40" : ""}`}>
+                  <div className="space-y-1.5">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">To (comma-separated)</label>
                     <input
                       type="text"
                       value={recipients}
                       onChange={(e) => setRecipients(e.target.value)}
-                      disabled={splitByProperty}
                       placeholder="khemmarin.k@lubd.com"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900 disabled:cursor-not-allowed"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
                     />
-                    {splitByProperty && <p className="text-[11px] text-slate-400 ml-1">Not used while Split by property is on - see Admin &gt; Sync for per-property recipients.</p>}
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
@@ -608,19 +601,6 @@ export default function TemplatesPage() {
                       <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${enabled ? "translate-x-5" : ""}`} />
                     </button>
                     <span className="text-sm font-medium text-slate-700">Enabled</span>
-                  </div>
-                  <div className="flex items-start gap-2.5 md:col-span-2 pt-2 border-t border-slate-100">
-                    <button
-                      type="button"
-                      onClick={() => setSplitByProperty(!splitByProperty)}
-                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${splitByProperty ? "bg-[#AAA024]" : "bg-slate-300"}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${splitByProperty ? "translate-x-5" : ""}`} />
-                    </button>
-                    <div>
-                      <div className="text-sm font-medium text-slate-700">Split by property</div>
-                      <div className="text-xs text-slate-400 mt-0.5">Send one separate email per property (each to that property&apos;s own recipients, set at Admin &gt; Sync) instead of the single bundled email above. Uses the &quot;ST Files Email (Per-Property)&quot; template.</div>
-                    </div>
                   </div>
                 </div>
               )}
