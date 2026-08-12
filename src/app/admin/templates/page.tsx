@@ -666,51 +666,55 @@ export default function TemplatesPage() {
           {config.hasPerPropertyRecipients && (
             <div className="mb-6 pb-6 border-b border-slate-100">
               <h3 className="text-sm font-bold text-slate-700 mb-4">Per-Property Recipients</h3>
-              {recipLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#AAA024]"></div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
-                  <div className="flex items-start gap-2.5">
-                    <button
-                      type="button"
-                      onClick={() => setRecipEnabled(!recipEnabled)}
-                      className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${recipEnabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
-                    >
-                      <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${recipEnabled ? "translate-x-5" : ""}`} />
-                    </button>
-                    <div>
-                      <div className="text-sm font-medium text-slate-700">Enabled for {recipProperty || "this property"}</div>
-                      <div className="text-xs text-slate-400 mt-0.5">Send this property its own separate email instead of it joining the bundled ST Files Email.</div>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
-                    <input
-                      type="time"
-                      value={recipSendTime}
-                      onChange={(e) => setRecipSendTime(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
-                    />
-                    <p className="text-[11px] text-slate-400 ml-1">Independent of the bundled ST Files Email tab&apos;s own Time to Send, and of every other property&apos;s.</p>
-                  </div>
-                </div>
-              )}
-              <div className="space-y-1.5 mb-4 max-w-sm">
-                <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property</label>
+
+              {/* Context selector - its own visually distinct strip, since
+                  everything below it is scoped to whichever property is
+                  chosen here (same "pick the context, then configure it"
+                  shape as Billing's own property picker above). */}
+              <div className="flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 mb-5">
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest shrink-0">Property</span>
                 <select
                   value={recipProperty}
                   onChange={(e) => setRecipProperty(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                  className="flex-1 bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 text-slate-900"
                 >
                   {properties.map((p) => (
                     <option key={p} value={p}>{p}</option>
                   ))}
                 </select>
               </div>
-              {!recipLoading && (
+
+              {recipLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-[#AAA024]"></div>
+                </div>
+              ) : (
                 <>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
+                    <div className="flex items-start gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setRecipEnabled(!recipEnabled)}
+                        className={`relative w-11 h-6 rounded-full shrink-0 transition-colors mt-0.5 ${recipEnabled ? "bg-[#AAA024]" : "bg-slate-300"}`}
+                      >
+                        <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${recipEnabled ? "translate-x-5" : ""}`} />
+                      </button>
+                      <div>
+                        <div className="text-sm font-medium text-slate-700">Enabled for {recipProperty || "this property"}</div>
+                        <div className="text-xs text-slate-400 mt-0.5">Send this property its own separate email instead of it joining the bundled ST Files Email.</div>
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
+                      <input
+                        type="time"
+                        value={recipSendTime}
+                        onChange={(e) => setRecipSendTime(e.target.value)}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                      />
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1.5">
                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">To</label>
@@ -743,11 +747,11 @@ export default function TemplatesPage() {
                       />
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 mt-2 ml-1">Comma-separated for multiple addresses. A property with no To configured is skipped when this mode sends.</p>
+
                   <button
                     onClick={handleSaveRecipients}
                     disabled={recipSaving}
-                    className="mt-4 px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                    className="mt-5 px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50"
                   >
                     {recipSaving ? "Saving..." : `Save Settings for ${recipProperty || "..."}`}
                   </button>
