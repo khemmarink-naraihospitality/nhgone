@@ -45,15 +45,14 @@ DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; paddi
 </div>"""
 
 # Sentinel key for the per-property variant of the same digest (Admin >
-# Templates > ST Files Email (Per-Property)) - one shared template used to
-# send N separate emails (one per property) instead of the single bundled
-# one above, when THIS row's own `enabled` is on (its own mode switch,
-# independent of the bundled st_files_daily row's `enabled`). Recipients
-# (To/Cc/Bcc) live per-property on property_api_settings.
-# st_files_email_recipients/_cc/_bcc, edited on this same Templates tab -
-# not on this row, which stays one shared subject/body for every property.
-# Schedule (send_hour/send_minute) is still shared, read off the
-# st_files_daily row.
+# Templates > ST Files Email (Per-Property)) - one shared subject/body used
+# to send a separate email for any property that has opted in via its own
+# property_api_settings.st_files_email_enabled (edited, along with that
+# property's own To/Cc/Bcc, on this same Templates tab's per-property
+# panel) - NOT a single all-or-nothing switch on this row. A property that
+# hasn't opted in still joins the one bundled email (Admin > Templates >
+# ST Files Email) as before. Schedule (send_hour/send_minute) stays shared,
+# read off the st_files_daily row regardless of which properties opted in.
 ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY = "st_files_daily_per_property"
 DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT = "NHGOne ST Files — <<Property>> — <<Date>>"
 DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
@@ -376,35 +375,16 @@ class EmailService:
     def get_st_files_daily_per_property_template(self) -> dict:
         """
         The shared per-property variant (Admin > Templates > ST Files Email
-        (Per-Property)) - subject/body plus its own `enabled` flag, which is
-        this tab's mode switch: send_st_files_daily_digest checks THIS row's
-        enabled (not the bundled st_files_daily row's) to decide whether
-        that day's send goes out as N per-property emails instead of the
-        one bundled email. Reuses the enabled column every other
-        email_templates row already has, just newly populated here - same
-        "extra columns null/unused on other rows" pattern st_files_daily's
-        own recipients/send_hour/etc already established.
+        (Per-Property)) - subject/body only, no delivery config of its own.
+        Whether a given property actually uses this template is decided per
+        property, not here - see property_api_settings.st_files_email_enabled
+        and send_st_files_daily_digest's own docstring.
         """
-        try:
-            supabase = get_supabase_client()
-            res = supabase.table("email_templates").select("subject, html_template, enabled") \
-                .eq("template_key", ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY).limit(1).execute()
-            if res.data:
-                row = res.data[0]
-                return {
-                    "subject": row.get("subject") or DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
-                    "html_template": row.get("html_template") or DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
-                    "enabled": bool(row.get("enabled")),
-                    "is_default": False,
-                }
-        except Exception as e:
-            logger.warning(f"email_templates (st_files_daily_per_property) lookup failed, using default: {e}")
-        return {
-            "subject": DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
-            "html_template": DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
-            "enabled": False,
-            "is_default": True,
-        }
+        return self._get_template(
+            ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
+            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
+            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
+        )
 
     def _get_template(self, template_key: str, default_subject: str, default_template: str) -> dict:
         """

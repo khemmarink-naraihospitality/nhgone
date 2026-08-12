@@ -3434,19 +3434,24 @@ class SyncService:
         Property Code or that day's data are silently skipped, not fatal -
         the digest still goes out for whoever's ready.
 
-        Two delivery modes, chosen by the PER-PROPERTY template's own
-        `enabled` flag (Admin > Templates > ST Files Email (Per-Property) -
-        deliberately not the bundled st_files_daily row's enabled, which
-        only gates the bundled mode itself):
-          - off (default): the original bundled behavior - ONE email to the
-            shared `recipients` list, every ready property's CSV attached,
-            the multi-property stats table in the body.
-          - on: N separate emails, one per ready property, each to that
-            property's own property_api_settings.st_files_email_recipients/
-            _cc/_bcc (Admin > Templates > ST Files Email (Per-Property)'s
-            own per-property panel) using the st_files_daily_per_property
-            template. A property with no recipients (To) configured is
-            skipped, not fatal, same as a missing Property Code.
+        Which properties go out as their own separate email vs. join the one
+        bundled email is decided PER PROPERTY, by that property's own
+        property_api_settings.st_files_email_enabled (Admin > Templates >
+        ST Files Email (Per-Property)'s own per-property panel) - not a
+        single all-or-nothing switch:
+          - enabled (a property opts in): its own separate email, to its own
+            st_files_email_recipients/_cc/_bcc, using the
+            st_files_daily_per_property template. No recipients (To)
+            configured is skipped, not fatal, same as a missing Property
+            Code - it does NOT fall back into the bundled email below.
+          - not enabled (default): joins the one bundled email to the
+            shared `recipients` list (Admin > Templates > ST Files Email),
+            every such property's CSV attached, the multi-property stats
+            table in the body - exactly the original, pre-split behavior
+            for any property that hasn't opted in.
+        A quiet day where every property has it enabled sends zero bundled
+        emails; a quiet day where none do is the original single-email
+        behavior, unchanged.
 
         Shared by main.py's scheduled send_st_files_daily_email
         (mark_sent=True, the real send) and admin.py's manual "Send Test
@@ -3462,24 +3467,23 @@ class SyncService:
         settings_row = email_service.get_st_files_daily_settings()
         per_property_settings = email_service.get_st_files_daily_per_property_template()
         props_res = self.supabase.table("property_api_settings").select(
-            "property_name, st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
+            "property_name, st_files_email_enabled, st_files_email_recipients, "
+            "st_files_email_cc, st_files_email_bcc"
         ).order("property_name").execute()
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
-        # Which of the two modes runs is decided by the PER-PROPERTY
-        # template's own `enabled` flag (Admin > Templates > ST Files Email
-        # (Per-Property)) - not the bundled st_files_daily row. Mirrors that
-        # tab's own "Enabled" switch, independent of the bundled tab's.
-        if per_property_settings["enabled"]:
-            included, skipped = [], []
-            for p in (props_res.data or []):
-                prop = p["property_name"]
-                try:
-                    text, filename = self.get_st_report_export(prop, date_str)
-                    row = self._get_st_report_row(prop, date_str)
-                except Exception as e:
-                    skipped.append(f"{prop}: {str(e)[:150]}")
-                    continue
+        included, skipped = [], []
+        bundled_attachments, bundled_table_rows = [], []
+        for p in (props_res.data or []):
+            prop = p["property_name"]
+            try:
+                text, filename = self.get_st_report_export(prop, date_str)
+                row = self._get_st_report_row(prop, date_str)
+            except Exception as e:
+                skipped.append(f"{prop}: {str(e)[:150]}")
+                continue
+
+            if p.get("st_files_email_enabled"):
                 recipients = [e.strip() for e in (p.get("st_files_email_recipients") or "").split(",") if e.strip()]
                 if not recipients:
                     skipped.append(f"{prop}: no ST Files Email Recipients configured (Admin > Templates > ST Files Email (Per-Property))")
@@ -3500,43 +3504,28 @@ class SyncService:
                     recipients, subject, html_body, [(filename, text.encode("utf-8"))],
                     cc_emails=cc, bcc_emails=bcc)
                 included.append(prop)
-
-            if not included:
-                return {"sent": False, "included": included, "skipped": skipped}
-            if mark_sent:
-                self._mark_st_files_daily_sent(settings_row, sent_date_str or date_str)
-            return {"sent": True, "included": included, "skipped": skipped}
-
-        attachments, included, skipped, table_rows = [], [], [], []
-        for p in (props_res.data or []):
-            prop = p["property_name"]
-            try:
-                text, filename = self.get_st_report_export(prop, date_str)
-                attachments.append((filename, text.encode("utf-8")))
+            else:
+                bundled_attachments.append((filename, text.encode("utf-8")))
+                bundled_table_rows.append({"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]})
                 included.append(prop)
-                # Same (property, date) lookup get_st_report_export just did,
-                # so it's guaranteed to succeed too - no new failure mode.
-                row = self._get_st_report_row(prop, date_str)
-                table_rows.append({"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]})
-            except Exception as e:
-                skipped.append(f"{prop}: {str(e)[:150]}")
 
-        if not attachments:
+        if bundled_attachments:
+            recipients = [e.strip() for e in (settings_row["recipients"] or "").split(",") if e.strip()]
+            if not recipients:
+                for row in bundled_table_rows:
+                    included.remove(row["property_name"])
+                    skipped.append(f"{row['property_name']}: bundled ST Files Email has no recipients configured (Admin > Templates)")
+            else:
+                subject = settings_row["subject"].replace("<<Date>>", date_display)
+                html_body = settings_row["html_template"] \
+                    .replace("<<Date>>", date_display) \
+                    .replace("<<PropertyCount>>", str(len(bundled_table_rows))) \
+                    .replace("<<PropertyList>>", ", ".join(r["property_name"] for r in bundled_table_rows)) \
+                    .replace("<<StatsTable>>", self._build_st_files_summary_table(bundled_table_rows))
+                email_service.send_email_with_attachments(recipients, subject, html_body, bundled_attachments)
+
+        if not included:
             return {"sent": False, "included": included, "skipped": skipped}
-
-        recipients = [e.strip() for e in (settings_row["recipients"] or "").split(",") if e.strip()]
-        if not recipients:
-            return {"sent": False, "included": included, "skipped": skipped}
-
-        subject = settings_row["subject"].replace("<<Date>>", date_display)
-        html_body = settings_row["html_template"] \
-            .replace("<<Date>>", date_display) \
-            .replace("<<PropertyCount>>", str(len(included))) \
-            .replace("<<PropertyList>>", ", ".join(included)) \
-            .replace("<<StatsTable>>", self._build_st_files_summary_table(table_rows))
-
-        email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
-
         if mark_sent:
             self._mark_st_files_daily_sent(settings_row, sent_date_str or date_str)
 

@@ -100,11 +100,6 @@ class StFilesEmailSettingsUpdate(BaseModel):
     send_minute: int
     enabled: bool = True
 
-class StFilesPerPropertyEmailTemplateUpdate(BaseModel):
-    subject: str
-    html_template: str
-    enabled: bool = False
-
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
     """
@@ -672,33 +667,17 @@ async def save_rejection_email_template(request: EmailTemplateUpdate):
 async def get_st_files_daily_per_property_email_template():
     """
     The per-property variant of the ST Files daily digest (Admin >
-    Templates > ST Files Email (Per-Property)) - subject/body plus its own
-    `enabled` flag, this tab's own mode switch (independent of the bundled
-    ST Files Email tab's enabled). When on, that day's send goes out as N
-    separate emails (one per property, each to that property's own To/Cc/
-    Bcc, edited on this same tab) instead of the bundled tab's one email.
+    Templates > ST Files Email (Per-Property)) - subject/body only, shared
+    across every property. Whether a given property actually gets its own
+    separate email using this template is decided per property (see
+    property_api_settings.st_files_email_enabled, edited on this same tab's
+    per-property panel), not by anything on this row.
     """
     return {"status": "success", "data": email_service.get_st_files_daily_per_property_template()}
 
 @router.post("/email-template/st-files-daily-per-property")
-async def save_st_files_daily_per_property_email_template(request: StFilesPerPropertyEmailTemplateUpdate):
-    try:
-        admin_supabase = get_supabase_client()
-        existing = admin_supabase.table("email_templates").select("id") \
-            .eq("template_key", ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY).limit(1).execute()
-        payload = {
-            "template_key": ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
-            "subject": request.subject,
-            "html_template": request.html_template,
-            "enabled": request.enabled,
-        }
-        if existing.data:
-            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
-        else:
-            admin_supabase.table("email_templates").insert(payload).execute()
-        return {"status": "success", "message": "ST Files Email (Per-Property) settings saved"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+async def save_st_files_daily_per_property_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY, request, "ST Files Email (Per-Property)")
 
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():
@@ -709,9 +688,10 @@ async def send_st_files_daily_email_now():
     daily_auto_sync_st_files' docstring on why "today" would be an
     incomplete, still-in-progress day) - this is meant to test the exact
     same path production uses, not a different one, including whichever
-    delivery mode (bundled vs. split-by-property) is currently saved.
-    mark_sent=False so this never marks anything as already-sent, meaning
-    it can't suppress the real scheduled send for the same day.
+    per-property mix of bundled vs. split-by-property is currently
+    configured (see send_st_files_daily_digest's own docstring). mark_sent=
+    False so this never marks anything as already-sent, meaning it can't
+    suppress the real scheduled send for the same day.
     """
     try:
         report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
@@ -719,16 +699,9 @@ async def send_st_files_daily_email_now():
         if not result.get("sent"):
             skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
-        per_property_settings = email_service.get_st_files_daily_per_property_template()
-        settings_row = email_service.get_st_files_daily_settings()
-        message = (
-            f"Sent {len(result['included'])} separate email(s), one per property"
-            if per_property_settings["enabled"]
-            else f"Sent to {settings_row['recipients']}"
-        )
         return {
             "status": "success",
-            "message": message,
+            "message": f"Sent for {len(result['included'])} propert(y/ies)",
             "included": result["included"],
             "skipped": result["skipped"],
         }
