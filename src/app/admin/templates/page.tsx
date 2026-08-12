@@ -756,9 +756,9 @@ export default function TemplatesPage() {
                   <button
                     onClick={handleSaveRecipients}
                     disabled={recipSaving}
-                    className="mt-5 px-6 py-2.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold transition-all active:scale-[0.98] disabled:opacity-50"
+                    className="mt-5 px-6 py-2.5 bg-[#AAA024] hover:bg-[#8f871e] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#AAA024]/20 transition-all active:scale-[0.98] disabled:opacity-50"
                   >
-                    {recipSaving ? "Saving..." : `Save Settings for ${recipProperty || "..."}`}
+                    {recipSaving ? "Saving..." : "Save"}
                   </button>
                 </>
               )}
