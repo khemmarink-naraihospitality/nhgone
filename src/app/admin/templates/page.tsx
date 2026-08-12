@@ -606,7 +606,7 @@ export default function TemplatesPage() {
     <div className="p-8 bg-white min-h-screen text-slate-900 font-sans">
       <PageHeader
         title="Templates"
-        description="Edit the printable HTML templates per property (Billing, RR3), every system email (account creation, password reset, access rejection), and the daily ST Files export email."
+        description="Edit the printable HTML templates per property, and Email Templates."
       />
 
       {/* Own row rather than PageHeader's title-row slot: that row is a
