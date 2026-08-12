@@ -44,16 +44,14 @@ DEFAULT_ST_FILES_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; paddi
   </table>
 </div>"""
 
-# Sentinel key for the per-property variant of the same digest (Admin >
-# Templates > ST Files Email (Per-Property)) - one shared subject/body used
-# to send a separate email for any property that has opted in via its own
-# property_api_settings.st_files_email_enabled (edited, along with that
-# property's own To/Cc/Bcc, on this same Templates tab's per-property
-# panel) - NOT a single all-or-nothing switch on this row. A property that
-# hasn't opted in still joins the one bundled email (Admin > Templates >
-# ST Files Email) as before. Schedule (send_hour/send_minute) stays shared,
-# read off the st_files_daily row regardless of which properties opted in.
-ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY = "st_files_daily_per_property"
+# Built-in fallback subject/body for the per-property ST Files email
+# (Admin > Templates > Statistic Files > Per-Property) - used whenever a
+# property hasn't saved its own custom subject/template on
+# property_api_settings.st_files_email_subject/_template, same
+# "null falls back to this constant" pattern every other template in this
+# app uses. Each property is independently customizable, edited on that
+# same per-property panel alongside To/Cc/Bcc/Enabled/Time to Send - there
+# is no shared/global row for this template anymore.
 DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT = "NHGOne ST Files — <<Property>> — <<Date>>"
 DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
@@ -371,20 +369,6 @@ class EmailService:
             "last_sent_date": None,
             "is_default": True,
         }
-
-    def get_st_files_daily_per_property_template(self) -> dict:
-        """
-        The shared per-property variant (Admin > Templates > ST Files Email
-        (Per-Property)) - subject/body only, no delivery config of its own.
-        Whether a given property actually uses this template is decided per
-        property, not here - see property_api_settings.st_files_email_enabled
-        and send_st_files_daily_digest's own docstring.
-        """
-        return self._get_template(
-            ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
-            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
-            DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
-        )
 
     def _get_template(self, template_key: str, default_subject: str, default_template: str) -> dict:
         """

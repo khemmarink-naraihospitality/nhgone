@@ -9,7 +9,6 @@ from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
 from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
-    ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, REJECTION_TEMPLATE_KEY,
 )
@@ -662,22 +661,6 @@ async def get_rejection_email_template():
 @router.post("/email-template/rejection")
 async def save_rejection_email_template(request: EmailTemplateUpdate):
     return _save_simple_email_template(REJECTION_TEMPLATE_KEY, request, "Rejection")
-
-@router.get("/email-template/st-files-daily-per-property")
-async def get_st_files_daily_per_property_email_template():
-    """
-    The per-property variant of the ST Files daily digest (Admin >
-    Templates > ST Files Email (Per-Property)) - subject/body only, shared
-    across every property. Whether a given property actually gets its own
-    separate email using this template is decided per property (see
-    property_api_settings.st_files_email_enabled, edited on this same tab's
-    per-property panel), not by anything on this row.
-    """
-    return {"status": "success", "data": email_service.get_st_files_daily_per_property_template()}
-
-@router.post("/email-template/st-files-daily-per-property")
-async def save_st_files_daily_per_property_email_template(request: EmailTemplateUpdate):
-    return _save_simple_email_template(ST_FILES_DAILY_PER_PROPERTY_TEMPLATE_KEY, request, "ST Files Email (Per-Property)")
 
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():

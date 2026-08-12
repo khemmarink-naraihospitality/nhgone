@@ -130,6 +130,24 @@ const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
   { name: "StatsTable", description: "Pre-built HTML table, one row per property: Property, Code, Spaces, Occupied, House Uses, Out of Order, Availability, Customers, Arrivals, Departures, Complimentary, No. of Day" },
 ];
 
+// Mirrors DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT/TEMPLATE in
+// api/app/services/email_service.py exactly - the built-in fallback shown
+// when a property hasn't saved its own custom Subject/HTML yet (Admin >
+// Templates > Statistic Files > Per-Property panel).
+const DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT = "NHGOne ST Files — <<Property>> — <<Date>>";
+const DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE = `<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files Daily Export</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily ST statistics export for <b><<Property>></b> (<<PropertyCode>>), <b><<Date>></b>, attached as a CSV.</p>
+        <<StatsTable>>
+      </td>
+    </tr>
+  </table>
+</div>`;
+
 const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
   { name: "Date", description: "Report date (DD/MM/YYYY)" },
   { name: "Property", description: "This email's one property name" },
@@ -139,7 +157,10 @@ const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
 
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
-  endpoint: string;
+  // Absent for tabs whose editor isn't driven by this generic fetch/save
+  // system at all - currently just st_files_email_per_property, whose
+  // Subject/HTML are edited per-property instead (see hasPerPropertyRecipients).
+  endpoint?: string;
   tokens: TokenDoc[];
   defaultNote: string;
   tokenNote: string;
@@ -151,9 +172,15 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   // triggered-by-an-action template, so these stay optional or every
   // other tab would need to carry unused schedule fields too.
   hasScheduleFields?: boolean;
-  // ST Files Email (Per-Property) only - a per-property Enabled/To/Cc/Bcc
-  // panel (each property opts in independently), edited on this tab.
+  // ST Files Email (Per-Property) only - a per-property Enabled/To/Cc/Bcc/
+  // Subject/HTML panel (each property fully independent), edited on this
+  // tab instead of the generic single-endpoint fetch/save system below -
+  // see hasOwnEditor.
   hasPerPropertyRecipients?: boolean;
+  // True for tabs whose whole editor (Subject/Preview/Code/Save) is
+  // replaced by their own bespoke UI - skips the generic fetchTemplate
+  // effect and the generic Subject/Preview/Code/Save block entirely.
+  hasOwnEditor?: boolean;
 }> = {
   billing: {
     label: "Billing",
@@ -239,14 +266,12 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   },
   st_files_email_per_property: {
     label: "Per-Property",
-    endpoint: "/admin/email-template/st-files-daily-per-property",
     tokens: ST_FILES_EMAIL_PER_PROPERTY_TOKENS,
-    defaultNote: "No per-property ST Files email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Any property with Enabled turned on below gets its own separate email using this template instead of joining the bundled ST Files Email for that day's send.",
+    defaultNote: "",
+    tokenNote: "Each property below has its own independent Subject/HTML, not a shared template - a property with Enabled turned on gets its own separate email instead of joining the bundled All Property email for that day's send.",
     perProperty: false,
-    hasSubject: true,
-    previewable: true,
     hasPerPropertyRecipients: true,
+    hasOwnEditor: true,
   },
 };
 
@@ -430,6 +455,9 @@ export default function TemplatesPage() {
   const [recipCc, setRecipCc] = useState("");
   const [recipBcc, setRecipBcc] = useState("");
   const [recipSendTime, setRecipSendTime] = useState("03:00");
+  const [recipSubject, setRecipSubject] = useState(DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT);
+  const [recipHtml, setRecipHtml] = useState(DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE);
+  const [recipViewMode, setRecipViewMode] = useState<"preview" | "code">("preview");
   const [recipLoading, setRecipLoading] = useState(false);
   const [recipSaving, setRecipSaving] = useState(false);
 
@@ -471,7 +499,7 @@ export default function TemplatesPage() {
       try {
         const { data } = await supabase
           .from("property_api_settings")
-          .select("st_files_email_enabled, st_files_email_recipients, st_files_email_cc, st_files_email_bcc, st_files_email_hour, st_files_email_minute")
+          .select("st_files_email_enabled, st_files_email_recipients, st_files_email_cc, st_files_email_bcc, st_files_email_hour, st_files_email_minute, st_files_email_subject, st_files_email_template")
           .eq("property_name", recipProperty)
           .single();
         setRecipEnabled(!!data?.st_files_email_enabled);
@@ -481,6 +509,9 @@ export default function TemplatesPage() {
         const h = data?.st_files_email_hour ?? 3;
         const m = data?.st_files_email_minute ?? 0;
         setRecipSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
+        setRecipSubject(data?.st_files_email_subject || DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT);
+        setRecipHtml(data?.st_files_email_template || DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE);
+        setRecipViewMode("preview");
       } finally {
         setRecipLoading(false);
       }
@@ -490,7 +521,7 @@ export default function TemplatesPage() {
   }, [recipProperty, templateType]);
 
   const handleSaveRecipients = async () => {
-    if (!recipProperty) return;
+    if (!recipProperty || !recipHtml.trim() || !recipSubject.trim()) return;
     setRecipSaving(true);
     try {
       const [h, m] = recipSendTime.split(":").map(Number);
@@ -503,10 +534,12 @@ export default function TemplatesPage() {
           st_files_email_bcc: recipBcc,
           st_files_email_hour: h,
           st_files_email_minute: m,
+          st_files_email_subject: recipSubject,
+          st_files_email_template: recipHtml,
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
-      alert(`Recipients saved for ${recipProperty}`);
+      alert(`Settings saved for ${recipProperty}`);
     } catch (err: any) {
       alert("Error saving recipients: " + err.message);
     } finally {
@@ -515,6 +548,7 @@ export default function TemplatesPage() {
   };
 
   useEffect(() => {
+    if (config.hasOwnEditor) return;
     if (config.perProperty && !selectedProperty) return;
     const fetchTemplate = async () => {
       setLoading(true);
@@ -551,6 +585,7 @@ export default function TemplatesPage() {
   }, [templateType]);
 
   const handleSave = async () => {
+    if (config.hasOwnEditor) return;
     if ((config.perProperty && !selectedProperty) || !html.trim()) return;
     if (config.hasSubject && !subject.trim()) return;
     setSaving(true);
@@ -750,6 +785,56 @@ export default function TemplatesPage() {
                     </div>
                   </div>
 
+                  <div className="space-y-1.5 mt-5 mb-4">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Subject</label>
+                    <input
+                      type="text"
+                      value={recipSubject}
+                      onChange={(e) => setRecipSubject(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                    />
+                  </div>
+
+                  <div className="flex bg-slate-100 rounded-xl p-1 gap-1 mb-4 w-fit">
+                    <button
+                      onClick={() => setRecipViewMode("preview")}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${recipViewMode === "preview" ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                      Preview
+                    </button>
+                    <button
+                      onClick={() => setRecipViewMode("code")}
+                      className={`flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${recipViewMode === "code" ? "bg-white text-[#152A00] shadow-sm" : "text-slate-400 hover:text-slate-600"}`}
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4-4 4M7 8l-4 4 4 4M14 4l-4 16" /></svg>
+                      HTML Code
+                    </button>
+                  </div>
+
+                  {recipViewMode === "preview" ? (
+                    <div className="bg-slate-100 rounded-2xl p-5 border border-slate-200/70">
+                      <iframe
+                        title={`${recipProperty || "Per-Property"} preview`}
+                        srcDoc={renderPreviewHtml(recipHtml, {
+                          Date: "06/08/2026",
+                          Property: recipProperty || "Property Name",
+                          PropertyCode: "XX",
+                          StatsTable: buildStFilesStatsTableSample(1),
+                        })}
+                        className="w-full bg-white rounded-xl border border-slate-200/70 shadow-md"
+                        style={{ minHeight: "480px" }}
+                      />
+                    </div>
+                  ) : (
+                    <textarea
+                      value={recipHtml}
+                      onChange={(e) => setRecipHtml(e.target.value)}
+                      spellCheck={false}
+                      className="w-full h-[480px] bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-xs font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                    />
+                  )}
+
                   <button
                     onClick={handleSaveRecipients}
                     disabled={recipSaving}
@@ -762,14 +847,14 @@ export default function TemplatesPage() {
             </div>
           )}
 
-          {isDefault && !loading && (
+          {!config.hasOwnEditor && isDefault && !loading && (
             <div className="mb-6 flex items-start gap-2.5 text-xs text-amber-800 bg-amber-50 border border-amber-200/70 rounded-2xl px-4 py-3">
               <svg className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
               <span>{config.defaultNote}</span>
             </div>
           )}
 
-          {loading ? (
+          {!config.hasOwnEditor && (loading ? (
             <div className="flex justify-center py-20">
               <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#AAA024]"></div>
             </div>
@@ -876,7 +961,7 @@ export default function TemplatesPage() {
                 </button>
               )}
             </>
-          )}
+          ))}
         </div>
 
         <div className="bg-white border border-slate-200/80 rounded-[28px] p-6 shadow-[0_20px_60px_-15px_rgba(21,42,0,0.08)]">

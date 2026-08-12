@@ -10,7 +10,10 @@ import asyncio
 from collections import Counter
 from app.services.mews_client import mews_client
 from app.services.encryption import encryption_service
-from app.services.email_service import email_service, ST_FILES_DAILY_TEMPLATE_KEY, _escape_html
+from app.services.email_service import (
+    email_service, ST_FILES_DAILY_TEMPLATE_KEY, _escape_html,
+    DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT, DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
+)
 from app.services import ftp_service
 from app.services.rr4_tm30_reference import RR4_NATIONALITY_CODE, TM30_NATIONALITY_CODE
 from openpyxl import Workbook
@@ -3463,13 +3466,25 @@ class SyncService:
         powers the History section on /st-files. sync_type defaults to
         "auto" for the real per-property scheduler; send_st_files_daily_
         digest (manual "Send Test Now") passes "manual" instead.
+
+        Subject/HTML are per-property (property_api_settings.
+        st_files_email_subject/_template, edited on the same Admin >
+        Templates > Statistic Files > Per-Property panel as the recipients
+        below) - null falls back to the built-in
+        DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT/TEMPLATE, same pattern
+        every other template in this app uses. Each property can now have
+        a fully different subject/body, not just a shared one with tokens.
         """
-        per_property_settings = email_service.get_st_files_daily_per_property_template()
         p_res = self.supabase.table("property_api_settings").select(
-            "id, st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
+            "id, st_files_email_recipients, st_files_email_cc, st_files_email_bcc, "
+            "st_files_email_subject, st_files_email_template"
         ).eq("property_name", property_name).limit(1).execute()
         p = p_res.data[0] if p_res.data else {}
         prop_id = p.get("id")
+        per_property_settings = {
+            "subject": p.get("st_files_email_subject") or DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT,
+            "html_template": p.get("st_files_email_template") or DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
+        }
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
         try:
@@ -3482,7 +3497,7 @@ class SyncService:
 
         recipients = [e.strip() for e in (p.get("st_files_email_recipients") or "").split(",") if e.strip()]
         if not recipients:
-            reason = f"{property_name}: no ST Files Email Recipients configured (Admin > Templates > ST Files Email (Per-Property))"
+            reason = f"{property_name}: no ST Files Email Recipients configured (Admin > Templates > Statistic Files > Per-Property)"
             self._log_sync_row(property_name, prop_id, "ST Files Email (Per-Property)", "error", 0, reason, sync_type)
             return {"sent": False, "skipped": reason}
         cc = [e.strip() for e in (p.get("st_files_email_cc") or "").split(",") if e.strip()]
