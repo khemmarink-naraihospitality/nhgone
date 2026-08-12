@@ -639,13 +639,14 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
 
 async def send_st_files_daily_email(match_hour_only: bool = False):
     """
-    Once-daily email (Admin > Templates > ST Files Email) with every ready
-    property's ST export CSV attached. Piggybacks the same /sync/auto cron
-    tick daily_auto_sync_st_files above uses rather than getting its own
-    dedicated cron entry - unlike BCP's 5-minute snapshots (see
-    trigger_auto_sync's own note on why BCP needed one), a once-a-day send
-    is coarser than the hourly cron already fires, so hour-matching here is
-    all the precision this needs.
+    Once-daily BUNDLED email (Admin > Templates > ST Files Email) - every
+    property that hasn't opted into its own separate email (see
+    send_st_files_per_property_emails below) gets its CSV attached here.
+    Piggybacks the same /sync/auto cron tick daily_auto_sync_st_files above
+    uses rather than getting its own dedicated cron entry - unlike BCP's
+    5-minute snapshots (see trigger_auto_sync's own note on why BCP needed
+    one), a once-a-day send is coarser than the hourly cron already fires,
+    so hour-matching here is all the precision this needs.
 
     last_sent_date (on the same settings row get_st_files_daily_settings
     reads) is the same-day dedup guard - production's hourly cron would
@@ -681,13 +682,67 @@ async def send_st_files_daily_email(match_hour_only: bool = False):
     # this same hour is still caught correctly.
     report_date_str = (now.date() - timedelta(days=1)).isoformat()
     try:
-        result = await sync_service.send_st_files_daily_digest(report_date_str, sent_date_str=today_str)
+        result = await sync_service.send_st_files_bundled_digest(report_date_str, sent_date_str=today_str)
         if result["sent"]:
-            print(f"[{now.isoformat()}] ST Files daily email sent: {len(result['included'])} included, {len(result['skipped'])} skipped.")
+            print(f"[{now.isoformat()}] ST Files bundled email sent: {len(result['included'])} included, {len(result['skipped'])} skipped.")
         else:
-            print(f"[{now.isoformat()}] ST Files daily email: nothing ready to send yet ({len(result['skipped'])} propert(y/ies) not ready).")
+            print(f"[{now.isoformat()}] ST Files bundled email: nothing ready to send yet ({len(result['skipped'])} propert(y/ies) not ready).")
     except Exception as e:
         print(f"Error in send_st_files_daily_email: {str(e)}")
+
+async def send_st_files_per_property_emails(match_hour_only: bool = False):
+    """
+    Per-property ST Files emails (Admin > Templates > ST Files Email
+    (Per-Property)) - each property that has opted in (property_api_
+    settings.st_files_email_enabled) gets its own separate email, sent at
+    ITS OWN st_files_email_hour/_minute, fully independent of the bundled
+    email's schedule above and of every other opted-in property's own time.
+
+    Same match_hour_only split as daily_auto_sync_rv/_rr4_tm30/_st_files:
+    exact minute match locally (per-minute APScheduler tick), hour-only in
+    production (Vercel's cron is hourly and not guaranteed to land on :00).
+    Filtering happens in the query itself (.eq(hour_col, now.hour), same
+    pattern those three use) rather than a Python loop over every property.
+
+    st_files_email_last_sent_date is this property's own same-day dedup
+    guard (mirrors send_st_files_daily_email's last_sent_date, just kept
+    per-property since each property's send time can differ) - without it,
+    production's hourly cron would resend for every remaining tick within
+    the matching hour.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, st_files_email_hour, st_files_email_minute, st_files_email_last_sent_date") \
+            .eq("st_files_email_enabled", True)
+        if match_hour_only:
+            query = query.eq("st_files_email_hour", now.hour)
+        else:
+            query = query.eq("st_files_email_hour", now.hour).eq("st_files_email_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        print(f"Error in send_st_files_per_property_emails (fetching properties): {str(e)}")
+        return
+
+    today_str = now.date().isoformat()
+    # The report attached is YESTERDAY's, same convention as every other
+    # ST Files auto-* job - see daily_auto_sync_st_files' own docstring.
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
+    for p in items:
+        if p.get("st_files_email_last_sent_date") == today_str:
+            continue
+        try:
+            result = await sync_service.send_st_files_property_email(
+                p["property_name"], report_date_str, sent_date_str=today_str)
+            if result["sent"]:
+                print(f"[{now.isoformat()}] ST Files per-property email sent for {p['property_name']}.")
+            else:
+                print(f"[{now.isoformat()}] ST Files per-property email for {p['property_name']}: {result['skipped']}")
+        except Exception as e:
+            print(f"Error in send_st_files_per_property_emails for {p['property_name']}: {str(e)}")
 
 async def send_st_files_ftp_upload_job(match_hour_only: bool = False):
     """
@@ -1012,8 +1067,10 @@ async def start_scheduler():
     scheduler.add_job(daily_auto_sync_rr4_tm30, 'cron', second=0)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
     scheduler.add_job(daily_auto_sync_rv, 'cron', second=0)
-    # ST Files daily email digest - own configurable send_hour/minute.
+    # ST Files daily email digest (bundled) - own configurable send_hour/minute.
     scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
+    # ST Files per-property emails - each opted-in property's own send time.
+    scheduler.add_job(send_st_files_per_property_emails, 'cron', second=0)
     # ST Files daily FTP upload - own separate configurable upload_hour/minute.
     scheduler.add_job(send_st_files_ftp_upload_job, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
@@ -1047,8 +1104,10 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(daily_auto_sync_rr4_tm30, match_hour_only=True)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
     background_tasks.add_task(daily_auto_sync_rv, match_hour_only=True)
-    # ST Files daily email digest - own configurable send_hour/minute.
+    # ST Files daily email digest (bundled) - own configurable send_hour/minute.
     background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
+    # ST Files per-property emails - each opted-in property's own send time.
+    background_tasks.add_task(send_st_files_per_property_emails, match_hour_only=True)
     # ST Files daily FTP upload - own separate configurable upload_hour/minute.
     background_tasks.add_task(send_st_files_ftp_upload_job, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)

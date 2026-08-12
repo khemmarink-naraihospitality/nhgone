@@ -404,6 +404,7 @@ export default function TemplatesPage() {
   const [recipTo, setRecipTo] = useState("");
   const [recipCc, setRecipCc] = useState("");
   const [recipBcc, setRecipBcc] = useState("");
+  const [recipSendTime, setRecipSendTime] = useState("03:00");
   const [recipLoading, setRecipLoading] = useState(false);
   const [recipSaving, setRecipSaving] = useState(false);
 
@@ -445,13 +446,16 @@ export default function TemplatesPage() {
       try {
         const { data } = await supabase
           .from("property_api_settings")
-          .select("st_files_email_enabled, st_files_email_recipients, st_files_email_cc, st_files_email_bcc")
+          .select("st_files_email_enabled, st_files_email_recipients, st_files_email_cc, st_files_email_bcc, st_files_email_hour, st_files_email_minute")
           .eq("property_name", recipProperty)
           .single();
         setRecipEnabled(!!data?.st_files_email_enabled);
         setRecipTo(data?.st_files_email_recipients || "");
         setRecipCc(data?.st_files_email_cc || "");
         setRecipBcc(data?.st_files_email_bcc || "");
+        const h = data?.st_files_email_hour ?? 3;
+        const m = data?.st_files_email_minute ?? 0;
+        setRecipSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
       } finally {
         setRecipLoading(false);
       }
@@ -464,6 +468,7 @@ export default function TemplatesPage() {
     if (!recipProperty) return;
     setRecipSaving(true);
     try {
+      const [h, m] = recipSendTime.split(":").map(Number);
       const { error } = await supabase
         .from("property_api_settings")
         .update({
@@ -471,6 +476,8 @@ export default function TemplatesPage() {
           st_files_email_recipients: recipTo,
           st_files_email_cc: recipCc,
           st_files_email_bcc: recipBcc,
+          st_files_email_hour: h,
+          st_files_email_minute: m,
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
@@ -644,6 +651,16 @@ export default function TemplatesPage() {
                       <div className="text-sm font-medium text-slate-700">Enabled for {recipProperty || "this property"}</div>
                       <div className="text-xs text-slate-400 mt-0.5">Send this property its own separate email instead of it joining the bundled ST Files Email.</div>
                     </div>
+                  </div>
+                  <div className="space-y-1.5 mb-4 max-w-xs">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Time to Send (Asia/Bangkok)</label>
+                    <input
+                      type="time"
+                      value={recipSendTime}
+                      onChange={(e) => setRecipSendTime(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                    />
+                    <p className="text-[11px] text-slate-400 ml-1">Independent of the bundled ST Files Email tab&apos;s own Time to Send, and of every other property&apos;s.</p>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1.5">
