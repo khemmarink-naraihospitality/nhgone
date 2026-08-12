@@ -116,6 +116,27 @@ interface StFilesListRow {
   synced_at?: string;
 }
 
+// History section - past FTP uploads and email sends for this property,
+// read straight from sync_logs (same table/row shape Admin > Sync's own
+// Recent Activity widget reads, just scoped here to one property and to
+// the 3 target_table values this page cares about).
+interface HistoryLogRow {
+  id: string;
+  created_at: string;
+  target_table: string;
+  sync_type: string;
+  status: string;
+  message: string;
+}
+
+const HISTORY_TARGET_TABLES = ["ST Files FTP", "ST Files Email", "ST Files Email (Per-Property)"] as const;
+
+const HISTORY_TAG: Record<string, { label: string; cls: string }> = {
+  "ST Files FTP": { label: "FTP UPLOAD", cls: "bg-cyan-500/10 text-cyan-700 border-cyan-500/20" },
+  "ST Files Email": { label: "EMAIL (BUNDLED)", cls: "bg-rose-500/10 text-rose-700 border-rose-500/20" },
+  "ST Files Email (Per-Property)": { label: "EMAIL (PER-PROPERTY)", cls: "bg-amber-500/10 text-amber-700 border-amber-500/20" },
+};
+
 type DataSource = "live" | "database";
 
 const TABS = [
@@ -153,6 +174,8 @@ export default function StFilesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [historyLogs, setHistoryLogs] = useState<HistoryLogRow[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   // Collapsed by default, same as BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -191,6 +214,7 @@ export default function StFilesPage() {
     if (selectedProperty) {
       fetchReport();
       fetchList();
+      fetchHistory();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
@@ -238,6 +262,30 @@ export default function StFilesPage() {
       // swallow - the single-day report above is the primary view
     } finally {
       setListLoading(false);
+    }
+  };
+
+  // History section's own rows - past FTP uploads and email sends (bundled
+  // + per-property) for this property, direct from sync_logs (same table
+  // Admin > Sync's own Recent Activity widget reads), scoped here to just
+  // the selected property and the 3 target_tables this page produces.
+  // Non-critical if it fails, same reasoning as fetchList above.
+  const fetchHistory = async () => {
+    if (!selectedProperty) return;
+    setHistoryLoading(true);
+    try {
+      const { data } = await supabase
+        .from("sync_logs")
+        .select("id, created_at, target_table, sync_type, status, message")
+        .eq("property", selectedProperty)
+        .in("target_table", HISTORY_TARGET_TABLES)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      setHistoryLogs(data || []);
+    } catch {
+      // swallow - same non-critical reasoning as fetchList
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -786,6 +834,54 @@ export default function StFilesPage() {
                       </div>
                     </td>
                   </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-serif text-[var(--text-primary)]">History</h2>
+            {historyLoading && <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Loading...</span>}
+          </div>
+          <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-max">
+              <thead>
+                <tr className="bg-[var(--text-primary)]/5">
+                  <th className={thCls}>Date/Time</th>
+                  <th className={thCls}>Action</th>
+                  <th className={thCls}>Trigger</th>
+                  <th className={thCls}>Status</th>
+                  <th className={thCls}>Message</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--text-primary)]/5">
+                {historyLogs.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                      {selectedProperty ? "No email or FTP activity for this property yet." : "Select a property to see its email/FTP history."}
+                    </td>
+                  </tr>
+                ) : historyLogs.map((log) => {
+                  const tag = HISTORY_TAG[log.target_table] ?? { label: log.target_table.toUpperCase(), cls: "bg-[var(--text-primary)]/5 text-[var(--text-primary)]/50 border-[var(--text-primary)]/14" };
+                  return (
+                    <tr key={log.id} className="hover:bg-[var(--text-primary)]/[0.02]">
+                      <td className={tdCls}>{fmtDateTime(log.created_at)}</td>
+                      <td className={tdCls}>
+                        <span className={`inline-block px-2 py-0.5 border text-[9px] font-bold tracked-caps ${tag.cls}`}>{tag.label}</span>
+                      </td>
+                      <td className={`${tdCls} capitalize text-[var(--text-primary)]/50`}>{log.sync_type}</td>
+                      <td className={tdCls}>
+                        {log.status === "success" ? (
+                          <span className="inline-block px-2 py-0.5 border text-[9px] font-bold tracked-caps bg-emerald-500/10 text-emerald-700 border-emerald-500/20">Success</span>
+                        ) : (
+                          <span className="inline-block px-2 py-0.5 border text-[9px] font-bold tracked-caps bg-red-500/10 text-red-700 border-red-500/20">Error</span>
+                        )}
+                      </td>
+                      <td className={`${tdCls} max-w-lg whitespace-normal text-[var(--text-primary)]/70`}>{log.message}</td>
+                    </tr>
                   );
                 })}
               </tbody>

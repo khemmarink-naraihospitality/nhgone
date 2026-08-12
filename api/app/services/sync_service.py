@@ -3439,7 +3439,8 @@ class SyncService:
         return subject, html_body
 
     async def send_st_files_property_email(self, property_name: str, date_str: str,
-                                            mark_sent: bool = True, sent_date_str: str = None) -> dict:
+                                            mark_sent: bool = True, sent_date_str: str = None,
+                                            sync_type: str = "auto") -> dict:
         """
         Builds and sends ONE property's own ST Files email (Admin >
         Templates > ST Files Email (Per-Property)) - used by main.py's
@@ -3455,23 +3456,35 @@ class SyncService:
         sent_date_str-vs-date_str separation send_st_files_daily_digest
         uses, for the same reason (dedup marker is keyed on the send day,
         the report itself is yesterday's).
+
+        Every outcome (sent or skipped) is logged to sync_logs under
+        target_table="ST Files Email (Per-Property)", same table/pattern
+        _log_sync_row already uses for ST Files FTP uploads - this is what
+        powers the History section on /st-files. sync_type defaults to
+        "auto" for the real per-property scheduler; send_st_files_daily_
+        digest (manual "Send Test Now") passes "manual" instead.
         """
         per_property_settings = email_service.get_st_files_daily_per_property_template()
         p_res = self.supabase.table("property_api_settings").select(
-            "st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
+            "id, st_files_email_recipients, st_files_email_cc, st_files_email_bcc"
         ).eq("property_name", property_name).limit(1).execute()
         p = p_res.data[0] if p_res.data else {}
+        prop_id = p.get("id")
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
         try:
             text, filename = self.get_st_report_export(property_name, date_str)
             row = self._get_st_report_row(property_name, date_str)
         except Exception as e:
-            return {"sent": False, "skipped": f"{property_name}: {str(e)[:150]}"}
+            reason = f"{property_name}: {str(e)[:150]}"
+            self._log_sync_row(property_name, prop_id, "ST Files Email (Per-Property)", "error", 0, reason, sync_type)
+            return {"sent": False, "skipped": reason}
 
         recipients = [e.strip() for e in (p.get("st_files_email_recipients") or "").split(",") if e.strip()]
         if not recipients:
-            return {"sent": False, "skipped": f"{property_name}: no ST Files Email Recipients configured (Admin > Templates > ST Files Email (Per-Property))"}
+            reason = f"{property_name}: no ST Files Email Recipients configured (Admin > Templates > ST Files Email (Per-Property))"
+            self._log_sync_row(property_name, prop_id, "ST Files Email (Per-Property)", "error", 0, reason, sync_type)
+            return {"sent": False, "skipped": reason}
         cc = [e.strip() for e in (p.get("st_files_email_cc") or "").split(",") if e.strip()]
         bcc = [e.strip() for e in (p.get("st_files_email_bcc") or "").split(",") if e.strip()]
 
@@ -3479,6 +3492,8 @@ class SyncService:
         email_service.send_email_with_attachments(
             recipients, subject, html_body, [(filename, text.encode("utf-8"))],
             cc_emails=cc, bcc_emails=bcc)
+        self._log_sync_row(property_name, prop_id, "ST Files Email (Per-Property)", "success", 1,
+                            f"Email sent to {', '.join(recipients)}", sync_type)
 
         if mark_sent:
             try:
@@ -3491,7 +3506,7 @@ class SyncService:
         return {"sent": True, "skipped": None}
 
     async def send_st_files_bundled_digest(self, date_str: str, mark_sent: bool = True,
-                                            sent_date_str: str = None) -> dict:
+                                            sent_date_str: str = None, sync_type: str = "auto") -> dict:
         """
         The bundled ST Files email (Admin > Templates > ST Files Email) -
         one CSV attachment per property that has a Property Code configured,
@@ -3502,20 +3517,26 @@ class SyncService:
         row's own shared send_hour/send_minute - independent of whatever
         individual times any opted-in properties are using.
 
-        sent_date_str/date_str split and mark_sent semantics match
-        send_st_files_property_email - see its own docstring.
+        sent_date_str/date_str/sync_type semantics match
+        send_st_files_property_email - see its own docstring. Logs one
+        sync_logs row per property (success or error), target_table="ST
+        Files Email" - a single combined email still gets one history row
+        per participating property so each property's own History section
+        on /st-files shows it, same as the per-property path's own rows.
         """
         settings_row = email_service.get_st_files_daily_settings()
         props_res = self.supabase.table("property_api_settings").select(
-            "property_name, st_files_email_enabled"
+            "id, property_name, st_files_email_enabled"
         ).order("property_name").execute()
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
         attachments, included, skipped, table_rows = [], [], [], []
+        prop_ids = {}
         for p in (props_res.data or []):
             if p.get("st_files_email_enabled"):
                 continue
             prop = p["property_name"]
+            prop_ids[prop] = p.get("id")
             try:
                 text, filename = self.get_st_report_export(prop, date_str)
                 attachments.append((filename, text.encode("utf-8")))
@@ -3523,14 +3544,19 @@ class SyncService:
                 row = self._get_st_report_row(prop, date_str)
                 table_rows.append({"property_name": prop, "property_code": row["property_code"], "totals": row["totals"]})
             except Exception as e:
-                skipped.append(f"{prop}: {str(e)[:150]}")
+                reason = f"{prop}: {str(e)[:150]}"
+                skipped.append(reason)
+                self._log_sync_row(prop, prop_ids.get(prop), "ST Files Email", "error", 0, reason, sync_type)
 
         if not attachments:
             return {"sent": False, "included": included, "skipped": skipped}
 
         recipients = [e.strip() for e in (settings_row["recipients"] or "").split(",") if e.strip()]
         if not recipients:
-            return {"sent": False, "included": included, "skipped": skipped}
+            for prop in included:
+                self._log_sync_row(prop, prop_ids.get(prop), "ST Files Email", "error", 0,
+                                    "Bundled ST Files Email has no recipients configured (Admin > Templates)", sync_type)
+            return {"sent": False, "included": [], "skipped": skipped + [f"{p}: bundled email has no recipients configured" for p in included]}
 
         subject = settings_row["subject"].replace("<<Date>>", date_display)
         html_body = settings_row["html_template"] \
@@ -3540,6 +3566,9 @@ class SyncService:
             .replace("<<StatsTable>>", self._build_st_files_summary_table(table_rows))
 
         email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
+        for prop in included:
+            self._log_sync_row(prop, prop_ids.get(prop), "ST Files Email", "success", 1,
+                                f"Bundled email sent to {', '.join(recipients)}", sync_type)
 
         if mark_sent:
             self._mark_st_files_daily_sent(settings_row, sent_date_str or date_str)
@@ -3559,14 +3588,14 @@ class SyncService:
         respectively) - each property's own st_files_email_enabled decides
         which path it belongs to, same as before.
         """
-        bundled_result = await self.send_st_files_bundled_digest(date_str, mark_sent, sent_date_str)
+        bundled_result = await self.send_st_files_bundled_digest(date_str, mark_sent, sent_date_str, sync_type="manual")
         included = list(bundled_result["included"])
         skipped = list(bundled_result["skipped"])
 
         props_res = self.supabase.table("property_api_settings").select("property_name") \
             .eq("st_files_email_enabled", True).order("property_name").execute()
         for p in (props_res.data or []):
-            result = await self.send_st_files_property_email(p["property_name"], date_str, mark_sent, sent_date_str)
+            result = await self.send_st_files_property_email(p["property_name"], date_str, mark_sent, sent_date_str, sync_type="manual")
             if result["sent"]:
                 included.append(p["property_name"])
             else:
