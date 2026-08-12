@@ -16,11 +16,12 @@ type TemplateType =
   | "st_files_email_per_property";
 
 // Top-level tab groups - "System Email" bundles the 5 account-lifecycle
-// emails (welcome/reset/rejection/etc) under one umbrella tab instead of
-// each getting its own top-level pill, so the row doesn't grow a new pill
-// every time another system email gets added. Groups with a single child
-// behave exactly like a plain tab (no sub-tab row rendered for them).
-type TemplateGroup = "billing" | "rr3" | "system_email" | "st_files_email" | "st_files_email_per_property";
+// emails (welcome/reset/rejection/etc) and "Statistic Files" bundles the 2
+// ST Files email tabs (bundled + per-property), each under one umbrella
+// pill instead of every member getting its own top-level tab, so the row
+// doesn't grow a new pill every time another one is added. Groups with a
+// single child behave exactly like a plain tab (no sub-tab row for them).
+type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files";
 
 const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateType[] }> = {
   billing: { label: "Billing", children: ["billing"] },
@@ -29,8 +30,10 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
     label: "System Email",
     children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "rejection_email"],
   },
-  st_files_email: { label: "ST Files Email", children: ["st_files_email"] },
-  st_files_email_per_property: { label: "ST Files Email (Per-Property)", children: ["st_files_email_per_property"] },
+  statistic_files: {
+    label: "Statistic Files",
+    children: ["st_files_email", "st_files_email_per_property"],
+  },
 };
 
 const groupOf = (t: TemplateType): TemplateGroup =>
