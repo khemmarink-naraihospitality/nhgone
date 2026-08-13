@@ -292,8 +292,12 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
     exactly, so testing "sync in 2 minutes" works as expected. On Vercel
     (match_hour_only=True, passed by the /sync/auto route below) minute-level
     precision isn't achievable or meaningful - the Cron entry in vercel.json
-    only fires once an hour and isn't guaranteed to land exactly on :00 (in
-    practice it's landed as late as :01-:02), so matching is by hour alone.
+    fires every 5 minutes (moved from hourly because a single hourly tick
+    wasn't reliable - it went missing for hours at a stretch during a burst
+    of production deployments) rather than being guaranteed to land on any
+    particular minute, so matching is by hour alone. Since up to 12 ticks
+    now land within the same matching hour, last_daily_sync_date below is
+    what stops the same property being re-synced on every one of them.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     current_hour = now.hour
@@ -309,10 +313,11 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
         # Determine report date (Yesterday)
         yesterday_bkk = now - timedelta(days=1)
         report_date = yesterday_bkk.date().isoformat()
+        today_str = now.date().isoformat()
 
         # 1. Fetch properties that are enabled
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, sync_hour, sync_minute, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources") \
+            .select("id, property_name, sync_hour, sync_minute, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, last_daily_sync_date") \
             .eq("sync_enabled", True)
 
         if not force_all:
@@ -324,6 +329,18 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
         props_res = query.execute()
         sync_items = props_res.data
 
+        if not sync_items:
+            return
+
+        # last_daily_sync_date is a same-day dedup guard, not a concurrency
+        # lock (acquire_sync_lock only blocks overlapping runs - it releases
+        # the moment a run finishes, so without this a property would get
+        # re-synced on every remaining tick within its matching hour once
+        # /sync/auto moved from hourly to every 5 minutes for cron-reliability
+        # reasons - see vercel.json). force_all (the manual "Sync Now" button)
+        # deliberately ignores it, same as it already bypasses the hour match.
+        if not force_all:
+            sync_items = [p for p in sync_items if p.get("last_daily_sync_date") != today_str]
         if not sync_items:
             return
 
@@ -371,6 +388,13 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
                     sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
                 except:
                     pass
+                if not force_all:
+                    try:
+                        sync_service.supabase.table("property_api_settings").update(
+                            {"last_daily_sync_date": today_str}
+                        ).eq("id", prop_id).execute()
+                    except Exception as mark_err:
+                        print(f"Failed to record last_daily_sync_date for {prop}: {mark_err}")
 
     except Exception as e:
         print(f"Error in automated sync check: {str(e)}")
@@ -403,7 +427,7 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
 
     try:
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, st_files_sync_hour, st_files_sync_minute") \
+            .select("id, property_name, st_files_sync_hour, st_files_sync_minute, st_files_sync_last_date") \
             .eq("st_files_sync_enabled", True)
         if match_hour_only:
             query = query.eq("st_files_sync_hour", now.hour)
@@ -417,6 +441,11 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
         print(f"Error in daily_auto_sync_st_files (fetching properties): {str(e)}")
         return
 
+    # Same-day dedup guard, not a concurrency lock - see daily_auto_sync's
+    # own last_daily_sync_date comment for why this is needed now that
+    # /sync/auto fires every 5 minutes instead of hourly.
+    today_str = now.date().isoformat()
+    items = [p for p in items if p.get("st_files_sync_last_date") != today_str]
     if not items:
         return
 
@@ -446,6 +475,12 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
             except Exception:
                 pass
+            try:
+                sync_service.supabase.table("property_api_settings").update(
+                    {"st_files_sync_last_date": today_str}
+                ).eq("id", prop_id).execute()
+            except Exception as mark_err:
+                print(f"Failed to record st_files_sync_last_date for {prop}: {mark_err}")
         return True
 
     # The every-5-minute BCP capture takes this same per-property lock, so a
@@ -492,7 +527,7 @@ async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
 
     try:
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, rr4_tm30_sync_hour, rr4_tm30_sync_minute") \
+            .select("id, property_name, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_sync_last_date") \
             .eq("rr4_tm30_sync_enabled", True)
         if match_hour_only:
             query = query.eq("rr4_tm30_sync_hour", now.hour)
@@ -506,6 +541,11 @@ async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
         print(f"Error in daily_auto_sync_rr4_tm30 (fetching properties): {str(e)}")
         return
 
+    # Same-day dedup guard, not a concurrency lock - see daily_auto_sync's
+    # own last_daily_sync_date comment for why this is needed now that
+    # /sync/auto fires every 5 minutes instead of hourly.
+    today_str = now.date().isoformat()
+    items = [p for p in items if p.get("rr4_tm30_sync_last_date") != today_str]
     if not items:
         return
 
@@ -535,6 +575,12 @@ async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
             except Exception:
                 pass
+            try:
+                sync_service.supabase.table("property_api_settings").update(
+                    {"rr4_tm30_sync_last_date": today_str}
+                ).eq("id", prop_id).execute()
+            except Exception as mark_err:
+                print(f"Failed to record rr4_tm30_sync_last_date for {prop}: {mark_err}")
         return True
 
     # Same deferred-retry pass daily_auto_sync_st_files uses: the every-5-minute
@@ -576,7 +622,7 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
 
     try:
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, rv_sync_hour, rv_sync_minute") \
+            .select("id, property_name, rv_sync_hour, rv_sync_minute, rv_sync_last_date") \
             .eq("rv_sync_enabled", True)
         if match_hour_only:
             query = query.eq("rv_sync_hour", now.hour)
@@ -590,6 +636,11 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
         print(f"Error in daily_auto_sync_rv (fetching properties): {str(e)}")
         return
 
+    # Same-day dedup guard, not a concurrency lock - see daily_auto_sync's
+    # own last_daily_sync_date comment for why this is needed now that
+    # /sync/auto fires every 5 minutes instead of hourly.
+    today_str = now.date().isoformat()
+    items = [p for p in items if p.get("rv_sync_last_date") != today_str]
     if not items:
         return
 
@@ -619,6 +670,12 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
             except Exception:
                 pass
+            try:
+                sync_service.supabase.table("property_api_settings").update(
+                    {"rv_sync_last_date": today_str}
+                ).eq("id", prop_id).execute()
+            except Exception as mark_err:
+                print(f"Failed to record rv_sync_last_date for {prop}: {mark_err}")
         return True
 
     # Same deferred-retry pass daily_auto_sync_st_files / daily_auto_sync_rr4_tm30
