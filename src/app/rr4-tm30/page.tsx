@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 
@@ -138,6 +138,11 @@ export default function Rr4Tm30Page() {
   // The data tables - expanded by default, since they're the page's main
   // content rather than supporting detail.
   const [dataOpen, setDataOpen] = useState(true);
+  // The data section renders far above the History table further down the
+  // page - clicking "View" there loaded the data correctly but with no
+  // visible change from a scrolled-down position, reading as "View does
+  // nothing." Scrolled to explicitly instead.
+  const dataSectionRef = useRef<HTMLDivElement>(null);
   // Inline API-documentation blurb, same pattern as ST Files/RV/BCP - collapsed by default.
   const [apiDocsOpen, setApiDocsOpen] = useState(false);
 
@@ -434,6 +439,7 @@ export default function Rr4Tm30Page() {
           </div>
         </CollapsibleSection>
 
+        <div ref={dataSectionRef}>
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mb-6">{error}</div>
         )}
@@ -523,6 +529,7 @@ export default function Rr4Tm30Page() {
             Pick a property and date, then Fetch Report.
           </div>
         )}
+        </div>
 
         <div className="mt-8">
           <div className="flex items-center justify-between mb-4">
@@ -562,7 +569,13 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => { setDate(r.date); setDataSource("database"); setDataOpen(true); fetchReports({ date: r.date, source: "database" }); }}
+                            onClick={async () => {
+                              setDate(r.date);
+                              setDataSource("database");
+                              setDataOpen(true);
+                              await fetchReports({ date: r.date, source: "database" });
+                              dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
                             className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
                             View
