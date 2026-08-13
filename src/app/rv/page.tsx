@@ -91,6 +91,7 @@ interface RvListRow {
 interface HistoryLogRow {
   id: string;
   created_at: string;
+  property: string;
   target_table: string;
   sync_type: string;
   status: string;
@@ -98,6 +99,10 @@ interface HistoryLogRow {
 }
 
 const HISTORY_TARGET_TABLES = ["RV Files", "RV Files FTP"] as const;
+// FTP Upload is one shared job that uploads every property in a single run,
+// so its rows show ALL properties regardless of which one's page you're on
+// (see fetchHistory) - RV Files import stays genuinely per-property.
+const HISTORY_ALL_PROPERTIES_TABLES = ["RV Files FTP"] as const;
 
 const HISTORY_TAG: Record<string, { label: string; cls: string }> = {
   "RV Files": { label: "IMPORT", cls: "bg-orange-500/10 text-orange-700 border-orange-500/20" },
@@ -215,22 +220,39 @@ export default function RvPage() {
     }
   };
 
-  // History section's own rows - past RV import syncs for this property,
+  // History section's own rows - past RV import syncs and FTP uploads,
   // direct from sync_logs (same table Admin > Sync's own Recent Activity
-  // widget reads), scoped here to just the selected property. Non-critical
+  // widget reads). FTP Upload runs once for every property in a single job,
+  // so per feedback on ST Files' identical History section it shows every
+  // property's rows here regardless of which one's page you're on, not just
+  // the selected one - RV Files import stays scoped to the selected
+  // property since that really is per-property. Two queries merged
+  // client-side since Supabase's query builder can't express "this eq only
+  // applies to some of these target_table values" in one call. Non-critical
   // if it fails, same reasoning as fetchList above.
   const fetchHistory = async () => {
     if (!selectedProperty) return;
     setHistoryLoading(true);
     try {
-      const { data } = await supabase
-        .from("sync_logs")
-        .select("id, created_at, target_table, sync_type, status, message")
-        .eq("property", selectedProperty)
-        .in("target_table", HISTORY_TARGET_TABLES)
-        .order("created_at", { ascending: false })
-        .limit(20);
-      setHistoryLogs(data || []);
+      const [ftpRes, importRes] = await Promise.all([
+        supabase
+          .from("sync_logs")
+          .select("id, created_at, property, target_table, sync_type, status, message")
+          .in("target_table", HISTORY_ALL_PROPERTIES_TABLES)
+          .order("created_at", { ascending: false })
+          .limit(20),
+        supabase
+          .from("sync_logs")
+          .select("id, created_at, property, target_table, sync_type, status, message")
+          .eq("property", selectedProperty)
+          .in("target_table", HISTORY_TARGET_TABLES.filter((t) => !(HISTORY_ALL_PROPERTIES_TABLES as readonly string[]).includes(t)))
+          .order("created_at", { ascending: false })
+          .limit(20),
+      ]);
+      const merged = [...(ftpRes.data || []), ...(importRes.data || [])].sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      setHistoryLogs(merged);
     } catch {
       // swallow - same non-critical reasoning as fetchList
     } finally {
@@ -691,6 +713,7 @@ export default function RvPage() {
               <thead>
                 <tr className="bg-[var(--text-primary)]/5">
                   <th className={thCls}>Date/Time</th>
+                  <th className={thCls}>Property</th>
                   <th className={thCls}>Action</th>
                   <th className={thCls}>Trigger</th>
                   <th className={thCls}>Status</th>
@@ -700,7 +723,7 @@ export default function RvPage() {
               <tbody className="divide-y divide-[var(--text-primary)]/5">
                 {historyLogs.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                    <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                       {selectedProperty ? "No import activity for this property yet." : "Select a property to see its import history."}
                     </td>
                   </tr>
@@ -709,6 +732,7 @@ export default function RvPage() {
                   return (
                     <tr key={log.id} className="hover:bg-[var(--text-primary)]/[0.02]">
                       <td className={tdCls}>{fmtDateTime(log.created_at)}</td>
+                      <td className={`${tdCls} ${log.property === selectedProperty ? "font-bold" : "text-[var(--text-primary)]/50"}`}>{log.property}</td>
                       <td className={tdCls}>
                         <span className={`inline-block px-2 py-0.5 border text-[9px] font-bold tracked-caps ${tag.cls}`}>{tag.label}</span>
                       </td>
