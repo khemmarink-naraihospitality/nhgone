@@ -146,6 +146,8 @@ export default function RvPage() {
   const [listLoading, setListLoading] = useState(false);
   const [historyLogs, setHistoryLogs] = useState<HistoryLogRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyPage, setHistoryPage] = useState(1);
+  const HISTORY_PAGE_SIZE = 20;
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(true);
@@ -233,6 +235,7 @@ export default function RvPage() {
   const fetchHistory = async () => {
     if (!selectedProperty) return;
     setHistoryLoading(true);
+    setHistoryPage(1);
     try {
       const [ftpRes, importRes] = await Promise.all([
         supabase
@@ -240,14 +243,14 @@ export default function RvPage() {
           .select("id, created_at, property, target_table, sync_type, status, message")
           .in("target_table", HISTORY_ALL_PROPERTIES_TABLES)
           .order("created_at", { ascending: false })
-          .limit(20),
+          .limit(200),
         supabase
           .from("sync_logs")
           .select("id, created_at, property, target_table, sync_type, status, message")
           .eq("property", selectedProperty)
           .in("target_table", HISTORY_TARGET_TABLES.filter((t) => !(HISTORY_ALL_PROPERTIES_TABLES as readonly string[]).includes(t)))
           .order("created_at", { ascending: false })
-          .limit(20),
+          .limit(200),
       ]);
       const merged = [...(ftpRes.data || []), ...(importRes.data || [])].sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
@@ -727,7 +730,7 @@ export default function RvPage() {
                       {selectedProperty ? "No import activity for this property yet." : "Select a property to see its import history."}
                     </td>
                   </tr>
-                ) : historyLogs.map((log) => {
+                ) : historyLogs.slice((historyPage - 1) * HISTORY_PAGE_SIZE, historyPage * HISTORY_PAGE_SIZE).map((log) => {
                   const tag = HISTORY_TAG[log.target_table] ?? { label: log.target_table.toUpperCase(), cls: "bg-[var(--text-primary)]/5 text-[var(--text-primary)]/50 border-[var(--text-primary)]/14" };
                   return (
                     <tr key={log.id} className="hover:bg-[var(--text-primary)]/[0.02]">
@@ -750,6 +753,32 @@ export default function RvPage() {
                 })}
               </tbody>
             </table>
+            {historyLogs.length > HISTORY_PAGE_SIZE && (() => {
+              const totalPages = Math.ceil(historyLogs.length / HISTORY_PAGE_SIZE);
+              return (
+                <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                    SHOWING {(historyPage - 1) * HISTORY_PAGE_SIZE + 1}–{Math.min(historyPage * HISTORY_PAGE_SIZE, historyLogs.length)} OF {historyLogs.length} — PAGE {historyPage} OF {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setHistoryPage((p) => Math.max(1, p - 1))}
+                      disabled={historyPage === 1}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      PREVIOUS
+                    </button>
+                    <button
+                      onClick={() => setHistoryPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={historyPage === totalPages}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      NEXT
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
