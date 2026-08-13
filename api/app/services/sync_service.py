@@ -1341,10 +1341,46 @@ class SyncService:
             customers_map = {c["Id"]: c for c in response.get("Customers", []) if c.get("Id")}
             resources_map = {r["Id"]: r for r in response.get("Resources", []) if r.get("Id")}
 
+            # StartUtc/EndUtc above are the legacy (2017-04-12) endpoint's
+            # DEPRECATED fields - they hold the reservation's originally
+            # SCHEDULED arrival/departure (e.g. the hotel's standard 14:00
+            # check-in), not the real front-desk timestamp, and never get
+            # updated once the guest actually checks in. The real timestamps
+            # (ActualStartUtc/ActualEndUtc) only exist on the newer
+            # 2023-06-06 endpoint, which in turn can't embed Customers/
+            # Resources the way the legacy one does (confirmed against MEWS's
+            # own docs - neither endpoint version has both) - hence this
+            # second, narrow call by exact ReservationIds (max 1000/request)
+            # to backfill just the two fields the legacy call can't provide.
+            actual_times = {}
+            reservation_ids = [r["Id"] for r in reservations if r.get("Id")]
+            for i in range(0, len(reservation_ids), 1000):
+                id_batch = reservation_ids[i:i + 1000]
+                try:
+                    actual_res = await mews_client.post(
+                        "/api/connector/v1/reservations/getAll/2023-06-06",
+                        {"ReservationIds": id_batch, "Limitation": {"Count": len(id_batch)}},
+                        property_name=property_name,
+                    )
+                    for r in actual_res.get("Reservations", []):
+                        if r.get("Id"):
+                            actual_times[r["Id"]] = (r.get("ActualStartUtc"), r.get("ActualEndUtc"))
+                except Exception as e:
+                    # Falls back to the legacy (scheduled) times below rather
+                    # than failing the whole card list over this.
+                    logger.warning(f"RR3: failed to fetch ActualStartUtc/ActualEndUtc for {property_name}: {e}")
+
             hotel_name = _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)
 
             cards = []
             for reservation in reservations:
+                actual_start, actual_end = actual_times.get(reservation.get("Id"), (None, None))
+                # Not yet checked in/out (shouldn't normally happen - this
+                # page is defined as "generated from MEWS check-ins" - but
+                # falls back safely to the scheduled time rather than a blank).
+                check_in_utc = actual_start or reservation.get("StartUtc")
+                check_out_utc = actual_end or reservation.get("EndUtc")
+
                 companion_ids = reservation.get("CompanionIds") or []
                 guest_ids = companion_ids if companion_ids else (
                     [reservation["CustomerId"]] if reservation.get("CustomerId") else []
@@ -1392,10 +1428,10 @@ class SyncService:
                         "FirstName": first_name,
                         "LastName": last_name,
                         "RoomNumber": room_number,
-                        "CheckIn": _rr3_format_thai_date(reservation.get("StartUtc")),
-                        "CheckInTime": _rr3_format_thai_time(reservation.get("StartUtc")),
-                        "CheckOut": _rr3_format_thai_date(reservation.get("EndUtc")),
-                        "CheckOutTime": _rr3_format_thai_time(reservation.get("EndUtc")),
+                        "CheckIn": _rr3_format_thai_date(check_in_utc),
+                        "CheckInTime": _rr3_format_thai_time(check_in_utc),
+                        "CheckOut": _rr3_format_thai_date(check_out_utc),
+                        "CheckOutTime": _rr3_format_thai_time(check_out_utc),
                         "PassportNumber": passport.get("Number", ""),
                         "IdentityCardNumber": identity_card_value,
                         "NationalityCode": customer.get("NationalityCode", ""),
