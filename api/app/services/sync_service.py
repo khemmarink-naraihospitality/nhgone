@@ -2715,31 +2715,54 @@ class SyncService:
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
+                ("extra person charge", "30005", "111"),
                 # A real order item literally named "VAT", separate from the
                 # TaxValues-derived total already summed elsewhere - confirmed
                 # against the file, which carries both as distinct 21600 rows.
                 ("vat",             "21600", "000"),
+                # "transfer" (any wording) and "airport" both land on the same
+                # GL/department - order between them doesn't matter.
+                ("transfer",        "30505", "134"),
                 ("airport",         "30505", "134"),
                 ("breakfast include in room", "30100", "121"),
                 ("breakfast",       "30105", "121"),
-                # Order matters: the "- Dinner" variants must be checked before
-                # their plain "Food"/"Beverage" counterparts, which would
-                # otherwise swallow them (both share the same substring).
+                # Order matters: the "- Dinner"/"- Lunch"/outlet-specific
+                # variants must be checked before their plain "Food"/
+                # "Beverage" counterparts, which would otherwise swallow them
+                # (both share the same substring).
                 ("beverage cabanas - dinner",       "30215", "121"),
                 ("discount beverage cabanas - dinner", "30215", "121"),
+                ("bottle of sparkling wine", "30215", "128"),
+                ("beverage in room dining", "30210", "128"),
+                ("mixology masterclass", "30210", "121"),
                 ("beverage",         "30210", "121"),
                 ("food cabanas - dinner",  "30115", "121"),
                 ("discount food cabanas - dinner", "30115", "121"),
                 ("food in room dining - dinner", "30115", "128"),
+                ("food in room dining - lunch", "30110", "128"),
+                ("food the pantry - dinner", "30115", "126"),
+                ("food the pantry - lunch", "30110", "126"),
+                ("social dining",   "30115", "121"),
                 ("food",              "30110", "121"),
-                ("spa",               "30545", "136"),
+                # Spa treatments are named after the treatment (Aromatherapy,
+                # Thai Yoga Massage, ...), never containing the word "spa"
+                # itself - listed explicitly. "spa " (with the trailing
+                # space) still catches "Spa Service Charge" without also
+                # matching unrelated items like "Bottle of Sparkling Wine".
+                ("aromatherapy",     "30545", "136"),
+                ("thai yoga massage", "30545", "136"),
+                ("promotion of the month", "30545", "136"),
+                ("spa ",              "30545", "136"),
                 # A tip is a guest-owed liability the property passes through
                 # to staff, not the property's own revenue - it belongs on
                 # 21668, matching how Koh Tao's file treats the same line.
                 ("tip",                "21668", "0"),
-                # Only beer has its own account (30240); every other snack
-                # item (Salted Mixed Roots/Potato/Cashews/Peanuts, ...) shares
-                # the generic 30140 fallback below.
+                # Only beer/alcohol brands have their own account (30240);
+                # every other snack item (Salted Mixed Roots/Potato/Cashews/
+                # Peanuts, ...) shares the generic 30140 fallback below.
+                ("white claw",       "30240", "127"),
+                ("asahi beer",       "30240", "127"),
+                ("san miguel",       "30240", "127"),
                 ("singha",             "30240", "127"),
                 # Marasca's per-outlet service charge lines don't share a word
                 # with their own outlet's food/beverage line ("Service Charge
@@ -2749,9 +2772,13 @@ class SyncService:
                 ("service charge in room dining",  "30805", "128"),
                 ("service charge the pantry",      "30805", "126"),
                 ("service charge nightly",         "30805", "111"),
+                ("service charge fb", "30805", "121"),
                 # A distinct GL from the 30140 retail-snacks fallback -
                 # confirmed against the file's "Miscellaneous Cabanas" line.
                 ("miscellaneous cabanas",           "30815", "121"),
+                # 61000 is Marasca's own Resort Credit account - doesn't exist
+                # on any other property's chart.
+                ("resort credit",    "61000", "242"),
                 ("night",            "30001", "111"),
             ],
             "fallback": ("30140", "127"),   # retail snacks bucket
@@ -3174,6 +3201,12 @@ class SyncService:
         #
         # MEWS returns payments as negative (they credit the guest's ledger);
         # rows carry the magnitude and the sign moves into the D/C flag.
+        # A payment shared across a group booking (e.g. one prepayment
+        # covering several linked reservations) can come back from MEWS as
+        # the same Payment resource more than once - confirmed against a
+        # Makati AGODA group booking where one payment appeared 19 times
+        # instead of once. Dedup by Id so it's counted exactly once.
+        seen_payment_ids = set()
         live_payments = []
         for pay in pays_res.get("Payments", []):
             if pay.get("State") == "Canceled":
@@ -3184,6 +3217,11 @@ class SyncService:
                 continue
             if not ((pay.get("Amount") or {}).get("NetValue") or 0.0):
                 continue
+            pay_id = pay.get("Id")
+            if pay_id and pay_id in seen_payment_ids:
+                continue
+            if pay_id:
+                seen_payment_ids.add(pay_id)
             live_payments.append(pay)
 
         cards = await self._rv_load_credit_cards(property_name, {
