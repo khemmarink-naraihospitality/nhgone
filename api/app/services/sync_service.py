@@ -2206,7 +2206,22 @@ class SyncService:
         for res in reservations:
             if res.get("State") not in active_states:
                 continue
-            units = len(space_categories(res))
+            # space_categories() expands a whole-dorm/whole-suite booking to
+            # its child spaces - correct when the guest genuinely requested a
+            # per-space (Room/Bed) product and just got assigned the parent
+            # resource for capacity (Siem Reap 2026-08-06: 2 whole-suite
+            # bookings file as 4 room arrivals, 2 whole-dorm bookings as
+            # 10+10 bed arrivals - matching MEWS's own report). But when the
+            # guest booked the Dorm/Suite-type product ITSELF as a private
+            # whole-unit hire (Chinatown's "TRIBE HIDEOUT - ALL YOURS!",
+            # Res#92258 on 10-Aug-2026, Res#77719/#92534 on 12-Aug-2026),
+            # that's one arrival/departure event, not one per child bed -
+            # collapsing raw_units to 1 (0 stays 0) here is what
+            # requested_is_space_type already does for Customers below;
+            # Arrivals/Departures needs the same guard or a single whole-unit
+            # booking inflates the day's count by its child-space count.
+            raw_units = len(space_categories(res))
+            units = raw_units if requested_is_space_type(res) else min(raw_units, 1)
             if in_window(res.get("StartUtc")):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
@@ -2220,17 +2235,6 @@ class SyncService:
             end_utc = parse_utc(res.get("EndUtc"))
             stays_the_night = end_utc is not None and end_utc > day_end_utc
             day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
-            # units (from space_categories) already expands a whole-dorm/
-            # whole-suite booking to its child spaces the same way Arrivals/
-            # Departures do - reusing it here (rather than the old
-            # stay_category, which only checked the assigned resource's OWN
-            # category and so silently dropped every guest in a whole-space
-            # booking) was the fix for Makati's Customers count undercounting
-            # by exactly one such booking's headcount on 09-Aug-2026. But that
-            # expansion alone overcounts a *whole-unit private-hire* booking
-            # (guest requests the Dorm/Suite-type product itself, not a
-            # Room/Bed) - requested_is_space_type excludes exactly those,
-            # per Chinatown's Res#92258 on 10-Aug-2026.
             if (stays_the_night or day_use) and units and requested_is_space_type(res):
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
