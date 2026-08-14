@@ -144,10 +144,12 @@ export default function RvPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("revenue");
   const [listRows, setListRows] = useState<RvListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const LIST_PAGE_SIZE = 10;
   const [historyLogs, setHistoryLogs] = useState<HistoryLogRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
-  const HISTORY_PAGE_SIZE = 20;
+  const HISTORY_PAGE_SIZE = 10;
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(true);
@@ -215,6 +217,7 @@ export default function RvPage() {
       const res = await fetch(`/api/rv/list?${params.toString()}`);
       const result = await res.json();
       if (result.status === "success") setListRows(result.data || []);
+      setListPage(1);
     } catch {
       // swallow - the single-day report above is the primary view
     } finally {
@@ -669,7 +672,7 @@ export default function RvPage() {
                       {selectedProperty ? "No imported days yet - use “Import To Data Mart” above." : "Select a property to see imported RV history."}
                     </td>
                   </tr>
-                ) : listRows.map((r) => {
+                ) : listRows.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE).map((r) => {
                   const isActive = !!report && dataSource === "database" && report.date === r.date;
                   return (
                     <tr key={r.date} className={isActive ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
@@ -703,6 +706,32 @@ export default function RvPage() {
                 })}
               </tbody>
             </table>
+            {listRows.length > LIST_PAGE_SIZE && (() => {
+              const totalPages = Math.ceil(listRows.length / LIST_PAGE_SIZE);
+              return (
+                <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                    SHOWING {(listPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(listPage * LIST_PAGE_SIZE, listRows.length)} OF {listRows.length} — PAGE {listPage} OF {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                      disabled={listPage === 1}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      PREVIOUS
+                    </button>
+                    <button
+                      onClick={() => setListPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={listPage === totalPages}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      NEXT
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
