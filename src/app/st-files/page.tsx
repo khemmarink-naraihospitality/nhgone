@@ -179,6 +179,8 @@ export default function StFilesPage() {
   const [activeTab, setActiveTab] = useState<TabKey>("spaces");
   const [listRows, setListRows] = useState<StFilesListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  const [listPage, setListPage] = useState(1);
+  const LIST_PAGE_SIZE = 10;
   const [historyLogs, setHistoryLogs] = useState<HistoryLogRow[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
@@ -265,6 +267,7 @@ export default function StFilesPage() {
       const res = await fetch(`/api/st-files/list?${params.toString()}`);
       const result = await res.json();
       if (result.status === "success") setListRows(result.data || []);
+      setListPage(1);
     } catch {
       // swallow - the single-day report above is the primary view
     } finally {
@@ -819,7 +822,7 @@ export default function StFilesPage() {
                       {selectedProperty ? "No imported days yet - use “Import To Data Mart” above." : "Select a property to see imported ST Files history."}
                     </td>
                   </tr>
-                ) : listRows.map((r) => {
+                ) : listRows.slice((listPage - 1) * LIST_PAGE_SIZE, listPage * LIST_PAGE_SIZE).map((r) => {
                   // Highlights whichever row's day is currently loaded into
                   // Statistic Data above, via the Select Property/Date/Fetch
                   // Report controls (Preview below opens a separate popup,
@@ -862,6 +865,32 @@ export default function StFilesPage() {
                 })}
               </tbody>
             </table>
+            {listRows.length > LIST_PAGE_SIZE && (() => {
+              const totalPages = Math.ceil(listRows.length / LIST_PAGE_SIZE);
+              return (
+                <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+                  <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                    SHOWING {(listPage - 1) * LIST_PAGE_SIZE + 1}–{Math.min(listPage * LIST_PAGE_SIZE, listRows.length)} OF {listRows.length} — PAGE {listPage} OF {totalPages}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                      disabled={listPage === 1}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      PREVIOUS
+                    </button>
+                    <button
+                      onClick={() => setListPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={listPage === totalPages}
+                      className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                    >
+                      NEXT
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
