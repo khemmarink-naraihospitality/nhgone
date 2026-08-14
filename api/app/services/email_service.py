@@ -25,7 +25,7 @@ WELCOME_TEMPLATE_KEY = "welcome"
 # (Admin > Templates > ST Files Email). Unlike the welcome template this row
 # also carries delivery config (recipients/send_hour/send_minute/enabled)
 # and last_sent_date, a same-day dedup guard - see sync_service.py's
-# send_st_files_daily_digest for why that's needed.
+# send_st_files_bundled_digest for why that's needed.
 ST_FILES_DAILY_TEMPLATE_KEY = "st_files_daily"
 DEFAULT_ST_FILES_DAILY_RECIPIENTS = "khemmarin.k@lubd.com"
 DEFAULT_ST_FILES_DAILY_HOUR = 3

@@ -3530,7 +3530,7 @@ class SyncService:
         imported yet. mark_sent writes THIS property's own
         st_files_email_last_sent_date (not the bundled st_files_daily row's
         last_sent_date, which this path never touches) - same
-        sent_date_str-vs-date_str separation send_st_files_daily_digest
+        sent_date_str-vs-date_str separation send_st_files_bundled_digest
         uses, for the same reason (dedup marker is keyed on the send day,
         the report itself is yesterday's).
 
@@ -3538,8 +3538,9 @@ class SyncService:
         target_table="ST Files Email (Per-Property)", same table/pattern
         _log_sync_row already uses for ST Files FTP uploads - this is what
         powers the History section on /st-files. sync_type defaults to
-        "auto" for the real per-property scheduler; send_st_files_daily_
-        digest (manual "Send Test Now") passes "manual" instead.
+        "auto" for the real per-property scheduler; its own manual "Send
+        Test Now" (admin.py's send_st_files_per_property_email_now) passes
+        "manual" instead.
 
         Subject/HTML are per-property (property_api_settings.
         st_files_email_subject/_template, edited on the same Admin >
@@ -3665,43 +3666,10 @@ class SyncService:
 
         return {"sent": True, "included": included, "skipped": skipped}
 
-    async def send_st_files_daily_digest(self, date_str: str, mark_sent: bool = True,
-                                          sent_date_str: str = None) -> dict:
-        """
-        "Send everything right now" - used only by admin.py's manual "Send
-        Test Now" button, which tests the full current configuration
-        (bundled master copy for every property + every per-property-opted-
-        in property's own separate email) in one shot, ignoring all the
-        individual schedules. The real scheduled sends are two separate,
-        independently-timed paths instead (send_st_files_bundled_digest and
-        send_st_files_property_email, called by main.py's
-        send_st_files_daily_email and send_st_files_per_property_emails
-        respectively) - the bundled path always includes every property
-        regardless of st_files_email_enabled; that flag only decides whether
-        a property ALSO gets its own separate per-property email.
-        """
-        bundled_result = await self.send_st_files_bundled_digest(date_str, mark_sent, sent_date_str, sync_type="manual")
-        included = list(bundled_result["included"])
-        skipped = list(bundled_result["skipped"])
-
-        props_res = self.supabase.table("property_api_settings").select("property_name") \
-            .eq("st_files_email_enabled", True).order("property_name").execute()
-        for p in (props_res.data or []):
-            result = await self.send_st_files_property_email(p["property_name"], date_str, mark_sent, sent_date_str, sync_type="manual")
-            if result["sent"]:
-                included.append(p["property_name"])
-            else:
-                skipped.append(result["skipped"])
-
-        return {"sent": bool(included), "included": included, "skipped": skipped}
-
     def _mark_st_files_daily_sent(self, settings_row: dict, marker_date: str):
         """
-        Same-day dedup guard for send_st_files_daily_digest, shared by both
-        its bundled and split-by-property paths - writes marker_date onto
-        the single st_files_daily row's last_sent_date regardless of which
-        mode actually sent, since it's one guard for "did today's digest go
-        out at all", not per-mode.
+        Same-day dedup guard for send_st_files_bundled_digest - writes
+        marker_date onto the single st_files_daily row's last_sent_date.
         """
         try:
             existing = self.supabase.table("email_templates").select("id") \

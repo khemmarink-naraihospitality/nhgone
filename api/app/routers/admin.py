@@ -695,20 +695,22 @@ async def save_approved_email_template(request: EmailTemplateUpdate):
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():
     """
-    Manual "Send Test Now" trigger (Admin > Templates > ST Files Email) -
-    builds and sends immediately, bypassing the schedule. Targets
-    YESTERDAY's report, same as the real scheduled send (see
+    Manual "Send Test Now" trigger (Admin > Templates > Statistic Files >
+    All Property) - builds and sends ONLY the bundled email immediately,
+    bypassing its schedule. Deliberately does not touch any per-property
+    email (that's send_st_files_per_property_email_now below, its own
+    fully separate trigger) - the two tabs test independently, matching
+    how they run independently in production (send_st_files_bundled_digest
+    vs. send_st_files_property_email, on their own separate schedules).
+    Targets YESTERDAY's report, same as the real scheduled send (see
     daily_auto_sync_st_files' docstring on why "today" would be an
-    incomplete, still-in-progress day) - this is meant to test the exact
-    same path production uses, not a different one, including whichever
-    per-property mix of bundled vs. split-by-property is currently
-    configured (see send_st_files_daily_digest's own docstring). mark_sent=
-    False so this never marks anything as already-sent, meaning it can't
-    suppress the real scheduled send for the same day.
+    incomplete, still-in-progress day). mark_sent=False so this never marks
+    anything as already-sent, meaning it can't suppress the real scheduled
+    send for the same day.
     """
     try:
         report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
-        result = await sync_service.send_st_files_daily_digest(report_date_str, mark_sent=False)
+        result = await sync_service.send_st_files_bundled_digest(report_date_str, mark_sent=False, sync_type="manual")
         if not result.get("sent"):
             skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
             raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
