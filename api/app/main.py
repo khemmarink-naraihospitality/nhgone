@@ -714,9 +714,10 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
 
 async def send_st_files_daily_email(match_hour_only: bool = False):
     """
-    Once-daily BUNDLED email (Admin > Templates > ST Files Email) - every
-    property that hasn't opted into its own separate email (see
-    send_st_files_per_property_emails below) gets its CSV attached here.
+    Once-daily BUNDLED email (Admin > Templates > ST Files Email) - a
+    standing master copy that always attaches EVERY property's CSV,
+    independent of which properties have also opted into their own separate
+    per-property email (see send_st_files_per_property_emails below).
     Piggybacks the same /sync/auto cron tick daily_auto_sync_st_files above
     uses rather than getting its own dedicated cron entry - unlike BCP's
     5-minute snapshots (see trigger_auto_sync's own note on why BCP needed

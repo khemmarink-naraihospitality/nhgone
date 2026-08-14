@@ -3598,13 +3598,16 @@ class SyncService:
                                             sent_date_str: str = None, sync_type: str = "auto") -> dict:
         """
         The bundled ST Files email (Admin > Templates > ST Files Email) -
-        one CSV attachment per property that has a Property Code configured,
-        already-imported st_files_sync data for date_str, AND has NOT opted
-        into its own separate email (property_api_settings.
-        st_files_email_enabled - see send_st_files_property_email for that
-        path). Used by main.py's send_st_files_daily_email, gated by this
-        row's own shared send_hour/send_minute - independent of whatever
-        individual times any opted-in properties are using.
+        one CSV attachment per EVERY property that has a Property Code
+        configured and already-imported st_files_sync data for date_str.
+        This is a standing master copy independent of each property's own
+        st_files_email_enabled opt-in (see send_st_files_property_email for
+        that separate path) - a property having its own per-property email
+        does not exclude it here, by design, so this recipient list always
+        gets every property regardless of who else is separately opted in.
+        Used by main.py's send_st_files_daily_email, gated by this row's own
+        shared send_hour/send_minute - independent of whatever individual
+        times any per-property-opted-in properties are using.
 
         sent_date_str/date_str/sync_type semantics match
         send_st_files_property_email - see its own docstring. Logs one
@@ -3615,15 +3618,13 @@ class SyncService:
         """
         settings_row = email_service.get_st_files_daily_settings()
         props_res = self.supabase.table("property_api_settings").select(
-            "id, property_name, st_files_email_enabled"
+            "id, property_name"
         ).order("property_name").execute()
         date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
 
         attachments, included, skipped, table_rows = [], [], [], []
         prop_ids = {}
         for p in (props_res.data or []):
-            if p.get("st_files_email_enabled"):
-                continue
             prop = p["property_name"]
             prop_ids[prop] = p.get("id")
             try:
@@ -3669,13 +3670,15 @@ class SyncService:
         """
         "Send everything right now" - used only by admin.py's manual "Send
         Test Now" button, which tests the full current configuration
-        (bundled + every opted-in property) in one shot, ignoring all the
+        (bundled master copy for every property + every per-property-opted-
+        in property's own separate email) in one shot, ignoring all the
         individual schedules. The real scheduled sends are two separate,
         independently-timed paths instead (send_st_files_bundled_digest and
         send_st_files_property_email, called by main.py's
         send_st_files_daily_email and send_st_files_per_property_emails
-        respectively) - each property's own st_files_email_enabled decides
-        which path it belongs to, same as before.
+        respectively) - the bundled path always includes every property
+        regardless of st_files_email_enabled; that flag only decides whether
+        a property ALSO gets its own separate per-property email.
         """
         bundled_result = await self.send_st_files_bundled_digest(date_str, mark_sent, sent_date_str, sync_type="manual")
         included = list(bundled_result["included"])
