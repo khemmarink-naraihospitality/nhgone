@@ -11,6 +11,7 @@ type TemplateType =
   | "internal_welcome_email"
   | "password_reset_email"
   | "google_signin_notice_email"
+  | "approved_email"
   | "rejection_email"
   | "st_files_email"
   | "st_files_email_per_property";
@@ -28,7 +29,7 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   rr3: { label: "RR3", children: ["rr3"] },
   system_email: {
     label: "System Email",
-    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "rejection_email"],
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "rejection_email"],
   },
   statistic_files: {
     label: "Statistic Files",
@@ -116,6 +117,13 @@ const PASSWORD_RESET_EMAIL_TOKENS: TokenDoc[] = [
 
 const GOOGLE_SIGNIN_NOTICE_EMAIL_TOKENS: TokenDoc[] = [
   { name: "FullName", description: "Account holder's full name (falls back to their email if blank)" },
+  { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
+];
+
+const APPROVED_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "FullName", description: "The approved user's full name (falls back to their email if blank)" },
+  { name: "Role", description: "The role picked in the Approve dialog (e.g. Front Office, Finance)" },
+  { name: "Email", description: "The approved user's email - also the Google account they should sign in with" },
   { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
 ];
 
@@ -243,6 +251,16 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
   },
+  approved_email: {
+    label: "Approved",
+    endpoint: "/admin/email-template/approved",
+    tokens: APPROVED_EMAIL_TOKENS,
+    defaultNote: "No Approved template saved yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent by Admin > Users > Approve, for a pending self-registered signup.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+  },
   rejection_email: {
     label: "Rejection",
     endpoint: "/admin/email-template/rejection",
@@ -353,6 +371,12 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
   }),
   google_signin_notice_email: () => ({
     FullName: "John Doe",
+    AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
+  }),
+  approved_email: () => ({
+    FullName: "John Doe",
+    Role: "Front Office",
+    Email: "john.doe@example.com",
     AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
   }),
   rejection_email: () => ({

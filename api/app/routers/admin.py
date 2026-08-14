@@ -11,6 +11,7 @@ from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, REJECTION_TEMPLATE_KEY,
+    APPROVED_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
 from app.services import ftp_service
@@ -230,7 +231,11 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
     """
     Super Admin approval step for a pending self-registered user: sets their
     real role and flips status to Active, which unlocks the normal app (see
-    Navigation.tsx's pending-status gate).
+    Navigation.tsx's pending-status gate). Emails them that they're approved
+    (Admin > Templates > System Email > Approved) - the other outcome of a
+    pending review, paired with delete_user's rejection email below. A
+    failed send doesn't fail the approval itself, same email_sent/email_error
+    non-fatal pattern delete_user already uses.
     """
     try:
         admin_supabase = get_supabase_client()
@@ -240,7 +245,17 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
         }).eq("id", user_id).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="User not found")
-        return {"status": "success", "message": "User approved"}
+
+        profile = res.data[0]
+        email_sent = False
+        email_error = None
+        try:
+            email_service.send_approved_email(profile["email"], request.role, profile.get("full_name") or "")
+            email_sent = True
+        except Exception as e:
+            email_error = str(e)
+
+        return {"status": "success", "message": "User approved", "email_sent": email_sent, "email_error": email_error}
     except HTTPException:
         raise
     except Exception as e:
@@ -667,6 +682,15 @@ async def get_rejection_email_template():
 @router.post("/email-template/rejection")
 async def save_rejection_email_template(request: EmailTemplateUpdate):
     return _save_simple_email_template(REJECTION_TEMPLATE_KEY, request, "Rejection")
+
+@router.get("/email-template/approved")
+async def get_approved_email_template():
+    """Sent by POST /admin/users/{id}/approve (Admin > Templates > System Email > Approved)."""
+    return {"status": "success", "data": email_service.get_approved_template()}
+
+@router.post("/email-template/approved")
+async def save_approved_email_template(request: EmailTemplateUpdate):
+    return _save_simple_email_template(APPROVED_TEMPLATE_KEY, request, "Approved")
 
 @router.post("/email-template/st-files-daily/send-now")
 async def send_st_files_daily_email_now():

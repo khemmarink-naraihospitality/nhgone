@@ -233,6 +233,46 @@ DEFAULT_REJECTION_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40
   <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">Narai Hospitality Group — NHGOne</p>
 </div>"""
 
+# Sent by POST /admin/users/{id}/approve (Admin > Users > Approve) - the
+# other outcome of reviewing a self-registered Pending signup, paired with
+# REJECTION_TEMPLATE_KEY above. Uses the branded card shell (matching
+# WELCOME_TEMPLATE_KEY) rather than REJECTION's plain layout since this one
+# does carry a CTA (sign back in) and is good news, not a rejection notice.
+# English-only by design, unlike Rejection/Password Reset/Google Sign-in
+# Notice which are bilingual - those were the original hardcoded strings;
+# this is a new template with no such precedent to match.
+APPROVED_TEMPLATE_KEY = "approved"
+DEFAULT_APPROVED_SUBJECT = "Your NHGOne account has been approved"
+DEFAULT_APPROVED_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:480px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px 40px 32px 40px; text-align:center;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 24px auto;">
+          <tr>
+            <td style="border:1px solid rgba(21,42,0,0.1); padding:8px; border-radius:4px;">
+              <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" width="32" height="32" alt="NHG" style="display:block;" />
+            </td>
+          </tr>
+        </table>
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:32px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 32px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Enterprise Narai Hospitality Group Data Assets</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00; text-align:center;">Hi <b><<FullName>></b>,</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; text-align:center; line-height:1.6;">Your NHGOne account has been approved and is now active.</p>
+        <p style="margin:0 0 32px 0; font-size:14px; color:#152A00; text-align:center; line-height:1.6;">You've been given the <b><<Role>></b> role. Sign in with <b>Continue with Google</b> using <b><<Email>></b>.</p>
+        <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 20px auto;">
+          <tr>
+            <td style="background-color:#152A00; border-radius:4px;">
+              <a href="<<AppLink>>" target="_blank" style="display:inline-block; padding:16px 40px; font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#FFEFD2; text-decoration:none;">Open NHGOne</a>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:0; font-size:11px; color:#152A00; opacity:0.5; word-break:break-all;"><<AppLink>></p>
+      </td>
+    </tr>
+  </table>
+  <p style="max-width:480px; margin:24px auto 0 auto; text-align:center; font-size:11px; font-style:italic; color:#94a3b8;">AUTHORISED PERSONNEL ONLY. ACCESS IS LOGGED AND MONITORED.</p>
+</div>"""
+
 
 def _escape_html(value: str) -> str:
     return (
@@ -408,6 +448,9 @@ class EmailService:
     def get_rejection_template(self) -> dict:
         return self._get_template(REJECTION_TEMPLATE_KEY, DEFAULT_REJECTION_SUBJECT, DEFAULT_REJECTION_TEMPLATE)
 
+    def get_approved_template(self) -> dict:
+        return self._get_template(APPROVED_TEMPLATE_KEY, DEFAULT_APPROVED_SUBJECT, DEFAULT_APPROVED_TEMPLATE)
+
     def send_welcome_email(self, to_email: str, password: str | None, full_name: str = ""):
         greeting = full_name or to_email
         template = self.get_welcome_template()
@@ -536,6 +579,35 @@ class EmailService:
             f"If you believe this is a mistake, please contact your system administrator.\n\n"
             f"สวัสดีคุณ {greeting},\n"
             f"บัญชีของคุณไม่ได้รับอนุญาตให้เข้าใช้งานระบบ NHGOne หากคิดว่านี่เป็นความผิดพลาด กรุณาติดต่อผู้ดูแลระบบ\n\n"
+            f"Narai Hospitality Group - NHGOne"
+        )
+        self.send_email(to_email, subject, html_body, text_body)
+
+    def send_approved_email(self, to_email: str, role: str, full_name: str = ""):
+        """Sent by POST /admin/users/{id}/approve (Admin > Users > Approve),
+        the other outcome of reviewing a self-registered Pending signup,
+        paired with send_rejection_email above. Admin > Templates >
+        System Email > Approved."""
+        greeting = full_name or to_email
+        template = self.get_approved_template()
+        app_link = settings.APP_BASE_URL
+        tokens = {
+            "FullName": _escape_html(greeting),
+            "Role": _escape_html(role),
+            "Email": _escape_html(to_email),
+            "AppLink": app_link,  # not escaped - used as both href and display text, must stay a valid URL
+        }
+        subject = template["subject"]
+        html_body = template["html_template"]
+        for key, value in tokens.items():
+            subject = subject.replace(f"<<{key}>>", value)
+            html_body = html_body.replace(f"<<{key}>>", value)
+        text_body = (
+            f"Hi {greeting},\n\n"
+            f"Your NHGOne account has been approved and is now active. "
+            f"You've been given the {role} role.\n\n"
+            f"Sign in at {app_link} using 'Continue with Google' "
+            f"with the Google account for: {to_email}\n\n"
             f"Narai Hospitality Group - NHGOne"
         )
         self.send_email(to_email, subject, html_body, text_body)
