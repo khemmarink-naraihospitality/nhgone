@@ -290,14 +290,18 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
     Locally (persistent process, ticked every minute by the APScheduler set up
     in start_scheduler) this matches a property's sync_hour AND sync_minute
     exactly, so testing "sync in 2 minutes" works as expected. On Vercel
-    (match_hour_only=True, passed by the /sync/auto route below) minute-level
-    precision isn't achievable or meaningful - the Cron entry in vercel.json
-    fires every 5 minutes (moved from hourly because a single hourly tick
-    wasn't reliable - it went missing for hours at a stretch during a burst
-    of production deployments) rather than being guaranteed to land on any
-    particular minute, so matching is by hour alone. Since up to 12 ticks
-    now land within the same matching hour, last_daily_sync_date below is
-    what stops the same property being re-synced on every one of them.
+    (match_hour_only=True, passed by the /sync/auto route below) exact-minute
+    precision isn't achievable - the Cron entry in vercel.json fires every 5
+    minutes (moved from hourly because a single hourly tick wasn't reliable -
+    it went missing for hours at a stretch during a burst of production
+    deployments) rather than being guaranteed to land on any particular
+    minute (observed landing ~1 minute after the 5-minute grid), so matching
+    requires the hour to match exactly but only the configured minute or
+    later within it - never before the configured time, but the tick that
+    actually catches it may run a few minutes late. Since up to 12 ticks now
+    land within the same matching hour, last_daily_sync_date below is what
+    stops the same property being re-synced on every remaining one of them
+    once the first successful tick catches it.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     current_hour = now.hour
@@ -322,7 +326,15 @@ async def daily_auto_sync(force_all: bool = False, match_hour_only: bool = False
 
         if not force_all:
             if match_hour_only:
-                query = query.eq("sync_hour", current_hour)
+                # >= rather than == : Vercel's 5-minute cron doesn't land on
+                # any particular minute (observed landing 1 minute after the
+                # 5-minute grid, e.g. :01/:06/:11), so waiting for an exact
+                # match would only ever catch a property whose configured
+                # minute happened to line up with that offset. This still
+                # can't fire before the configured time, just up to ~5
+                # minutes after it - and stays within the same hour, so it
+                # won't fire hours late either.
+                query = query.eq("sync_hour", current_hour).lte("sync_minute", current_minute)
             else:
                 query = query.eq("sync_hour", current_hour).eq("sync_minute", current_minute)
 
@@ -430,7 +442,9 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
             .select("id, property_name, st_files_sync_hour, st_files_sync_minute, st_files_sync_last_date") \
             .eq("st_files_sync_enabled", True)
         if match_hour_only:
-            query = query.eq("st_files_sync_hour", now.hour)
+            # >= not == : see daily_auto_sync's own comment on why - Vercel's
+            # 5-minute cron doesn't land on any particular minute.
+            query = query.eq("st_files_sync_hour", now.hour).lte("st_files_sync_minute", now.minute)
         else:
             query = query.eq("st_files_sync_hour", now.hour).eq("st_files_sync_minute", now.minute)
         items = query.execute().data or []
@@ -530,7 +544,9 @@ async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
             .select("id, property_name, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_sync_last_date") \
             .eq("rr4_tm30_sync_enabled", True)
         if match_hour_only:
-            query = query.eq("rr4_tm30_sync_hour", now.hour)
+            # >= not == : see daily_auto_sync's own comment on why - Vercel's
+            # 5-minute cron doesn't land on any particular minute.
+            query = query.eq("rr4_tm30_sync_hour", now.hour).lte("rr4_tm30_sync_minute", now.minute)
         else:
             query = query.eq("rr4_tm30_sync_hour", now.hour).eq("rr4_tm30_sync_minute", now.minute)
         items = query.execute().data or []
@@ -625,7 +641,9 @@ async def daily_auto_sync_rv(match_hour_only: bool = False):
             .select("id, property_name, rv_sync_hour, rv_sync_minute, rv_sync_last_date") \
             .eq("rv_sync_enabled", True)
         if match_hour_only:
-            query = query.eq("rv_sync_hour", now.hour)
+            # >= not == : see daily_auto_sync's own comment on why - Vercel's
+            # 5-minute cron doesn't land on any particular minute.
+            query = query.eq("rv_sync_hour", now.hour).lte("rv_sync_minute", now.minute)
         else:
             query = query.eq("rv_sync_hour", now.hour).eq("rv_sync_minute", now.minute)
         items = query.execute().data or []
@@ -728,7 +746,10 @@ async def send_st_files_daily_email(match_hour_only: bool = False):
 
     hour_matches = now.hour == settings_row["send_hour"]
     if match_hour_only:
-        if not hour_matches:
+        # hour must match exactly, minute only needs to have been reached -
+        # see daily_auto_sync's own comment on why (Vercel's 5-minute cron
+        # doesn't land on any particular minute).
+        if not (hour_matches and now.minute >= settings_row["send_minute"]):
             return
     elif not (hour_matches and now.minute == settings_row["send_minute"]):
         return
@@ -776,7 +797,9 @@ async def send_st_files_per_property_emails(match_hour_only: bool = False):
             .select("id, property_name, st_files_email_hour, st_files_email_minute, st_files_email_last_sent_date") \
             .eq("st_files_email_enabled", True)
         if match_hour_only:
-            query = query.eq("st_files_email_hour", now.hour)
+            # >= not == : see daily_auto_sync's own comment on why - Vercel's
+            # 5-minute cron doesn't land on any particular minute.
+            query = query.eq("st_files_email_hour", now.hour).lte("st_files_email_minute", now.minute)
         else:
             query = query.eq("st_files_email_hour", now.hour).eq("st_files_email_minute", now.minute)
         items = query.execute().data or []
@@ -810,10 +833,11 @@ async def send_ftp_upload_job(match_hour_only: bool = False):
     the same schedule). Which report type(s) get uploaded (ST/RV, or both)
     is decided inside send_ftp_upload via ftp_settings.upload_st_files/
     upload_rv_files - this job itself doesn't care. Same hour-matching/
-    dedup pattern as send_st_files_daily_email: match_hour_only in
-    production since Vercel's cron only lands on the hour, last_sent_date
-    on the settings row guards against resending on a later tick within
-    the matching hour.
+    dedup pattern as send_st_files_daily_email: hour must match exactly,
+    minute only needs to have been reached (not exact - Vercel's 5-minute
+    cron doesn't land on any particular minute), last_sent_date on the
+    settings row guards against resending on a later tick within the
+    matching hour.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     if not sync_service.supabase:
@@ -829,7 +853,12 @@ async def send_ftp_upload_job(match_hour_only: bool = False):
 
     hour_matches = now.hour == settings_row["upload_hour"]
     if match_hour_only:
-        if not hour_matches:
+        # hour must match exactly, minute only needs to have been reached -
+        # see daily_auto_sync's own comment on why (Vercel's 5-minute cron
+        # doesn't land on any particular minute, so waiting for an exact
+        # minute match would only ever catch a lucky coincidence - this was
+        # reported live: set to 03:10, actually fired at 03:01).
+        if not (hour_matches and now.minute >= settings_row["upload_minute"]):
             return
     elif not (hour_matches and now.minute == settings_row["upload_minute"]):
         return
