@@ -30,6 +30,13 @@ interface PropertySyncSettings {
   rr4_tm30_sync_enabled: boolean;
   rr4_tm30_sync_hour: number | null;
   rr4_tm30_sync_minute: number | null;
+  // Separate from the two fields above (which control WHEN the report is
+  // generated) - this controls which calendar day an arrival/departure
+  // gets bucketed into in the first place. 0 = midnight (MEWS's own
+  // BusinessDayClosingOffset, confirmed 0 for every property checked) -
+  // only worth changing if the property's own finance/front-desk team
+  // uses a different manual cutoff convention than MEWS's official one.
+  rr4_tm30_day_start_hour: number | null;
   // RV Files' own independent schedule - the revenue journal can run on a
   // different clock than any of the other three (or not at all). Always
   // imports YESTERDAY's Bangkok date, same reasoning as RR4/TM30.
@@ -122,7 +129,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_day_start_hour, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -305,6 +312,7 @@ export default function AdminSyncPage() {
           rr4_tm30_sync_enabled: editingProperty.rr4_tm30_sync_enabled,
           rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour,
           rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute,
+          rr4_tm30_day_start_hour: editingProperty.rr4_tm30_day_start_hour,
           rv_sync_enabled: editingProperty.rv_sync_enabled,
           rv_sync_hour: editingProperty.rv_sync_hour,
           rv_sync_minute: editingProperty.rv_sync_minute,
@@ -832,7 +840,7 @@ export default function AdminSyncPage() {
                        </button>
                     </div>
 
-                    <div className="px-5 pb-5">
+                    <div className="px-5 pb-5 space-y-3">
                        <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
                           <div className="flex flex-col items-center">
                              <input
@@ -858,6 +866,30 @@ export default function AdminSyncPage() {
                              <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
                           </div>
                           <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
+                       </div>
+
+                       {/* Business-day cutoff - separate concept from the
+                           generation time above. Which calendar day an
+                           arrival/departure gets filed under, not when the
+                           report runs. 0 = midnight (matches MEWS's own
+                           BusinessDayClosingOffset); only change this if the
+                           property's own team uses a later manual cutoff. */}
+                       <div className="flex items-center justify-between gap-3 bg-black/20 border border-white/5 rounded-xl px-4 py-3">
+                          <div className="min-w-0">
+                             <div className="text-[11px] font-bold text-white/70">Day Start Hour</div>
+                             <div className="text-[9px] text-white/35 leading-snug">Cutoff for which day an arrival/departure counts under - 0 = midnight</div>
+                          </div>
+                          <div className="flex flex-col items-center shrink-0">
+                             <input
+                               type="number"
+                               min="0"
+                               max="23"
+                               className="w-14 bg-transparent text-center text-xl font-mono font-bold text-white outline-none"
+                               value={editingProperty.rr4_tm30_day_start_hour ?? 0}
+                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_hour: parseInt(e.target.value) || 0})}
+                             />
+                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                          </div>
                        </div>
                     </div>
                  </div>
