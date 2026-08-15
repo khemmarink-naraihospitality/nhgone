@@ -154,7 +154,7 @@ function LoginContent() {
           {showEmailLogin && !forgotMode && (
             <form onSubmit={handleEmailLogin} className="w-full space-y-6">
               <div className="space-y-2">
-                <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Work Email</label>
+                <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Your Alias Email</label>
                 <input
                   type="email"
                   value={email}
@@ -219,10 +219,10 @@ function LoginContent() {
             ) : (
               <form onSubmit={handleForgotPassword} className="w-full space-y-6">
                 <p className="text-xs text-[#152A00]/60 leading-relaxed">
-                  Enter your work email and we&apos;ll send you a link to set a new password.
+                  Enter your alias email and we&apos;ll send you a link to set a new password.
                 </p>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Work Email</label>
+                  <label className="text-[10px] font-bold tracked-caps text-[#152A00]/60 ml-1">Your Alias Email</label>
                   <input
                     type="email"
                     value={email}
