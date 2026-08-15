@@ -840,55 +840,70 @@ export default function AdminSyncPage() {
                        </button>
                     </div>
 
-                    <div className="px-5 pb-5 space-y-3">
-                       <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
-                          <div className="flex flex-col items-center">
-                             <input
-                               type="number"
-                               min="0"
-                               max="23"
-                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                               value={editingProperty.rr4_tm30_sync_hour ?? 2}
-                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_hour: parseInt(e.target.value) || 0})}
-                             />
-                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                    <div className="px-5 pb-5 space-y-4">
+                       {/* Which 24 hours of guest activity get swept into one
+                           day's report. "To" isn't independently editable -
+                           the window is always exactly 24 hours, so it's
+                           always the same clock hour on the next day - but
+                           showing both ends explicitly (rather than a single
+                           "cutoff hour" number) is what a reader actually
+                           reasons about, per feedback on the old single-field
+                           layout. 0 -> 0 (next day) matches MEWS's own
+                           BusinessDayClosingOffset (confirmed 0 for every
+                           property checked) - only change this if the
+                           property's own team uses a later manual cutoff. */}
+                       <div>
+                          <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-2 ml-1">Sweep Data From → To</div>
+                          <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
+                             <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="23"
+                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                  value={editingProperty.rr4_tm30_day_start_hour ?? 0}
+                                  onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_hour: parseInt(e.target.value) || 0})}
+                                />
+                                <span className="text-[9px] font-bold text-white/25 tracking-widest">FROM</span>
+                             </div>
+                             <span className="text-xl font-bold text-white/15 -mt-3">→</span>
+                             <div className="flex flex-col items-center">
+                                <div className="w-14 text-center text-2xl font-mono font-bold text-white/50">
+                                  {String(editingProperty.rr4_tm30_day_start_hour ?? 0).padStart(2, '0')}
+                                </div>
+                                <span className="text-[9px] font-bold text-white/25 tracking-widest">TO (NEXT DAY)</span>
+                             </div>
+                             <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
                           </div>
-                          <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
-                          <div className="flex flex-col items-center">
-                             <input
-                               type="number"
-                               min="0"
-                               max="59"
-                               className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                               value={editingProperty.rr4_tm30_sync_minute ?? 0}
-                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_minute: parseInt(e.target.value) || 0})}
-                             />
-                             <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
-                          </div>
-                          <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
                        </div>
 
-                       {/* Business-day cutoff - separate concept from the
-                           generation time above. Which calendar day an
-                           arrival/departure gets filed under, not when the
-                           report runs. 0 = midnight (matches MEWS's own
-                           BusinessDayClosingOffset); only change this if the
-                           property's own team uses a later manual cutoff. */}
-                       <div className="flex items-center justify-between gap-3 bg-black/20 border border-white/5 rounded-xl px-4 py-3">
-                          <div className="min-w-0">
-                             <div className="text-[11px] font-bold text-white/70">Day Start Hour</div>
-                             <div className="text-[9px] text-white/35 leading-snug">Cutoff for which day an arrival/departure counts under - 0 = midnight</div>
-                          </div>
-                          <div className="flex flex-col items-center shrink-0">
-                             <input
-                               type="number"
-                               min="0"
-                               max="23"
-                               className="w-14 bg-transparent text-center text-xl font-mono font-bold text-white outline-none"
-                               value={editingProperty.rr4_tm30_day_start_hour ?? 0}
-                               onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_hour: parseInt(e.target.value) || 0})}
-                             />
-                             <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                       <div>
+                          <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-2 ml-1">Generate File At</div>
+                          <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
+                             <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="23"
+                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                  value={editingProperty.rr4_tm30_sync_hour ?? 2}
+                                  onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_hour: parseInt(e.target.value) || 0})}
+                                />
+                                <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
+                             </div>
+                             <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
+                             <div className="flex flex-col items-center">
+                                <input
+                                  type="number"
+                                  min="0"
+                                  max="59"
+                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                  value={editingProperty.rr4_tm30_sync_minute ?? 0}
+                                  onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_sync_minute: parseInt(e.target.value) || 0})}
+                                />
+                                <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
+                             </div>
+                             <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
                           </div>
                        </div>
                     </div>
