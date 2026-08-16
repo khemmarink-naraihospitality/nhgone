@@ -1693,6 +1693,28 @@ class SyncService:
         return _RR4_PROPERTY_THAI_NAMES.get(
             property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name))
 
+    async def _resolve_rr4_nationality_codes(self) -> dict:
+        """Admin > RR4-Nationality's editable alpha-2 -> Thai Hotel Act
+        numeric code table (rr4_nationality_codes), letting staff correct or
+        add nationality codes without a deploy. Starts from the hardcoded
+        RR4_NATIONALITY_CODE dict and layers the DB rows on top per-entry,
+        so a table that's empty/unreachable (or missing a handful of codes)
+        never blanks a nationality that already worked - same
+        graceful-degradation pattern role_permissions uses when its own
+        table is empty."""
+        codes = dict(RR4_NATIONALITY_CODE)
+        if self.supabase:
+            try:
+                res = self.supabase.table("rr4_nationality_codes").select(
+                    "nationality_code, rr4_code").execute()
+                for row in res.data or []:
+                    code = (row.get("rr4_code") or "").strip()
+                    if code:
+                        codes[row["nationality_code"]] = code
+            except Exception:
+                pass
+        return codes
+
     @staticmethod
     def _rr4_tm30_identity_card(c: dict) -> str:
         identity_card = c.get("IdentityCard")
@@ -1710,7 +1732,9 @@ class SyncService:
         Hotel Act's column layout - a direct port of the "RR4-TM30-
         Chinatown-Gen" Google Sheet's RR4 tab (fed from MEWS's own "Customer
         profiles In house" report), reverse-engineered from its formulas.
-        See rr4_tm30_reference.py for the nationality code table.
+        Nationality codes come from _resolve_rr4_nationality_codes (Admin >
+        RR4-Nationality, editable) layered over the hardcoded fallback in
+        rr4_tm30_reference.py.
 
         occupation/willGo/willGoCountry/timeCheckOut are fixed constants in
         the source sheet, not derived per guest - kept identical here rather
@@ -1783,6 +1807,8 @@ class SyncService:
             local = t.astimezone(day.tzinfo)
             return f"{local.hour:02d}.{local.minute:02d}"
 
+        nationality_codes = await self._resolve_rr4_nationality_codes()
+
         rows = []
         for res in reservations:
             start_utc = parse_utc(res.get("StartUtc"))
@@ -1800,7 +1826,7 @@ class SyncService:
                 if not c:
                     continue
                 nationality_code = c.get("NationalityCode", "")
-                rr4_code = RR4_NATIONALITY_CODE.get(nationality_code, "")
+                rr4_code = nationality_codes.get(nationality_code, "")
                 nationality_name = _rr3_country_name(nationality_code)
                 passport = c.get("Passport") or {}
                 rows.append({
