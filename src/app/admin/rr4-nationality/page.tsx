@@ -34,6 +34,8 @@ export default function Rr4NationalityPage() {
   const [deletingRow, setDeletingRow] = useState<NationalityRow | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
 
+  const [readmeOpen, setReadmeOpen] = useState(false);
+
   const fetchRows = async () => {
     setLoading(true);
     const { data, error } = await supabase
@@ -143,6 +145,31 @@ export default function Rr4NationalityPage() {
         title="RR4-Nationality"
         description="MEWS Nationality -> Thai Hotel Act (ร.ร.๔) numeric code, used by every RR4 export. Edits apply immediately - no deploy needed."
       />
+
+      <div className="mb-6">
+        <button
+          onClick={() => setReadmeOpen((o) => !o)}
+          className="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest transition-colors"
+        >
+          <svg className={`w-3.5 h-3.5 transition-transform ${readmeOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          Read Me - where RR4-Nationality is used in the export
+        </button>
+        {readmeOpen && (
+          <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+            <p className="text-sm text-slate-600 mb-3">
+              A row&apos;s <span className="font-bold">RR4-Nationality</span> code fills 4 columns in the RR4 export - not all of them. Column W (จะไปประเทศ) is a fixed &quot;99&quot; for every guest regardless of nationality, ported as-is from the original source form:
+            </p>
+            <pre className="text-xs bg-white border border-slate-200 rounded-xl p-4 overflow-x-auto text-slate-700 font-mono leading-relaxed">
+{`"nationality": rr4_code,        # M - สัญชาติ
+"issued_by": rr4_code,          # P - หนังสือเดินทางออกให้โดย
+"address_country": rr4_code,    # R - ประเทศที่อยู่ปัจจุบัน
+"come_from_country": rr4_code,  # U - มาจากประเทศ
+"will_go": "Thailand",          # V - จะไปที่ (fixed string เสมอ)
+"will_go_country": "99",        # W - จะไปประเทศ (fixed "99" เสมอ ไม่ว่าแขกสัญชาติไหน)`}
+            </pre>
+          </div>
+        )}
+      </div>
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between border-b border-slate-100">
