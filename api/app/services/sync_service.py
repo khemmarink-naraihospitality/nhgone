@@ -1861,20 +1861,19 @@ class SyncService:
         ws = wb.active
         ws.title = "RR4"
 
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 16)
+        # Single, unmerged cells - matches the reference sheet's own layout
+        # exactly (verified cell-by-cell: column A = disclaimer, L = title,
+        # N = property name, Z = ร.ร.๔ - not one merged block each). Text
+        # simply overflows into the empty cells to its right, same as the
+        # reference does, so no wrap_text/row-height override is needed.
         ws.cell(1, 1, self._RR4_DISCLAIMER).font = Font(bold=True, italic=True, size=9)
-        ws.cell(1, 1).alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
-        ws.row_dimensions[1].height = 40
-
-        ws.merge_cells(start_row=1, start_column=n_cols - 15, end_row=1, end_column=n_cols - 11)
-        ws.cell(1, n_cols - 15, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
-        ws.merge_cells(start_row=1, start_column=n_cols - 10, end_row=1, end_column=n_cols - 4)
-        ws.cell(1, n_cols - 10, report["property_thai_name"]).font = Font(bold=True, size=13)
-        ws.merge_cells(start_row=1, start_column=n_cols - 3, end_row=1, end_column=n_cols)
-        ws.cell(1, n_cols - 3, "ร.ร.๔").font = Font(bold=True, size=13)
-        ws.cell(1, n_cols - 15).alignment = Alignment(horizontal="center")
-        ws.cell(1, n_cols - 10).alignment = Alignment(horizontal="center")
-        ws.cell(1, n_cols - 3).alignment = Alignment(horizontal="center")
+        ws.cell(1, 1).alignment = Alignment(horizontal="left")
+        ws.cell(1, 12, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
+        ws.cell(1, 12).alignment = Alignment(horizontal="left")
+        ws.cell(1, 14, report["property_thai_name"]).font = Font(bold=True, size=13)
+        ws.cell(1, 14).alignment = Alignment(horizontal="left")
+        ws.cell(1, n_cols - 1, "ร.ร.๔").font = Font(bold=True, size=13)
+        ws.cell(1, n_cols - 1).alignment = Alignment(horizontal="left")
 
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
         ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist']}").alignment = \
