@@ -137,10 +137,6 @@ export default function Rr4Tm30Page() {
   // that row's button shows a busy state - re-syncing one day shouldn't
   // block interacting with the rest of the table.
   const [regeneratingDate, setRegeneratingDate] = useState<string | null>(null);
-  // Which row's file-type dropdown ("<date>-rr4" / "<date>-tm30") is open -
-  // clicking RR4/TM30 reveals a small Preview/Download menu instead of
-  // showing both actions as always-visible separate buttons.
-  const [openFileMenu, setOpenFileMenu] = useState<string | null>(null);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -184,13 +180,6 @@ export default function Rr4Tm30Page() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
-
-  useEffect(() => {
-    if (!openFileMenu) return;
-    const closeMenu = () => setOpenFileMenu(null);
-    document.addEventListener("click", closeMenu);
-    return () => document.removeEventListener("click", closeMenu);
-  }, [openFileMenu]);
 
   // Accepts an override date/source so the Files table's View button can jump
   // straight to a given day without racing the date/dataSource state setters
@@ -291,38 +280,6 @@ export default function Rr4Tm30Page() {
       alert(err.message);
     } finally {
       setRegeneratingDate(null);
-    }
-  };
-
-  // Filename (<<Property Code>>_RR4_<<yyyymmdd>>.xlsx) is decided server-side,
-  // where the real Property Code is known - read it back off the response
-  // instead of guessing it client-side.
-  const filenameFromResponse = (res: Response, fallback: string) => {
-    const disposition = res.headers.get("Content-Disposition") || "";
-    const match = disposition.match(/filename="?([^";]+)"?/);
-    return match ? match[1] : fallback;
-  };
-
-  const handleDownload = async (kind: TabKey, rowDate?: string) => {
-    if (!selectedProperty) return;
-    const targetDate = rowDate ?? date;
-    try {
-      const params = new URLSearchParams({ property_name: selectedProperty, date: targetDate });
-      const res = await fetch(`/api/${kind}/export?${params.toString()}`);
-      if (!res.ok) {
-        const result = await res.json().catch(() => null);
-        throw new Error(result?.detail || "Download failed");
-      }
-      const filename = filenameFromResponse(res, `${kind.toUpperCase()}_${selectedProperty}_${targetDate}.xlsx`);
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (err: any) {
-      alert(err.message);
     }
   };
 
@@ -620,52 +577,15 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>{fmtDateTime(r.synced_at)}</td>
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
-                          {(["rr4", "tm30"] as TabKey[]).map((kind) => {
-                            const menuKey = `${r.date}-${kind}`;
-                            return (
-                              <div key={kind} className="relative inline-block">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenFileMenu(openFileMenu === menuKey ? null : menuKey);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                                >
-                                  {kind.toUpperCase()}
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                {openFileMenu === menuKey && (
-                                  // flex-col, not just block buttons - the
-                                  // enclosing cell sets whitespace-nowrap,
-                                  // which otherwise lays these out inline
-                                  // side by side instead of stacked.
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute left-0 top-9 flex flex-col w-40 bg-[var(--paper)] border border-[var(--text-primary)] shadow-xl z-[100] p-1"
-                                  >
-                                    <button
-                                      onClick={() => {
-                                        setOpenFileMenu(null);
-                                        handlePreview(kind, r.date);
-                                      }}
-                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                                    >
-                                      Preview
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setOpenFileMenu(null);
-                                        handleDownload(kind, r.date);
-                                      }}
-                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                                    >
-                                      Download .xlsx
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          {(["rr4", "tm30"] as TabKey[]).map((kind) => (
+                            <button
+                              key={kind}
+                              onClick={() => handlePreview(kind, r.date)}
+                              className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                            >
+                              {kind.toUpperCase()} Preview
+                            </button>
+                          ))}
                           <button
                             onClick={() => handleRegenerate(r.date)}
                             disabled={regeneratingDate === r.date}

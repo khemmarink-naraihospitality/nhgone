@@ -1897,8 +1897,10 @@ class SyncService:
         property name merged into the date line - confirmed against a real
         reference RR4 for Lub d Bangkok Siam, whose row 1 has the
         disclaimer / "ทะเบียนผู้เข้าพักในโรงแรม" / "โรงแรมหลับดี สยาม" /
-        "ร.ร.๔" in that order), row 2 is just the date, then the Thai
-        column headers, then one row per guest. Returns (bytes, filename)."""
+        "ร.ร.๔" in that order), row 2 is "ประจำวันที่"/date as the same
+        L/N unmerged-cell pair - no merged cells anywhere in this file -
+        then the Thai column headers, then one row per guest. Returns
+        (bytes, filename)."""
         report = await self.get_rr4_report(property_name, date)
         n_cols = len(self._RR4_COLUMNS)
 
@@ -1921,11 +1923,14 @@ class SyncService:
         ws.cell(1, n_cols, "ร.ร.๔").font = Font(bold=True, size=13)
         ws.cell(1, n_cols).alignment = Alignment(horizontal="left")
 
+        # Same two-cell pattern as row 1's title/property-name pair (L/N,
+        # single unmerged cells) - not one merged block across the row.
         # No slashes in the date value - confirmed against reference sheets
         # for both Siam and Chinatown ("15082569", not "15/08/2569").
-        ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
-        ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist'].replace('/', '')}").alignment = \
-            Alignment(horizontal="center")
+        ws.cell(2, 12, "ประจำวันที่").font = Font(bold=True, size=13)
+        ws.cell(2, 12).alignment = Alignment(horizontal="left")
+        ws.cell(2, 14, report["date_buddhist"].replace("/", "")).font = Font(bold=True, size=13)
+        ws.cell(2, 14).alignment = Alignment(horizontal="left")
 
         header_row = 3
         for col, (key, label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
