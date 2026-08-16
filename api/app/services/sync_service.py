@@ -1596,44 +1596,53 @@ class SyncService:
         the report date, reused by callers to format the header date.
 
         day_start_utc/day_end_utc are set from property_api_settings.
-        rr4_tm30_day_start_hour/rr4_tm30_day_end_hour (both default 0,
-        matching MEWS's own BusinessDayClosingOffset - confirmed 0 for
-        every property checked via configuration/get) - a per-property
-        override for hotels whose own front-desk/finance team files
-        arrivals/departures under a different manual window than MEWS's
-        official midnight-to-midnight one. end_hour "wraps" to the next day
-        whenever it isn't strictly after start_hour (matching how people
-        describe an overnight window, e.g. "22:00 to 06:00") - so the
-        default 0/0 still resolves to the full current-day window, and an
-        explicit 14/12 resolves to today 14:00 through tomorrow 12:00 (a
-        22-hour window, deliberately not required to be 24h). PER REQUEST
-        this is independently editable again - a prior version forced it
-        to always be exactly 24h after a stale 14/12 value left on
-        Chinatown silently undercounted its RR4 register by 76 guests
-        (160 rows instead of the correct 241, confirmed against a real
-        MEWS export); the safety constraint was explicitly reverted, so a
-        non-default end hour again carries that same risk if left stale -
-        double-check any non-zero value here after setting it. `day`
-        itself stays plain local midnight - only the window used for the
-        actual reservation query and in_window() checks shifts, so
-        header/display dates aren't affected.
+        rr4_tm30_day_start_hour/_minute and rr4_tm30_day_end_hour/_minute
+        (all default 0, matching MEWS's own BusinessDayClosingOffset -
+        confirmed 0 for every property checked via configuration/get) - a
+        per-property override for hotels whose own front-desk/finance team
+        files arrivals/departures under a different manual window than
+        MEWS's official midnight-to-midnight one. Minute-level precision
+        exists specifically so this can mirror MEWS's own native
+        "Customer profiles" report window exactly (e.g. 12:15 to 12:15 the
+        next day - confirmed against a real MEWS export for Lub d Bangkok
+        Chinatown), not just whole hours. End wraps to the next day
+        whenever its time-of-day isn't strictly after start's (matching
+        how people describe an overnight window, e.g. "22:00 to 06:00") -
+        so the default 0:00/0:00 still resolves to the full current-day
+        window, and an explicit 14:00/12:00 resolves to today 14:00
+        through tomorrow 12:00 (a 22-hour window, deliberately not
+        required to be 24h). This is independently editable per request -
+        a prior version forced it to always be exactly 24h after a stale
+        14/12 value left on Chinatown silently undercounted its RR4
+        register by 76 guests (160 rows instead of the correct 241,
+        confirmed against a real MEWS export); the safety constraint was
+        explicitly reverted, so a non-default end time again carries that
+        same risk if left stale - double-check any non-zero value here
+        after setting it. `day` itself stays plain local midnight - only
+        the window used for the actual reservation query and in_window()
+        checks shifts, so header/display dates aren't affected.
         """
         property_tz = await self._resolve_property_timezone(property_name)
-        day_start_hour = day_end_hour = 0
+        day_start_hour = day_start_minute = day_end_hour = day_end_minute = 0
         if self.supabase:
             try:
                 prop_res = self.supabase.table("property_api_settings").select(
-                    "rr4_tm30_day_start_hour, rr4_tm30_day_end_hour").eq(
+                    "rr4_tm30_day_start_hour, rr4_tm30_day_start_minute, "
+                    "rr4_tm30_day_end_hour, rr4_tm30_day_end_minute").eq(
                     "property_name", property_name).limit(1).execute()
                 row = prop_res.data[0] if prop_res.data else {}
                 day_start_hour = row.get("rr4_tm30_day_start_hour") or 0
+                day_start_minute = row.get("rr4_tm30_day_start_minute") or 0
                 day_end_hour = row.get("rr4_tm30_day_end_hour") or 0
+                day_end_minute = row.get("rr4_tm30_day_end_minute") or 0
             except Exception:
                 pass
         day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
-        end_days = 1 if day_end_hour <= day_start_hour else 0
-        day_start_utc = (day + timedelta(hours=day_start_hour)).astimezone(timezone.utc)
-        day_end_utc = (day + timedelta(days=end_days, hours=day_end_hour)).astimezone(timezone.utc)
+        start_of_day = day_start_hour * 60 + day_start_minute
+        end_of_day = day_end_hour * 60 + day_end_minute
+        end_days = 1 if end_of_day <= start_of_day else 0
+        day_start_utc = (day + timedelta(hours=day_start_hour, minutes=day_start_minute)).astimezone(timezone.utc)
+        day_end_utc = (day + timedelta(days=end_days, hours=day_end_hour, minutes=day_end_minute)).astimezone(timezone.utc)
         start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 

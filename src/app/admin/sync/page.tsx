@@ -37,13 +37,17 @@ interface PropertySyncSettings {
   // only worth changing if the property's own finance/front-desk team
   // uses a different manual cutoff convention than MEWS's official one.
   rr4_tm30_day_start_hour: number | null;
-  // Wraps to the next day whenever it isn't strictly after
-  // rr4_tm30_day_start_hour (an overnight-window convention, like "22:00 to
-  // 06:00") - so the window isn't forced to be exactly 24 hours; a property
-  // can exclude a settling/audit gap (e.g. 14:00 to 12:00 next day, 22h).
+  // Minute-level precision exists so this can mirror MEWS's own native
+  // report window exactly (e.g. 12:15, not just whole hours).
+  rr4_tm30_day_start_minute: number | null;
+  // Wraps to the next day whenever its time-of-day isn't strictly after
+  // start's (an overnight-window convention, like "22:00 to 06:00") - so
+  // the window isn't forced to be exactly 24 hours; a property can
+  // exclude a settling/audit gap (e.g. 14:00 to 12:00 next day, 22h).
   // PER REQUEST independently editable again after a stale value here once
   // undercounted a property's RR4 register - see sync_service's own note.
   rr4_tm30_day_end_hour: number | null;
+  rr4_tm30_day_end_minute: number | null;
   // RV Files' own independent schedule - the revenue journal can run on a
   // different clock than any of the other three (or not at all). Always
   // imports YESTERDAY's Bangkok date, same reasoning as RR4/TM30.
@@ -136,7 +140,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_day_start_hour, rr4_tm30_day_end_hour, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_day_start_hour, rr4_tm30_day_start_minute, rr4_tm30_day_end_hour, rr4_tm30_day_end_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -320,7 +324,9 @@ export default function AdminSyncPage() {
           rr4_tm30_sync_hour: editingProperty.rr4_tm30_sync_hour,
           rr4_tm30_sync_minute: editingProperty.rr4_tm30_sync_minute,
           rr4_tm30_day_start_hour: editingProperty.rr4_tm30_day_start_hour,
+          rr4_tm30_day_start_minute: editingProperty.rr4_tm30_day_start_minute,
           rr4_tm30_day_end_hour: editingProperty.rr4_tm30_day_end_hour,
+          rr4_tm30_day_end_minute: editingProperty.rr4_tm30_day_end_minute,
           rv_sync_enabled: editingProperty.rv_sync_enabled,
           rv_sync_hour: editingProperty.rv_sync_hour,
           rv_sync_minute: editingProperty.rv_sync_minute,
@@ -849,50 +855,79 @@ export default function AdminSyncPage() {
                     </div>
 
                     <div className="px-5 pb-5 space-y-4">
-                       {/* Which hours of guest activity get swept into one
-                           day's report. Both ends are independently
+                       {/* Which hours+minutes of guest activity get swept
+                           into one day's report. Minute-level precision
+                           exists so this can mirror MEWS's own native
+                           report window exactly - e.g. 12:15 to 12:15 the
+                           next day, confirmed against a real MEWS export
+                           for Chinatown. Both ends are independently
                            editable per request - "To" wraps to the next day
-                           whenever it isn't strictly after "From" (an
-                           overnight-window convention, like setting quiet
-                           hours "22:00 to 06:00"), so the window doesn't
-                           have to be exactly 24h - e.g. 14:00 to 12:00
-                           (next day) deliberately excludes a 2-hour
-                           settling/audit gap. CAUTION: a stale non-default
-                           value here previously undercounted a property's
-                           whole RR4 register by 76 guests (confirmed
-                           against a real MEWS export - Chinatown stuck at
-                           14/12 showed 160 rows instead of the correct
-                           241) - double-check any non-zero end hour is
-                           actually intended before leaving this page.
-                           Default 0/0 wraps to the full current-day window,
-                           matching MEWS's own BusinessDayClosingOffset
-                           (confirmed 0 for every property checked). */}
+                           whenever its time-of-day isn't strictly after
+                           "From"'s (an overnight-window convention, like
+                           setting quiet hours "22:00 to 06:00"), so the
+                           window doesn't have to be exactly 24h - e.g.
+                           14:00 to 12:00 (next day) deliberately excludes a
+                           2-hour settling/audit gap. CAUTION: a stale
+                           non-default value here previously undercounted a
+                           property's whole RR4 register by 76 guests
+                           (confirmed against a real MEWS export - Chinatown
+                           stuck at 14/12 showed 160 rows instead of the
+                           correct 241) - double-check any non-zero end time
+                           is actually intended before leaving this page.
+                           Default 0:00/0:00 wraps to the full current-day
+                           window, matching MEWS's own
+                           BusinessDayClosingOffset (confirmed 0 for every
+                           property checked). */}
                        <div>
                           <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-2 ml-1">Sweep Data From → To</div>
                           <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
                              <div className="flex flex-col items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="23"
-                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                                  value={editingProperty.rr4_tm30_day_start_hour ?? 0}
-                                  onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_hour: parseInt(e.target.value) || 0})}
-                                />
+                                <div className="flex items-center gap-1">
+                                   <input
+                                     type="number"
+                                     min="0"
+                                     max="23"
+                                     className="w-11 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                     value={editingProperty.rr4_tm30_day_start_hour ?? 0}
+                                     onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_hour: parseInt(e.target.value) || 0})}
+                                   />
+                                   <span className="text-xl font-bold text-white/15">:</span>
+                                   <input
+                                     type="number"
+                                     min="0"
+                                     max="59"
+                                     className="w-11 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                     value={editingProperty.rr4_tm30_day_start_minute ?? 0}
+                                     onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_start_minute: parseInt(e.target.value) || 0})}
+                                   />
+                                </div>
                                 <span className="text-[9px] font-bold text-white/25 tracking-widest">FROM</span>
                              </div>
                              <span className="text-xl font-bold text-white/15 -mt-3">→</span>
                              <div className="flex flex-col items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="23"
-                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                                  value={editingProperty.rr4_tm30_day_end_hour ?? 0}
-                                  onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_end_hour: parseInt(e.target.value) || 0})}
-                                />
+                                <div className="flex items-center gap-1">
+                                   <input
+                                     type="number"
+                                     min="0"
+                                     max="23"
+                                     className="w-11 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                     value={editingProperty.rr4_tm30_day_end_hour ?? 0}
+                                     onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_end_hour: parseInt(e.target.value) || 0})}
+                                   />
+                                   <span className="text-xl font-bold text-white/15">:</span>
+                                   <input
+                                     type="number"
+                                     min="0"
+                                     max="59"
+                                     className="w-11 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
+                                     value={editingProperty.rr4_tm30_day_end_minute ?? 0}
+                                     onChange={(e) => setEditingProperty({...editingProperty, rr4_tm30_day_end_minute: parseInt(e.target.value) || 0})}
+                                   />
+                                </div>
                                 <span className="text-[9px] font-bold text-white/25 tracking-widest">
-                                  TO{(editingProperty.rr4_tm30_day_end_hour ?? 0) <= (editingProperty.rr4_tm30_day_start_hour ?? 0) ? " (NEXT DAY)" : ""}
+                                  TO{((editingProperty.rr4_tm30_day_end_hour ?? 0) * 60 + (editingProperty.rr4_tm30_day_end_minute ?? 0))
+                                      <= ((editingProperty.rr4_tm30_day_start_hour ?? 0) * 60 + (editingProperty.rr4_tm30_day_start_minute ?? 0))
+                                      ? " (NEXT DAY)" : ""}
                                 </span>
                              </div>
                              <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
