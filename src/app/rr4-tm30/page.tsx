@@ -152,6 +152,10 @@ export default function Rr4Tm30Page() {
   const dataSectionRef = useRef<HTMLDivElement>(null);
   // Inline API-documentation blurb, same pattern as ST Files/RV/BCP - collapsed by default.
   const [apiDocsOpen, setApiDocsOpen] = useState(false);
+  // Same 20-per-page pattern as ST Files/RV's own tables - one page counter
+  // shared by both tabs since only one is ever visible at a time.
+  const DATA_PAGE_SIZE = 20;
+  const [dataPage, setDataPage] = useState(1);
 
   const getYesterday = () => {
     const d = new Date();
@@ -219,6 +223,7 @@ export default function Rr4Tm30Page() {
       }
       setRr4Report(rr4Result.data);
       setTm30Report(tm30Result.data);
+      setDataPage(1);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -512,7 +517,7 @@ export default function Rr4Tm30Page() {
                     return (
                       <button
                         key={t.key}
-                        onClick={() => setActiveTab(t.key)}
+                        onClick={() => { setActiveTab(t.key); setDataPage(1); }}
                         className={`px-3 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px whitespace-nowrap transition-all ${
                           activeTab === t.key
                             ? "border-[var(--text-primary)] text-[var(--text-primary)]"
@@ -566,9 +571,40 @@ export default function Rr4Tm30Page() {
                   )}
                 </div>
 
-                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
-                  {activeTab === "rr4" ? rr4Table(rr4Report?.rows || []) : tm30Table(tm30Report?.rows || [])}
-                </div>
+                {(() => {
+                  const allRows = activeTab === "rr4" ? (rr4Report?.rows || []) : (tm30Report?.rows || []);
+                  const totalPages = Math.max(1, Math.ceil(allRows.length / DATA_PAGE_SIZE));
+                  const page = Math.min(dataPage, totalPages);
+                  const pageRows = allRows.slice((page - 1) * DATA_PAGE_SIZE, page * DATA_PAGE_SIZE);
+                  return (
+                    <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 mb-8 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto p-0">
+                      {activeTab === "rr4" ? rr4Table(pageRows as Rr4Row[]) : tm30Table(pageRows as Tm30Row[])}
+                      {allRows.length > DATA_PAGE_SIZE && (
+                        <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+                          <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                            SHOWING {(page - 1) * DATA_PAGE_SIZE + 1}–{Math.min(page * DATA_PAGE_SIZE, allRows.length)} OF {allRows.length} — PAGE {page} OF {totalPages}
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => setDataPage((p) => Math.max(1, p - 1))}
+                              disabled={page === 1}
+                              className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                            >
+                              PREVIOUS
+                            </button>
+                            <button
+                              onClick={() => setDataPage((p) => Math.min(totalPages, p + 1))}
+                              disabled={page === totalPages}
+                              className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                            >
+                              NEXT
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </>
             )}
           </div>
