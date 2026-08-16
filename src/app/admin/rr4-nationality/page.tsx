@@ -4,11 +4,17 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
+// Same 4 columns as the "RR4-TM30-Chinatown-Gen" reference sheet's own
+// RR4-Nationality tab, in the same order - MEWS Nationality is the country
+// NAME (e.g. "Germany"), not an ISO code, matching how the original manual
+// spreadsheet's VLOOKUP worked; see _resolve_rr4_nationality_codes in
+// sync_service.py for how the backend joins a guest's alpha-2
+// NationalityCode to this table via _RR3_COUNTRY_MAP.
 interface NationalityRow {
   id: string;
-  nationality_code: string;
-  english_name: string;
+  mews_nationality: string;
   thai_name: string;
+  english_name: string;
   rr4_code: string;
 }
 
@@ -23,7 +29,7 @@ export default function Rr4NationalityPage() {
 
   const [isAdding, setIsAdding] = useState(false);
   const [addingBusy, setAddingBusy] = useState(false);
-  const [newForm, setNewForm] = useState({ nationality_code: "", english_name: "", thai_name: "", rr4_code: "" });
+  const [newForm, setNewForm] = useState({ mews_nationality: "", thai_name: "", english_name: "", rr4_code: "" });
 
   const [deletingRow, setDeletingRow] = useState<NationalityRow | null>(null);
   const [deletingBusy, setDeletingBusy] = useState(false);
@@ -32,8 +38,8 @@ export default function Rr4NationalityPage() {
     setLoading(true);
     const { data, error } = await supabase
       .from("rr4_nationality_codes")
-      .select("id, nationality_code, english_name, thai_name, rr4_code")
-      .order("nationality_code");
+      .select("id, mews_nationality, thai_name, english_name, rr4_code")
+      .order("mews_nationality");
     if (error) {
       console.error("Failed to fetch rr4_nationality_codes:", error.message);
       alert("Error loading nationality codes: " + error.message);
@@ -54,7 +60,7 @@ export default function Rr4NationalityPage() {
     const q = search.trim().toLowerCase();
     if (!q) return true;
     return (
-      r.nationality_code.toLowerCase().includes(q) ||
+      r.mews_nationality.toLowerCase().includes(q) ||
       r.english_name.toLowerCase().includes(q) ||
       r.thai_name.toLowerCase().includes(q) ||
       r.rr4_code.toLowerCase().includes(q)
@@ -69,7 +75,7 @@ export default function Rr4NationalityPage() {
   // fire a write. get_rr4_report reads this table fresh on every export, so
   // a save here is live immediately - no separate "publish" step.
   const handleFieldSave = async (row: NationalityRow, field: keyof Omit<NationalityRow, "id">, value: string) => {
-    const trimmed = field === "nationality_code" ? value.trim().toUpperCase() : value.trim();
+    const trimmed = value.trim();
     if (row[field] === trimmed) return;
     setSavingId(row.id);
     const { error } = await supabase
@@ -85,31 +91,31 @@ export default function Rr4NationalityPage() {
   };
 
   const handleAdd = async () => {
-    const code = newForm.nationality_code.trim().toUpperCase();
-    if (!code) {
-      alert("Nationality Code is required (the MEWS/ISO alpha-2 code, e.g. TH, DE, RU).");
+    const mewsNationality = newForm.mews_nationality.trim();
+    if (!mewsNationality) {
+      alert("MEWS Nationality is required (the country name exactly as it should match a guest's nationality, e.g. Germany).");
       return;
     }
-    if (rows.some((r) => r.nationality_code === code)) {
-      alert(`"${code}" already exists - edit that row instead of adding a duplicate.`);
+    if (rows.some((r) => r.mews_nationality.toLowerCase() === mewsNationality.toLowerCase())) {
+      alert(`"${mewsNationality}" already exists - edit that row instead of adding a duplicate.`);
       return;
     }
     setAddingBusy(true);
     const { data, error } = await supabase
       .from("rr4_nationality_codes")
       .insert({
-        nationality_code: code,
-        english_name: newForm.english_name.trim(),
+        mews_nationality: mewsNationality,
         thai_name: newForm.thai_name.trim(),
+        english_name: newForm.english_name.trim(),
         rr4_code: newForm.rr4_code.trim(),
       })
-      .select("id, nationality_code, english_name, thai_name, rr4_code")
+      .select("id, mews_nationality, thai_name, english_name, rr4_code")
       .single();
     if (error) {
       alert("Add failed: " + error.message);
     } else if (data) {
-      setRows((prev) => [...prev, data].sort((a, b) => a.nationality_code.localeCompare(b.nationality_code)));
-      setNewForm({ nationality_code: "", english_name: "", thai_name: "", rr4_code: "" });
+      setRows((prev) => [...prev, data].sort((a, b) => a.mews_nationality.localeCompare(b.mews_nationality)));
+      setNewForm({ mews_nationality: "", thai_name: "", english_name: "", rr4_code: "" });
       setIsAdding(false);
     }
     setAddingBusy(false);
@@ -135,7 +141,7 @@ export default function Rr4NationalityPage() {
     <div className="p-6 bg-white min-h-screen text-slate-900 font-sans relative">
       <PageHeader
         title="RR4-Nationality"
-        description="Alpha-2 nationality code -> Thai Hotel Act (ร.ร.๔) numeric code, used by every RR4 export. Edits apply immediately - no deploy needed."
+        description="MEWS Nationality -> Thai Hotel Act (ร.ร.๔) numeric code, used by every RR4 export. Edits apply immediately - no deploy needed."
       />
 
       <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
@@ -144,7 +150,7 @@ export default function Rr4NationalityPage() {
             <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             <input
               type="text"
-              placeholder="Search code, English or Thai name..."
+              placeholder="Search MEWS Nationality, English or Thai name..."
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/10 transition-all font-medium text-slate-900"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
@@ -170,28 +176,17 @@ export default function Rr4NationalityPage() {
         {isAdding && (
           <div className="p-4 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row gap-3 items-stretch md:items-end">
             <div className="flex-1 min-w-0">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Code (alpha-2)</label>
-              <input
-                type="text"
-                maxLength={2}
-                placeholder="e.g. DE"
-                value={newForm.nationality_code}
-                onChange={(e) => setNewForm({ ...newForm, nationality_code: e.target.value })}
-                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
-              />
-            </div>
-            <div className="flex-1 min-w-0">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">English Name</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">MEWS Nationality</label>
               <input
                 type="text"
                 placeholder="e.g. Germany"
-                value={newForm.english_name}
-                onChange={(e) => setNewForm({ ...newForm, english_name: e.target.value })}
+                value={newForm.mews_nationality}
+                onChange={(e) => setNewForm({ ...newForm, mews_nationality: e.target.value })}
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
               />
             </div>
             <div className="flex-1 min-w-0">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Thai Name</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ชื่อสัญชาติ (ไทย)</label>
               <input
                 type="text"
                 placeholder="e.g. เยอรมัน"
@@ -200,8 +195,18 @@ export default function Rr4NationalityPage() {
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
               />
             </div>
+            <div className="flex-1 min-w-0">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">ชื่อสัญชาติ (อังกฤษ)</label>
+              <input
+                type="text"
+                placeholder="e.g. GERMAN"
+                value={newForm.english_name}
+                onChange={(e) => setNewForm({ ...newForm, english_name: e.target.value })}
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+              />
+            </div>
             <div className="w-full md:w-32 shrink-0">
-              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">RR4 Code</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">RR4-Nationality</label>
               <input
                 type="text"
                 placeholder="e.g. 4"
@@ -232,10 +237,10 @@ export default function Rr4NationalityPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="sticky top-0 z-10 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-24">Code</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">English Name</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thai Name</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-32">RR4 Code</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">MEWS Nationality</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่อสัญชาติ (ไทย)</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่อสัญชาติ (อังกฤษ)</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-32">RR4-Nationality</th>
                 <th className="sticky top-0 z-10 bg-slate-50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center w-20">Actions</th>
               </tr>
             </thead>
@@ -250,21 +255,11 @@ export default function Rr4NationalityPage() {
                 <tr key={row.id} className="hover:bg-slate-50/50 transition-colors">
                   <td className="px-4 py-2">
                     <input
-                      key={`${row.id}-code-${row.nationality_code}`}
+                      key={`${row.id}-mews-${row.mews_nationality}`}
                       type="text"
-                      maxLength={2}
-                      defaultValue={row.nationality_code}
-                      onBlur={(e) => handleFieldSave(row, "nationality_code", e.target.value)}
-                      className={`${cellInputCls} font-bold uppercase`}
-                    />
-                  </td>
-                  <td className="px-2 py-2">
-                    <input
-                      key={`${row.id}-en-${row.english_name}`}
-                      type="text"
-                      defaultValue={row.english_name}
-                      onBlur={(e) => handleFieldSave(row, "english_name", e.target.value)}
-                      className={cellInputCls}
+                      defaultValue={row.mews_nationality}
+                      onBlur={(e) => handleFieldSave(row, "mews_nationality", e.target.value)}
+                      className={`${cellInputCls} font-bold`}
                     />
                   </td>
                   <td className="px-2 py-2">
@@ -273,6 +268,15 @@ export default function Rr4NationalityPage() {
                       type="text"
                       defaultValue={row.thai_name}
                       onBlur={(e) => handleFieldSave(row, "thai_name", e.target.value)}
+                      className={cellInputCls}
+                    />
+                  </td>
+                  <td className="px-2 py-2">
+                    <input
+                      key={`${row.id}-en-${row.english_name}`}
+                      type="text"
+                      defaultValue={row.english_name}
+                      onBlur={(e) => handleFieldSave(row, "english_name", e.target.value)}
                       className={cellInputCls}
                     />
                   </td>
@@ -338,7 +342,7 @@ export default function Rr4NationalityPage() {
               </div>
               <h2 className="text-xl font-bold text-slate-800 mb-2">Delete Nationality</h2>
               <p className="text-sm text-slate-500 mb-6">
-                Are you sure you want to delete <span className="font-bold text-slate-700">{deletingRow.nationality_code} - {deletingRow.english_name || "(no name)"}</span>? RR4 exports will fall back to the hardcoded default code for this nationality, if one exists.
+                Are you sure you want to delete <span className="font-bold text-slate-700">{deletingRow.mews_nationality}</span>? RR4 exports will fall back to the hardcoded default code for this nationality, if one exists.
               </p>
               <div className="flex gap-3">
                 <button

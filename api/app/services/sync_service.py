@@ -1694,23 +1694,36 @@ class SyncService:
             property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name))
 
     async def _resolve_rr4_nationality_codes(self) -> dict:
-        """Admin > RR4-Nationality's editable alpha-2 -> Thai Hotel Act
-        numeric code table (rr4_nationality_codes), letting staff correct or
-        add nationality codes without a deploy. Starts from the hardcoded
-        RR4_NATIONALITY_CODE dict and layers the DB rows on top per-entry,
-        so a table that's empty/unreachable (or missing a handful of codes)
-        never blanks a nationality that already worked - same
-        graceful-degradation pattern role_permissions uses when its own
-        table is empty."""
+        """Admin > RR4-Nationality's editable Thai Hotel Act numeric code
+        table (rr4_nationality_codes), letting staff correct or add
+        nationality codes without a deploy. Keyed by country NAME
+        (mews_nationality) rather than alpha-2 - matching the original
+        manual spreadsheet's own VLOOKUP-by-name convention, and letting
+        non-technical staff add a nationality without knowing its ISO code
+        - so it's joined here via _RR3_COUNTRY_MAP (alpha-2 -> the exact
+        same English name this table's rows were seeded from) rather than
+        a raw alpha-2 match. Returns an alpha-2-keyed dict (same shape
+        RR4_NATIONALITY_CODE uses) so the caller doesn't need to know about
+        this indirection. Starts from the hardcoded RR4_NATIONALITY_CODE
+        dict and layers the DB rows on top per-entry, so a table that's
+        empty/unreachable never blanks a nationality that already worked -
+        same graceful-degradation pattern role_permissions uses when its
+        own table is empty."""
         codes = dict(RR4_NATIONALITY_CODE)
         if self.supabase:
             try:
                 res = self.supabase.table("rr4_nationality_codes").select(
-                    "nationality_code, rr4_code").execute()
+                    "mews_nationality, rr4_code").execute()
+                by_name = {}
                 for row in res.data or []:
+                    name = (row.get("mews_nationality") or "").strip().lower()
                     code = (row.get("rr4_code") or "").strip()
+                    if name and code:
+                        by_name[name] = code
+                for alpha2, country_name in _RR3_COUNTRY_MAP.items():
+                    code = by_name.get(country_name.strip().lower())
                     if code:
-                        codes[row["nationality_code"]] = code
+                        codes[alpha2] = code
             except Exception:
                 pass
         return codes
