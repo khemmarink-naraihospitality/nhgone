@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import * as XLSX from "xlsx";
 import { getAllowedProperties } from "@/lib/allowedProperties";
 import PageHeader from "@/components/PageHeader";
 
@@ -122,105 +121,6 @@ const fmtDateTime = (v?: string) => {
 const thCls = "p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 uppercase tracking-[0.12em] border-b border-[var(--text-primary)]/10 whitespace-nowrap";
 const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap";
 
-// Renders the exact .xlsx that Download would save, as a spreadsheet grid
-// (column letters, row numbers, gridlines, merged cells) - not our own
-// per-row JSON table, so what's previewed is guaranteed identical to what's
-// downloaded, including the row 1/2 disclaimer+title+date header rows that
-// only exist inside the generated workbook.
-interface SheetGrid {
-  colLetters: string[];
-  colWidths: number[];
-  cells: string[][];
-  mergeMap: Map<string, { rowSpan: number; colSpan: number }>;
-  mergeCovered: Set<string>;
-}
-
-function parseSheetForPreview(buf: ArrayBuffer): SheetGrid {
-  const wb = XLSX.read(buf, { type: "array" });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  const range = XLSX.utils.decode_range(sheet["!ref"] || "A1");
-
-  const colLetters: string[] = [];
-  const colWidths: number[] = [];
-  const sheetCols = (sheet["!cols"] || []) as Array<{ wch?: number; width?: number } | undefined>;
-  for (let c = range.s.c; c <= range.e.c; c++) {
-    colLetters.push(XLSX.utils.encode_col(c));
-    const wch = sheetCols[c]?.wch ?? sheetCols[c]?.width;
-    colWidths.push(wch ? Math.max(60, Math.round(wch * 7.2)) : 110);
-  }
-
-  const cells: string[][] = [];
-  for (let r = range.s.r; r <= range.e.r; r++) {
-    const row: string[] = [];
-    for (let c = range.s.c; c <= range.e.c; c++) {
-      const cell = sheet[XLSX.utils.encode_cell({ r, c })];
-      row.push(cell ? String(cell.w ?? cell.v ?? "") : "");
-    }
-    cells.push(row);
-  }
-
-  const mergeMap = new Map<string, { rowSpan: number; colSpan: number }>();
-  const mergeCovered = new Set<string>();
-  for (const m of sheet["!merges"] || []) {
-    const r0 = m.s.r - range.s.r;
-    const c0 = m.s.c - range.s.c;
-    mergeMap.set(`${r0}:${c0}`, { rowSpan: m.e.r - m.s.r + 1, colSpan: m.e.c - m.s.c + 1 });
-    for (let r = m.s.r; r <= m.e.r; r++) {
-      for (let c = m.s.c; c <= m.e.c; c++) {
-        if (r === m.s.r && c === m.s.c) continue;
-        mergeCovered.add(`${r - range.s.r}:${c - range.s.c}`);
-      }
-    }
-  }
-
-  return { colLetters, colWidths, cells, mergeMap, mergeCovered };
-}
-
-function ExcelGrid({ grid }: { grid: SheetGrid }) {
-  const cornerCls = "sticky top-0 left-0 z-30 bg-[#f1f3f4] border border-[#d0d0d0]";
-  const colHeadCls = "sticky top-0 z-20 bg-[#f1f3f4] border border-[#d0d0d0] text-[10px] font-bold text-[#444] py-1";
-  const rowHeadCls = "sticky left-0 z-10 bg-[#f1f3f4] border border-[#d0d0d0] text-[10px] font-bold text-[#444] text-center";
-
-  return (
-    <div className="overflow-auto h-full bg-white">
-      <table className="border-collapse" style={{ tableLayout: "fixed" }}>
-        <thead>
-          <tr>
-            <th className={`${cornerCls} w-10 min-w-[2.5rem]`} />
-            {grid.colLetters.map((letter, i) => (
-              <th key={letter} className={colHeadCls} style={{ width: grid.colWidths[i], minWidth: grid.colWidths[i] }}>
-                {letter}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {grid.cells.map((row, r) => (
-            <tr key={r}>
-              <th className={`${rowHeadCls} w-10 min-w-[2.5rem]`}>{r + 1}</th>
-              {row.map((val, c) => {
-                const key = `${r}:${c}`;
-                if (grid.mergeCovered.has(key)) return null;
-                const span = grid.mergeMap.get(key);
-                return (
-                  <td
-                    key={c}
-                    rowSpan={span?.rowSpan}
-                    colSpan={span?.colSpan}
-                    className="border border-[#e0e0e0] px-1.5 py-1 text-[11px] text-[#1a1a1a] align-top whitespace-pre-wrap break-words"
-                  >
-                    {val}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
 export default function Rr4Tm30Page() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -241,14 +141,6 @@ export default function Rr4Tm30Page() {
   // clicking RR4/TM30 reveals a small Preview/Download menu instead of
   // showing both actions as always-visible separate buttons.
   const [openFileMenu, setOpenFileMenu] = useState<string | null>(null);
-  // Full-page Preview popup - parses the same .xlsx Download would save
-  // into a spreadsheet-style grid (see ExcelGrid/parseSheetForPreview), so
-  // what's shown is byte-identical to the real file, not our own JSON table.
-  const [previewKind, setPreviewKind] = useState<TabKey | null>(null);
-  const [previewDate, setPreviewDate] = useState<string | null>(null);
-  const [previewGrid, setPreviewGrid] = useState<SheetGrid | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState<string | null>(null);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -299,20 +191,6 @@ export default function Rr4Tm30Page() {
     document.addEventListener("click", closeMenu);
     return () => document.removeEventListener("click", closeMenu);
   }, [openFileMenu]);
-
-  useEffect(() => {
-    if (!previewKind) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setPreviewKind(null);
-    };
-    document.addEventListener("keydown", onKeyDown);
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      document.body.style.overflow = prevOverflow;
-    };
-  }, [previewKind]);
 
   // Accepts an override date/source so the Files table's View button can jump
   // straight to a given day without racing the date/dataSource state setters
@@ -448,29 +326,13 @@ export default function Rr4Tm30Page() {
     }
   };
 
-  // Fetches the same export blob Download would save, but parses it into a
-  // SheetGrid for the popup instead of writing it to disk.
-  const handlePreview = async (kind: TabKey, rowDate: string) => {
+  // Opens the spreadsheet preview in its own tab (/rr4-tm30/preview), rather
+  // than as an overlay - the grid gets the whole window, and this page keeps
+  // its scroll position and loaded report for when the user comes back.
+  const handlePreview = (kind: TabKey, rowDate: string) => {
     if (!selectedProperty) return;
-    setPreviewKind(kind);
-    setPreviewDate(rowDate);
-    setPreviewGrid(null);
-    setPreviewError(null);
-    setPreviewLoading(true);
-    try {
-      const params = new URLSearchParams({ property_name: selectedProperty, date: rowDate });
-      const res = await fetch(`/api/${kind}/export?${params.toString()}`);
-      if (!res.ok) {
-        const result = await res.json().catch(() => null);
-        throw new Error(result?.detail || "Preview failed");
-      }
-      const buf = await res.arrayBuffer();
-      setPreviewGrid(parseSheetForPreview(buf));
-    } catch (err: any) {
-      setPreviewError(err.message);
-    } finally {
-      setPreviewLoading(false);
-    }
+    const params = new URLSearchParams({ kind, property_name: selectedProperty, date: rowDate });
+    window.open(`/rr4-tm30/preview?${params.toString()}`, "_blank", "noopener");
   };
 
   const rr4Table = (rows: Rr4Row[]) => (
@@ -773,9 +635,13 @@ export default function Rr4Tm30Page() {
                                   <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                                 </button>
                                 {openFileMenu === menuKey && (
+                                  // flex-col, not just block buttons - the
+                                  // enclosing cell sets whitespace-nowrap,
+                                  // which otherwise lays these out inline
+                                  // side by side instead of stacked.
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute left-0 top-9 w-40 bg-[var(--paper)] border border-[var(--text-primary)] shadow-xl z-[100] p-1"
+                                    className="absolute left-0 top-9 flex flex-col w-40 bg-[var(--paper)] border border-[var(--text-primary)] shadow-xl z-[100] p-1"
                                   >
                                     <button
                                       onClick={() => {
@@ -817,42 +683,6 @@ export default function Rr4Tm30Page() {
           </div>
         </div>
       </div>
-
-      {previewKind && (
-        <div className="fixed inset-0 z-[200] bg-[var(--paper)] flex flex-col">
-          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-[var(--text-primary)]/14 shrink-0">
-            <div className="flex items-baseline gap-3">
-              <h2 className="text-xl font-serif text-[var(--text-primary)]">{previewKind.toUpperCase()} Preview</h2>
-              <span className="text-sm text-[var(--text-primary)]/60">{selectedProperty} &middot; {previewDate}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => previewDate && handleDownload(previewKind, previewDate)}
-                className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-              >
-                Download .xlsx
-              </button>
-              <button
-                onClick={() => setPreviewKind(null)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                Close
-              </button>
-            </div>
-          </div>
-
-          <div className="flex-1 overflow-hidden">
-            {previewLoading && (
-              <div className="p-16 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">Loading...</div>
-            )}
-            {previewError && (
-              <div className="p-6 text-red-700 text-sm">{previewError}</div>
-            )}
-            {!previewLoading && !previewError && previewGrid && <ExcelGrid grid={previewGrid} />}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
