@@ -1683,9 +1683,35 @@ class SyncService:
         rule (stays_the_night or day_use) rather than BCP's narrower
         State=="Started" test, so a same-day arrival or departure still
         appears on the register even before front desk has checked them in.
+
+        date_check_in/time_check_in use ActualStartUtc where available, not
+        the legacy StartUtc field the day-window/reservation fetch itself
+        runs on - same fix as get_rr3_cards for the same reason (StartUtc
+        is the deprecated SCHEDULED time, e.g. the hotel's standard 14:00
+        check-in, and never updates once the guest actually walks in;
+        confirmed against a real reference RR4 for Lub d Bangkok Siam,
+        15-Aug-2026: reservation #70105 showed 14:00 here vs the reference's
+        correct 20:49, MEWS's own ActualStartUtc). Second, narrow call by
+        exact ReservationIds (chunked at 1000/request, MEWS's own limit).
         """
         day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
             await self._rr4_tm30_fetch_day(property_name, date)
+
+        actual_times = {}
+        reservation_ids = [r["Id"] for r in reservations if r.get("Id")]
+        for i in range(0, len(reservation_ids), 1000):
+            id_batch = reservation_ids[i:i + 1000]
+            try:
+                actual_res = await mews_client.post(
+                    "/api/connector/v1/reservations/getAll/2023-06-06",
+                    {"ReservationIds": id_batch, "Limitation": {"Count": len(id_batch)}},
+                    property_name=property_name,
+                )
+                for r in actual_res.get("Reservations", []):
+                    if r.get("Id"):
+                        actual_times[r["Id"]] = r.get("ActualStartUtc")
+            except Exception as e:
+                logger.warning(f"RR4: failed to fetch ActualStartUtc for {property_name}: {e}")
 
         def parse_utc(ts):
             if not ts:
@@ -1721,6 +1747,7 @@ class SyncService:
             if not (stays_the_night or day_use):
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
+            check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
             for guest_id in self._rr4_tm30_guest_ids(res):
                 c = customers_map.get(guest_id)
                 if not c:
@@ -1730,8 +1757,8 @@ class SyncService:
                 nationality_name = _rr3_country_name(nationality_code)
                 passport = c.get("Passport") or {}
                 rows.append({
-                    "date_check_in": buddhist_date(res.get("StartUtc")),
-                    "time_check_in": time_hhmm(res.get("StartUtc")),
+                    "date_check_in": buddhist_date(check_in_utc),
+                    "time_check_in": time_hhmm(check_in_utc),
                     "room_no": room.get("Name", ""),
                     "title_en": "MS." if c.get("Sex") == "Female" else "MR.",
                     "name_en": c.get("FirstName", ""),
@@ -1751,7 +1778,7 @@ class SyncService:
                     "date_check_out": buddhist_date(res.get("EndUtc")),
                     "time_check_out": "12.00",
                     "data_status": 1,
-                    "_sort_start": res.get("StartUtc") or "",
+                    "_sort_start": check_in_utc or "",
                 })
         rows.sort(key=lambda r: (r["_sort_start"], r["room_no"]))
         for i, r in enumerate(rows, start=1):
