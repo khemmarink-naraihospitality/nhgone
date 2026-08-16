@@ -1728,6 +1728,30 @@ class SyncService:
                 pass
         return codes
 
+    async def _resolve_tm30_nationality_codes(self) -> dict:
+        """Same shape/rationale as _resolve_rr4_nationality_codes, for TM30's
+        own admin-editable alpha-3 code table (tm30_nationality_codes, Admin
+        > TM30-Nationality). Joined by country name via _RR3_COUNTRY_MAP,
+        layered over the hardcoded TM30_NATIONALITY_CODE fallback per-entry."""
+        codes = dict(TM30_NATIONALITY_CODE)
+        if self.supabase:
+            try:
+                res = self.supabase.table("tm30_nationality_codes").select(
+                    "mews_nationality, tm30_code").execute()
+                by_name = {}
+                for row in res.data or []:
+                    name = (row.get("mews_nationality") or "").strip().lower()
+                    code = (row.get("tm30_code") or "").strip()
+                    if name and code:
+                        by_name[name] = code
+                for alpha2, country_name in _RR3_COUNTRY_MAP.items():
+                    code = by_name.get(country_name.strip().lower())
+                    if code:
+                        codes[alpha2] = code
+            except Exception:
+                pass
+        return codes
+
     @staticmethod
     def _rr4_tm30_identity_card(c: dict) -> str:
         identity_card = c.get("IdentityCard")
@@ -2020,13 +2044,16 @@ class SyncService:
         nationals only - a direct port of the reference sheet's TM30-Gen
         tab (fed from MEWS's "Customer profiles Arrival" report) followed by
         its TM30 tab's own filter (`Nationality <> 'THA' AND name is not
-        null`). See rr4_tm30_reference.py for the alpha-3 nationality table.
+        null`). Alpha-3 nationality codes come from
+        _resolve_tm30_nationality_codes (Admin > TM30-Nationality, editable)
+        layered over the hardcoded fallback in rr4_tm30_reference.py.
 
         "Arriving" reuses get_st_files_report's Arrivals-tab rule
         (in_window(StartUtc)) exactly.
         """
         day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
             await self._rr4_tm30_fetch_day(property_name, date)
+        nationality_codes = await self._resolve_tm30_nationality_codes()
 
         def parse_utc(ts):
             if not ts:
@@ -2058,7 +2085,7 @@ class SyncService:
                 nationality_code = c.get("NationalityCode", "")
                 if nationality_code == "TH":
                     continue  # Thai nationals are out of scope for TM30
-                tm30_code = TM30_NATIONALITY_CODE.get(nationality_code, "")
+                tm30_code = nationality_codes.get(nationality_code, "")
                 if not tm30_code:
                     continue  # can't resolve a code -> not a real "foreign" match (or unmapped territory); skip rather than file a blank Nationality
                 identity_card = self._rr4_tm30_identity_card(c)
