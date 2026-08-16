@@ -133,6 +133,10 @@ export default function Rr4Tm30Page() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [listRows, setListRows] = useState<ListRow[]>([]);
   const [listLoading, setListLoading] = useState(false);
+  // Tracks which History row's "Re-Generate Files" is in flight, so only
+  // that row's button shows a busy state - re-syncing one day shouldn't
+  // block interacting with the rest of the table.
+  const [regeneratingDate, setRegeneratingDate] = useState<string | null>(null);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -248,6 +252,34 @@ export default function Rr4Tm30Page() {
       setError(err.message);
     } finally {
       setImporting(false);
+    }
+  };
+
+  // History row action - rebuilds one already-imported day's RR4+TM30 pair
+  // from whatever MEWS/NHGOne data looks like right now (same sync-manual
+  // endpoint "Import To Data Mart" uses above, just scoped to this row's
+  // own date instead of the page's currently-selected date) and overwrites
+  // the stored rr4_tm30_sync row - useful after a report-generation fix
+  // ships, to bring an already-imported day's file up to date without
+  // re-picking its date at the top of the page.
+  const handleRegenerate = async (rowDate: string) => {
+    if (!selectedProperty) return;
+    setRegeneratingDate(rowDate);
+    try {
+      const res = await fetch(`/api/rr4/sync-manual`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_name: selectedProperty, start_date: rowDate, end_date: rowDate }),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.message || result.detail || "Re-generate failed");
+      if (result.errors?.length) throw new Error(`Re-generate finished with errors: ${result.errors.join("; ")}`);
+      await fetchList();
+      alert(`Re-generated RR4/TM30 for ${selectedProperty} ${rowDate}.`);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setRegeneratingDate(null);
     }
   };
 
@@ -569,18 +601,6 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={async () => {
-                              setDate(r.date);
-                              setDataSource("database");
-                              setDataOpen(true);
-                              await fetchReports({ date: r.date, source: "database" });
-                              dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }}
-                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                          >
-                            View
-                          </button>
-                          <button
                             onClick={() => handleDownload("rr4", r.date)}
                             className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
@@ -591,6 +611,13 @@ export default function Rr4Tm30Page() {
                             className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
                             TM30 .xlsx
+                          </button>
+                          <button
+                            onClick={() => handleRegenerate(r.date)}
+                            disabled={regeneratingDate === r.date}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap disabled:opacity-50"
+                          >
+                            {regeneratingDate === r.date ? "Re-Generating..." : "Re-Generate Files"}
                           </button>
                         </div>
                       </td>

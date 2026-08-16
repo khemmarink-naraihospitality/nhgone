@@ -1862,18 +1862,19 @@ class SyncService:
         ws.title = "RR4"
 
         # Single, unmerged cells - matches the reference sheet's own layout
-        # exactly (verified cell-by-cell: column A = disclaimer, L = title,
-        # N = property name, Z = ร.ร.๔ - not one merged block each). Text
-        # simply overflows into the empty cells to its right, same as the
-        # reference does, so no wrap_text/row-height override is needed.
+        # exactly (confirmed cell-by-cell by the user against the real
+        # sheet: column A = disclaimer, L = title, N = property name,
+        # AA/27 = ร.ร.๔ - not one merged block each). Text simply overflows
+        # into the empty cells to its right, same as the reference does, so
+        # no wrap_text/row-height override is needed.
         ws.cell(1, 1, self._RR4_DISCLAIMER).font = Font(bold=True, italic=True, size=9)
         ws.cell(1, 1).alignment = Alignment(horizontal="left")
         ws.cell(1, 12, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
         ws.cell(1, 12).alignment = Alignment(horizontal="left")
         ws.cell(1, 14, report["property_thai_name"]).font = Font(bold=True, size=13)
         ws.cell(1, 14).alignment = Alignment(horizontal="left")
-        ws.cell(1, n_cols - 1, "ร.ร.๔").font = Font(bold=True, size=13)
-        ws.cell(1, n_cols - 1).alignment = Alignment(horizontal="left")
+        ws.cell(1, n_cols, "ร.ร.๔").font = Font(bold=True, size=13)
+        ws.cell(1, n_cols).alignment = Alignment(horizontal="left")
 
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
         ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist']}").alignment = \
