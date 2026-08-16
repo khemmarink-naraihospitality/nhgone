@@ -178,6 +178,7 @@ _RR3_PROPERTY_THAI_NAMES = {
 # their own exact registered name is supplied and added here.
 _RR4_PROPERTY_THAI_NAMES = {
     "Lub d Bangkok Chinatown": "หลับดี บางกอก ไชน่าทาว์น",
+    "Lub d Bangkok Siam": "โรงแรมหลับดี สยาม",
 }
 
 
@@ -1811,8 +1812,12 @@ class SyncService:
 
     async def get_rr4_export(self, property_name: str, date: str) -> tuple:
         """Renders get_rr4_report to the .xlsx layout the reference sheet
-        uses (merged title/property/date header, then the Thai column
-        headers, then one row per guest). Returns (bytes, filename)."""
+        uses: row 1 is title + property name + "ร.ร.๔" as three separate
+        cells (not the property name merged into the date line - confirmed
+        against a real reference RR4 for Lub d Bangkok Siam, whose row 1 has
+        "ทะเบียนผู้เข้าพักในโรงแรม" / "โรงแรมหลับดี สยาม" / "ร.ร.๔" side by
+        side), row 2 is just the date, then the Thai column headers, then
+        one row per guest. Returns (bytes, filename)."""
         report = await self.get_rr4_report(property_name, date)
         n_cols = len(self._RR4_COLUMNS)
 
@@ -1820,15 +1825,18 @@ class SyncService:
         ws = wb.active
         ws.title = "RR4"
 
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 4)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 11)
         ws.cell(1, 1, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
+        ws.merge_cells(start_row=1, start_column=n_cols - 10, end_row=1, end_column=n_cols - 4)
+        ws.cell(1, n_cols - 10, report["property_thai_name"]).font = Font(bold=True, size=13)
         ws.merge_cells(start_row=1, start_column=n_cols - 3, end_row=1, end_column=n_cols)
         ws.cell(1, n_cols - 3, "ร.ร.๔").font = Font(bold=True, size=13)
         ws.cell(1, 1).alignment = Alignment(horizontal="center")
+        ws.cell(1, n_cols - 10).alignment = Alignment(horizontal="center")
         ws.cell(1, n_cols - 3).alignment = Alignment(horizontal="center")
 
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
-        ws.cell(2, 1, f"{report['property_thai_name']}   ประจำวันที่ {report['date_buddhist']}").alignment = \
+        ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist']}").alignment = \
             Alignment(horizontal="center")
 
         header_row = 3
