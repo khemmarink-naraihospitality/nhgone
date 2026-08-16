@@ -1795,6 +1795,19 @@ class SyncService:
             "rows": rows,
         }
 
+    # Verbatim from the reference RR4 sheet's row 1 (bold+italic there, not
+    # literal asterisks) - lists which fields are mandatory vs either/or
+    # (Thai name OR English name, national ID OR passport). Sits to the
+    # left of the title/property-name/ร.ร.๔ cells on the same row.
+    _RR4_DISCLAIMER = (
+        "ข้อมูลสำคัญที่จำเป็นต้องระบุได้แก่ เลขลำดับ, วันที่เข้าพัก, เวลาที่เข้าพัก, "
+        "ห้องพักเลขที่, ชื่อ-นามสกุล ภาษาไทยหรือภาษาอังกฤษ (เลือกระบุอย่างใดอย่างหนึ่ง), "
+        "เลขประจำตัวประชาชน หรือ เลขหนังสือเดินทาง (เลือกระบุอย่างใดอย่างหนึ่ง), "
+        "ที่อยู่ปัจจุบัน อยู่ที่ ตำบลอำเภอ จังหวัด หรือประเทศ, ประเทศที่อยู่ปัจจุบัน, อาชีพ, "
+        "มาจากตำบล อำเภอ จังหวัด หรือประเทศ, มาจากประเทศ, จะไปที่ อำเภอ จังหวัด หรือประเทศใด, "
+        "จะไปประเทศ, วันที่จะออก, เวลาที่จะออก"
+    )
+
     _RR4_COLUMNS = [
         ("row_no", "เลข\nลำดับ"), ("date_check_in", "วันที่เข้าพัก"), ("time_check_in", "เวลาที่เข้าพัก"),
         ("room_no", "ห้องพักเลขที่"), ("title_th", "คำนำหน้าชื่อ"), ("name_th", "ชื่อ"),
@@ -1812,12 +1825,13 @@ class SyncService:
 
     async def get_rr4_export(self, property_name: str, date: str) -> tuple:
         """Renders get_rr4_report to the .xlsx layout the reference sheet
-        uses: row 1 is title + property name + "ร.ร.๔" as three separate
-        cells (not the property name merged into the date line - confirmed
-        against a real reference RR4 for Lub d Bangkok Siam, whose row 1 has
-        "ทะเบียนผู้เข้าพักในโรงแรม" / "โรงแรมหลับดี สยาม" / "ร.ร.๔" side by
-        side), row 2 is just the date, then the Thai column headers, then
-        one row per guest. Returns (bytes, filename)."""
+        uses: row 1 has the required-fields disclaimer, title, property
+        name, and "ร.ร.๔" as four separate cells side by side (not the
+        property name merged into the date line - confirmed against a real
+        reference RR4 for Lub d Bangkok Siam, whose row 1 has the
+        disclaimer / "ทะเบียนผู้เข้าพักในโรงแรม" / "โรงแรมหลับดี สยาม" /
+        "ร.ร.๔" in that order), row 2 is just the date, then the Thai
+        column headers, then one row per guest. Returns (bytes, filename)."""
         report = await self.get_rr4_report(property_name, date)
         n_cols = len(self._RR4_COLUMNS)
 
@@ -1825,13 +1839,18 @@ class SyncService:
         ws = wb.active
         ws.title = "RR4"
 
-        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 11)
-        ws.cell(1, 1, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=n_cols - 16)
+        ws.cell(1, 1, self._RR4_DISCLAIMER).font = Font(bold=True, italic=True, size=9)
+        ws.cell(1, 1).alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+        ws.row_dimensions[1].height = 40
+
+        ws.merge_cells(start_row=1, start_column=n_cols - 15, end_row=1, end_column=n_cols - 11)
+        ws.cell(1, n_cols - 15, "ทะเบียนผู้เข้าพักในโรงแรม").font = Font(bold=True, size=13)
         ws.merge_cells(start_row=1, start_column=n_cols - 10, end_row=1, end_column=n_cols - 4)
         ws.cell(1, n_cols - 10, report["property_thai_name"]).font = Font(bold=True, size=13)
         ws.merge_cells(start_row=1, start_column=n_cols - 3, end_row=1, end_column=n_cols)
         ws.cell(1, n_cols - 3, "ร.ร.๔").font = Font(bold=True, size=13)
-        ws.cell(1, 1).alignment = Alignment(horizontal="center")
+        ws.cell(1, n_cols - 15).alignment = Alignment(horizontal="center")
         ws.cell(1, n_cols - 10).alignment = Alignment(horizontal="center")
         ws.cell(1, n_cols - 3).alignment = Alignment(horizontal="center")
 
