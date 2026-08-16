@@ -1716,10 +1716,21 @@ class SyncService:
         the source sheet, not derived per guest - kept identical here rather
         than "improved", since that's what the real filed form already does.
 
-        "Stay overlaps the day" reuses get_st_files_report's Customers-tab
-        rule (stays_the_night or day_use) rather than BCP's narrower
-        State=="Started" test, so a same-day arrival or departure still
-        appears on the register even before front desk has checked them in.
+        "Stay overlaps the day" is a standard interval-overlap test
+        (StartUtc < window end AND EndUtc > window start) rather than
+        BCP's narrower State=="Started" test, so a same-day arrival or
+        departure still appears on the register even before front desk has
+        checked them in. NOT get_st_files_report's Customers-tab rule
+        (stays_the_night: EndUtc > window end, OR day_use: both ends
+        inside the window) - that pair works by coincidence when the
+        window ends at midnight (every real checkout is "after midnight"),
+        but breaks once the window is shifted near typical checkout time
+        (e.g. the 12:15-to-12:15 window this page's own Admin > Sync page
+        can configure, matching MEWS's native report window exactly) -
+        confirmed against a real MEWS export for Chinatown, 15-Aug-2026:
+        the old rule silently excluded every guest checking out between
+        the window's start-of-day time and its end time, 61 guests short
+        with a 12:15 window.
 
         date_check_in/time_check_in use ActualStartUtc where available, not
         the legacy StartUtc field the day-window/reservation fetch itself
@@ -1758,10 +1769,6 @@ class SyncService:
             except Exception:
                 return None
 
-        def in_window(ts):
-            t = parse_utc(ts)
-            return t is not None and day_start_utc <= t < day_end_utc
-
         def buddhist_date(ts):
             t = parse_utc(ts)
             if not t:
@@ -1778,10 +1785,13 @@ class SyncService:
 
         rows = []
         for res in reservations:
+            start_utc = parse_utc(res.get("StartUtc"))
             end_utc = parse_utc(res.get("EndUtc"))
-            stays_the_night = end_utc is not None and end_utc > day_end_utc
-            day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
-            if not (stays_the_night or day_use):
+            overlaps_day = (
+                start_utc is not None and end_utc is not None
+                and start_utc < day_end_utc and end_utc > day_start_utc
+            )
+            if not overlaps_day:
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
