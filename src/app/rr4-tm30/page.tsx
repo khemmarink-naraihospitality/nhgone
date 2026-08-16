@@ -137,6 +137,10 @@ export default function Rr4Tm30Page() {
   // that row's button shows a busy state - re-syncing one day shouldn't
   // block interacting with the rest of the table.
   const [regeneratingDate, setRegeneratingDate] = useState<string | null>(null);
+  // Which row's file-type dropdown ("<date>-rr4" / "<date>-tm30") is open -
+  // clicking RR4/TM30 reveals a small Preview/Download menu instead of
+  // showing both actions as always-visible separate buttons.
+  const [openFileMenu, setOpenFileMenu] = useState<string | null>(null);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -180,6 +184,13 @@ export default function Rr4Tm30Page() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
+
+  useEffect(() => {
+    if (!openFileMenu) return;
+    const closeMenu = () => setOpenFileMenu(null);
+    document.addEventListener("click", closeMenu);
+    return () => document.removeEventListener("click", closeMenu);
+  }, [openFileMenu]);
 
   // Accepts an override date/source so the Files table's View button can jump
   // straight to a given day without racing the date/dataSource state setters
@@ -600,30 +611,53 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>{fmtDateTime(r.synced_at)}</td>
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
-                          <button
-                            onClick={async () => {
-                              setDate(r.date);
-                              setDataSource("database");
-                              setDataOpen(true);
-                              await fetchReports({ date: r.date, source: "database" });
-                              dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                            }}
-                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                          >
-                            Preview
-                          </button>
-                          <button
-                            onClick={() => handleDownload("rr4", r.date)}
-                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                          >
-                            RR4 .xlsx
-                          </button>
-                          <button
-                            onClick={() => handleDownload("tm30", r.date)}
-                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                          >
-                            TM30 .xlsx
-                          </button>
+                          {(["rr4", "tm30"] as TabKey[]).map((kind) => {
+                            const menuKey = `${r.date}-${kind}`;
+                            return (
+                              <div key={kind} className="relative inline-block">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenFileMenu(openFileMenu === menuKey ? null : menuKey);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                                >
+                                  {kind.toUpperCase()}
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                </button>
+                                {openFileMenu === menuKey && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute left-0 top-9 w-36 bg-[var(--paper)] border border-[var(--text-primary)] shadow-xl z-[100] p-1"
+                                  >
+                                    <button
+                                      onClick={async () => {
+                                        setOpenFileMenu(null);
+                                        setDate(r.date);
+                                        setDataSource("database");
+                                        setActiveTab(kind);
+                                        setDataOpen(true);
+                                        await fetchReports({ date: r.date, source: "database" });
+                                        dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                                    >
+                                      Preview
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setOpenFileMenu(null);
+                                        handleDownload(kind, r.date);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                                    >
+                                      Download .xlsx
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                           <button
                             onClick={() => handleRegenerate(r.date)}
                             disabled={regeneratingDate === r.date}
