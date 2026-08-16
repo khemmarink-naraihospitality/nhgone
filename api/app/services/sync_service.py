@@ -1808,19 +1808,41 @@ class SyncService:
         "จะไปประเทศ, วันที่จะออก, เวลาที่จะออก"
     )
 
+    # (internal key, Thai header label, English field-key label) - the
+    # reference sheet carries BOTH header rows (Thai label row, then a
+    # second row of plain English field-key names like the ones already
+    # used as this report's own dict keys) rather than just one; the pid/
+    # passport/address labels also carry a second instruction line the
+    # first pass here had dropped (verified against the reference RR4 for
+    # Lub d Bangkok Siam cell-by-cell).
     _RR4_COLUMNS = [
-        ("row_no", "เลข\nลำดับ"), ("date_check_in", "วันที่เข้าพัก"), ("time_check_in", "เวลาที่เข้าพัก"),
-        ("room_no", "ห้องพักเลขที่"), ("title_th", "คำนำหน้าชื่อ"), ("name_th", "ชื่อ"),
-        ("middle_name_th", "ชื่อกลาง"), ("surname_th", "นามสกุล"), ("title_en", "คำนำหน้าชื่อ(ภาษาอังกฤษ)"),
-        ("name_en", "ชื่อ(ภาษาอังกฤษ)"), ("middle_name_en", "ชื่อกลาง(ภาษาอังกฤษ)"),
-        ("surname_en", "นามสกุล(ภาษาอังกฤษ)"), ("nationality", "สัญชาติ"),
-        ("pid", "เลขประจำตัวประชาชน"), ("passport", "ใบสำคัญประจำตัวคนต่างด้าวหรือหนังสือเดินทาง"),
-        ("issued_by", "หนังสือเดิททางออกให้โดย"), ("address", "ที่อยู่ปัจจุบัน"),
-        ("address_country", "ประเทศที่อยู่ปัจจุบัน"), ("occupation", "อาชีพ"),
-        ("come_from", "มาจากตำบล อำเภอจังหวัด หรือประเทศ"), ("come_from_country", "มาจากประเทศ"),
-        ("will_go", "จะไปที่ อำเภอจังหวัด หรือประเทศใด"), ("will_go_country", "จะไปประเทศ"),
-        ("date_check_out", "วันที่จะออก"), ("time_check_out", "เวลาที่จะออก"),
-        ("data_status", "สถานะข้อมูล"), ("remarks", "หมายเหตุ"),
+        ("row_no", "เลข\nลำดับ", "rowNo"),
+        ("date_check_in", "วันที่เข้าพัก", "dateCheckIn"),
+        ("time_check_in", "เวลาที่เข้าพัก", "timeCheckIn"),
+        ("room_no", "ห้องพักเลขที่", "roomNo"),
+        ("title_th", "คำนำหน้าชื่อ", "titleNameTh"),
+        ("name_th", "ชื่อ", "nameTh"),
+        ("middle_name_th", "ชื่อกลาง", "middleNameTh"),
+        ("surname_th", "นามสกุล", "surnameTh"),
+        ("title_en", "คำนำหน้าชื่อ(ภาษาอังกฤษ)", "titleNameEn"),
+        ("name_en", "ชื่อ(ภาษาอังกฤษ)", "nameEn"),
+        ("middle_name_en", "ชื่อกลาง(ภาษาอังกฤษ)", "middleNameEn"),
+        ("surname_en", "นามสกุล(ภาษาอังกฤษ)", "surnameEn"),
+        ("nationality", "สัญชาติ", "nationality"),
+        ("pid", "เลขประจำตัวประชาชน\nเลขที่..... ออกให้โดย......", "pid"),
+        ("passport", "ใบสำคัญประจำตัวคนต่างด้าวหรือหนังสือเดินทาง\nเลขที่..... ออกให้โดย......", "passport"),
+        ("issued_by", "หนังสือเดิททางออกให้โดย", "issuedBy"),
+        ("address", "ที่อยู่ปัจจุบัน\nอยู่ที่ ตำบลอำเภอ จังหวัด หรือประเทศ", "address"),
+        ("address_country", "ประเทศที่อยู่ปัจจุบัน", "addressCountry"),
+        ("occupation", "อาชีพ", "occupation"),
+        ("come_from", "มาจากตำบล อำเภอจังหวัด หรือประเทศ", "comeFrom"),
+        ("come_from_country", "มาจากประเทศ", "comeFromCountry"),
+        ("will_go", "จะไปที่ อำเภอจังหวัด หรือประเทศใด", "willGo"),
+        ("will_go_country", "จะไปประเทศ", "willGoCountry"),
+        ("date_check_out", "วันที่จะออก", "dateCheckOut"),
+        ("time_check_out", "เวลาที่จะออก", "timeCheckOut"),
+        ("data_status", "สถานะข้อมูล", "dataStatus"),
+        ("remarks", "หมายเหตุ", "remarks"),
     ]
 
     async def get_rr4_export(self, property_name: str, date: str) -> tuple:
@@ -1859,15 +1881,24 @@ class SyncService:
             Alignment(horizontal="center")
 
         header_row = 3
-        for col, (key, label) in enumerate(self._RR4_COLUMNS, start=1):
+        for col, (key, label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
             cell = ws.cell(header_row, col, label)
             cell.font = Font(bold=True, size=9)
             cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
             ws.column_dimensions[get_column_letter(col)].width = 14
 
+        # Second header row of plain English field-key names (rowNo,
+        # dateCheckIn, ...) - present in the reference sheet as its own row,
+        # separate from the Thai labels above.
+        field_key_row = header_row + 1
+        for col, (key, _label, field_key) in enumerate(self._RR4_COLUMNS, start=1):
+            cell = ws.cell(field_key_row, col, field_key)
+            cell.font = Font(size=9)
+            cell.alignment = Alignment(horizontal="center", vertical="center")
+
         for i, row in enumerate(report["rows"], start=1):
-            for col, (key, _label) in enumerate(self._RR4_COLUMNS, start=1):
-                ws.cell(header_row + i, col, row.get(key, ""))
+            for col, (key, _label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
+                ws.cell(field_key_row + i, col, row.get(key, ""))
 
         buf = BytesIO()
         wb.save(buf)
