@@ -601,6 +601,18 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
                           <button
+                            onClick={async () => {
+                              setDate(r.date);
+                              setDataSource("database");
+                              setDataOpen(true);
+                              await fetchReports({ date: r.date, source: "database" });
+                              dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                            }}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            Preview
+                          </button>
+                          <button
                             onClick={() => handleDownload("rr4", r.date)}
                             className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
                           >
