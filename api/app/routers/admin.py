@@ -59,6 +59,10 @@ class PropertyApiSettingsUpdate(BaseModel):
     # "Room,Bed" for most, "Room,Suite" for Koh Tao / Marasca Samui). Blank
     # falls back to Room,Bed - see sync_service._resolve_st_space_types.
     st_space_types: Optional[str] = None
+    # The property's real registered Thai name for RR4/TM30 filings - see
+    # sync_service._resolve_rr4_property_thai_name. Blank falls back to the
+    # hardcoded _RR4_PROPERTY_THAI_NAMES/_RR3_PROPERTY_THAI_NAMES chain.
+    rr4_property_thai_name: Optional[str] = None
 
 class SyncRetrySettingsUpdate(BaseModel):
     retry_count: int = 2

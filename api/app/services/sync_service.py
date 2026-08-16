@@ -1657,6 +1657,27 @@ class SyncService:
                 out.append(cid)
         return out
 
+    async def _resolve_rr4_property_thai_name(self, property_name: str) -> str:
+        """Admin > API's per-property "Property Thai Name" field
+        (property_api_settings.rr4_property_thai_name) - the property's
+        real registered name for RR4/TM30 filings, editable without a code
+        change. Falls back to the hardcoded _RR4_PROPERTY_THAI_NAMES /
+        _RR3_PROPERTY_THAI_NAMES chain (then the raw property_name) for any
+        property that hasn't set it yet, so nothing regresses for
+        Chinatown/Siam - the two already confirmed against real reference
+        filings - until someone fills in the field for the rest."""
+        if self.supabase:
+            try:
+                res = self.supabase.table("property_api_settings").select(
+                    "rr4_property_thai_name").eq("property_name", property_name).limit(1).execute()
+                name = res.data[0].get("rr4_property_thai_name") if res.data else None
+                if name:
+                    return name
+            except Exception:
+                pass
+        return _RR4_PROPERTY_THAI_NAMES.get(
+            property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name))
+
     @staticmethod
     def _rr4_tm30_identity_card(c: dict) -> str:
         identity_card = c.get("IdentityCard")
@@ -1788,8 +1809,7 @@ class SyncService:
 
         return {
             "property": property_name,
-            "property_thai_name": _RR4_PROPERTY_THAI_NAMES.get(
-                property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)),
+            "property_thai_name": await self._resolve_rr4_property_thai_name(property_name),
             "date": date,
             "date_buddhist": f"{day.day:02d}/{day.month:02d}/{day.year + 543}",
             "rows": rows,
@@ -1984,8 +2004,7 @@ class SyncService:
 
         return {
             "property": property_name,
-            "property_thai_name": _RR4_PROPERTY_THAI_NAMES.get(
-                property_name, _RR3_PROPERTY_THAI_NAMES.get(property_name, property_name)),
+            "property_thai_name": await self._resolve_rr4_property_thai_name(property_name),
             "date": date,
             "rows": rows,
         }
