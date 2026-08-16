@@ -1595,39 +1595,38 @@ class SyncService:
         resources_map); `day` is the tz-aware property-local midnight for
         the report date, reused by callers to format the header date.
 
-        day_start_utc/day_end_utc are set from property_api_settings.
-        rr4_tm30_day_start_hour/rr4_tm30_day_end_hour (both default 0,
-        matching MEWS's own BusinessDayClosingOffset - confirmed 0 for
-        every property checked via configuration/get) - a per-property
-        override for hotels whose own front-desk/finance team files
-        arrivals/departures under a different manual window than MEWS's
-        official midnight-to-midnight one. end_hour "wraps" to the next day
-        whenever it isn't strictly after start_hour (matching how people
-        describe an overnight window, e.g. "22:00 to 06:00") - so the
-        default 0/0 still resolves to the full current-day window, and an
-        explicit 14/12 resolves to today 14:00 through tomorrow 12:00 (a
-        22-hour window, deliberately not required to be 24h - some
-        properties' own reporting convention excludes a settling/audit
-        gap). `day` itself stays plain local midnight - only the window
-        used for the actual reservation query and in_window() checks
-        shifts, so header/display dates aren't affected.
+        day_start_utc is set from property_api_settings.
+        rr4_tm30_day_start_hour (default 0, matching MEWS's own
+        BusinessDayClosingOffset - confirmed 0 for every property checked
+        via configuration/get) - a per-property override for hotels whose
+        own front-desk/finance team files arrivals/departures under a
+        different manual cutoff than MEWS's official midnight-to-midnight
+        one. day_end_utc is ALWAYS exactly day_start_utc + 24h - the window
+        is deliberately not independently adjustable on the end side (an
+        earlier version let it be set shorter, e.g. 14:00-12:00 next day,
+        which silently undercounted every guest checking out in the
+        excluded gap - confirmed against a real reference: Chinatown
+        stuck at a 22h window undercounted a day's RR4 register by 76
+        guests, 160 rows instead of the correct 241). rr4_tm30_day_end_hour
+        is intentionally no longer read here - a stale non-zero value left
+        over from before this fix can't silently re-trigger the same bug.
+        `day` itself stays plain local midnight - only the window used for
+        the actual reservation query and in_window() checks shifts, so
+        header/display dates aren't affected.
         """
         property_tz = await self._resolve_property_timezone(property_name)
-        day_start_hour = day_end_hour = 0
+        day_start_hour = 0
         if self.supabase:
             try:
                 prop_res = self.supabase.table("property_api_settings").select(
-                    "rr4_tm30_day_start_hour, rr4_tm30_day_end_hour").eq(
+                    "rr4_tm30_day_start_hour").eq(
                     "property_name", property_name).limit(1).execute()
-                row = prop_res.data[0] if prop_res.data else {}
-                day_start_hour = row.get("rr4_tm30_day_start_hour") or 0
-                day_end_hour = row.get("rr4_tm30_day_end_hour") or 0
+                day_start_hour = (prop_res.data[0].get("rr4_tm30_day_start_hour") if prop_res.data else None) or 0
             except Exception:
                 pass
         day = datetime.strptime(date, "%Y-%m-%d").replace(tzinfo=property_tz)
-        end_days = 1 if day_end_hour <= day_start_hour else 0
         day_start_utc = (day + timedelta(hours=day_start_hour)).astimezone(timezone.utc)
-        day_end_utc = (day + timedelta(days=end_days, hours=day_end_hour)).astimezone(timezone.utc)
+        day_end_utc = day_start_utc + timedelta(days=1)
         start_iso = day_start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = day_end_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -1896,8 +1895,10 @@ class SyncService:
         ws.cell(1, n_cols, "ร.ร.๔").font = Font(bold=True, size=13)
         ws.cell(1, n_cols).alignment = Alignment(horizontal="left")
 
+        # No slashes in the date value - confirmed against reference sheets
+        # for both Siam and Chinatown ("15082569", not "15/08/2569").
         ws.merge_cells(start_row=2, start_column=1, end_row=2, end_column=n_cols)
-        ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist']}").alignment = \
+        ws.cell(2, 1, f"ประจำวันที่ {report['date_buddhist'].replace('/', '')}").alignment = \
             Alignment(horizontal="center")
 
         header_row = 3
