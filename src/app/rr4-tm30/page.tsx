@@ -137,10 +137,11 @@ export default function Rr4Tm30Page() {
   // that row's button shows a busy state - re-syncing one day shouldn't
   // block interacting with the rest of the table.
   const [regeneratingDate, setRegeneratingDate] = useState<string | null>(null);
-  // Which row's file-type dropdown ("<date>-rr4" / "<date>-tm30") is open -
-  // clicking RR4/TM30 reveals a small Preview/Download menu instead of
-  // showing both actions as always-visible separate buttons.
-  const [openFileMenu, setOpenFileMenu] = useState<string | null>(null);
+  // Full-page Preview popup - which History row's date is currently shown,
+  // or null when closed. Loads into the same rr4Report/tm30Report/activeTab
+  // state the on-page data section uses, so the popup and the page stay
+  // in sync.
+  const [previewOpen, setPreviewOpen] = useState(false);
   // Collapsed by default, same as ST Files/BCP's own header details section.
   const [headerOpen, setHeaderOpen] = useState(false);
   // The data tables - expanded by default, since they're the page's main
@@ -186,11 +187,18 @@ export default function Rr4Tm30Page() {
   }, [selectedProperty]);
 
   useEffect(() => {
-    if (!openFileMenu) return;
-    const closeMenu = () => setOpenFileMenu(null);
-    document.addEventListener("click", closeMenu);
-    return () => document.removeEventListener("click", closeMenu);
-  }, [openFileMenu]);
+    if (!previewOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPreviewOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [previewOpen]);
 
   // Accepts an override date/source so the Files table's View button can jump
   // straight to a given day without racing the date/dataSource state setters
@@ -611,53 +619,29 @@ export default function Rr4Tm30Page() {
                       <td className={tdCls}>{fmtDateTime(r.synced_at)}</td>
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
-                          {(["rr4", "tm30"] as TabKey[]).map((kind) => {
-                            const menuKey = `${r.date}-${kind}`;
-                            return (
-                              <div key={kind} className="relative inline-block">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setOpenFileMenu(openFileMenu === menuKey ? null : menuKey);
-                                  }}
-                                  className="inline-flex items-center gap-1 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
-                                >
-                                  {kind.toUpperCase()}
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-                                </button>
-                                {openFileMenu === menuKey && (
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute left-0 top-9 w-36 bg-[var(--paper)] border border-[var(--text-primary)] shadow-xl z-[100] p-1"
-                                  >
-                                    <button
-                                      onClick={async () => {
-                                        setOpenFileMenu(null);
-                                        setDate(r.date);
-                                        setDataSource("database");
-                                        setActiveTab(kind);
-                                        setDataOpen(true);
-                                        await fetchReports({ date: r.date, source: "database" });
-                                        dataSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-                                      }}
-                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                                    >
-                                      Preview
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        setOpenFileMenu(null);
-                                        handleDownload(kind, r.date);
-                                      }}
-                                      className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
-                                    >
-                                      Download .xlsx
-                                    </button>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          <button
+                            onClick={async () => {
+                              setDate(r.date);
+                              setDataSource("database");
+                              await fetchReports({ date: r.date, source: "database" });
+                              setPreviewOpen(true);
+                            }}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            Preview
+                          </button>
+                          <button
+                            onClick={() => handleDownload("rr4", r.date)}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            RR4 .xlsx
+                          </button>
+                          <button
+                            onClick={() => handleDownload("tm30", r.date)}
+                            className="px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors whitespace-nowrap"
+                          >
+                            TM30 .xlsx
+                          </button>
                           <button
                             onClick={() => handleRegenerate(r.date)}
                             disabled={regeneratingDate === r.date}
@@ -675,6 +659,51 @@ export default function Rr4Tm30Page() {
           </div>
         </div>
       </div>
+
+      {previewOpen && (
+        <div className="fixed inset-0 z-[200] bg-[var(--paper)] flex flex-col">
+          <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-[var(--text-primary)]/14 shrink-0">
+            <div className="flex items-baseline gap-3">
+              <h2 className="text-xl font-serif text-[var(--text-primary)]">RR4 &amp; TM30 Preview</h2>
+              <span className="text-sm text-[var(--text-primary)]/60">
+                {selectedProperty} &middot; {rr4Report?.date || tm30Report?.date}
+              </span>
+            </div>
+            <button
+              onClick={() => setPreviewOpen(false)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold tracked-caps bg-[var(--paper)] border border-[var(--text-primary)] text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              Close
+            </button>
+          </div>
+
+          <div className="flex border-b border-[var(--text-primary)]/14 shrink-0 px-6">
+            {TABS.map((t) => {
+              const count = t.key === "rr4" ? rr4Report?.rows.length : tm30Report?.rows.length;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setActiveTab(t.key)}
+                  className={`px-3 py-3 text-[11px] font-bold tracked-caps border-b-2 -mb-px whitespace-nowrap transition-all ${
+                    activeTab === t.key
+                      ? "border-[var(--text-primary)] text-[var(--text-primary)]"
+                      : "border-transparent text-[var(--text-primary)]/40 hover:text-[var(--text-primary)]"
+                  }`}
+                >
+                  {t.label}{count !== undefined ? ` (${count})` : ""}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex-1 overflow-auto p-6">
+            <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-[20px_20px_60px_rgba(21,42,0,0.03)] overflow-x-auto">
+              {activeTab === "rr4" ? rr4Table(rr4Report?.rows || []) : tm30Table(tm30Report?.rows || [])}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
