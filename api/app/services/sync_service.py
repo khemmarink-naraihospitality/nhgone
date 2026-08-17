@@ -2444,22 +2444,10 @@ class SyncService:
         for res in reservations:
             if res.get("State") not in active_states:
                 continue
-            # space_categories() expands a whole-dorm/whole-suite booking to
-            # its child spaces - correct when the guest genuinely requested a
-            # per-space (Room/Bed) product and just got assigned the parent
-            # resource for capacity (Siem Reap 2026-08-06: 2 whole-suite
-            # bookings file as 4 room arrivals, 2 whole-dorm bookings as
-            # 10+10 bed arrivals - matching MEWS's own report). But when the
-            # guest booked the Dorm/Suite-type product ITSELF as a private
-            # whole-unit hire (Chinatown's "TRIBE HIDEOUT - ALL YOURS!",
-            # Res#92258 on 10-Aug-2026, Res#77719/#92534 on 12-Aug-2026),
-            # that's one arrival/departure event, not one per child bed -
-            # collapsing raw_units to 1 (0 stays 0) here is what
-            # requested_is_space_type already does for Customers below;
-            # Arrivals/Departures needs the same guard or a single whole-unit
-            # booking inflates the day's count by its child-space count.
-            raw_units = len(space_categories(res))
-            units = raw_units if requested_is_space_type(res) else min(raw_units, 1)
+            # Arrivals/Departures count spaces (beds/rooms) moving in and out,
+            # matching MEWS's own Availability/ST export (e.g. Lub d Siem Reap:
+            # 10-bed dorm bookings count as 10 bed arrivals/departures).
+            units = len(space_categories(res))
             if in_window(res.get("StartUtc")):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
