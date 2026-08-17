@@ -1660,14 +1660,35 @@ class SyncService:
 
     @staticmethod
     def _rr4_tm30_guest_ids(res: dict) -> list:
-        """CustomerId + CompanionIds, deduped, order-preserved - CompanionIds
-        already includes the owner's own CustomerId as one of its entries
-        (same shape used throughout BCP/ST Files/RR3), so a plain
-        set-membership dedupe is enough rather than special-casing it."""
-        ids = [res.get("CustomerId")] + (res.get("CompanionIds") or [])
+        """Who actually SLEEPS in this space, deduped and order-preserved.
+
+        CompanionIds, whenever it's populated, is MEWS's definitive occupant
+        list for that one space - its length matches the reservation's own
+        AdultCount+ChildCount exactly - so it is used alone. CustomerId is
+        only appended when CompanionIds is empty, because CustomerId means
+        "who owns/pays for this booking", which is NOT the same person as
+        "who sleeps in this room" once a booking covers several rooms.
+
+        An earlier version unioned CustomerId with CompanionIds on the
+        assumption that CompanionIds always already contained the owner. It
+        does - but only for the single room the owner personally occupies;
+        for a family/group that books several rooms at once, MEWS repeats
+        that same owner as CustomerId on EVERY room's reservation while
+        listing only the real occupants in each one's CompanionIds. Unioning
+        therefore filed the booker into every room they paid for: one guest
+        at Lub d Koh Tao Tanote Bay (16-Aug-2026) appeared in 3 different
+        rooms at once, and the register ran 12 rows over MEWS's own figure
+        on that day alone. Confirmed against real MEWS "Customer profiles In
+        house" exports for all 5 properties with reference data - this rule
+        removes every over-count without dropping a single guest MEWS lists,
+        and brings each reservation's row count back in line with the
+        headcount it was actually booked for.
+        """
+        ids = [c for c in (res.get("CompanionIds") or []) if c] or \
+              ([res["CustomerId"]] if res.get("CustomerId") else [])
         seen, out = set(), []
         for cid in ids:
-            if cid and cid not in seen:
+            if cid not in seen:
                 seen.add(cid)
                 out.append(cid)
         return out
@@ -1861,9 +1882,9 @@ class SyncService:
             # 24h window it falls closer to the center of, matching how
             # MEWS itself buckets same-property checkouts that span the
             # boundary between two consecutive report windows - confirmed
-            # empirically against real MEWS exports across 4 properties
+            # empirically against real MEWS exports across 5 properties
             # with 4 different configured windows (Chinatown 12:15, Siam
-            # 02:15, Patong ~02:00, Samui's default 00:00): every checkout
+            # 02:15, Patong/Koh Tao 02:05, Samui 00:00): every checkout
             # MEWS included fell in the LATTER half of its window, every
             # one it excluded fell in the FIRST half, with zero exceptions
             # once guests with a mid-day room-change/re-booking (2 separate
@@ -1882,29 +1903,8 @@ class SyncService:
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
             attached_count = 0
-            guest_ids = self._rr4_tm30_guest_ids(res)
             headcount = (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
-            if headcount == 1 and len(guest_ids) > 1:
-                # OTA bookings sometimes leave a barebones placeholder profile
-                # as the primary CustomerId (e.g. Booking.com's relay email)
-                # and attach a second, fuller profile - with the guest's real
-                # passport/DOB - as a "companion", even though this is a
-                # single-adult booking, not two people. Collapse to whichever
-                # resolvable profile actually carries a travel document
-                # (falling back to any resolvable profile, never to one that
-                # doesn't resolve at all - that would wrongly emit a blank
-                # placeholder row below instead of the real companion data);
-                # confirmed against a real MEWS export for Lub d Phuket
-                # Patong, 16-Aug-2026 (room 1508, "Mohammad Alkandari" was
-                # being counted twice this way).
-                resolvable = [gid for gid in guest_ids if customers_map.get(gid)]
-                with_doc = [gid for gid in resolvable if (
-                    (customers_map[gid].get("Passport") or {}).get("Number")
-                    or self._rr4_tm30_identity_card(customers_map[gid]))]
-                collapsed = with_doc[:1] or resolvable[:1]
-                if collapsed:
-                    guest_ids = collapsed
-            for guest_id in guest_ids:
+            for guest_id in self._rr4_tm30_guest_ids(res):
                 c = customers_map.get(guest_id)
                 if not c:
                     continue
