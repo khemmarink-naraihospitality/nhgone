@@ -1861,10 +1861,12 @@ class SyncService:
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
+            attached_count = 0
             for guest_id in self._rr4_tm30_guest_ids(res):
                 c = customers_map.get(guest_id)
                 if not c:
                     continue
+                attached_count += 1
                 nationality_code = c.get("NationalityCode", "")
                 rr4_code = nationality_codes.get(nationality_code, "")
                 nationality_name = _rr3_country_name(nationality_code)
@@ -1886,6 +1888,37 @@ class SyncService:
                     "occupation": "16",
                     "come_from": nationality_name,
                     "come_from_country": rr4_code,
+                    "will_go": "Thailand",
+                    "will_go_country": "99",
+                    "date_check_out": buddhist_date(res.get("EndUtc")),
+                    "time_check_out": "12.00",
+                    "data_status": 1,
+                    "_sort_start": check_in_utc or "",
+                })
+
+            # MEWS "Customer profiles" export creates a placeholder row for
+            # every booked guest slot (headcount) even if the companion's
+            # profile hasn't been attached yet.
+            headcount = (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
+            unattached = max(0, headcount - attached_count)
+            for _ in range(unattached):
+                rows.append({
+                    "date_check_in": buddhist_date(check_in_utc),
+                    "time_check_in": time_hhmm(check_in_utc),
+                    "room_no": room.get("Name", ""),
+                    "title_en": "",
+                    "name_en": "",
+                    "middle_name_en": "",
+                    "surname_en": "",
+                    "nationality": "",
+                    "pid": "",
+                    "passport": "",
+                    "issued_by": "",
+                    "address": "",
+                    "address_country": "",
+                    "occupation": "16",
+                    "come_from": "",
+                    "come_from_country": "",
                     "will_go": "Thailand",
                     "will_go_country": "99",
                     "date_check_out": buddhist_date(res.get("EndUtc")),
