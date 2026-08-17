@@ -1850,11 +1850,14 @@ class SyncService:
         for res in reservations:
             start_utc = parse_utc(res.get("StartUtc"))
             end_utc = parse_utc(res.get("EndUtc"))
-            overlaps_day = (
-                start_utc is not None and end_utc is not None
-                and start_utc < day_end_utc and end_utc > day_start_utc
-            )
-            if not overlaps_day:
+            if not start_utc or not end_utc:
+                continue
+            # In-house guests: guests staying the night or same-day use,
+            # matching MEWS's "Customer profiles In house" report
+            # (excludes guests who already checked out in the morning/departures).
+            stays_the_night = end_utc > day_end_utc
+            day_use = day_start_utc <= start_utc and end_utc <= day_end_utc
+            if not (stays_the_night or day_use):
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
