@@ -1853,16 +1853,58 @@ class SyncService:
             if not start_utc or not end_utc:
                 continue
             # In-house guests: guests staying the night or same-day use,
-            # matching MEWS's "Customer profiles In house" report
-            # (excludes guests who already checked out in the morning/departures).
-            stays_the_night = end_utc > day_end_utc
+            # matching MEWS's "Customer profiles In house" report (excludes
+            # guests who checked in on a PRIOR day and already checked out
+            # earlier this day - they belong to that prior day's register,
+            # not this one). "The night" is anchored to the window's own
+            # MIDPOINT, not its end: a departure counts toward whichever
+            # 24h window it falls closer to the center of, matching how
+            # MEWS itself buckets same-property checkouts that span the
+            # boundary between two consecutive report windows - confirmed
+            # empirically against real MEWS exports across 4 properties
+            # with 4 different configured windows (Chinatown 12:15, Siam
+            # 02:15, Patong ~02:00, Samui's default 00:00): every checkout
+            # MEWS included fell in the LATTER half of its window, every
+            # one it excluded fell in the FIRST half, with zero exceptions
+            # once guests with a mid-day room-change/re-booking (2 separate
+            # reservations or customer profiles the same day) were set
+            # aside as a distinct, separate issue. A plain `end_utc >
+            # day_end_utc` test (i.e. must still be resident at the window's
+            # own close) looked like the obvious rule but undercounted
+            # Chinatown by 65 guests - anyone who checked out in the first
+            # half of the NEXT day's window still belongs on THIS day's
+            # register.
+            window_midpoint = day_start_utc + (day_end_utc - day_start_utc) / 2
+            stays_the_night = end_utc > window_midpoint
             day_use = day_start_utc <= start_utc and end_utc <= day_end_utc
             if not (stays_the_night or day_use):
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
             attached_count = 0
-            for guest_id in self._rr4_tm30_guest_ids(res):
+            guest_ids = self._rr4_tm30_guest_ids(res)
+            headcount = (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
+            if headcount == 1 and len(guest_ids) > 1:
+                # OTA bookings sometimes leave a barebones placeholder profile
+                # as the primary CustomerId (e.g. Booking.com's relay email)
+                # and attach a second, fuller profile - with the guest's real
+                # passport/DOB - as a "companion", even though this is a
+                # single-adult booking, not two people. Collapse to whichever
+                # resolvable profile actually carries a travel document
+                # (falling back to any resolvable profile, never to one that
+                # doesn't resolve at all - that would wrongly emit a blank
+                # placeholder row below instead of the real companion data);
+                # confirmed against a real MEWS export for Lub d Phuket
+                # Patong, 16-Aug-2026 (room 1508, "Mohammad Alkandari" was
+                # being counted twice this way).
+                resolvable = [gid for gid in guest_ids if customers_map.get(gid)]
+                with_doc = [gid for gid in resolvable if (
+                    (customers_map[gid].get("Passport") or {}).get("Number")
+                    or self._rr4_tm30_identity_card(customers_map[gid]))]
+                collapsed = with_doc[:1] or resolvable[:1]
+                if collapsed:
+                    guest_ids = collapsed
+            for guest_id in guest_ids:
                 c = customers_map.get(guest_id)
                 if not c:
                     continue
@@ -1899,7 +1941,6 @@ class SyncService:
             # MEWS "Customer profiles" export creates a placeholder row for
             # every booked guest slot (headcount) even if the companion's
             # profile hasn't been attached yet.
-            headcount = (res.get("AdultCount") or 0) + (res.get("ChildCount") or 0)
             unattached = max(0, headcount - attached_count)
             for _ in range(unattached):
                 rows.append({
