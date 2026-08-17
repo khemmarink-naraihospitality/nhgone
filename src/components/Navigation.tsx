@@ -151,10 +151,10 @@ function ForcePasswordChangeScreen({ email }: { email: string }) {
   );
 }
 
-// Auto sign-out after 5 minutes with no mouse/keyboard/touch/scroll activity
+// Auto sign-out after 30 minutes with no mouse/keyboard/touch/scroll activity
 // anywhere in the app - a shared front-desk workstation left unattended
 // otherwise stays logged into whichever staff account opened it.
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
