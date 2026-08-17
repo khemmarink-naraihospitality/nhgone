@@ -2756,11 +2756,13 @@ class SyncService:
     # (11416 breakfast, 11704 in-country VAT, 30505 commission). Every entry
     # below was read off that property's own MEWS-generated RV file.
     #
-    # MEWS only puts an AccountingCategoryId GUID on each item, and resolving
-    # those needs accountingCategories/getAll, which 401s on all 8 properties
-    # today. Until that permission is granted, revenue is matched on the item's
-    # BillingName: first substring hit wins, so specific entries come before
-    # generic ones. A property absent from this map cannot be exported at all
+    # MEWS puts an AccountingCategoryId GUID on each item; accountingCategories/
+    # getAll (permission enabled 2026-08-17) now resolves it to a real GL code,
+    # via sync_rv_gl_mappings_from_mews -> rv_gl_mappings, checked first in
+    # _rv_revenue_gl. This chart is the fallback for whichever categories that
+    # table doesn't (yet) cover: first BillingName substring hit wins, so
+    # specific entries come before generic ones. A property with neither a
+    # chart entry here nor any rv_gl_mappings rows cannot be exported at all
     # (see get_rv_export) rather than silently borrowing another's accounts.
     _RV_CHARTS = {
         "Lub d Bangkok Chinatown": {
@@ -3316,6 +3318,62 @@ class SyncService:
             return {}
         return {r["accounting_category_id"]: r for r in (res.data or []) if r.get("accounting_category_id")}
 
+    async def sync_rv_gl_mappings_from_mews(self, property_name: str) -> int:
+        """Fetches this property's real chart of accounts from MEWS
+        (accountingCategories/getAll - permission enabled 2026-08-17 on all
+        8 properties) and upserts it into rv_gl_mappings, keyed by
+        AccountingCategoryId - the exact table _rv_gl_overrides reads,
+        already checked BEFORE the hand-maintained BillingName chart in
+        _rv_revenue_gl. So populating this table needs no other code
+        change: every property immediately starts using MEWS's own GL
+        codes in place of (or on top of, for an unverified property) the
+        BillingName fallback.
+
+        LedgerAccountCode is the real GL account, not Code: confirmed
+        identical to Code/ExternalCode/PostingAccountCode for every
+        category on Marasca Samui and Koh Tao, but on Chinatown 6 travel-
+        agency categories ("Tropic Sun", "Trip Advisor", ...) share one
+        generic Code ("9009") while their LedgerAccountCode/
+        PostingAccountCode hold each category's real distinct account.
+        CostCenterCode is the department - cross-checked against
+        Chinatown's own hand-verified chart (Complimentary Services and
+        Gifts: 60300/241 in both).
+
+        Every call overwrites the row for a given (property, category id) -
+        MEWS's chart of accounts is treated as authoritative on every
+        sync, since there's no admin UI yet to hand-edit a row this could
+        clobber. Returns the number of categories upserted."""
+        all_categories = []
+        cursor = None
+        while True:
+            payload = {"Limitation": {"Count": 1000}}
+            if cursor:
+                payload["Limitation"]["Cursor"] = cursor
+            res = await mews_client.post(
+                "/api/connector/v1/accountingCategories/getAll", payload, property_name=property_name)
+            chunk = res.get("AccountingCategories") or []
+            all_categories.extend(chunk)
+            cursor = res.get("Cursor")
+            if not cursor or not chunk:
+                break
+
+        rows = [
+            {
+                "property": property_name,
+                "accounting_category_id": c["Id"],
+                "category_name": c.get("Name") or "",
+                "gl_code": c.get("LedgerAccountCode") or c.get("Code") or "",
+                "department": c.get("CostCenterCode") or "",
+            }
+            for c in all_categories
+            if c.get("Id") and (c.get("LedgerAccountCode") or c.get("Code"))
+        ]
+        if not rows:
+            return 0
+        self.supabase.table("rv_gl_mappings").upsert(
+            rows, on_conflict="property,accounting_category_id").execute()
+        return len(rows)
+
     @staticmethod
     def _rv_is_service_charge(low: str) -> bool:
         """MEWS names service-charge lines either "Service Charge [Room]" or
@@ -3654,9 +3712,10 @@ class SyncService:
                 f"Cannot export: no chart of accounts has been verified for {property_name}. "
                 "Each property posts to its own accounts - Siem Reap books Guest Ledger to "
                 "11401 where Chinatown uses 21203 - so no other property's codes can stand "
-                "in. Add this property's GL mapping to rv_gl_mappings first, or wait until "
-                "MEWS enables accountingCategories/getAll. Viewing the report on screen "
-                "still works.")
+                "in. Run POST /rv/gl-mappings/sync?property_name=... to pull this property's "
+                "real chart of accounts from MEWS (accountingCategories/getAll), or add its "
+                "GL mapping to rv_gl_mappings by hand. Viewing the report on screen still "
+                "works.")
         res = self.supabase.table("rv_files_sync").select("data").eq(
             "property", property_name).eq("report_date", date_str).limit(1).execute()
         if not res.data:

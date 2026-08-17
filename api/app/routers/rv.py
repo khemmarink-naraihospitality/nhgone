@@ -139,6 +139,22 @@ async def get_list(property_name: str = Query(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/gl-mappings/sync")
+async def sync_gl_mappings(property_name: str = Query(...)):
+    """Pulls this property's real chart of accounts from MEWS
+    (accountingCategories/getAll) and upserts it into rv_gl_mappings - see
+    sync_service.sync_rv_gl_mappings_from_mews for why LedgerAccountCode
+    (not Code) is the GL account and CostCenterCode is the department.
+    Overwrites any existing row for a category already in the table."""
+    try:
+        count = await sync_service.sync_rv_gl_mappings_from_mews(property_name)
+        return {"status": "success", "count": count}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/export")
 async def export_report(
     property_name: str = Query(...),
