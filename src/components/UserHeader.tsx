@@ -17,6 +17,10 @@ export default function UserHeader() {
 
   const [profile, setProfile] = useState<any>(null);
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  // Where the Admin Console link points: "/admin" for full admins, the
+  // nationality table for roles allowed in on their RR4/TM30 permission
+  // alone (that landing dashboard is not one of their two permitted pages).
+  const [adminHref, setAdminHref] = useState("/admin");
 
   useEffect(() => {
     // Initial theme check. Light Mode became the app-wide default here -
@@ -55,16 +59,24 @@ export default function UserHeader() {
         // Super Admin always sees the Admin Console link regardless of the
         // Role Settings grid (locked in the UI - see admin/users Role
         // Settings tab). Other roles depend on their role_permissions.admin
-        // flag, driven by the same grid.
+        // flag, driven by the same grid - or on rr4_tm30, which grants a
+        // cut-down Admin Console holding only the two nationality code
+        // tables (see ADMIN_NATIONALITY_PATHS in Navigation.tsx, which is
+        // what actually enforces this; the link target below just has to
+        // match, since /admin itself redirects for those roles).
+        // select("*") rather than a column list, same reason Navigation.tsx
+        // uses it: a column missing in the DB would otherwise fail the whole
+        // query and hide the link from legitimate admins.
         if (data.role === "Super Admin" || data.role === "super_admin") {
           setCanAccessAdmin(true);
         } else if (data.role) {
           const { data: permRow } = await supabase
             .from("role_permissions")
-            .select("admin")
+            .select("*")
             .eq("role", data.role)
             .single();
-          setCanAccessAdmin(!!permRow?.admin);
+          setCanAccessAdmin(!!permRow?.admin || !!permRow?.rr4_tm30);
+          setAdminHref(permRow?.admin ? "/admin" : "/admin/rr4-nationality");
         }
       }
     };
@@ -149,7 +161,7 @@ export default function UserHeader() {
             <div className="p-2">
                 {canAccessAdmin && (
                   <Link
-                    href="/admin"
+                    href={adminHref}
                     onClick={() => setIsOpen(false)}
                     className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group ${theme === 'dark' ? 'text-purple-200 hover:bg-white/5' : 'text-purple-700 hover:bg-purple-50'}`}
                   >

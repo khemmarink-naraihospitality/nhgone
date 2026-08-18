@@ -156,6 +156,14 @@ function ForcePasswordChangeScreen({ email }: { email: string }) {
 // otherwise stays logged into whichever staff account opened it.
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
+// The only two Admin Console pages a role can reach on the strength of its
+// RR4/TM30 menu permission alone. They hold the nationality code lookup
+// tables the RR4/TM30 government filing depends on - reference data the
+// staff filing those forms have to be able to correct themselves, which is a
+// different thing from administering the system. Every other /admin page
+// stays behind the full `admin` permission.
+const ADMIN_NATIONALITY_PATHS = ["/admin/rr4-nationality", "/admin/tm30-nationality"];
+
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -369,16 +377,29 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const isSuperAdminRole = userRole === "Super Admin" || userRole?.toLowerCase() === "super_admin";
   const onAdminPath = pathname.startsWith("/admin");
 
+  const hasFullAdmin = isSuperAdminRole || !!menuPermissions?.admin;
+  const canEnterAdmin = hasFullAdmin || !!menuPermissions?.rr4_tm30;
+  // Nationality-only admins: everything under /admin is off-limits except the
+  // two pages above - including /admin itself, whose dashboard reports on
+  // logins and user counts.
+  const adminNationalityOnly = !hasFullAdmin && !!menuPermissions?.rr4_tm30;
+
   // Admin section access guard: redirects away once the role_permissions
   // fetch has actually settled (permissionsLoaded) and the role isn't
   // allowed - waiting for that explicit signal (rather than just checking
   // menuPermissions !== null, which can't tell "still fetching" from
   // "fetched, no row") avoids kicking out a legitimate admin mid-fetch.
+  // The second branch is the real boundary for nationality-only roles:
+  // hiding the sidebar links alone would still leave every other admin page
+  // reachable by typing its URL.
   useEffect(() => {
-    if (onAdminPath && !isSuperAdminRole && permissionsLoaded && !menuPermissions?.admin) {
+    if (!onAdminPath || !permissionsLoaded) return;
+    if (!canEnterAdmin) {
       router.push("/dashboard");
+    } else if (adminNationalityOnly && !ADMIN_NATIONALITY_PATHS.includes(pathname)) {
+      router.push("/admin/rr4-nationality");
     }
-  }, [onAdminPath, isSuperAdminRole, permissionsLoaded, menuPermissions, router]);
+  }, [onAdminPath, permissionsLoaded, canEnterAdmin, adminNationalityOnly, pathname, router]);
 
   // Idle sign-out - only runs once actually signed in (not on the login page
   // itself, and not for a still-Pending account, which already only shows
@@ -516,15 +537,21 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     <nav className="flex flex-col gap-1">
       {pathname.startsWith("/admin") ? (
         <>
-          <Link href="/admin" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-          <Link href="/admin/users" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
-          <Link href="/admin/smtp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
-          <Link href="/admin/sync" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Sync & Schedule</Link>
-          <Link href="/admin/api-settings" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API</Link>
-          <Link href="/admin/templates" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
+          {!adminNationalityOnly && (
+            <>
+              <Link href="/admin" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
+              <Link href="/admin/users" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
+              <Link href="/admin/smtp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
+              <Link href="/admin/sync" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Sync & Schedule</Link>
+              <Link href="/admin/api-settings" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>API</Link>
+              <Link href="/admin/templates" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Templates</Link>
+            </>
+          )}
           <Link href="/admin/rr4-nationality" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/rr4-nationality" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR4-Nationality</Link>
           <Link href="/admin/tm30-nationality" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/tm30-nationality" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>TM30-Nationality</Link>
-          <Link href="/admin/logs" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
+          {!adminNationalityOnly && (
+            <Link href="/admin/logs" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
+          )}
         </>
       ) : (
         <>
