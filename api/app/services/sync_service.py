@@ -2169,10 +2169,32 @@ class SyncService:
         _resolve_tm30_nationality_codes (Admin > TM30-Nationality, editable)
         layered over the hardcoded fallback in rr4_tm30_reference.py.
 
-        "Arriving" reuses get_st_files_report's Arrivals-tab rule
-        (in_window(StartUtc)) exactly.
+        "Arriving" is NOT get_st_files_report's Arrivals-tab window
+        (day_start_utc, the RR4-style configured cutoff hour - e.g. 12:15pm
+        for Chinatown) - it uses the day's own local MIDNIGHT as the lower
+        bound instead, keeping day_end_utc (the next day's cutoff) as the
+        upper bound unchanged. Confirmed against real MEWS "Customer
+        profiles Arrival" exports for Chinatown, 16 & 17-Aug-2026: a guest
+        whose single, organic check-in happens in the FIRST HALF of their
+        own calendar day (before the cutoff hour) still needs to be filed
+        under THAT day, not shifted back to the day before - day_start_utc
+        alone missed 9 guests on the 17th and 3 more on the 16th this way,
+        e.g. one checking in 09:58am was wrongly excluded from that day's
+        file because the window didn't open until 12:15pm. Widening only the
+        lower bound cannot double-file anyone: MEWS's own reservations/getAll
+        StartUtc/EndUtc filter already scopes each reservation to exactly one
+        day's candidate pool by some mechanism of its own (confirmed against
+        12 guests directly - both the newly-included ones and the ones
+        already correctly filed near the window's far edge, checking in just
+        after midnight on the NEXT calendar day, were each retrievable from
+        only one specific day's raw fetch, never both its own day's and the
+        adjacent day's) - so this can only recover missing guests, never
+        duplicate one across two days' filings.
         """
-        day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
+        # day_start_utc (RR4's cutoff-hour window start) is intentionally
+        # unused below - see in_window's docstring note for why TM30's own
+        # lower bound is `day` (local midnight) instead.
+        day, _day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
             await self._rr4_tm30_fetch_day(property_name, date)
         nationality_codes = await self._resolve_tm30_nationality_codes()
 
@@ -2186,7 +2208,7 @@ class SyncService:
 
         def in_window(ts):
             t = parse_utc(ts)
-            return t is not None and day_start_utc <= t < day_end_utc
+            return t is not None and day <= t < day_end_utc
 
         def gregorian_date(ts):
             t = parse_utc(ts)
