@@ -3,6 +3,7 @@ from app.config import settings
 import json
 import logging
 import re
+import unicodedata
 from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -22,6 +23,49 @@ from openpyxl.utils import get_column_letter
 from io import BytesIO
 
 logger = logging.getLogger(__name__)
+
+# Characters Unicode's own NFKD decomposition leaves untouched because they
+# aren't accented letters - they need an explicit ASCII stand-in. MEWS writes
+# order-item descriptions as "{qty} × {name}", so U+00D7 is by far the most
+# common one in practice; the dashes and quotes show up in free-text product
+# names typed by staff.
+_ASCII_SUBSTITUTES = {
+    "×": "x",    # × multiplication sign (MEWS quantity separator)
+    "–": "-", "—": "-",           # en/em dash
+    "‘": "'", "’": "'",           # curly single quotes
+    "“": '"', "”": '"',           # curly double quotes
+    "…": "...",                        # ellipsis
+    " ": " ",                          # non-breaking space
+    "°": " deg", "€": "EUR", "£": "GBP", "¥": "JPY",
+}
+
+
+def _ascii_fold(text: str) -> str:
+    """Reduce a string to plain 7-bit ASCII for the pipe-delimited SunSystems
+    journal files.
+
+    The interface reads these as a flat file in a single-byte encoding, so a
+    UTF-8 multi-byte character does not survive the round trip - and because
+    the import profile posts with "Post if no errors", one bad character
+    rejects the entire day's journal rather than just its own line. MEWS's
+    own reference export (PT_RV_20260813.csv, confirmed by `file` as plain
+    ASCII "CSV text" where ours came out "UTF-8 text") never emits a
+    non-ASCII byte, so matching that is the safe target.
+
+    Accented letters fold through NFKD (é -> e); anything Unicode won't
+    decompose gets an explicit substitute from _ASCII_SUBSTITUTES first, so
+    that "-1 × Rounding adjustment" becomes "-1 x Rounding adjustment"
+    rather than losing the separator entirely. Whatever is still non-ASCII
+    after both passes is dropped - a garbled description is recoverable,
+    a rejected journal is not.
+    """
+    if not text:
+        return ""
+    for ch, repl in _ASCII_SUBSTITUTES.items():
+        if ch in text:
+            text = text.replace(ch, repl)
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
+
 
 _THAI_NUM = ["ศูนย์", "หนึ่ง", "สอง", "สาม", "สี่", "ห้า", "หก", "เจ็ด", "แปด", "เก้า"]
 _THAI_UNIT = ["", "สิบ", "ร้อย", "พัน", "หมื่น", "แสน"]
@@ -2798,7 +2842,11 @@ class SyncService:
                 f"ST{ref_suffix}", label, ddmmyyyy, currency, str(value), "1",
                 "", "", "", "D", property_code, "111", "ZZ", "ZZ",
             ] + [""] * 21
-            lines.append("|".join(fields))
+            # ASCII-folded for the same reason the RV file is (see
+            # _ascii_fold) - the labels here are fixed literals, but the
+            # property code and currency come from admin-entered config that
+            # nothing else constrains to ASCII.
+            lines.append(_ascii_fold("|".join(fields)))
         filename = f"{property_code}_ST_{yyyymmdd}.csv"
         return "\n".join(lines), filename
 
@@ -3815,11 +3863,12 @@ class SyncService:
             fatal - split into "|".join(lines) it breaks one logical row into
             two ragged ones - so newlines are collapsed to spaces first; a
             literal "|" would misalign every field after it the same way, so
-            that's stripped too."""
+            that's stripped too. The same all-or-nothing stake applies to
+            non-ASCII: see _ascii_fold."""
             # Collapse embedded newlines/pipes to a space (not .strip() - a
             # few real product names carry a deliberate trailing space, e.g.
             # "Coke ", that the real file preserves and this must not eat).
-            desc_clean = re.sub(r"[\r\n|]+", " ", description or "")
+            desc_clean = _ascii_fold(re.sub(r"[\r\n|]+", " ", description or ""))
             dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
             value = f"{abs(amount):.2f}"
             # Fields 21-41 are blank except Analysis 6 (field 22), which the
@@ -3833,11 +3882,15 @@ class SyncService:
             if tax_derived:
                 tail[0] = "ABBSU"
                 tail[4] = "V07"
-            return "|".join([
+            # Folded once more over the assembled line so the guarantee covers
+            # every field, not just the description - Analysis 6 (market
+            # segment) is free text from MEWS too, and codes/currency come
+            # from config that nothing else validates.
+            return _ascii_fold("|".join([
                 "PMSRV", "PMSRV", gl, ddmmyyyy, month_code, str(day.year),
                 f"RV{yyyymmdd}", desc_clean[:50], ddmmyyyy, currency, value, "1", value,
                 "", "", dc, property_code, dept or "", "ZZ", "ZZ",
-            ] + tail)
+            ] + tail))
 
         lines = []
         for r in report.get("revenue", []):
