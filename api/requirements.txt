@@ -10,3 +10,5 @@ gunicorn
 uvloop
 cryptography
 openpyxl
+pandas
+python-multipart
