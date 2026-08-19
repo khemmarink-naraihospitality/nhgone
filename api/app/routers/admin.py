@@ -31,6 +31,13 @@ class UserCreateRequest(BaseModel):
     # address): a real password is generated and emailed to them directly,
     # for the login page's "Internal Auth" email/password form.
     auth_method: str = "google"
+    # The requesting admin's own email, supplied by the frontend rather than
+    # derived server-side - this app has no session/JWT verification on the
+    # backend (every role_permissions gate is client-side only, same as
+    # everywhere else here), so there is no server-trusted "current user" to
+    # read. Left blank for the self-register/approve paths, which create a
+    # profile without any admin acting on it.
+    created_by: str = ""
 
 class SelfRegisterRequest(BaseModel):
     id: str
@@ -148,6 +155,7 @@ async def create_user(request: UserCreateRequest):
                 # behind a forced change screen until they replace it. Google
                 # accounts have no password to change, so the flag stays off.
                 "must_change_password": is_internal,
+                "created_by": request.created_by or None,
             }).execute()
         except Exception as profile_error:
             # The auth user already exists at this point. Leaving it behind
@@ -262,6 +270,36 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
         return {"status": "success", "message": "User approved", "email_sent": email_sent, "email_error": email_error}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/users/last-logins")
+async def get_last_logins():
+    """Real last-sign-in timestamps, keyed by user id, straight from
+    Supabase Auth's own last_sign_in_at - NOT profiles.last_login, whose
+    column default is now() and is never written again after the row is
+    created, so it silently just shows account-creation time forever
+    regardless of how many times the user has actually signed in since
+    (confirmed directly: 15 of 27 real accounts had a last_sign_in_at
+    materially later than their created_at, and 4 had never signed in at
+    all despite profiles.last_login claiming a timestamp for them). This
+    needs the service-role client - auth.users isn't reachable with the
+    anon key User Management's own fetchUsers() uses to read profiles
+    directly, client-side."""
+    try:
+        admin_supabase = get_supabase_client()
+        result = {}
+        page = 1
+        while True:
+            batch = admin_supabase.auth.admin.list_users(page=page, per_page=200)
+            if not batch:
+                break
+            for u in batch:
+                result[u.id] = u.last_sign_in_at.isoformat() if u.last_sign_in_at else None
+            if len(batch) < 200:
+                break
+            page += 1
+        return {"status": "success", "data": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

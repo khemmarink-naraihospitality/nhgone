@@ -10,6 +10,11 @@ interface UserProfile {
   email: string;
   role: string;
   status: "Active" | "Inactive" | "Pending";
+  // Overwritten in fetchUsers() with the real value from Supabase Auth's own
+  // last_sign_in_at - the profiles column of the same name only ever holds
+  // account-creation time (its DB default is now(), and nothing updates it
+  // again after the row is inserted), so left alone it silently claims every
+  // user's most recent activity was the moment their account was made.
   last_login: string;
   joined_at: string;
   created_at?: string;
@@ -20,6 +25,11 @@ interface UserProfile {
   // default every pre-migration account was actually set up with).
   auth_method?: "google" | "internal";
   must_change_password?: boolean;
+  // The admin's own email at the time they used "+ Create New User" - blank
+  // for every account that arrived some other way (self-registration via
+  // Google/internal sign-in, or a row that predates this column), since no
+  // admin acted on those.
+  created_by?: string | null;
 }
 
 interface RolePermissionRow {
@@ -36,6 +46,23 @@ interface RolePermissionRow {
   admin: boolean;
   restricted_properties: string[] | null;
 }
+
+// Drives both the Users table's header row and its click-to-sort behavior.
+// auth_method/status sort by their raw stored value (google/internal,
+// Active/Pending/Inactive), not the styled label the cell renders - simpler,
+// and both still group sensibly either way.
+type SortKey = "full_name" | "email" | "role" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
+
+const USER_COLUMNS: { key: SortKey; label: string }[] = [
+  { key: "full_name", label: "Name" },
+  { key: "email", label: "Email" },
+  { key: "role", label: "Role" },
+  { key: "auth_method", label: "User Authentication" },
+  { key: "status", label: "Status" },
+  { key: "last_login", label: "Last Log-in" },
+  { key: "created_at", label: "Create Time" },
+  { key: "created_by", label: "Created By" },
+];
 
 const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_properties">; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -69,22 +96,40 @@ export default function AdminUsersPage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [openPropertyMenu, setOpenPropertyMenu] = useState<string | null>(null);
   const [openRoleActionMenu, setOpenRoleActionMenu] = useState<string | null>(null);
+  // Whoever is signed in right now, captured once for "+ Create New User" to
+  // stamp as created_by - this backend has no session/JWT verification (see
+  // UserCreateRequest.created_by), so it has to come from the client.
+  const [currentAdminEmail, setCurrentAdminEmail] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setCurrentAdminEmail(data.user.email);
+    });
+  }, []);
 
   const fetchUsers = async () => {
     console.log("Fetching users from profiles table...");
     setLoading(true);
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const [{ data, error }, lastLoginsRes] = await Promise.all([
+      supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+      // Best-effort - a failed fetch here just means Last Log-in falls back
+      // to profiles.last_login (creation time) for this load, not a broken page.
+      fetch("/api/admin/users/last-logins").then((r) => r.json()).catch(() => null),
+    ]);
 
     if (error) {
       console.error("Supabase Error:", error.message, error.details, error.hint);
       alert("Error fetching users: " + error.message);
     } else {
       console.log("Successfully fetched users:", data);
-      setUsers(data as UserProfile[]);
+      const lastLogins: Record<string, string | null> = lastLoginsRes?.status === "success" ? lastLoginsRes.data : {};
+      const merged = (data as UserProfile[]).map((u) => ({
+        ...u,
+        last_login: u.id in lastLogins ? (lastLogins[u.id] || "") : u.last_login,
+      }));
+      setUsers(merged);
     }
     setLoading(false);
   };
@@ -310,7 +355,7 @@ export default function AdminUsersPage() {
       const response = await fetch(`/api/admin/users`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(newUser)
+        body: JSON.stringify({ ...newUser, created_by: currentAdminEmail })
       });
       const result = await response.json();
       if (result.status === "success") {
@@ -401,22 +446,51 @@ export default function AdminUsersPage() {
     u.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+  };
+
+  // Applied on top of the search filter so sort + search compose the way a
+  // user would expect - narrow first, then order what's left. Both the
+  // table and the CSV export read from this, so a sort order carries
+  // straight into the download.
+  const sortedUsers = sortKey
+    ? [...filteredUsers].sort((a, b) => {
+        let cmp: number;
+        if (sortKey === "last_login" || sortKey === "created_at") {
+          const av = a[sortKey] ? new Date(a[sortKey] as string).getTime() : 0;
+          const bv = b[sortKey] ? new Date(b[sortKey] as string).getTime() : 0;
+          cmp = av - bv;
+        } else {
+          cmp = (a[sortKey] || "").toString().localeCompare((b[sortKey] || "").toString());
+        }
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filteredUsers;
+
   // CSV of exactly the columns the table shows (Name/Email/Role/User
-  // Authentication/Status/Last Log-in), over filteredUsers so an active
-  // search narrows the export the same way it narrows the table. auth
-  // method and status are written as their display labels, not the raw
-  // enum, to match what's actually on screen (e.g. "Waiting for approve"
-  // for a Pending row, same as the Status column renders it).
+  // Authentication/Status/Last Log-in/Create Time/Created By), over
+  // sortedUsers so an active search AND sort order both carry into the
+  // export. auth method and status are written as their display labels,
+  // not the raw enum, to match what's actually on screen (e.g. "Waiting
+  // for approve" for a Pending row, same as the Status column renders it).
   const csvEscape = (value: string) =>
     /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 
   const handleExportUsers = () => {
-    const header = ["Name", "Email", "Role", "User Authentication", "Status", "Last Log-in"];
-    const lines = filteredUsers.map((u) => {
+    const header = USER_COLUMNS.map((c) => c.label);
+    const lines = sortedUsers.map((u) => {
       const authLabel = (u.auth_method || "google") === "internal" ? "Internal" : "Google";
       const statusLabel = u.status === "Pending" ? "Waiting for approve" : u.status;
       const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : "Never";
-      return [u.full_name, u.email, u.role, authLabel, statusLabel, lastLogin].map((v) => csvEscape(v ?? "")).join(",");
+      const createTime = u.created_at ? new Date(u.created_at).toLocaleString() : "";
+      return [u.full_name, u.email, u.role, authLabel, statusLabel, lastLogin, createTime, u.created_by || ""]
+        .map((v) => csvEscape(v ?? "")).join(",");
     });
     const csv = [header.join(","), ...lines].join("\n");
     // BOM so Excel opens UTF-8 (non-ASCII names/emails) without mangling it.
@@ -500,19 +574,30 @@ export default function AdminUsersPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Name</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Email</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Role</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">User Authentication</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Status</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">Last Log-in</th>
+                {USER_COLUMNS.map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    className="group sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer select-none hover:text-slate-600 transition-colors"
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      <svg
+                        className={`w-3 h-3 shrink-0 transition-all ${sortKey === col.key ? "opacity-100 text-[#AAA024]" : "opacity-0 group-hover:opacity-30"} ${sortKey === col.key && sortDir === "desc" ? "rotate-180" : ""}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </span>
+                  </th>
+                ))}
                 <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={7} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
-              ) : filteredUsers.map((user) => (
+                <tr><td colSpan={USER_COLUMNS.length + 1} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
+              ) : sortedUsers.map((user) => (
                 <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors group ${user.status === 'Pending' ? 'bg-amber-50/50' : ''}`}>
                   <td className="px-6 py-5 text-sm font-bold text-slate-700">{user.full_name}</td>
                   <td className="px-6 py-5 text-sm text-[#AAA024] font-medium">{user.email}</td>
@@ -556,6 +641,12 @@ export default function AdminUsersPage() {
                   </td>
                   <td className="px-6 py-5 text-xs text-slate-500 font-medium">
                     {user.last_login ? new Date(user.last_login).toLocaleString() : "Never"}
+                  </td>
+                  <td className="px-6 py-5 text-xs text-slate-500 font-medium">
+                    {user.created_at ? new Date(user.created_at).toLocaleString() : "—"}
+                  </td>
+                  <td className="px-6 py-5 text-xs text-slate-500 font-medium">
+                    {user.created_by || <span className="text-slate-300">—</span>}
                   </td>
                   <td className="px-6 py-5 text-center relative overflow-visible">
                      <button
