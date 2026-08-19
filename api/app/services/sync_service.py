@@ -2132,14 +2132,17 @@ class SyncService:
             cell.font = Font(size=9)
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Columns B/X (date_check_in/date_check_out) get a literal leading
-        # "'" - confirmed against the reference sheet ("'05/08/2569") - so
-        # the Buddhist-year dd/mm/yyyy string can't get silently reinterpreted
-        # as a Gregorian date by Excel or a downstream import.
+        # Columns B/C (date_check_in/time_check_in) get a literal leading
+        # "'" - confirmed against the reference sheet - so the Buddhist-year
+        # dd/mm/yyyy date and the HH.MM time can't get silently
+        # reinterpreted (as a Gregorian date, or as a decimal number) by
+        # Excel or a downstream import. date_check_out does NOT get one -
+        # confirmed against the reference sheet the other way, so a stray
+        # apostrophe there isn't carried into a government filing.
         for i, row in enumerate(report["rows"], start=1):
             for col, (key, _label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
                 value = row.get(key, "")
-                if key in ("date_check_in", "date_check_out") and value:
+                if key in ("date_check_in", "time_check_in") and value:
                     value = f"'{value}"
                 ws.cell(field_key_row + i, col, value)
 
