@@ -490,6 +490,7 @@ class EmailService:
         template = self.get_internal_welcome_template()
         tokens = {
             "FullName": _escape_html(greeting),
+            "Email": _escape_html(to_email),
             "SetPasswordLink": set_password_link,  # not escaped - used as an href, must stay a valid URL
         }
         subject = template["subject"]

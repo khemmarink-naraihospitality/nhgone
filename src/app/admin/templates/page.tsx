@@ -107,6 +107,7 @@ const EMAIL_TOKENS: TokenDoc[] = [
 
 const INTERNAL_WELCOME_EMAIL_TOKENS: TokenDoc[] = [
   { name: "FullName", description: "New user's full name (falls back to their email if blank)" },
+  { name: "Email", description: "New user's email - also the Internal Users login they should sign in with" },
   { name: "SetPasswordLink", description: "Single-use Supabase link that lets them choose their password - must stay in the button's href. Removing it sends an email with no way in." },
 ];
 
@@ -363,6 +364,7 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
   }),
   internal_welcome_email: () => ({
     FullName: "John Doe",
+    Email: "john.doe@example.com",
     SetPasswordLink: "https://one.naraihospitalitygroup.com/reset-password#token=sample",
   }),
   password_reset_email: () => ({

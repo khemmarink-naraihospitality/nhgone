@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
 
@@ -479,28 +480,27 @@ export default function AdminUsersPage() {
   // export. auth method and status are written as their display labels,
   // not the raw enum, to match what's actually on screen (e.g. "Waiting
   // for approve" for a Pending row, same as the Status column renders it).
-  const csvEscape = (value: string) =>
-    /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
-
   const handleExportUsers = () => {
-    const header = USER_COLUMNS.map((c) => c.label);
-    const lines = sortedUsers.map((u) => {
+    const rows = sortedUsers.map((u) => {
       const authLabel = (u.auth_method || "google") === "internal" ? "Internal" : "Google";
       const statusLabel = u.status === "Pending" ? "Waiting for approve" : u.status;
       const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : "Never";
       const createTime = u.created_at ? new Date(u.created_at).toLocaleString() : "";
-      return [u.full_name, u.email, u.role, authLabel, statusLabel, lastLogin, createTime, u.created_by || ""]
-        .map((v) => csvEscape(v ?? "")).join(",");
+      return {
+        [USER_COLUMNS[0].label]: u.full_name,
+        [USER_COLUMNS[1].label]: u.email,
+        [USER_COLUMNS[2].label]: u.role,
+        [USER_COLUMNS[3].label]: authLabel,
+        [USER_COLUMNS[4].label]: statusLabel,
+        [USER_COLUMNS[5].label]: lastLogin,
+        [USER_COLUMNS[6].label]: createTime,
+        [USER_COLUMNS[7].label]: u.created_by || "",
+      };
     });
-    const csv = [header.join(","), ...lines].join("\n");
-    // BOM so Excel opens UTF-8 (non-ASCII names/emails) without mangling it.
-    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `NHGOne_Users_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+    XLSX.writeFile(workbook, `NHGOne_Users_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   const filteredRolePermissions = rolePermissions.filter(r =>
