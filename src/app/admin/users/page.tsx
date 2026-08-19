@@ -401,6 +401,34 @@ export default function AdminUsersPage() {
     u.email?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  // CSV of exactly the columns the table shows (Name/Email/Role/User
+  // Authentication/Status/Last Log-in), over filteredUsers so an active
+  // search narrows the export the same way it narrows the table. auth
+  // method and status are written as their display labels, not the raw
+  // enum, to match what's actually on screen (e.g. "Waiting for approve"
+  // for a Pending row, same as the Status column renders it).
+  const csvEscape = (value: string) =>
+    /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+
+  const handleExportUsers = () => {
+    const header = ["Name", "Email", "Role", "User Authentication", "Status", "Last Log-in"];
+    const lines = filteredUsers.map((u) => {
+      const authLabel = (u.auth_method || "google") === "internal" ? "Internal" : "Google";
+      const statusLabel = u.status === "Pending" ? "Waiting for approve" : u.status;
+      const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : "Never";
+      return [u.full_name, u.email, u.role, authLabel, statusLabel, lastLogin].map((v) => csvEscape(v ?? "")).join(",");
+    });
+    const csv = [header.join(","), ...lines].join("\n");
+    // BOM so Excel opens UTF-8 (non-ASCII names/emails) without mangling it.
+    const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `NHGOne_Users_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const filteredRolePermissions = rolePermissions.filter(r =>
     r.role.toLowerCase().includes(roleSearchQuery.toLowerCase())
   );
@@ -449,6 +477,14 @@ export default function AdminUsersPage() {
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 Refresh
+              </button>
+              <button
+                onClick={handleExportUsers}
+                disabled={filteredUsers.length === 0}
+                className="flex items-center gap-2 px-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" /></svg>
+                Export Users
               </button>
               <button
                 onClick={() => setShowCreateModal(true)}
