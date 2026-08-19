@@ -16,9 +16,20 @@ interface UserProfile {
   // account-creation time (its DB default is now(), and nothing updates it
   // again after the row is inserted), so left alone it silently claims every
   // user's most recent activity was the moment their account was made.
+  // fetchUsers() also blanks this back out to "" (rendered as "Never") when
+  // the only sign-in on record predates approved_at - a self-registered
+  // user's first Google OAuth handshake is a real Auth sign-in even though
+  // the Pending gate blocked them from the app, so it isn't real usage.
   last_login: string;
   joined_at: string;
+  // Overwritten in fetchUsers() with approved_at when present, so "Create
+  // Time" shows when the account actually became usable (Approve, or
+  // immediate for admin-created accounts) rather than a self-registered
+  // user's original Pending-signup attempt.
   created_at?: string;
+  // Raw value backing the created_at override above; null/undefined for
+  // still-Pending users and for rows that predate this column.
+  approved_at?: string | null;
   // Both optional: older rows predate these two columns, and a database
   // that hasn't run the migration yet simply won't return them at all -
   // select("*") stays silent about a missing column rather than erroring,
@@ -126,10 +137,16 @@ export default function AdminUsersPage() {
     } else {
       console.log("Successfully fetched users:", data);
       const lastLogins: Record<string, string | null> = lastLoginsRes?.status === "success" ? lastLoginsRes.data : {};
-      const merged = (data as UserProfile[]).map((u) => ({
-        ...u,
-        last_login: u.id in lastLogins ? (lastLogins[u.id] || "") : u.last_login,
-      }));
+      const merged = (data as UserProfile[]).map((u) => {
+        const rawLastLogin = u.id in lastLogins ? (lastLogins[u.id] || "") : u.last_login;
+        const approvedAt = u.approved_at || null;
+        const preApproval = !!(approvedAt && rawLastLogin && new Date(rawLastLogin).getTime() < new Date(approvedAt).getTime());
+        return {
+          ...u,
+          last_login: preApproval ? "" : rawLastLogin,
+          created_at: approvedAt || u.created_at,
+        };
+      });
       setUsers(merged);
     }
     setLoading(false);

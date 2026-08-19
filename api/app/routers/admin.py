@@ -1,6 +1,6 @@
 import logging
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, HTTPException, Body
@@ -10,8 +10,7 @@ from app.services.encryption import encryption_service
 from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
-    GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, REJECTION_TEMPLATE_KEY,
-    APPROVED_TEMPLATE_KEY,
+    GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, APPROVED_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
 from app.services import ftp_service
@@ -156,6 +155,8 @@ async def create_user(request: UserCreateRequest):
                 # accounts have no password to change, so the flag stays off.
                 "must_change_password": is_internal,
                 "created_by": request.created_by or None,
+                # Admin-created accounts start Active with no separate Approve
+                "approved_at": datetime.now(timezone.utc).isoformat(),
             }).execute()
         except Exception as profile_error:
             # The auth user already exists at this point. Leaving it behind
@@ -244,16 +245,25 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
     Super Admin approval step for a pending self-registered user: sets their
     real role and flips status to Active, which unlocks the normal app (see
     Navigation.tsx's pending-status gate). Emails them that they're approved
-    (Admin > Templates > System Email > Approved) - the other outcome of a
-    pending review, paired with delete_user's rejection email below. A
-    failed send doesn't fail the approval itself, same email_sent/email_error
-    non-fatal pattern delete_user already uses.
+    (Admin > Templates > System Email > Approved). A failed send doesn't fail
+    the approval itself.
+
+    Also stamps approved_at - a self-registration's first Google OAuth
+    handshake creates the Pending profile AND a real Supabase Auth
+    last_sign_in_at simultaneously (see get_last_logins), all before this
+    step ever runs, so profiles.created_at and that first sign-in always sit
+    within milliseconds of each other regardless of when Approve happens.
+    approved_at gives User Management's Create Time/Last Log-in columns an
+    honest reference point: Create Time shows approved_at (when the account
+    actually became usable) and Last Log-in hides that stale pre-approval
+    handshake until a real post-approval sign-in exists.
     """
     try:
         admin_supabase = get_supabase_client()
         res = admin_supabase.table("profiles").update({
             "role": request.role,
             "status": "Active",
+            "approved_at": datetime.now(timezone.utc).isoformat(),
         }).eq("id", user_id).execute()
         if not res.data:
             raise HTTPException(status_code=404, detail="User not found")
@@ -306,7 +316,8 @@ async def get_last_logins():
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str):
     """
-    Removes a user's profile and emails them that access was not authorized.
+    Removes a user's profile. No email is sent (the Rejection email feature
+    was removed by request - deletions/rejections are silent now).
 
     What happens to the underlying Supabase Auth user depends on the status
     being deleted from:
@@ -325,11 +336,10 @@ async def delete_user(user_id: str):
     """
     try:
         admin_supabase = get_supabase_client()
-        existing = admin_supabase.table("profiles").select("email, full_name, status").eq("id", user_id).limit(1).execute()
+        existing = admin_supabase.table("profiles").select("email, status").eq("id", user_id).limit(1).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="User not found")
         email = existing.data[0]["email"]
-        full_name = existing.data[0].get("full_name") or ""
         was_pending = existing.data[0].get("status") == "Pending"
 
         admin_supabase.table("profiles").delete().eq("id", user_id).execute()
@@ -343,15 +353,7 @@ async def delete_user(user_id: str):
                 # of view, already succeeded.
                 logger.error(f"Auth user cleanup failed for {email} ({user_id}): {e}")
 
-        email_sent = False
-        email_error = None
-        try:
-            email_service.send_rejection_email(email, full_name)
-            email_sent = True
-        except Exception as e:
-            email_error = str(e)
-
-        return {"status": "success", "message": "User deleted", "email_sent": email_sent, "email_error": email_error}
+        return {"status": "success", "message": "User deleted"}
     except HTTPException:
         raise
     except Exception as e:
@@ -666,7 +668,7 @@ async def save_st_files_daily_email_template(request: StFilesEmailSettingsUpdate
 def _save_simple_email_template(template_key: str, request: EmailTemplateUpdate, label: str):
     """Shared save for the simple (subject + html_template, no delivery
     config) Admin > Templates > Email tabs - internal welcome, password
-    reset, Google sign-in notice, rejection. Same upsert-by-template_key
+    reset, Google sign-in notice, approved. Same upsert-by-template_key
     shape as save_email_template/save_st_files_daily_email_template above."""
     try:
         admin_supabase = get_supabase_client()
@@ -715,15 +717,6 @@ async def get_google_signin_notice_email_template():
 @router.post("/email-template/google-signin-notice")
 async def save_google_signin_notice_email_template(request: EmailTemplateUpdate):
     return _save_simple_email_template(GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, request, "Google Sign-in Notice")
-
-@router.get("/email-template/rejection")
-async def get_rejection_email_template():
-    """Sent by DELETE /admin/users/{id} (Admin > Templates > Email > Rejection)."""
-    return {"status": "success", "data": email_service.get_rejection_template()}
-
-@router.post("/email-template/rejection")
-async def save_rejection_email_template(request: EmailTemplateUpdate):
-    return _save_simple_email_template(REJECTION_TEMPLATE_KEY, request, "Rejection")
 
 @router.get("/email-template/approved")
 async def get_approved_email_template():

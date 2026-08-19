@@ -12,12 +12,11 @@ type TemplateType =
   | "password_reset_email"
   | "google_signin_notice_email"
   | "approved_email"
-  | "rejection_email"
   | "st_files_email"
   | "st_files_email_per_property";
 
-// Top-level tab groups - "System Email" bundles the 5 account-lifecycle
-// emails (welcome/reset/rejection/etc) and "Statistic Files" bundles the 2
+// Top-level tab groups - "System Email" bundles the account-lifecycle
+// emails (welcome/reset/approved/etc) and "Statistic Files" bundles the 2
 // ST Files email tabs (bundled + per-property), each under one umbrella
 // pill instead of every member getting its own top-level tab, so the row
 // doesn't grow a new pill every time another one is added. Groups with a
@@ -29,7 +28,7 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   rr3: { label: "RR3", children: ["rr3"] },
   system_email: {
     label: "System Email",
-    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "rejection_email"],
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email"],
   },
   statistic_files: {
     label: "Statistic Files",
@@ -126,10 +125,6 @@ const APPROVED_EMAIL_TOKENS: TokenDoc[] = [
   { name: "Role", description: "The role picked in the Approve dialog (e.g. Front Office, Finance)" },
   { name: "Email", description: "The approved user's email - also the Google account they should sign in with" },
   { name: "AppLink", description: "The app's sign-in URL (the button and the plain-text link both use this)" },
-];
-
-const REJECTION_EMAIL_TOKENS: TokenDoc[] = [
-  { name: "FullName", description: "The removed/rejected user's full name (falls back to their email if blank)" },
 ];
 
 const ST_FILES_EMAIL_TOKENS: TokenDoc[] = [
@@ -262,16 +257,6 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
   },
-  rejection_email: {
-    label: "Rejection",
-    endpoint: "/admin/email-template/rejection",
-    tokens: REJECTION_EMAIL_TOKENS,
-    defaultNote: "No Rejection template saved yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Sent by Admin > Users > Delete Account.",
-    perProperty: false,
-    hasSubject: true,
-    previewable: true,
-  },
   st_files_email: {
     label: "All Property",
     endpoint: "/admin/email-template/st-files-daily",
@@ -380,9 +365,6 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Role: "Front Office",
     Email: "john.doe@example.com",
     AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
-  }),
-  rejection_email: () => ({
-    FullName: "John Doe",
   }),
   st_files_email: () => ({
     Date: "06/08/2026",
