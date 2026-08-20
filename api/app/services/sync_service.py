@@ -230,6 +230,37 @@ def _rr3_country_name(code: str) -> str:
     return _RR3_COUNTRY_MAP.get(code, code or "")
 
 
+# RR4 only: MEWS's own "Customer profiles" export writes the full formal
+# country name in the address / come-from columns, where _RR3_COUNTRY_MAP
+# (built for the ร.ร.๓ card, and still used verbatim there and on the Guest
+# Profile page) carries the short colloquial one. Confirmed by diffing a real
+# MEWS export for Lub d Bangkok Chinatown, 19-Aug-2026, row by row: of the 31
+# countries that appeared, 25 already matched _RR3_COUNTRY_MAP exactly and
+# these 6 did not, affecting 31 of that day's 205 guest rows.
+#
+# Deliberately an override of only the codes actually seen to differ in a real
+# export, NOT a blanket switch to ISO 3166-1 formal names: MEWS does not follow
+# ISO consistently (it writes plain "Taiwan", not ISO's "Taiwan, Province of
+# China", and appends the old name in "Türkiye (Turkey)"), so applying ISO
+# wholesale would break countries that are correct today. MEWS exposes no
+# countries endpoint to derive the rest from (countries/getAll 401s), so any
+# country not listed here keeps its _RR3_COUNTRY_MAP name - which is right for
+# every one verified so far. Add a code here only with a real MEWS export to
+# confirm it against.
+_RR4_MEWS_COUNTRY_NAMES = {
+    "RU": "Russian Federation",
+    "US": "United States of America",
+    "GB": "United Kingdom of Great Britain and Northern Ireland",
+    "KR": "Korea (Republic of)",
+    "TR": "Türkiye (Turkey)",
+    "LA": "Lao People's Democratic Republic",
+}
+
+
+def _rr4_country_name(code: str) -> str:
+    return _RR4_MEWS_COUNTRY_NAMES.get(code) or _rr3_country_name(code)
+
+
 # MEWS's Customer.Title is an enum ("Mister", "Missis", ...) - MEWS's own
 # Profile screen displays these as the short form ("Mr.", "Mrs.", ...), so
 # the Guest Profile page matches that instead of showing the raw enum value.
@@ -1955,7 +1986,9 @@ class SyncService:
                 attached_count += 1
                 nationality_code = c.get("NationalityCode", "")
                 rr4_code = nationality_codes.get(nationality_code, "")
-                nationality_name = _rr3_country_name(nationality_code)
+                # MEWS's formal country name, not the ร.ร.๓ short one - see
+                # _RR4_MEWS_COUNTRY_NAMES. Feeds address / come_from below.
+                nationality_name = _rr4_country_name(nationality_code)
                 passport = c.get("Passport") or {}
                 rows.append({
                     "date_check_in": buddhist_date(check_in_utc),
