@@ -233,27 +233,42 @@ def _rr3_country_name(code: str) -> str:
 # RR4 only: MEWS's own "Customer profiles" export writes the full formal
 # country name in the address / come-from columns, where _RR3_COUNTRY_MAP
 # (built for the ร.ร.๓ card, and still used verbatim there and on the Guest
-# Profile page) carries the short colloquial one. Confirmed by diffing a real
-# MEWS export for Lub d Bangkok Chinatown, 19-Aug-2026, row by row: of the 31
-# countries that appeared, 25 already matched _RR3_COUNTRY_MAP exactly and
-# these 6 did not, affecting 31 of that day's 205 guest rows.
+# Profile page) carries the short colloquial one.
 #
-# Deliberately an override of only the codes actually seen to differ in a real
-# export, NOT a blanket switch to ISO 3166-1 formal names: MEWS does not follow
-# ISO consistently (it writes plain "Taiwan", not ISO's "Taiwan, Province of
-# China", and appends the old name in "Türkiye (Turkey)"), so applying ISO
-# wholesale would break countries that are correct today. MEWS exposes no
-# countries endpoint to derive the rest from (countries/getAll 401s), so any
-# country not listed here keeps its _RR3_COUNTRY_MAP name - which is right for
-# every one verified so far. Add a code here only with a real MEWS export to
-# confirm it against.
+# Derived from the real MEWS exports pasted into all six generator sheets for
+# 19-Aug-2026 (Chinatown, Siam, Koh Samui, Patong, Koh Tao, Marasca Samui).
+# Those pastes between them carry 66 distinct nationality strings; 62 already
+# came out of _RR3_COUNTRY_MAP verbatim and the rest are listed here, each one
+# additionally agreed on unanimously by all six sheets' own RR4-Nationality
+# lookup tables.
+#
+# Deliberately an override of specific codes, NOT a blanket switch to ISO
+# 3166-1 formal names: MEWS does not follow ISO consistently (it writes plain
+# "Taiwan", not ISO's "Taiwan, Province of China", and appends the old name in
+# "Türkiye (Turkey)"), so applying ISO wholesale would break countries that are
+# correct today. MEWS exposes no countries endpoint to derive the rest from
+# (countries/getAll 401s on the property tokens), so anything unlisted keeps
+# its _RR3_COUNTRY_MAP name.
+#
+# Three entries in those lookup tables were deliberately NOT copied here: they
+# label Georgia "Georgian", Guinea "Guine" and Somalia "Somali" (demonyms and a
+# typo, none of which MEWS has ever actually emitted), and they give RR4 code
+# 104 - North Korea - the name "Korea (Republic of)", which is South Korea.
+# Add a code here only with a real MEWS export to confirm it against.
 _RR4_MEWS_COUNTRY_NAMES = {
-    "RU": "Russian Federation",
-    "US": "United States of America",
+    "BO": "Bolivia (Plurinational State of)",
+    "CZ": "Czech Republic",
     "GB": "United Kingdom of Great Britain and Northern Ireland",
+    "IR": "Iran (Islamic Republic of)",
     "KR": "Korea (Republic of)",
-    "TR": "Türkiye (Turkey)",
     "LA": "Lao People's Democratic Republic",
+    "MD": "Moldova (Republic of)",
+    "MK": "Republic of North Macedonia",
+    "PS": "Palestine (State of)",
+    "RU": "Russian Federation",
+    "SY": "Syrian Arab Republic",
+    "TR": "Türkiye (Turkey)",
+    "US": "United States of America",
 }
 
 
