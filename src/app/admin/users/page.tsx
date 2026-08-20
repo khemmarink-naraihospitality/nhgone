@@ -587,8 +587,8 @@ export default function AdminUsersPage() {
         </div>
 
         {/* Table */}
-        <div className="max-h-[65vh] overflow-y-auto overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="max-h-[65vh] overflow-y-auto overflow-x-auto overscroll-contain">
+          <table className="w-full text-left border-separate border-spacing-0">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
                 {USER_COLUMNS.map((col) => (
@@ -744,8 +744,8 @@ export default function AdminUsersPage() {
                 </button>
              </div>
           </div>
-          <div className="max-h-[65vh] overflow-y-auto overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <div className="max-h-[65vh] overflow-y-auto overflow-x-auto overscroll-contain">
+            <table className="w-full text-left border-separate border-spacing-0">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
                   <th className="sticky top-0 z-10 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest min-w-[200px]">Role</th>
