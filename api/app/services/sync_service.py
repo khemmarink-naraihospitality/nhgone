@@ -2322,11 +2322,24 @@ class SyncService:
                 if not c or not (c.get("FirstName") or c.get("LastName")):
                     continue
                 nationality_code = c.get("NationalityCode", "")
-                if nationality_code == "TH":
+                # Mirrors the generator sheet exactly. Its TM30-Gen tab does
+                # `iferror(vlookup(<MEWS nationality>, 'TM30-Nationality'!A:D, 4, 0), "Not found")`
+                # and its TM30 tab then keeps `where F <> 'THA'` - so an
+                # unresolvable nationality yields the literal string "Not found"
+                # and the guest STAYS on the filing; only Thai nationals drop out.
+                #
+                # This used to `continue` on an unresolvable code, which silently
+                # dropped the guest from the notification altogether. Found on
+                # Marasca Samui, 19-Aug-2026: four guests (Razon Mantelmacher,
+                # Mantelmacher, Lahav, Avraham) have no NationalityCode at all on
+                # their MEWS profile, so we filed 31 arrivals where the real
+                # document has 35. Omitting a foreign national from a TM30 is the
+                # worse failure, and "Not found" is visible to whoever checks the
+                # file - the actual fix is filling the nationality in on the MEWS
+                # profile, which this makes obvious instead of hiding.
+                tm30_code = nationality_codes.get(nationality_code, "") or "Not found"
+                if tm30_code == "THA":
                     continue  # Thai nationals are out of scope for TM30
-                tm30_code = nationality_codes.get(nationality_code, "")
-                if not tm30_code:
-                    continue  # can't resolve a code -> not a real "foreign" match (or unmapped territory); skip rather than file a blank Nationality
                 identity_card = self._rr4_tm30_identity_card(c)
                 passport = (c.get("Passport") or {}).get("Number", "")
                 rows.append({
