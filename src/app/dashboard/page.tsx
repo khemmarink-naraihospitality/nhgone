@@ -5,6 +5,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { supabase } from "@/lib/supabase";
 import { getAllowedProperties } from "@/lib/allowedProperties";
+import { getMenuPermissions, type MenuPermissions } from "@/lib/menuPermissions";
 
 interface Stats {
   reservations: number;
@@ -73,9 +74,14 @@ export default function Dashboard() {
   // "FastAPI Backend: Synchronized" line which never reflected anything real.
   const [bcpLastCapture, setBcpLastCapture] = useState<string | null>(null);
   const [bcpCaptureChecked, setBcpCaptureChecked] = useState(false);
+  // Gates the "Sub System" cards below to the modules this role's sidebar
+  // actually shows - null until resolved, so the cards stay hidden rather
+  // than flashing every module before narrowing down.
+  const [perms, setPerms] = useState<MenuPermissions | null>(null);
 
   useEffect(() => {
     getAllowedProperties().then(({ properties }) => setAllowedProperties(properties));
+    getMenuPermissions().then(setPerms);
   }, []);
 
   useEffect(() => {
@@ -343,34 +349,37 @@ export default function Dashboard() {
           </div>
         </section>
 
-        <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
+        {(() => {
+          // Same module -> permission mapping the sidebar itself uses (see
+          // Navigation.tsx) - Log Import is intentionally unconditional
+          // there too, so it stays that way here.
+          const cards = [
+            { key: "data_mart", visible: !!perms?.data_mart, title: "Data Mart", body: "Synced Reservations, Members, and Payments from MEWS, kept up to date automatically and searchable/exportable at any time." },
+            { key: "bcp", visible: !!perms?.bcp, title: "Business Continuity Plan", body: "Captures a backup of the reservation timeline, room status, and payments every 5 minutes, so front desk can keep working if MEWS goes down." },
+            { key: "rr3", visible: !!perms?.rr3, title: "RR3", body: "Generates the Thai Hotel Act ร.ร.๓ lodger registration card for each checking-in guest, ready to print." },
+            { key: "bills", visible: !!perms?.bills, title: "Bills", body: "Lists and prints guest invoices per property and date range, either live from MEWS or from the synced database." },
+            { key: "log_import", visible: perms !== null, title: "Log Import", body: "Permanent history of every automated data sync - which property, which table, when, and whether it succeeded." },
+          ].filter((c) => c.visible);
 
-          <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Sub System</h2>
+          if (cards.length === 0) return null;
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-             <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Data Mart</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Synced Reservations, Members, and Payments from MEWS, kept up to date automatically and searchable/exportable at any time.</p>
-             </div>
-             <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Business Continuity Plan</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Captures a backup of the reservation timeline, room status, and payments every 5 minutes, so front desk can keep working if MEWS goes down.</p>
-             </div>
-             <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">RR3</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Generates the Thai Hotel Act ร.ร.๓ lodger registration card for each checking-in guest, ready to print.</p>
-             </div>
-             <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Bills</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Lists and prints guest invoices per property and date range, either live from MEWS or from the synced database.</p>
-             </div>
-             <div>
-                <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">Log Import</h3>
-                <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">Permanent history of every automated data sync - which property, which table, when, and whether it succeeded.</p>
-             </div>
-          </div>
-        </section>
+          return (
+            <section className="bg-[var(--paper)] border border-[var(--text-primary)]/14 p-6 relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-4 opacity-5 font-display text-8xl pointer-events-none">NHG</div>
+
+              <h2 className="text-[10px] font-bold text-[var(--text-primary)]/60 mb-6 tracked-caps">Sub System</h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                {cards.map((c) => (
+                  <div key={c.key}>
+                    <h3 className="font-display text-2xl mb-4 text-[var(--text-primary)]">{c.title}</h3>
+                    <p className="text-[13px] leading-relaxed opacity-80 max-w-sm">{c.body}</p>
+                  </div>
+                ))}
+              </div>
+            </section>
+          );
+        })()}
       </div>
     </div>
   );
