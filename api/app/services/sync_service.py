@@ -1658,7 +1658,13 @@ class SyncService:
         "Lub d Philippines Makati",
     }
 
-    _RR4_TM30_ACTIVE_STATES = {"Confirmed", "Started", "Processed", "Optional"}
+    # Exactly the three statuses the generator sheets ask MEWS for - their
+    # Parameter tabs record "Status: Confirmed, Checked in, Checked out",
+    # which are MEWS's report-side names for Confirmed / Started / Processed.
+    # "Optional" used to be in here and is not one of them: an optional
+    # (unconfirmed) booking is not a lodger, and including it could only ever
+    # put a guest on the register that the filed file does not have.
+    _RR4_TM30_ACTIVE_STATES = {"Confirmed", "Started", "Processed"}
 
     async def _rr4_tm30_fetch_day(self, property_name: str, date: str):
         """
@@ -1899,7 +1905,10 @@ class SyncService:
         correct 20:49, MEWS's own ActualStartUtc). Second, narrow call by
         exact ReservationIds (chunked at 1000/request, MEWS's own limit).
         """
-        day, day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
+        # The configured window still drives which reservations get FETCHED;
+        # the inclusion test below is anchored to the report date's own
+        # midnight instead, so neither bound is needed again here.
+        day, _day_start_utc, _day_end_utc, reservations, customers_map, resources_map = \
             await self._rr4_tm30_fetch_day(property_name, date)
 
         actual_times = {}
@@ -1942,38 +1951,63 @@ class SyncService:
 
         nationality_codes = await self._resolve_rr4_nationality_codes()
 
+        # The report date's OWN midnight-at-the-end, i.e. 00:00 of the next
+        # calendar day, property-local. This - not the configured window's
+        # midpoint - is what decides whether a guest "stayed the night" of
+        # the report date. See the inclusion test below.
+        next_midnight_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+
         rows = []
         for res in reservations:
             start_utc = parse_utc(res.get("StartUtc"))
             end_utc = parse_utc(res.get("EndUtc"))
             if not start_utc or not end_utc:
                 continue
-            # In-house guests: guests staying the night or same-day use,
-            # matching MEWS's "Customer profiles In house" report (excludes
-            # guests who checked in on a PRIOR day and already checked out
-            # earlier this day - they belong to that prior day's register,
-            # not this one). "The night" is anchored to the window's own
-            # MIDPOINT, not its end: a departure counts toward whichever
-            # 24h window it falls closer to the center of, matching how
-            # MEWS itself buckets same-property checkouts that span the
-            # boundary between two consecutive report windows - confirmed
-            # empirically against real MEWS exports across 5 properties
-            # with 4 different configured windows (Chinatown 12:15, Siam
-            # 02:15, Patong/Koh Tao 02:05, Samui 00:00): every checkout
-            # MEWS included fell in the LATTER half of its window, every
-            # one it excluded fell in the FIRST half, with zero exceptions
-            # once guests with a mid-day room-change/re-booking (2 separate
-            # reservations or customer profiles the same day) were set
-            # aside as a distinct, separate issue. A plain `end_utc >
-            # day_end_utc` test (i.e. must still be resident at the window's
-            # own close) looked like the obvious rule but undercounted
-            # Chinatown by 65 guests - anyone who checked out in the first
-            # half of the NEXT day's window still belongs on THIS day's
-            # register.
-            window_midpoint = day_start_utc + (day_end_utc - day_start_utc) / 2
-            stays_the_night = end_utc > window_midpoint
-            day_use = day_start_utc <= start_utc and end_utc <= day_end_utc
-            if not (stays_the_night or day_use):
+            # Reproduces MEWS's "Customer profiles / In house" report - the
+            # report the ร.ร.๔ file that actually gets filed is generated
+            # from (RR4-TM30-<property>-Gen sheet: its RR4 tab is a straight
+            # 1-row-per-row transform of an ImportInhouse paste of that
+            # export, so matching the export IS matching the filed file).
+            #
+            # 1. Stayed the night: still resident at the report date's own
+            #    midnight. Replaces an earlier "past the window's midpoint"
+            #    heuristic, which only looked right because Chinatown's
+            #    12:15-to-12:15 window puts its midpoint at 00:15 - 15
+            #    minutes from that midnight. On a 02:00-ish window the
+            #    midpoint lands at ~14:00 the same afternoon, letting in
+            #    day-use guests who never stayed a night at all (Lub d Koh
+            #    Samui room 1107, 19-Aug-2026: in 13:53, out 18:11 - MEWS
+            #    excluded it, the midpoint rule kept it).
+            #
+            # 2. ...but a guest who arrived AFTER that midnight belongs to
+            #    the NEXT day's register, and drops off this one once they
+            #    have checked out. While they are still in house they do
+            #    appear, because MEWS's In-house report is a live snapshot
+            #    of who is in the building. Both halves are load-bearing:
+            #    Chinatown rooms 501/504/505 (in after midnight, out the
+            #    same morning, Processed) were excluded by MEWS, while
+            #    rooms 317/424/425/524 (in after midnight, still Started)
+            #    were included, on the same export.
+            #
+            # Verified against the real generator sheets for 19-Aug-2026 on
+            # three properties with three different windows - Chinatown
+            # (12:15), Lub d Koh Samui (02:03) and Lub d Bangkok Siam
+            # (02:15): identical room sets, and identical row counts on
+            # Samui (260) and Siam (67). Chinatown lands 1 row over its
+            # export's 199 purely because room 522 had a second guest
+            # profile attached at 12:58, after that 12:23 export was taken.
+            # The previous rule matched none of the three.
+            #
+            # Note the State dependence in clause 2: regenerating a long-past
+            # date will drop next-day arrivals that were still in house when
+            # the original file was produced. That is inherent to matching a
+            # live In-house snapshot, and is not a problem in practice since
+            # the file is generated the following morning.
+            stayed_the_night = end_utc > next_midnight_utc
+            arrived_next_day_and_gone = (
+                start_utc >= next_midnight_utc and res.get("State") == "Processed"
+            )
+            if not stayed_the_night or arrived_next_day_and_gone:
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
@@ -2018,6 +2052,17 @@ class SyncService:
             # MEWS "Customer profiles" export creates a placeholder row for
             # every booked guest slot (headcount) even if the companion's
             # profile hasn't been attached yet.
+            #
+            # Only the four columns the generator sheet keys off the ROOM
+            # cell carry a value here (rowNo/dateCheckIn/timeCheckIn/roomNo);
+            # every other column in that sheet is wrapped in
+            # `if(<nameEn cell>="","",...)` and therefore renders blank on a
+            # nameless row - including the ones that are fixed constants on a
+            # normal row (occupation "16", willGo "Thailand", willGoCountry
+            # "99", timeCheckOut "12.00", dataStatus 1) and dateCheckOut.
+            # Filling those in here put 6 spurious values on every placeholder
+            # row: 48 cells across the 8 placeholder rows of Lub d Bangkok
+            # Siam's 19-Aug-2026 file alone.
             unattached = max(0, headcount - attached_count)
             for _ in range(unattached):
                 rows.append({
@@ -2034,14 +2079,14 @@ class SyncService:
                     "issued_by": "",
                     "address": "",
                     "address_country": "",
-                    "occupation": "16",
+                    "occupation": "",
                     "come_from": "",
                     "come_from_country": "",
-                    "will_go": "Thailand",
-                    "will_go_country": "99",
-                    "date_check_out": buddhist_date(res.get("EndUtc")),
-                    "time_check_out": "12.00",
-                    "data_status": 1,
+                    "will_go": "",
+                    "will_go_country": "",
+                    "date_check_out": "",
+                    "time_check_out": "",
+                    "data_status": "",
                     "_sort_start": check_in_utc or "",
                 })
         rows.sort(key=lambda r: (r["_sort_start"], r["room_no"]))

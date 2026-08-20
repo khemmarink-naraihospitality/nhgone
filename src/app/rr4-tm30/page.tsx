@@ -49,7 +49,10 @@ interface Rr4Row {
   will_go_country: string;
   date_check_out: string;
   time_check_out: string;
-  data_status: number;
+  // "" on a placeholder row (a booked guest slot with no profile attached
+  // yet) - the generator sheet blanks every column past the room on those,
+  // so the backend does too; 1 on every normal row.
+  data_status: number | string;
 }
 
 interface Rr4Report {
