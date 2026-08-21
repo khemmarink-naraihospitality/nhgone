@@ -10,8 +10,12 @@ router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
 # number - the point of capturing it every morning is to keep the booking
 # pace for the weeks ahead, so a snapshot starts on its own date rather than
 # the previous one (which is what ST Files does, that being a closed-day
-# report). Two months is one MEWS call either way.
-SNAPSHOT_DAYS_FORWARD = 59
+# report). A full year out, matching what a MEWS-mode Fetch Report can pull
+# live - get_occupancy_report chunks this into several MEWS calls itself
+# (a single call is capped at 99 days), so the 08:00 capture costs a
+# handful of requests per property rather than one, but the NHG-mode
+# snapshot then covers the same outlook the live mode does.
+SNAPSHOT_DAYS_FORWARD = 365
 
 # Snapshots kept per property, pruned by the daily auto-import - the same
 # newest-N-per-property mechanism BCP uses, sized to a week here. Counting

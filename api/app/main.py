@@ -249,7 +249,7 @@ async def _sync_occupancy_for_property(prop, prop_id, date_str, sync_type="auto"
     _sync_st_files_for_property above - its own function on its own clock,
     kept out of _TARGET_TABLE_SYNC_FN so the per-table loops don't pick it
     up. date_str is the snapshot's FIRST night; the snapshot itself reaches
-    two months past it (see occupancy.SNAPSHOT_DAYS_FORWARD)."""
+    a full year past it (see occupancy.SNAPSHOT_DAYS_FORWARD)."""
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         await occupancy.sync_occupancy_day(prop, date_str)
