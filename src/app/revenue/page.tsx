@@ -76,6 +76,14 @@ const dayLabel = (s: string) => {
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "-" : `${v.toFixed(2)}%`);
 
+// One line per option in the Snapshot Date picker: the captured stored
+// snapshots first, plus whatever the currently-selected date already is
+// even if nothing has been captured for it yet (see snapshotOptions below) -
+// same "always exists in the list, whether real or not" trick a native
+// date input gets for free.
+const snapshotLabel = (s: SnapshotRow) =>
+  s.synced_at ? `${s.date} · ${pct(s.first_night_percent)} night 1 · captured ${fmtDateTime(s.synced_at)}` : `${s.date} · not captured yet`;
+
 // A wash of the brand green whose strength tracks occupancy, so a full house
 // and an empty one are distinguishable without reading every number. Kept
 // deliberately faint - the figure itself stays the thing you read.
@@ -220,6 +228,18 @@ export default function RevenuePage() {
 
   const nDays = report?.dates.length ?? 0;
 
+  // The picker's option list: every stored snapshot, newest first, plus the
+  // currently-selected date if it isn't one of them - so a select whose
+  // value is today (the default) never renders blank just because today
+  // hasn't been captured yet, and the option's own label says so.
+  const snapshotOptions = (() => {
+    const byDate = new Map(snapshots.map((s) => [s.date, s]));
+    if (!byDate.has(snapshotDate)) {
+      byDate.set(snapshotDate, { date: snapshotDate, synced_at: null, nights: 0, categories: 0, first_night_percent: null });
+    }
+    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
+  })();
+
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-[100rem] mx-auto">
@@ -277,10 +297,20 @@ export default function RevenuePage() {
               </div>
             </>
           ) : (
-            <div className="flex flex-col gap-2 w-full md:w-52">
+            <div className="flex flex-col gap-2 w-full md:w-80">
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Snapshot Date</label>
-              <input type="date" value={snapshotDate} onChange={(e) => setSnapshotDate(e.target.value)}
-                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none" />
+              <div className="relative">
+                <select
+                  value={snapshotDate}
+                  onChange={(e) => { setSnapshotDate(e.target.value); fetchReport(e.target.value); }}
+                  className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                >
+                  {snapshotOptions.map((s) => (
+                    <option key={s.date} value={s.date}>{snapshotLabel(s)}</option>
+                  ))}
+                </select>
+                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </div>
             </div>
           )}
 
@@ -403,57 +433,6 @@ export default function RevenuePage() {
                   Pick a property and {dataSource === "live" ? "a date range" : "a snapshot date"}, then Fetch Report.
                 </div>
               )
-            )}
-
-            {dataSource === "database" && (
-              <div className="mt-10">
-                <h2 className="text-xl font-serif mb-3">Snapshot History</h2>
-                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto">
-                  <table className="w-full text-left border-separate border-spacing-0">
-                    <thead>
-                      <tr className="bg-[var(--text-primary)]/5">
-                        <th className={thCls}>Snapshot date</th>
-                        <th className={`${thCls} text-right`}>Nights</th>
-                        <th className={`${thCls} text-right`}>Categories</th>
-                        <th className={`${thCls} text-right`}>Occupancy, first night</th>
-                        <th className={thCls}>Captured</th>
-                        <th className={thCls}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {snapshots.length === 0 ? (
-                        <tr>
-                          <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
-                            {selectedProperty ? "No snapshots yet — the 08:00 auto-import will create one, or use “Import To Data Mart”." : "Select a property to see its snapshots."}
-                          </td>
-                        </tr>
-                      ) : snapshots.map((s) => {
-                        const isActive = !!report && dataSource === "database" && report.start_date === s.date;
-                        return (
-                          <tr key={s.date} className={isActive ? "bg-emerald-500/[0.07]" : "hover:bg-[var(--text-primary)]/[0.02]"}>
-                            <td className={`${tdCls} font-bold border-b border-[var(--text-primary)]/5`}>
-                              {s.date}
-                              {isActive && <span className="ml-2 text-[9px] font-bold tracked-caps text-emerald-700">Viewing</span>}
-                            </td>
-                            <td className={`${tdCls} text-right border-b border-[var(--text-primary)]/5`}>{s.nights}</td>
-                            <td className={`${tdCls} text-right border-b border-[var(--text-primary)]/5`}>{s.categories}</td>
-                            <td className={`${tdCls} text-right tabular-nums border-b border-[var(--text-primary)]/5`}>{pct(s.first_night_percent)}</td>
-                            <td className={`${tdCls} border-b border-[var(--text-primary)]/5`}>{fmtDateTime(s.synced_at)}</td>
-                            <td className={`${tdCls} border-b border-[var(--text-primary)]/5`}>
-                              <button
-                                onClick={() => { setSnapshotDate(s.date); fetchReport(s.date); }}
-                                className="px-3 py-1.5 text-[9px] font-bold tracked-caps border border-[var(--text-primary)]/20 text-[var(--text-primary)]/70 hover:bg-[var(--text-primary)]/5 hover:text-[var(--text-primary)] transition-colors"
-                              >
-                                View
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
             )}
           </>
         )}
