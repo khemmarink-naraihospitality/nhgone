@@ -1,9 +1,33 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
+
+// Same collapsible-header pattern as Statistic Files' own page - one
+// shared open/close toggle hides the property/date controls and the
+// mode-explainer paragraph together under a single "Details" line, instead
+// of them permanently taking up space above the table once a report is
+// loaded.
+function CollapsibleSection({ label, open, onToggle, children }: { label?: string; open: boolean; onToggle?: () => void; children: ReactNode }) {
+  return (
+    <div className="no-print mb-3">
+      {label && onToggle && (
+        <button
+          onClick={onToggle}
+          className="flex items-center gap-1.5 text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className={`w-3 h-3 transition-transform ${open ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+          {label}
+        </button>
+      )}
+      {open && <div className={label ? "mt-2" : ""}>{children}</div>}
+    </div>
+  );
+}
 
 interface CategoryRow {
   short_name: string;
@@ -98,6 +122,7 @@ export default function RevenuePage() {
   const [selectedProperty, setSelectedProperty] = useState("");
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("occupancy");
+  const [headerOpen, setHeaderOpen] = useState(false);
 
   const [startDate, setStartDate] = useState(iso(startOfMonth(new Date())));
   const [endDate, setEndDate] = useState(iso(addMonths(startOfMonth(new Date()), 3)));
@@ -266,7 +291,12 @@ export default function RevenuePage() {
           </div>
         </PageHeader>
 
-        <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-6">
+        <CollapsibleSection
+          open={headerOpen}
+          onToggle={() => setHeaderOpen((o) => !o)}
+          label={`Details — ${selectedProperty || "no property selected"}${report ? ` · ${report.start_date} — ${report.end_date}` : ""}`}
+        >
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
           <div className="flex flex-col gap-2 w-full md:w-80">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
             <div className="relative">
@@ -338,6 +368,7 @@ export default function RevenuePage() {
             ? "MEWS mode asks MEWS for any range you like, right now."
             : "NHG mode reads the snapshot captured at 08:00 Bangkok that morning, which freezes the outlook for the year ahead - so this morning's booking pace can be compared against an earlier one."}
         </p>
+        </CollapsibleSection>
 
         {error && (
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mt-6">{error}</div>
