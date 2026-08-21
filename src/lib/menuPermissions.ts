@@ -6,7 +6,7 @@ export interface MenuPermissions {
   bills: boolean;
   rr3: boolean;
   st_files: boolean;
-  occupancy: boolean;
+  revenue: boolean;
   rv: boolean;
   bcp: boolean;
   rr4_tm30: boolean;
@@ -28,7 +28,7 @@ export async function getMenuPermissions(): Promise<MenuPermissions> {
     bills: true,
     rr3: !isFinance,
     st_files: !isFinance,
-    occupancy: !isFinance,
+    revenue: !isFinance,
     rv: !isFinance,
     bcp: !isFinance,
     rr4_tm30: !isFinance,

@@ -244,6 +244,23 @@ async def _sync_st_files_for_property(prop, prop_id, date_str, sync_type="auto")
         print(f"Error syncing ST Files for {prop}: {e}")
         return False
 
+async def _sync_occupancy_for_property(prop, prop_id, date_str, sync_type="auto"):
+    """Occupancy-by-room-type snapshot for the Revenue page. Same shape as
+    _sync_st_files_for_property above - its own function on its own clock,
+    kept out of _TARGET_TABLE_SYNC_FN so the per-table loops don't pick it
+    up. date_str is the snapshot's FIRST night; the snapshot itself reaches
+    two months past it (see occupancy.SNAPSHOT_DAYS_FORWARD)."""
+    label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
+    try:
+        await occupancy.sync_occupancy_day(prop, date_str)
+        _log_sync(prop, prop_id, "Occupancy", "success", 1, f"{label} Occupancy Sync: {date_str}", sync_type)
+        return True
+    except Exception as e:
+        err = str(e)[:1000]
+        _log_sync(prop, prop_id, "Occupancy", "error", 0, f"{label} Occupancy Sync Failed: {err}", sync_type)
+        print(f"Error syncing Occupancy for {prop}: {e}")
+        return False
+
 async def _sync_rr4_tm30_for_property(prop, prop_id, date_str, sync_type="auto"):
     """RR4 and TM30 are captured together in one row (see
     rr4.sync_rr4_tm30_day) since they share a single MEWS call. Same shape as
@@ -517,6 +534,94 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
             if not await import_one(p):
                 _log_sync(p["property_name"], p["id"], "ST Files", "error", 0,
                           f"Auto ST Files Sync Failed: sync lock still busy for {report_date_str}", "auto")
+
+async def daily_auto_sync_occupancy(match_hour_only: bool = False):
+    """
+    Occupancy's own auto-import schedule (occupancy_sync_enabled /
+    occupancy_sync_hour / occupancy_sync_minute on property_api_settings,
+    defaulted to 08:00 Asia/Bangkok for every property) - a fourth
+    independent clock alongside daily_auto_sync, ST Files and RR4/TM30, for
+    the same reason those have their own.
+
+    Captures TODAY forward, not yesterday: this is a booking-pace report, so
+    the value of a morning snapshot is the outlook it freezes, and the whole
+    point of keeping them is being able to compare this morning's curve with
+    last week's. That is the opposite of daily_auto_sync_st_files, which
+    captures a day only once it has finished happening.
+
+    Same match_hour_only split as the others: exact minute match locally
+    (per-minute tick), hour-only in production where Vercel's cron is not
+    guaranteed to land on any particular minute.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, occupancy_sync_hour, occupancy_sync_minute, occupancy_sync_last_date") \
+            .eq("occupancy_sync_enabled", True)
+        if match_hour_only:
+            query = query.eq("occupancy_sync_hour", now.hour).lte("occupancy_sync_minute", now.minute)
+        else:
+            query = query.eq("occupancy_sync_hour", now.hour).eq("occupancy_sync_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        # Swallows a missing-column error gracefully (migration not run yet)
+        # rather than taking down this whole background task.
+        print(f"Error in daily_auto_sync_occupancy (fetching properties): {str(e)}")
+        return
+
+    today_str = now.date().isoformat()
+    items = [p for p in items if p.get("occupancy_sync_last_date") != today_str]
+    if not items:
+        return
+
+    print(f"[{now.isoformat()}] Occupancy auto-import: {len(items)} propert(y/ies) scheduled...")
+
+    async def import_one(p) -> bool:
+        """False only when the lock was unavailable - i.e. worth retrying."""
+        prop, prop_id = p["property_name"], p["id"]
+        try:
+            lock_acquired = sync_service.supabase.rpc("acquire_sync_lock", {
+                "target_property_id": prop_id, "timeout_mins": 15
+            }).execute().data
+        except Exception as lock_err:
+            print(f"Occupancy auto-import lock error for {prop}: {lock_err}")
+            return False
+        if not lock_acquired:
+            print(f"Occupancy auto-import for {prop}: sync lock busy.")
+            return False
+
+        try:
+            await _sync_occupancy_for_property(prop, prop_id, today_str)
+        finally:
+            try:
+                sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
+            except Exception:
+                pass
+            try:
+                sync_service.supabase.table("property_api_settings").update(
+                    {"occupancy_sync_last_date": today_str}
+                ).eq("id", prop_id).execute()
+            except Exception as mark_err:
+                print(f"Failed to record occupancy_sync_last_date for {prop}: {mark_err}")
+        return True
+
+    # Same deferred-retry pass the other auto-imports use: the every-5-minute
+    # BCP capture takes this same per-property lock, and a busy lock used to
+    # cost a property its whole day silently.
+    deferred = []
+    for p in items:
+        if not await import_one(p):
+            deferred.append(p)
+
+    if deferred:
+        await asyncio.sleep(20)
+        for p in deferred:
+            if not await import_one(p):
+                _log_sync(p["property_name"], p["id"], "Occupancy", "error", 0,
+                          f"Auto Occupancy Sync Failed: sync lock still busy for {today_str}", "auto")
 
 async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
     """
@@ -1155,6 +1260,9 @@ async def start_scheduler():
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # ST Files' own independent schedule (st_files_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
+    # Occupancy/Revenue's own independent schedule (occupancy_sync_hour/minute,
+    # 08:00 Asia/Bangkok by default).
+    scheduler.add_job(daily_auto_sync_occupancy, 'cron', second=0)
     # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_rr4_tm30, 'cron', second=0)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
@@ -1194,6 +1302,7 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # ST Files' own independent schedule.
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
     # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
+    background_tasks.add_task(daily_auto_sync_occupancy, match_hour_only=True)
     background_tasks.add_task(daily_auto_sync_rr4_tm30, match_hour_only=True)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
     background_tasks.add_task(daily_auto_sync_rv, match_hour_only=True)
