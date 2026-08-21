@@ -123,6 +123,10 @@ export default function RevenuePage() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("occupancy");
   const [headerOpen, setHeaderOpen] = useState(false);
+  // Revenue Data (tabs + table) - expanded by default, unlike headerOpen,
+  // matching Statistic Data's own default on the Statistic Files page: the
+  // controls are the thing worth tucking away once loaded, not the report.
+  const [dataOpen, setDataOpen] = useState(true);
 
   const [startDate, setStartDate] = useState(iso(startOfMonth(new Date())));
   const [endDate, setEndDate] = useState(iso(addMonths(startOfMonth(new Date()), 3)));
@@ -374,7 +378,17 @@ export default function RevenuePage() {
           <div className="p-4 bg-[var(--paper)] border border-red-200 text-red-700 text-sm leading-relaxed mt-6">{error}</div>
         )}
 
-        <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mt-8 mb-4">
+        <button
+          onClick={() => setDataOpen((o) => !o)}
+          className="flex items-center gap-2 mt-8 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
+        >
+          <svg className={`w-4 h-4 shrink-0 transition-transform ${dataOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          <h2 className="text-xl font-serif">Revenue Data</h2>
+        </button>
+
+        {dataOpen && (
+          <>
+        <div className="flex flex-wrap border-b border-[var(--text-primary)]/14 mb-4">
           {TABS.map((t) => (
             <button
               key={t.key}
@@ -465,6 +479,8 @@ export default function RevenuePage() {
                 </div>
               )
             )}
+          </>
+        )}
           </>
         )}
       </div>
