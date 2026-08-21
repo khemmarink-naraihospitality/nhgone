@@ -12,6 +12,7 @@ interface MenuPermissions {
   bills: boolean;
   rr3: boolean;
   st_files: boolean;
+  occupancy: boolean;
   rv: boolean;
   bcp: boolean;
   rr4_tm30: boolean;
@@ -518,13 +519,14 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     bills: true,
     rr3: !isFinanceRole,
     st_files: !isFinanceRole,
+    occupancy: !isFinanceRole,
     rv: !isFinanceRole,
     bcp: !isFinanceRole,
     rr4_tm30: !isFinanceRole,
     reconciliation: !isFinanceRole,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.occupancy || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -572,6 +574,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           )}
           {perms.st_files && (
             <Link href="/st-files" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Statistic Files</Link>
+          )}
+          {perms.occupancy && (
+            <Link href="/occupancy" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/occupancy" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Occupancy by Room Type</Link>
           )}
           {perms.rv && (
             <Link href="/rv" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rv" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue Files</Link>

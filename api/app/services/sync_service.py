@@ -2822,6 +2822,136 @@ class SyncService:
         }
         return report
 
+    async def get_occupancy_report(self, property_name: str, start_date: str, end_date: str) -> dict:
+        """
+        Occupancy % per space category per night, over a date range - the
+        same shape as MEWS's own "Availability report" Occupancy tab
+        (categories down, dates across, a weighted Total row at the bottom).
+
+        Built from one services/getAvailability/2024-01-22 call: that
+        endpoint already returns a value PER TIME UNIT, so a whole range
+        costs the same single request the ST Files page spends on one day.
+        Occupancy is Occupied / ActiveResources per category per day, and
+        the Total row is the sum of both across the counted categories
+        rather than an average of the percentages - a 40-bed dorm at 20%
+        must not weigh the same as a 4-room category at 100%.
+
+        Categories are filtered to the property's own ST space types
+        (Room/Bed by default, see _resolve_st_space_types) for the same
+        reason get_st_files_report does it: a parent Dorm/Apartment
+        category covers the very same physical beds as its child Bed
+        category, so counting both double-counts the property. Verified
+        against Lub d Bangkok Chinatown, 20-Aug-2026 - 126 occupied of 176
+        active = 71.59%, matching that day's ST Files Occupied/Spaces
+        exactly.
+
+        FirstTimeUnitStartUtc has to land on a real time-unit boundary or
+        MEWS answers "is not start of TimeUnit" - it is the property's own
+        local midnight, not UTC midnight.
+        """
+        tz = await self._resolve_property_timezone(property_name)
+        try:
+            first = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=tz)
+            last = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=tz)
+        except ValueError:
+            raise ValueError("start_date and end_date must be YYYY-MM-DD")
+        if last < first:
+            raise ValueError("end_date is before start_date")
+        if (last - first).days > 92:
+            raise ValueError("Range too large - 3 months at a time at most")
+
+        services_res = await mews_client.post(
+            "/api/connector/v1/services/getAll", {}, property_name=property_name)
+        stay = self._resolve_stay_service(services_res.get("Services", []))
+        if not stay:
+            raise ValueError(f"No active bookable service found for {property_name}")
+        service_id = stay["Id"]
+
+        cats_res = await mews_client.post(
+            "/api/connector/v1/resourceCategories/getAll",
+            {"ServiceIds": [service_id]}, property_name=property_name)
+        space_types = await self._resolve_st_space_types(property_name)
+        categories = {}
+        for c in cats_res.get("ResourceCategories", []):
+            categories[c["Id"]] = {
+                "short_name": (c.get("ShortNames") or {}).get("en-US") or "",
+                "name": (c.get("Names") or {}).get("en-US") or c.get("Name") or "",
+                "type": c.get("Type"),
+                "ordering": c.get("Ordering") if c.get("Ordering") is not None else 9999,
+            }
+
+        avail_res = await mews_client.post(
+            "/api/connector/v1/services/getAvailability/2024-01-22",
+            {
+                "ServiceId": service_id,
+                "FirstTimeUnitStartUtc": first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "LastTimeUnitStartUtc": last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "Metrics": ["Occupied", "ActiveResources"],
+            },
+            property_name=property_name,
+        )
+
+        # MEWS echoes the time units it actually used; deriving the column
+        # labels from those rather than from our own loop keeps the header
+        # honest if it ever snaps the range to different boundaries.
+        dates = []
+        for ts in avail_res.get("TimeUnitStartsUtc") or []:
+            try:
+                dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
+            except Exception:
+                continue
+        if not dates:
+            dates = [(first + timedelta(days=i)).strftime("%Y-%m-%d")
+                     for i in range((last - first).days + 1)]
+        n = len(dates)
+
+        rows = []
+        total_occupied = [0] * n
+        total_active = [0] * n
+        for entry in avail_res.get("ResourceCategoryAvailabilities", []):
+            meta = categories.get(entry.get("ResourceCategoryId"))
+            if not meta or meta["type"] not in space_types:
+                continue
+            metrics = entry.get("Metrics") or {}
+            occupied = (metrics.get("Occupied") or [])[:n]
+            active = (metrics.get("ActiveResources") or [])[:n]
+            occupied += [0] * (n - len(occupied))
+            active += [0] * (n - len(active))
+            for i in range(n):
+                total_occupied[i] += occupied[i]
+                total_active[i] += active[i]
+            rows.append({
+                "short_name": meta["short_name"],
+                "name": meta["name"],
+                "type": meta["type"],
+                "_ordering": meta["ordering"],
+                "occupied": occupied,
+                "active": active,
+                # None (not 0) for a category with no active spaces that
+                # day, so the page can show "-" instead of a false 0%.
+                "percent": [round(100 * occupied[i] / active[i], 2) if active[i] else None
+                            for i in range(n)],
+            })
+        rows.sort(key=lambda r: (r["_ordering"], r["short_name"] or r["name"]))
+        for r in rows:
+            r.pop("_ordering", None)
+
+        return {
+            "property": property_name,
+            "service": stay.get("Name"),
+            "space_types": list(space_types),
+            "start_date": start_date,
+            "end_date": end_date,
+            "dates": dates,
+            "categories": rows,
+            "total": {
+                "occupied": total_occupied,
+                "active": total_active,
+                "percent": [round(100 * total_occupied[i] / total_active[i], 2) if total_active[i] else None
+                            for i in range(n)],
+            },
+        }
+
     async def get_st_files_list(self, property_name: str) -> list:
         """
         ST Files List's per-day summary rows - reads exclusively from

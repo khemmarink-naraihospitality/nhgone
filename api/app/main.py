@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from app.config import settings
 from app.services.mews_client import mews_client
-from app.routers import reservations, members, payments, admin, auth, bills, resources, rr3, st_files, bcp, rv, rr4, tm30, reconciliation
+from app.routers import reservations, members, payments, admin, auth, bills, resources, rr3, st_files, bcp, rv, rr4, tm30, reconciliation, occupancy
 from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service
@@ -44,6 +44,7 @@ app.include_router(bills.router)
 app.include_router(resources.router)
 app.include_router(rr3.router)
 app.include_router(st_files.router)
+app.include_router(occupancy.router)
 app.include_router(rv.router)
 app.include_router(bcp.router)
 app.include_router(rr4.router)
