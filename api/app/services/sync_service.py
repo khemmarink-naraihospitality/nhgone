@@ -3011,6 +3011,130 @@ class SyncService:
             },
         }
 
+    async def get_rate_report(self, property_name: str, start_date: str, end_date: str) -> dict:
+        """
+        Nightly sales rate (net value) per space category, over a date
+        range - the Rate tab of MEWS's own "Availability report" (see a
+        real export's Parameters sheet: Rate mode "Sales rate", Rates
+        "Flexible Rate Room Only", Amount part "Net value").
+
+        The rate priced is the property's own IsDefault rate - MEWS's own
+        flag for "the" rate, distinct from IsBaseRate (which ~449 rates on
+        Chinatown alone carry, since it just means "not derived from
+        another rate" - every independent promo/corporate rate qualifies).
+        IsDefault, by contrast, resolved to exactly one rate on every one
+        of six properties checked, always named "Flexible Rate Room Only"
+        with ShortName "BAR" - Best Available Rate, matching the reference
+        export exactly.
+
+        Built from a single rates/getPricing call: unlike
+        services/getAvailability (capped at 99 days per call, see
+        get_occupancy_report), this endpoint returned a full 367-day range
+        - 21-Aug-2026 to 21-Aug-2027 - whole, in one request, confirmed
+        empirically against a live property. So a year-long sweep needs no
+        chunking here.
+
+        Categories are filtered to the same space_types get_occupancy_report
+        uses (Room/Bed by default) for the same reason: a parent Dorm/
+        Apartment category's price would otherwise repeat its own child
+        Bed category's price as a second row.
+
+        Deliberately no Total row: Occupied/Active sum into a meaningful
+        portfolio occupancy percentage, but summing or averaging list
+        prices across different room types has no standard meaning, and
+        the reference export's Rate mode doesn't compute one either.
+        """
+        tz = await self._resolve_property_timezone(property_name)
+        try:
+            first = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=tz)
+            last = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=tz)
+        except ValueError:
+            raise ValueError("start_date and end_date must be YYYY-MM-DD")
+        if last < first:
+            raise ValueError("end_date is before start_date")
+        if (last - first).days > self._OCCUPANCY_MAX_RANGE_DAYS:
+            raise ValueError("Range too large - about a year at a time at most")
+
+        services_res = await mews_client.post(
+            "/api/connector/v1/services/getAll", {}, property_name=property_name)
+        stay = self._resolve_stay_service(services_res.get("Services", []))
+        if not stay:
+            raise ValueError(f"No active bookable service found for {property_name}")
+        service_id = stay["Id"]
+
+        cats_res = await mews_client.post(
+            "/api/connector/v1/resourceCategories/getAll",
+            {"ServiceIds": [service_id]}, property_name=property_name)
+        space_types = await self._resolve_st_space_types(property_name)
+        categories = {}
+        for c in cats_res.get("ResourceCategories", []):
+            categories[c["Id"]] = {
+                "short_name": (c.get("ShortNames") or {}).get("en-US") or "",
+                "name": (c.get("Names") or {}).get("en-US") or c.get("Name") or "",
+                "type": c.get("Type"),
+                "ordering": c.get("Ordering") if c.get("Ordering") is not None else 9999,
+            }
+
+        rates_res = await mews_client.post(
+            "/api/connector/v1/rates/getAll", {}, property_name=property_name)
+        default_rate = next(
+            (r for r in rates_res.get("Rates", [])
+             if r.get("ServiceId") == service_id and r.get("IsDefault")),
+            None,
+        )
+        if not default_rate:
+            raise ValueError(f"No default (BAR) rate found for {property_name}")
+
+        pricing_res = await mews_client.post(
+            "/api/connector/v1/rates/getPricing",
+            {
+                "RateId": default_rate["Id"],
+                "FirstTimeUnitStartUtc": first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "LastTimeUnitStartUtc": last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+            property_name=property_name,
+        )
+
+        dates = []
+        for ts in pricing_res.get("DatesUtc") or []:
+            try:
+                dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
+            except Exception:
+                continue
+        if not dates:
+            dates = [(first + timedelta(days=i)).strftime("%Y-%m-%d")
+                     for i in range((last - first).days + 1)]
+        n = len(dates)
+
+        rows = []
+        for entry in pricing_res.get("CategoryPrices", []):
+            meta = categories.get(entry.get("CategoryId"))
+            if not meta or meta["type"] not in space_types:
+                continue
+            prices = (entry.get("Prices") or [])[:n]
+            prices += [None] * (n - len(prices))
+            rows.append({
+                "short_name": meta["short_name"],
+                "name": meta["name"],
+                "type": meta["type"],
+                "_ordering": meta["ordering"],
+                "prices": prices,
+            })
+        rows.sort(key=lambda r: (r["_ordering"], r["short_name"] or r["name"]))
+        for r in rows:
+            r.pop("_ordering", None)
+
+        return {
+            "property": property_name,
+            "rate_name": default_rate.get("Name"),
+            "currency": pricing_res.get("Currency"),
+            "space_types": list(space_types),
+            "start_date": start_date,
+            "end_date": end_date,
+            "dates": dates,
+            "categories": rows,
+        }
+
     async def get_st_files_list(self, property_name: str) -> list:
         """
         ST Files List's per-day summary rows - reads exclusively from

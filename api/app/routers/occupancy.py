@@ -59,15 +59,26 @@ async def sync_occupancy_day(property_name: str, date_str: str) -> None:
 
     Stored as plain jsonb, not a Fernet blob like st_files_sync: the payload
     is category names and integer counts, with no guest PII in it, and the
-    table's RLS (enabled, no policies) already keeps it to the service role."""
+    table's RLS (enabled, no policies) already keeps it to the service role.
+
+    The Rate report rides along in the same row under a "rate" key rather
+    than getting its own table/row: it's the same property, the same
+    date, the same "what did the pace look like this morning" question,
+    just priced instead of counted. A snapshot captured before the Rate
+    tab existed simply has no "rate" key - get_managed/the frontend both
+    already treat that as "not captured yet", the same way they treat any
+    other missing field on an older row."""
     start = datetime.strptime(date_str, "%Y-%m-%d").date()
     end = start + timedelta(days=SNAPSHOT_DAYS_FORWARD)
-    report = await sync_service.get_occupancy_report(
+    occupancy_report = await sync_service.get_occupancy_report(
         property_name, start.isoformat(), end.isoformat())
+    rate_report = await sync_service.get_rate_report(
+        property_name, start.isoformat(), end.isoformat())
+    combined = {**occupancy_report, "rate": rate_report}
     sync_service.supabase.table("occupancy_sync").upsert({
         "property": property_name,
         "report_date": date_str,
-        "data": report,
+        "data": combined,
         "synced_at": datetime.now(timezone.utc).isoformat(),
     }, on_conflict="property,report_date").execute()
 
@@ -88,6 +99,27 @@ async def get_report(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Occupancy report failed: {str(e)}")
+
+
+@router.get("/rate")
+async def get_rate(
+    property_name: str = Query(...),
+    start_date: str = Query(..., description="YYYY-MM-DD, first night"),
+    end_date: str = Query(..., description="YYYY-MM-DD, last night (inclusive)"),
+):
+    """Live from MEWS - the Rate tab's MEWS mode. A separate endpoint from
+    /report rather than a combined one so switching to the Occupancy tab
+    never waits on a rate fetch nobody asked for, and vice versa; the
+    frontend fires both in parallel when it actually wants both ready."""
+    try:
+        report = await sync_service.get_rate_report(property_name, start_date, end_date)
+        return {"status": "success", "data": report}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Rate report failed: {str(e)}")
 
 
 @router.get("/managed")

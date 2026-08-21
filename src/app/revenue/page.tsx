@@ -38,6 +38,24 @@ interface CategoryRow {
   percent: (number | null)[];
 }
 
+interface RateCategoryRow {
+  short_name: string;
+  name: string;
+  type: string;
+  prices: (number | null)[];
+}
+
+interface RateReport {
+  property: string;
+  rate_name: string;
+  currency: string;
+  space_types: string[];
+  start_date: string;
+  end_date: string;
+  dates: string[];
+  categories: RateCategoryRow[];
+}
+
 interface OccupancyReport {
   property: string;
   service: string;
@@ -48,6 +66,11 @@ interface OccupancyReport {
   categories: CategoryRow[];
   total: { occupied: number[]; active: number[]; percent: (number | null)[] };
   _synced_at?: string;
+  // Present once the Rate tab has actually been fetched alongside this
+  // report - absent on an older NHG snapshot captured before the Rate tab
+  // existed, or if the live MEWS-mode rate call itself failed (see
+  // fetchReport: a rate failure never blocks Occupancy from loading).
+  rate?: RateReport;
 }
 
 interface SnapshotRow {
@@ -60,9 +83,10 @@ interface SnapshotRow {
 
 type DataSource = "live" | "database";
 
-// One tab today; Revenue is the section, and the next revenue report drops in
-// beside this one without the page needing restructuring.
-const TABS = [{ key: "occupancy", label: "Occupancy by Room Type" }] as const;
+const TABS = [
+  { key: "occupancy", label: "Occupancy by Room Type" },
+  { key: "rate", label: "Rate" },
+] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
 const thCls =
@@ -99,6 +123,19 @@ const dayLabel = (s: string) => {
 };
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "-" : `${v.toFixed(2)}%`);
+
+// Whole-currency-unit formatting (THB rates are quoted in round baht, no
+// cents in practice) - falls back to a plain number if the currency code
+// somehow isn't one Intl recognizes, rather than throwing and blanking the
+// whole table.
+const fmtMoney = (v: number | null | undefined, currency: string) => {
+  if (v === null || v === undefined) return "-";
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(v);
+  } catch {
+    return v.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  }
+};
 
 // One line per option in the Snapshot Date picker: just the date itself -
 // the report title bar above the table already spells out nights/categories/
@@ -181,16 +218,38 @@ export default function RevenuePage() {
     setLoading(true);
     setError(null);
     try {
-      const url =
-        dataSource === "database"
-          ? `/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${overrideSnapshot ?? snapshotDate}`
-          : `/api/occupancy/report?${new URLSearchParams({ property_name: selectedProperty, start_date: startDate, end_date: endDate })}`;
-      const res = await fetch(url);
-      const json = await res.json();
-      if (!res.ok || json.status !== "success") {
-        throw new Error(json.detail || json.message || "Could not load the occupancy report");
+      if (dataSource === "database") {
+        // One stored snapshot already carries both Occupancy and Rate
+        // together (see sync_occupancy_day) - a single read covers both
+        // tabs. An older snapshot captured before the Rate tab existed
+        // just comes back without a "rate" key; the Rate tab's own empty
+        // state below handles that.
+        const url = `/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${overrideSnapshot ?? snapshotDate}`;
+        const res = await fetch(url);
+        const json = await res.json();
+        if (!res.ok || json.status !== "success") {
+          throw new Error(json.detail || json.message || "Could not load the occupancy report");
+        }
+        setReport(json.data);
+      } else {
+        // MEWS mode: fire Occupancy and Rate together so Rate is already
+        // sitting there ready the moment someone switches tabs, instead of
+        // making them wait through a second fetch on click. Rate is
+        // best-effort - a property missing a default (BAR) rate, or any
+        // other rate-side failure, must not stop Occupancy from loading;
+        // the Rate tab just shows its own empty state when report.rate
+        // ends up undefined.
+        const params = new URLSearchParams({ property_name: selectedProperty, start_date: startDate, end_date: endDate });
+        const [occRes, rateRes] = await Promise.all([
+          fetch(`/api/occupancy/report?${params}`).then(async (r) => ({ ok: r.ok, json: await r.json() })),
+          fetch(`/api/occupancy/rate?${params}`).then(async (r) => ({ ok: r.ok, json: await r.json() })).catch(() => null),
+        ]);
+        if (!occRes.ok || occRes.json.status !== "success") {
+          throw new Error(occRes.json.detail || occRes.json.message || "Could not load the occupancy report");
+        }
+        const rate = rateRes && rateRes.ok && rateRes.json.status === "success" ? rateRes.json.data : undefined;
+        setReport({ ...occRes.json.data, rate });
       }
-      setReport(json.data);
     } catch (e) {
       setReport(null);
       setError(e instanceof Error ? e.message : "Could not load the occupancy report");
@@ -252,6 +311,26 @@ export default function RevenuePage() {
     }
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Occupancy");
+
+    // Rate rides along as a second sheet whenever it's actually loaded -
+    // same "have it ready, not a separate export" spirit as fetching it
+    // alongside Occupancy in the first place.
+    if (report.rate) {
+      const rateRows = report.rate.categories.map((c) => {
+        const row: Record<string, string | number> = {
+          "Space category": c.short_name || c.name,
+          Name: c.name,
+          Type: c.type,
+        };
+        report.rate!.dates.forEach((d, i) => {
+          row[d] = c.prices[i] === null ? "" : c.prices[i]!;
+        });
+        return row;
+      });
+      const rws = XLSX.utils.json_to_sheet(rateRows);
+      XLSX.utils.book_append_sheet(wb, rws, "Rate");
+    }
+
     XLSX.writeFile(wb, `Occupancy_${selectedProperty.replace(/\s+/g, "")}_${report.start_date}_${report.end_date}.xlsx`);
   };
 
@@ -476,6 +555,76 @@ export default function RevenuePage() {
               !error && !loading && (
                 <div className="p-12 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                   Pick a property and {dataSource === "live" ? "a date range" : "a snapshot date"}, then Fetch Report.
+                </div>
+              )
+            )}
+          </>
+        )}
+
+        {activeTab === "rate" && (
+          <>
+            {report?.rate ? (
+              <div>
+                <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
+                  <h2 className="text-xl font-serif">
+                    {report.rate.start_date} — {report.rate.end_date}
+                  </h2>
+                  <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                    {report.rate.rate_name} · {report.rate.categories.length} categories · {report.rate.dates.length} night{report.rate.dates.length === 1 ? "" : "s"} · counting {report.rate.space_types?.join(" + ")}
+                    {report._synced_at ? ` · captured ${fmtDateTime(report._synced_at)}` : ""}
+                  </span>
+                </div>
+
+                <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto overscroll-contain">
+                  <table className="w-full text-left border-separate border-spacing-0">
+                    <thead>
+                      <tr className="bg-[var(--text-primary)]/5">
+                        <th className={`${thCls} sticky left-0 z-10 bg-[#F2EEE4]`}>Space category</th>
+                        {report.rate.dates.map((d) => {
+                          const { top, sub, weekend } = dayLabel(d);
+                          return (
+                            <th key={d} className={`${thCls} text-right ${weekend ? "text-[var(--text-primary)]/80" : ""}`}>
+                              <div>{top}</div>
+                              <div className="font-normal opacity-60">{sub}</div>
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.rate.categories.map((c) => (
+                        <tr key={(c.short_name || "") + c.name} className="hover:bg-[var(--text-primary)]/[0.02]">
+                          <td className={`${tdCls} sticky left-0 z-10 bg-[var(--paper)] border-b border-[var(--text-primary)]/5`}>
+                            <span className="font-bold">{c.short_name || c.name}</span>
+                            <span className="ml-2 text-[11px] text-[var(--text-primary)]/45">{c.name}</span>
+                          </td>
+                          {c.prices.map((p, i) => (
+                            <td
+                              key={report.rate!.dates[i]}
+                              className={`${tdCls} text-right tabular-nums border-b border-[var(--text-primary)]/5`}
+                            >
+                              {fmtMoney(p, report.rate!.currency)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
+                  Rate is the nightly sales price of {report.rate.rate_name} - the property&apos;s own default (BAR)
+                  rate - per space category, net of tax. There is no Total row: unlike occupancy, summing or
+                  averaging list prices across different room types has no standard meaning. Parent categories are
+                  left out for the same reason the Occupancy tab leaves them out - the same beds priced twice.
+                </p>
+              </div>
+            ) : (
+              !error && !loading && (
+                <div className="p-12 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                  {report
+                    ? "No rate data on this snapshot - re-import to include it, or switch MODE to MEWS."
+                    : `Pick a property and ${dataSource === "live" ? "a date range" : "a snapshot date"}, then Fetch Report.`}
                 </div>
               )
             )}
