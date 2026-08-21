@@ -46,11 +46,12 @@ const thCls =
 const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap";
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
-const addDays = (d: Date, n: number) => {
-  const c = new Date(d);
-  c.setDate(c.getDate() + n);
-  return c;
-};
+// Default sweep: the 1st of this month through the 1st of the month 3
+// months out - the widest single MEWS-mode fetch the backend allows
+// (get_occupancy_report caps a range at 92 days; this window is 89-92
+// depending where the month boundaries fall, never over).
+const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
+const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
 const fmtDateTime = (v?: string | null) => {
   if (!v) return "-";
@@ -89,8 +90,8 @@ export default function RevenuePage() {
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("occupancy");
 
-  const [startDate, setStartDate] = useState(iso(new Date()));
-  const [endDate, setEndDate] = useState(iso(addDays(new Date(), 13)));
+  const [startDate, setStartDate] = useState(iso(startOfMonth(new Date())));
+  const [endDate, setEndDate] = useState(iso(addMonths(startOfMonth(new Date()), 3)));
   const [snapshotDate, setSnapshotDate] = useState(iso(new Date()));
 
   const [report, setReport] = useState<OccupancyReport | null>(null);
