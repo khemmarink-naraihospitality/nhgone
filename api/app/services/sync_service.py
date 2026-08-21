@@ -2311,9 +2311,25 @@ class SyncService:
             except Exception:
                 return None
 
+        # The TM30 day is plain local midnight to local midnight, with no
+        # relation to the RR4 cutoff-hour window. Confirmed from the
+        # generator sheets' own report config: Chinatown's
+        # Parameter-ImportCP tab records Start 20-Aug 00:00 / End 21-Aug
+        # 00:00 for the very same file whose Parameter-ImportInhouse tab
+        # records 02:05 to 02:05, and every other property's Master tab
+        # shows the same split (ImportCP always on midnight).
+        #
+        # The upper bound used to be day_end_utc, the RR4 window's close,
+        # which let in guests who arrived in the small hours of the NEXT
+        # day: 7 rows on 20-Aug-2026 alone (Chinatown's room 333 pair plus
+        # Palangdao, Siam's Ainul and the two Pujols, Patong's Waters), and
+        # Patong's Wu Zheng on 19-Aug. Each of them belongs to the next
+        # day's notification, and MEWS's own Arrival export excludes them.
+        next_midnight_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+
         def in_window(ts):
             t = parse_utc(ts)
-            return t is not None and day <= t < day_end_utc
+            return t is not None and day <= t < next_midnight_utc
 
         def gregorian_date(ts):
             t = parse_utc(ts)
@@ -2349,6 +2365,15 @@ class SyncService:
                 tm30_code = nationality_codes.get(nationality_code, "") or "Not found"
                 if tm30_code == "THA":
                     continue  # Thai nationals are out of scope for TM30
+                # The column is "เลขหนังสือเดินทาง / Passport No. *", so the
+                # passport wins when a guest carries both documents; the
+                # identity card is the fallback for the guests who have no
+                # passport recorded (27 of 370 arrivals checked). The
+                # generator sheet instead does CONCATENATE(identity, passport)
+                # and, on the first guest to actually have both - Lub d Koh
+                # Tao's Julia Pola Kotowska, 20-Aug-2026 - emits the two
+                # jammed together as "04042947201594852404FK2749027", which is
+                # not a document number anyone can act on.
                 identity_card = self._rr4_tm30_identity_card(c)
                 passport = (c.get("Passport") or {}).get("Number", "")
                 rows.append({
@@ -2361,7 +2386,7 @@ class SyncService:
                     # unknown/blank Sex to MR. - the two source tabs disagree
                     # with each other, not a bug introduced here).
                     "gender": "M" if c.get("Sex") == "Male" else "F",
-                    "passport_no": identity_card or passport,
+                    "passport_no": passport or identity_card,
                     "nationality": tm30_code,
                     "birth_date": gregorian_date(c.get("BirthDate")),
                     "check_out_date": gregorian_date(res.get("EndUtc")),
