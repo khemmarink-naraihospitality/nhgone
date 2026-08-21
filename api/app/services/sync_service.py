@@ -2822,19 +2822,34 @@ class SyncService:
         }
         return report
 
+    # MEWS hard-caps a single services/getAvailability/2024-01-22 call's
+    # interval: FirstTimeUnitStartUtc/LastTimeUnitStartUtc 99 days apart
+    # succeeds, 100 is rejected outright ("The interval must not exceed
+    # 100D" - confirmed empirically against a live property). Chunk width
+    # stays comfortably under that; the max total range is "about a year"
+    # with a little slack for leap years, not tied to the chunk size -
+    # get_occupancy_report stitches as many chunks together as the range
+    # needs.
+    _OCCUPANCY_CHUNK_DAYS = 95
+    _OCCUPANCY_MAX_RANGE_DAYS = 370
+
     async def get_occupancy_report(self, property_name: str, start_date: str, end_date: str) -> dict:
         """
         Occupancy % per space category per night, over a date range - the
         same shape as MEWS's own "Availability report" Occupancy tab
         (categories down, dates across, a weighted Total row at the bottom).
 
-        Built from one services/getAvailability/2024-01-22 call: that
-        endpoint already returns a value PER TIME UNIT, so a whole range
-        costs the same single request the ST Files page spends on one day.
-        Occupancy is Occupied / ActiveResources per category per day, and
-        the Total row is the sum of both across the counted categories
-        rather than an average of the percentages - a 40-bed dorm at 20%
-        must not weigh the same as a 4-room category at 100%.
+        Built from services/getAvailability/2024-01-22, which returns a
+        value PER TIME UNIT - so a whole range costs one request per
+        _OCCUPANCY_CHUNK_DAYS-wide slice, not one per day. MEWS hard-caps a
+        single call's interval at 99 days apart (100 is rejected outright:
+        "The interval must not exceed 100D", confirmed empirically), so a
+        year-long sweep is stitched together from several calls rather than
+        one - see the chunking loop below. Occupied / ActiveResources per
+        category per day is occupancy, and the Total row is the sum of both
+        across the counted categories rather than an average of the
+        percentages - a 40-bed dorm at 20% must not weigh the same as a
+        4-room category at 100%.
 
         Categories are filtered to the property's own ST space types
         (Room/Bed by default, see _resolve_st_space_types) for the same
@@ -2857,8 +2872,8 @@ class SyncService:
             raise ValueError("start_date and end_date must be YYYY-MM-DD")
         if last < first:
             raise ValueError("end_date is before start_date")
-        if (last - first).days > 92:
-            raise ValueError("Range too large - 3 months at a time at most")
+        if (last - first).days > self._OCCUPANCY_MAX_RANGE_DAYS:
+            raise ValueError("Range too large - about a year at a time at most")
 
         services_res = await mews_client.post(
             "/api/connector/v1/services/getAll", {}, property_name=property_name)
@@ -2880,43 +2895,87 @@ class SyncService:
                 "ordering": c.get("Ordering") if c.get("Ordering") is not None else 9999,
             }
 
-        avail_res = await mews_client.post(
-            "/api/connector/v1/services/getAvailability/2024-01-22",
-            {
-                "ServiceId": service_id,
-                "FirstTimeUnitStartUtc": first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "LastTimeUnitStartUtc": last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "Metrics": ["Occupied", "ActiveResources"],
-            },
-            property_name=property_name,
-        )
+        # Split into <=_OCCUPANCY_CHUNK_DAYS-wide slices for MEWS's 99-day
+        # cap. Both bounds of a getAvailability call are inclusive day
+        # markers (a 92-day gap comes back as 93 dates), so consecutive
+        # chunks are built to TOUCH - chunk i's Last equals chunk i+1's
+        # First - and the shared boundary day is kept only once, dropped
+        # from the tail of every chunk but the final one.
+        chunk_bounds: list[tuple[datetime, datetime]] = []
+        if last == first:
+            chunk_bounds = [(first, last)]
+        else:
+            cursor = first
+            while cursor < last:
+                nxt = min(cursor + timedelta(days=self._OCCUPANCY_CHUNK_DAYS), last)
+                chunk_bounds.append((cursor, nxt))
+                cursor = nxt
 
-        # MEWS echoes the time units it actually used; deriving the column
-        # labels from those rather than from our own loop keeps the header
-        # honest if it ever snaps the range to different boundaries.
+        chunk_infos = []
+        seen_cids: set = set()
+        for idx, (c_first, c_last) in enumerate(chunk_bounds):
+            avail_res = await mews_client.post(
+                "/api/connector/v1/services/getAvailability/2024-01-22",
+                {
+                    "ServiceId": service_id,
+                    "FirstTimeUnitStartUtc": c_first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "LastTimeUnitStartUtc": c_last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "Metrics": ["Occupied", "ActiveResources"],
+                },
+                property_name=property_name,
+            )
+            # MEWS echoes the time units it actually used; deriving the
+            # column labels from those rather than from our own loop keeps
+            # the header honest if it ever snaps a chunk to different
+            # boundaries.
+            chunk_dates = []
+            for ts in avail_res.get("TimeUnitStartsUtc") or []:
+                try:
+                    chunk_dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
+                except Exception:
+                    continue
+            if not chunk_dates:
+                chunk_dates = [(c_first + timedelta(days=i)).strftime("%Y-%m-%d")
+                               for i in range((c_last - c_first).days + 1)]
+            is_final = idx == len(chunk_bounds) - 1
+            keep = len(chunk_dates) if is_final else max(0, len(chunk_dates) - 1)
+
+            by_cat = {}
+            for entry in avail_res.get("ResourceCategoryAvailabilities", []):
+                cid = entry.get("ResourceCategoryId")
+                meta = categories.get(cid)
+                if not meta or meta["type"] not in space_types:
+                    continue
+                by_cat[cid] = entry.get("Metrics") or {}
+                seen_cids.add(cid)
+            chunk_infos.append({"dates": chunk_dates, "keep": keep, "by_cat": by_cat})
+
         dates = []
-        for ts in avail_res.get("TimeUnitStartsUtc") or []:
-            try:
-                dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
-            except Exception:
-                continue
-        if not dates:
-            dates = [(first + timedelta(days=i)).strftime("%Y-%m-%d")
-                     for i in range((last - first).days + 1)]
+        for ci in chunk_infos:
+            dates.extend(ci["dates"][:ci["keep"]])
         n = len(dates)
 
         rows = []
         total_occupied = [0] * n
         total_active = [0] * n
-        for entry in avail_res.get("ResourceCategoryAvailabilities", []):
-            meta = categories.get(entry.get("ResourceCategoryId"))
-            if not meta or meta["type"] not in space_types:
-                continue
-            metrics = entry.get("Metrics") or {}
-            occupied = (metrics.get("Occupied") or [])[:n]
-            active = (metrics.get("ActiveResources") or [])[:n]
-            occupied += [0] * (n - len(occupied))
-            active += [0] * (n - len(active))
+        for cid in seen_cids:
+            meta = categories[cid]
+            occupied: list = []
+            active: list = []
+            # Every chunk contributes exactly `keep` values for every
+            # category we've seen anywhere in the range - even a chunk
+            # where MEWS's response omitted this category entirely - so
+            # the merged series always lines up with `dates` regardless of
+            # which chunk actually returned data for it.
+            for ci in chunk_infos:
+                m = ci["by_cat"].get(cid, {})
+                clen = len(ci["dates"])
+                occ = (m.get("Occupied") or [])[:clen]
+                act = (m.get("ActiveResources") or [])[:clen]
+                occ += [0] * (clen - len(occ))
+                act += [0] * (clen - len(act))
+                occupied.extend(occ[:ci["keep"]])
+                active.extend(act[:ci["keep"]])
             for i in range(n):
                 total_occupied[i] += occupied[i]
                 total_active[i] += active[i]

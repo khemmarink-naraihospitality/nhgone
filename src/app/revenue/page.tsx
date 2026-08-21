@@ -47,9 +47,10 @@ const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap
 
 const iso = (d: Date) => d.toISOString().split("T")[0];
 // Default sweep: the 1st of this month through the 1st of the month 3
-// months out - the widest single MEWS-mode fetch the backend allows
-// (get_occupancy_report caps a range at 92 days; this window is 89-92
-// depending where the month boundaries fall, never over).
+// months out - a sensible default outlook, not a backend limit. MEWS
+// mode can go up to about a year in one Fetch Report; get_occupancy_report
+// stitches that together from several MEWS calls under the hood (MEWS
+// itself caps a single call's own interval at 99 days).
 const startOfMonth = (d: Date) => new Date(d.getFullYear(), d.getMonth(), 1);
 const addMonths = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth() + n, 1);
 
