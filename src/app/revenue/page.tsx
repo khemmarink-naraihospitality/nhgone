@@ -61,7 +61,7 @@ const fmtDateTime = (v?: string | null) => {
   return d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
 };
 
-// "21/08" over "Fri" - the grid can run two months wide, so a column head has
+// "21/08" over "Fri" - the grid can run a year wide, so a column head has
 // to stay narrow while still letting someone spot a weekend at a glance.
 const dayLabel = (s: string) => {
   const d = new Date(s + "T00:00:00");
@@ -124,6 +124,20 @@ export default function RevenuePage() {
     setError(null);
     loadSnapshots();
   }, [selectedProperty, loadSnapshots]);
+
+  // Auto-loads as soon as a property is selected - on open (once the first
+  // allowed property lands above), and again if the property is switched -
+  // instead of leaving the page on its empty "Pick a property..." state
+  // until Fetch Report is clicked by hand. dataSource defaults to
+  // "database" (NHG mode), so this first load is a cheap cached read, not a
+  // live MEWS call. Keyed on selectedProperty alone, same as Statistic
+  // Files' own page - changing the date range or MODE toggle still needs an
+  // explicit Fetch Report, so those never fire a request the user didn't
+  // ask for.
+  useEffect(() => {
+    if (selectedProperty) fetchReport();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProperty]);
 
   const fetchReport = useCallback(async (overrideSnapshot?: string) => {
     if (!selectedProperty) return;
@@ -292,7 +306,7 @@ export default function RevenuePage() {
         <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
           {dataSource === "live"
             ? "MEWS mode asks MEWS for any range you like, right now."
-            : "NHG mode reads the snapshot captured at 08:00 Bangkok that morning, which freezes the outlook for the following two months - so this morning's booking pace can be compared against an earlier one."}
+            : "NHG mode reads the snapshot captured at 08:00 Bangkok that morning, which freezes the outlook for the year ahead - so this morning's booking pace can be compared against an earlier one."}
         </p>
 
         {error && (
