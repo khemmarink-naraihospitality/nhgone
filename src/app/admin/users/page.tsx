@@ -83,10 +83,10 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "bills", label: "Bills" },
   { key: "rr3", label: "RR3" },
   { key: "st_files", label: "Statistic Files" },
-  { key: "revenue", label: "Revenue" },
   { key: "rv", label: "Revenue Files" },
   { key: "bcp", label: "BCP" },
   { key: "rr4_tm30", label: "RR4/TM30" },
+  { key: "revenue", label: "Revenue" },
   { key: "reconciliation", label: "Reconciliation" },
   { key: "admin", label: "Admin" },
 ];

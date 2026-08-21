@@ -575,9 +575,6 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           {perms.st_files && (
             <Link href="/st-files" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Statistic Files</Link>
           )}
-          {perms.revenue && (
-            <Link href="/revenue" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/revenue" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue</Link>
-          )}
           {perms.rv && (
             <Link href="/rv" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rv" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue Files</Link>
           )}
@@ -586,6 +583,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           )}
           {perms.rr4_tm30 && (
             <Link href="/rr4-tm30" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname.startsWith("/rr4-tm30") ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR4/TM30</Link>
+          )}
+          {perms.revenue && (
+            <Link href="/revenue" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/revenue" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue</Link>
           )}
           {perms.reconciliation && (
             <Link href="/reconciliation" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/reconciliation" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Reconciliation</Link>
