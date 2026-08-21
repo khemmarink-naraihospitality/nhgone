@@ -1673,13 +1673,19 @@ class SyncService:
         "Lub d Philippines Makati",
     }
 
-    # Exactly the three statuses the generator sheets ask MEWS for - their
-    # Parameter tabs record "Status: Confirmed, Checked in, Checked out",
-    # which are MEWS's report-side names for Confirmed / Started / Processed.
-    # "Optional" used to be in here and is not one of them: an optional
-    # (unconfirmed) booking is not a lodger, and including it could only ever
-    # put a guest on the register that the filed file does not have.
-    _RR4_TM30_ACTIVE_STATES = {"Confirmed", "Started", "Processed"}
+    # The statuses the generator sheets ask MEWS for. Chinatown's
+    # Parameter-ImportInhouse tab - the only one that records the report
+    # config - read "Confirmed, Checked in, Checked out" on 20-Aug-2026 and
+    # "Confirmed, Checked in, Checked out, Optional" on 21-Aug, so whoever
+    # generates the file added Optional in between. Those are MEWS's
+    # report-side names for Confirmed / Started / Processed / Optional.
+    #
+    # Optional costs nothing to carry: across all six Thai properties for
+    # both 19- and 20-Aug-2026 every reservation MEWS returned was either
+    # Started or Processed, so it changes no current figure. Keeping it
+    # matches the documented config, and an extra status can only ever add a
+    # guest to a lodger register, never drop one.
+    _RR4_TM30_ACTIVE_STATES = {"Confirmed", "Started", "Processed", "Optional"}
 
     async def _rr4_tm30_fetch_day(self, property_name: str, date: str):
         """
@@ -1971,6 +1977,10 @@ class SyncService:
         # midpoint - is what decides whether a guest "stayed the night" of
         # the report date. See the inclusion test below.
         next_midnight_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+        # ...and the one after it, which decides whether a guest who only
+        # arrived after next_midnight_utc belongs to this register or the
+        # next day's. See the inclusion test below.
+        midnight_after_utc = (day + timedelta(days=2)).astimezone(timezone.utc)
 
         rows = []
         for res in reservations:
@@ -1984,45 +1994,44 @@ class SyncService:
             # 1-row-per-row transform of an ImportInhouse paste of that
             # export, so matching the export IS matching the filed file).
             #
-            # 1. Stayed the night: still resident at the report date's own
-            #    midnight. Replaces an earlier "past the window's midpoint"
-            #    heuristic, which only looked right because Chinatown's
-            #    12:15-to-12:15 window puts its midpoint at 00:15 - 15
-            #    minutes from that midnight. On a 02:00-ish window the
-            #    midpoint lands at ~14:00 the same afternoon, letting in
-            #    day-use guests who never stayed a night at all (Lub d Koh
-            #    Samui room 1107, 19-Aug-2026: in 13:53, out 18:11 - MEWS
-            #    excluded it, the midpoint rule kept it).
+            # 1. Stayed the night: still resident AT the report date's own
+            #    midnight. Note the >=, not > - a guest whose checkout is
+            #    booked for exactly 00:00 slept there and MEWS files them
+            #    (the five Wiegratz family rows in Lub d Koh Tao 109/110,
+            #    20-Aug-2026, every one departing 21-Aug 00:00:00 on the
+            #    dot). This clause also replaces an older "past the window's
+            #    midpoint" heuristic, which only ever looked right because
+            #    Chinatown's then-12:15 window put its midpoint at 00:15;
+            #    on a 02:00-ish window the midpoint lands mid-afternoon and
+            #    lets in day-use guests who never stayed a night at all
+            #    (Koh Samui 1107, 19-Aug: in 13:53, out 18:11).
             #
-            # 2. ...but a guest who arrived AFTER that midnight belongs to
-            #    the NEXT day's register, and drops off this one once they
-            #    have checked out. While they are still in house they do
-            #    appear, because MEWS's In-house report is a live snapshot
-            #    of who is in the building. Both halves are load-bearing:
-            #    Chinatown rooms 501/504/505 (in after midnight, out the
-            #    same morning, Processed) were excluded by MEWS, while
-            #    rooms 317/424/425/524 (in after midnight, still Started)
-            #    were included, on the same export.
+            # 2. ...unless the whole stay belongs to the NEXT day's
+            #    register: arrived after that midnight AND gone again before
+            #    the following one, i.e. it covers no night of this date.
+            #    A next-day arrival who stays on past the following midnight
+            #    does appear here. Both halves are load-bearing, and the
+            #    boundary is the second midnight rather than checkout state:
+            #    on Chinatown's 20-Aug export, room 333 (in 21-Aug 00:15,
+            #    out 21-Aug 12:00) is absent while room 233 (in 21-Aug
+            #    00:43 - later - but out 22-Aug 12:00) is present.
             #
-            # Verified against the real generator sheets for 19-Aug-2026 on
-            # three properties with three different windows - Chinatown
-            # (12:15), Lub d Koh Samui (02:03) and Lub d Bangkok Siam
-            # (02:15): identical room sets, and identical row counts on
-            # Samui (260) and Siam (67). Chinatown lands 1 row over its
-            # export's 199 purely because room 522 had a second guest
-            # profile attached at 12:58, after that 12:23 export was taken.
-            # The previous rule matched none of the three.
-            #
-            # Note the State dependence in clause 2: regenerating a long-past
-            # date will drop next-day arrivals that were still in house when
-            # the original file was produced. That is inherent to matching a
-            # live In-house snapshot, and is not a problem in practice since
-            # the file is generated the following morning.
-            stayed_the_night = end_utc > next_midnight_utc
-            arrived_next_day_and_gone = (
-                start_utc >= next_midnight_utc and res.get("State") == "Processed"
+            # Verified against the real generator sheets for BOTH 19-Aug and
+            # 20-Aug-2026 across six properties and four window settings
+            # (Chinatown, Siam 02:15, Koh Samui 02:03, Patong 02:05, Koh Tao
+            # 02:05, Marasca 02:03): 10 of those 12 property-days reproduce
+            # the export's room set exactly, row counts included. The two
+            # that don't are both live-data drift, not rule failures - see
+            # the commit that introduced this. An earlier version keyed
+            # clause 2 off State=="Processed" instead and matched only 7 of
+            # 12; dropping the State test also makes regenerating an old
+            # date deterministic, where the State version would quietly lose
+            # next-day arrivals once they eventually checked out.
+            stayed_the_night = end_utc >= next_midnight_utc
+            belongs_to_the_next_register = (
+                start_utc >= next_midnight_utc and end_utc <= midnight_after_utc
             )
-            if not stayed_the_night or arrived_next_day_and_gone:
+            if not stayed_the_night or belongs_to_the_next_register:
                 continue
             room = resources_map.get(res.get("AssignedResourceId"), {})
             check_in_utc = actual_times.get(res.get("Id")) or res.get("StartUtc")
