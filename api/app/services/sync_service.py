@@ -2831,7 +2831,15 @@ class SyncService:
     # get_occupancy_report stitches as many chunks together as the range
     # needs.
     _OCCUPANCY_CHUNK_DAYS = 95
-    _OCCUPANCY_MAX_RANGE_DAYS = 370
+    # rates/getPricing takes a far wider interval than getAvailability but is
+    # still capped: "The interval must not exceed 367D". Chunked well under
+    # that so a whole-month-aligned year (up to 395 days) splits cleanly in
+    # two rather than sitting one day inside the limit.
+    _RATE_CHUNK_DAYS = 300
+    # A year, with room for the daily snapshot's whole-month alignment: it
+    # runs 1st-of-this-month through end-of-the-same-month-next-year (see
+    # occupancy.snapshot_range), which tops out at 395 days.
+    _OCCUPANCY_MAX_RANGE_DAYS = 400
 
     async def get_occupancy_report(self, property_name: str, start_date: str, end_date: str) -> dict:
         """
@@ -3027,12 +3035,13 @@ class SyncService:
         with ShortName "BAR" - Best Available Rate, matching the reference
         export exactly.
 
-        Built from a single rates/getPricing call: unlike
-        services/getAvailability (capped at 99 days per call, see
-        get_occupancy_report), this endpoint returned a full 367-day range
-        - 21-Aug-2026 to 21-Aug-2027 - whole, in one request, confirmed
-        empirically against a live property. So a year-long sweep needs no
-        chunking here.
+        Chunked like get_occupancy_report, just far less finely:
+        rates/getPricing accepts a much wider interval than
+        services/getAvailability (99 days) but is still capped -
+        "The interval must not exceed 367D" - so the whole-month-aligned
+        year the daily snapshot asks for, up to 395 days, does not fit in
+        one call. Chunks are built to touch and the shared boundary day is
+        kept once, exactly as in get_occupancy_report.
 
         Categories are filtered to the same space_types get_occupancy_report
         uses (Room/Bed by default) for the same reason: a parent Dorm/
@@ -3085,34 +3094,68 @@ class SyncService:
         if not default_rate:
             raise ValueError(f"No default (BAR) rate found for {property_name}")
 
-        pricing_res = await mews_client.post(
-            "/api/connector/v1/rates/getPricing",
-            {
-                "RateId": default_rate["Id"],
-                "FirstTimeUnitStartUtc": first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                "LastTimeUnitStartUtc": last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-            },
-            property_name=property_name,
-        )
+        chunk_bounds: list = []
+        if last == first:
+            chunk_bounds = [(first, last)]
+        else:
+            cursor = first
+            while cursor < last:
+                nxt = min(cursor + timedelta(days=self._RATE_CHUNK_DAYS), last)
+                chunk_bounds.append((cursor, nxt))
+                cursor = nxt
+
+        currency = None
+        chunk_infos = []
+        seen_cids: set = set()
+        for idx, (c_first, c_last) in enumerate(chunk_bounds):
+            pricing_res = await mews_client.post(
+                "/api/connector/v1/rates/getPricing",
+                {
+                    "RateId": default_rate["Id"],
+                    "FirstTimeUnitStartUtc": c_first.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "LastTimeUnitStartUtc": c_last.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                },
+                property_name=property_name,
+            )
+            currency = currency or pricing_res.get("Currency")
+            chunk_dates = []
+            for ts in pricing_res.get("DatesUtc") or []:
+                try:
+                    chunk_dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
+                except Exception:
+                    continue
+            if not chunk_dates:
+                chunk_dates = [(c_first + timedelta(days=i)).strftime("%Y-%m-%d")
+                               for i in range((c_last - c_first).days + 1)]
+            is_final = idx == len(chunk_bounds) - 1
+            keep = len(chunk_dates) if is_final else max(0, len(chunk_dates) - 1)
+
+            by_cat = {}
+            for entry in pricing_res.get("CategoryPrices", []):
+                cid = entry.get("CategoryId")
+                meta = categories.get(cid)
+                if not meta or meta["type"] not in space_types:
+                    continue
+                by_cat[cid] = entry.get("Prices") or []
+                seen_cids.add(cid)
+            chunk_infos.append({"dates": chunk_dates, "keep": keep, "by_cat": by_cat})
 
         dates = []
-        for ts in pricing_res.get("DatesUtc") or []:
-            try:
-                dates.append(datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(tz).strftime("%Y-%m-%d"))
-            except Exception:
-                continue
-        if not dates:
-            dates = [(first + timedelta(days=i)).strftime("%Y-%m-%d")
-                     for i in range((last - first).days + 1)]
-        n = len(dates)
+        for ci in chunk_infos:
+            dates.extend(ci["dates"][:ci["keep"]])
 
         rows = []
-        for entry in pricing_res.get("CategoryPrices", []):
-            meta = categories.get(entry.get("CategoryId"))
-            if not meta or meta["type"] not in space_types:
-                continue
-            prices = (entry.get("Prices") or [])[:n]
-            prices += [None] * (n - len(prices))
+        for cid in seen_cids:
+            meta = categories[cid]
+            # Every chunk contributes exactly `keep` values for every category
+            # seen anywhere in the range - including a chunk whose response
+            # omitted it - so the merged series always lines up with `dates`.
+            prices: list = []
+            for ci in chunk_infos:
+                clen = len(ci["dates"])
+                p = list(ci["by_cat"].get(cid, []))[:clen]
+                p += [None] * (clen - len(p))
+                prices.extend(p[:ci["keep"]])
             rows.append({
                 "short_name": meta["short_name"],
                 "name": meta["name"],
@@ -3127,7 +3170,7 @@ class SyncService:
         return {
             "property": property_name,
             "rate_name": default_rate.get("Name"),
-            "currency": pricing_res.get("Currency"),
+            "currency": currency,
             "space_types": list(space_types),
             "start_date": start_date,
             "end_date": end_date,

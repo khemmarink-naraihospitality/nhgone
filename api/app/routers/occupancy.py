@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta, timezone
+import calendar
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query
 
@@ -6,16 +7,29 @@ from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
 
-# How far ahead each daily snapshot reaches. Occupancy is a forward-looking
-# number - the point of capturing it every morning is to keep the booking
-# pace for the weeks ahead, so a snapshot starts on its own date rather than
-# the previous one (which is what ST Files does, that being a closed-day
-# report). A full year out, matching what a MEWS-mode Fetch Report can pull
-# live - get_occupancy_report chunks this into several MEWS calls itself
-# (a single call is capped at 99 days), so the 08:00 capture costs a
-# handful of requests per property rather than one, but the NHG-mode
-# snapshot then covers the same outlook the live mode does.
-SNAPSHOT_DAYS_FORWARD = 365
+# How many whole months forward of the snapshot's own month each capture
+# covers. 12 = through the same month next year (e.g. a 21-Aug-2026 capture
+# spans 01-Aug-2026 to 31-Aug-2027), which is what the Occupancy By Type
+# Calendar draws: complete month blocks, no half-month at either end.
+SNAPSHOT_MONTHS_FORWARD = 12
+
+
+def snapshot_range(date_str: str) -> tuple:
+    """The (first night, last night) a snapshot taken on date_str covers.
+
+    Anchored to whole months rather than to the capture date itself: the
+    calendar and the occupancy grid are both read a month at a time, and a
+    snapshot starting on the 21st left the first month's days 1-20 blank -
+    the figures for those nights exist in MEWS, they just weren't being
+    asked for. Occupancy is forward-looking, so it still reaches a year
+    ahead; it just starts at the top of the current month instead of
+    partway through it."""
+    day = datetime.strptime(date_str, "%Y-%m-%d").date()
+    start = day.replace(day=1)
+    months = start.month - 1 + SNAPSHOT_MONTHS_FORWARD
+    end_month = date(start.year + months // 12, months % 12 + 1, 1)
+    end = end_month.replace(day=calendar.monthrange(end_month.year, end_month.month)[1])
+    return start, end
 
 # Snapshots kept per property, pruned by the daily auto-import - the same
 # newest-N-per-property mechanism BCP uses, sized to a week here. Counting
@@ -68,8 +82,7 @@ async def sync_occupancy_day(property_name: str, date_str: str) -> None:
     tab existed simply has no "rate" key - get_managed/the frontend both
     already treat that as "not captured yet", the same way they treat any
     other missing field on an older row."""
-    start = datetime.strptime(date_str, "%Y-%m-%d").date()
-    end = start + timedelta(days=SNAPSHOT_DAYS_FORWARD)
+    start, end = snapshot_range(date_str)
     occupancy_report = await sync_service.get_occupancy_report(
         property_name, start.isoformat(), end.isoformat())
     rate_report = await sync_service.get_rate_report(
