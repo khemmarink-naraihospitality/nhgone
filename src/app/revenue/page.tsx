@@ -76,13 +76,13 @@ const dayLabel = (s: string) => {
 
 const pct = (v: number | null | undefined) => (v === null || v === undefined ? "-" : `${v.toFixed(2)}%`);
 
-// One line per option in the Snapshot Date picker: the captured stored
-// snapshots first, plus whatever the currently-selected date already is
-// even if nothing has been captured for it yet (see snapshotOptions below) -
-// same "always exists in the list, whether real or not" trick a native
-// date input gets for free.
-const snapshotLabel = (s: SnapshotRow) =>
-  s.synced_at ? `${s.date} · ${pct(s.first_night_percent)} night 1 · captured ${fmtDateTime(s.synced_at)}` : `${s.date} · not captured yet`;
+// One line per option in the Snapshot Date picker: just the date itself -
+// the report title bar above the table already spells out nights/categories/
+// captured-at for whichever one is loaded, so the option doesn't need to
+// repeat it. The one exception is a date with nothing captured for it yet
+// (see snapshotOptions below): flagged so it doesn't look like a real
+// snapshot silently.
+const snapshotLabel = (s: SnapshotRow) => (s.synced_at ? s.date : `${s.date} (not captured yet)`);
 
 // A wash of the brand green whose strength tracks occupancy, so a full house
 // and an empty one are distinguishable without reading every number. Kept
