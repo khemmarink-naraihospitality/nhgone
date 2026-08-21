@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
@@ -154,6 +154,70 @@ const heat = (v: number | null) => {
   return { backgroundColor: `color-mix(in srgb, var(--text-primary) ${(a * 14).toFixed(1)}%, transparent)` };
 };
 
+// ---------------------------------------------------------------------------
+// Occupancy By Type Calendar (the stop-sale chart)
+// ---------------------------------------------------------------------------
+
+// A category/night at or above this is considered sold out enough to stop
+// selling to travel agents.
+const STOP_SELL_THRESHOLD = 90;
+
+// Three states, and they need TWO snapshots to tell apart - "new" only means
+// anything relative to what the position was the morning before, and
+// "re-open" is by definition a change. The comparison baseline is the
+// previous stored snapshot (see loadBaseline).
+type StopState = "none" | "new-stop" | "existing-stop" | "reopen";
+
+const stopState = (current: number | null | undefined, previous: number | null | undefined, hasBaseline: boolean): StopState => {
+  const nowStopped = current !== null && current !== undefined && current >= STOP_SELL_THRESHOLD;
+  const wasStopped = previous !== null && previous !== undefined && previous >= STOP_SELL_THRESHOLD;
+  // With nothing to compare against, every stop reads as "existing" rather
+  // than flagging the whole chart red on its first ever day - claiming
+  // everything is newly stopped would be worse than saying nothing changed.
+  if (!hasBaseline) return nowStopped ? "existing-stop" : "none";
+  if (nowStopped) return wasStopped ? "existing-stop" : "new-stop";
+  return wasStopped ? "reopen" : "none";
+};
+
+const STOP_CELL: Record<Exclude<StopState, "none">, { symbol: string; cls: string; title: string }> = {
+  "existing-stop": { symbol: "X", cls: "text-[var(--text-primary)] font-bold", title: "Existing stop sale" },
+  "new-stop": { symbol: "X", cls: "text-red-600 font-bold bg-red-500/10", title: "New stop sale" },
+  reopen: { symbol: "o", cls: "text-cyan-700 font-bold bg-cyan-400/15", title: "Re-open" },
+};
+
+const MONTH_NAMES = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY",
+  "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
+
+interface MonthBlock {
+  key: string;
+  label: string;
+  daysInMonth: number;
+  // Day-of-month (1-based) -> index into the report's own dates array, or -1
+  // where that day falls outside the loaded range. A report starting mid-month
+  // leaves the earlier days of its first month genuinely empty rather than
+  // guessing at them.
+  dayIndex: number[];
+}
+
+const buildMonthBlocks = (dates: string[]): MonthBlock[] => {
+  const blocks = new Map<string, MonthBlock>();
+  dates.forEach((d, i) => {
+    const [y, m, day] = d.split("-").map(Number);
+    if (!y || !m || !day) return;
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    if (!blocks.has(key)) {
+      blocks.set(key, {
+        key,
+        label: `${MONTH_NAMES[m - 1]} ${y}`,
+        daysInMonth: new Date(y, m, 0).getDate(),
+        dayIndex: new Array(32).fill(-1),
+      });
+    }
+    blocks.get(key)!.dayIndex[day] = i;
+  });
+  return Array.from(blocks.values()).sort((a, b) => (a.key < b.key ? -1 : 1));
+};
+
 export default function RevenuePage() {
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
@@ -174,6 +238,11 @@ export default function RevenuePage() {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
+  const [calendarOpen, setCalendarOpen] = useState(true);
+  // The morning-before snapshot the calendar diffs against to tell a NEW stop
+  // sale from one that was already in place. null until loaded, or when there
+  // simply isn't an earlier snapshot to compare with yet.
+  const [baseline, setBaseline] = useState<OccupancyReport | null>(null);
 
   useEffect(() => {
     getAllowedProperties().then(({ properties: list }) => {
@@ -258,6 +327,38 @@ export default function RevenuePage() {
     }
   }, [selectedProperty, dataSource, snapshotDate, startDate, endDate]);
 
+  // Loads the snapshot immediately before whichever report is on screen, to
+  // diff against. In NHG mode that's the stored snapshot before the selected
+  // date; in MEWS mode (a live, unsaved outlook) the newest stored snapshot is
+  // the closest thing to "the position as of the last capture". Failures are
+  // silent on purpose - no baseline just means the calendar shows every stop
+  // as existing rather than breaking the page.
+  useEffect(() => {
+    if (!report || !selectedProperty || snapshots.length === 0) {
+      setBaseline(null);
+      return;
+    }
+    const currentDate = dataSource === "database" ? snapshotDate : null;
+    const prior = currentDate
+      ? snapshots.find((s) => s.date < currentDate && s.synced_at)
+      : snapshots.find((s) => s.synced_at);
+    if (!prior) {
+      setBaseline(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${prior.date}`);
+        const json = await res.json();
+        if (!cancelled) setBaseline(res.ok && json.status === "success" ? json.data : null);
+      } catch {
+        if (!cancelled) setBaseline(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [report, selectedProperty, snapshots, dataSource, snapshotDate]);
+
   const handleImport = async () => {
     if (!selectedProperty) return;
     setImporting(true);
@@ -340,6 +441,22 @@ export default function RevenuePage() {
   // currently-selected date if it isn't one of them - so a select whose
   // value is today (the default) never renders blank just because today
   // hasn't been captured yet, and the option's own label says so.
+  const monthBlocks = useMemo(() => (report ? buildMonthBlocks(report.dates) : []), [report]);
+
+  // Baseline occupancy looked up by "<category> <date>" rather than by array
+  // index: the earlier snapshot starts on its own date and so is offset from
+  // the current one by however many days apart the two captures are, and its
+  // category list can differ too if a room type was added or retired.
+  const baselineByKey = useMemo(() => {
+    const map = new Map<string, number | null>();
+    if (!baseline) return map;
+    baseline.categories.forEach((c) => {
+      const id = c.short_name || c.name;
+      baseline.dates.forEach((d, i) => map.set(`${id}|${d}`, c.percent[i] ?? null));
+    });
+    return map;
+  }, [baseline]);
+
   const snapshotOptions = (() => {
     const byDate = new Map(snapshots.map((s) => [s.date, s]));
     if (!byDate.has(snapshotDate)) {
@@ -631,6 +748,107 @@ export default function RevenuePage() {
           </>
         )}
           </>
+        )}
+
+        <button
+          onClick={() => setCalendarOpen((o) => !o)}
+          className="flex items-center gap-2 mt-10 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
+        >
+          <svg className={`w-4 h-4 shrink-0 transition-transform ${calendarOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+          <h2 className="text-xl font-serif">Occupancy By Type Calendar</h2>
+        </button>
+
+        {calendarOpen && (
+          report ? (
+            <div>
+              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
+                <span className="text-[11px] text-[var(--text-primary)]/60">
+                  Stop-sale chart — a night at or above {STOP_SELL_THRESHOLD}% occupancy is stopped for travel agents.
+                </span>
+                <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                  {baseline
+                    ? `compared against ${baseline.start_date}`
+                    : "no earlier snapshot to compare — every stop shown as existing"}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 text-[11px] text-[var(--text-primary)]/70">
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-red-500/10">X</span> New stop sale
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
+                </span>
+              </div>
+
+              <div className="space-y-6">
+                {monthBlocks.map((block) => (
+                  <div key={block.key} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto overscroll-contain">
+                    <table className="w-full text-left border-separate border-spacing-0">
+                      <thead>
+                        <tr className="bg-[var(--text-primary)]/5">
+                          <th colSpan={block.daysInMonth + 1} className={`${thCls} text-center`}>{block.label}</th>
+                        </tr>
+                        <tr className="bg-[var(--text-primary)]/[0.03]">
+                          <th className={`${thCls} sticky left-0 z-10 bg-[#F2EEE4] w-56 min-w-56`}>Date</th>
+                          {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => (
+                            <th key={day} className={`${thCls} text-center px-0 w-8 min-w-8`}>{day}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.categories.map((c) => {
+                          const id = c.short_name || c.name;
+                          return (
+                            <tr key={id} className="hover:bg-[var(--text-primary)]/[0.02]">
+                              <td className={`${tdCls} sticky left-0 z-10 bg-[var(--paper)] border-b border-[var(--text-primary)]/5`}>
+                                <span className="font-bold">{c.short_name || c.name}</span>
+                                <span className="ml-2 text-[11px] text-[var(--text-primary)]/45">{c.name}</span>
+                              </td>
+                              {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => {
+                                const idx = block.dayIndex[day];
+                                if (idx < 0) {
+                                  return <td key={day} className="border-b border-l border-[var(--text-primary)]/5 bg-[var(--text-primary)]/[0.03]" />;
+                                }
+                                const date = report.dates[idx];
+                                const state = stopState(c.percent[idx], baselineByKey.get(`${id}|${date}`), !!baseline);
+                                const style = state === "none" ? null : STOP_CELL[state];
+                                return (
+                                  <td
+                                    key={day}
+                                    title={`${date} · ${pct(c.percent[idx])}${style ? ` · ${style.title}` : ""}`}
+                                    className={`text-center text-[12px] p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? style.cls : ""}`}
+                                  >
+                                    {style ? style.symbol : ""}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+
+              <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
+                Built from the Occupancy by Room Type figures above, so it follows whichever property, mode and
+                snapshot are loaded there. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
+                stored snapshot — until a second morning has been captured there is nothing to compare against, and
+                every stop is shown as existing rather than flagged as new.
+              </p>
+            </div>
+          ) : (
+            !error && !loading && (
+              <div className="p-12 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                Load a report above to build the calendar.
+              </div>
+            )
+          )
         )}
       </div>
     </div>
