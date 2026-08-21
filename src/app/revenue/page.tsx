@@ -159,8 +159,12 @@ const heat = (v: number | null) => {
 // ---------------------------------------------------------------------------
 
 // A category/night at or above this is considered sold out enough to stop
-// selling to travel agents.
-const STOP_SELL_THRESHOLD = 90;
+// selling to travel agents. Only the starting value - the calendar exposes
+// it as an input, because 90% is the right line for a property running full
+// and far too high for one whose forward book is still filling: Chinatown's
+// December 2026 peaks at 84%, so a fixed 90 renders that whole month blank
+// and tells a revenue manager nothing.
+const DEFAULT_STOP_SELL_THRESHOLD = 90;
 
 // Three states, and they need TWO snapshots to tell apart - "new" only means
 // anything relative to what the position was the morning before, and
@@ -168,9 +172,9 @@ const STOP_SELL_THRESHOLD = 90;
 // previous stored snapshot (see loadBaseline).
 type StopState = "none" | "new-stop" | "existing-stop" | "reopen";
 
-const stopState = (current: number | null | undefined, previous: number | null | undefined, hasBaseline: boolean): StopState => {
-  const nowStopped = current !== null && current !== undefined && current >= STOP_SELL_THRESHOLD;
-  const wasStopped = previous !== null && previous !== undefined && previous >= STOP_SELL_THRESHOLD;
+const stopState = (current: number | null | undefined, previous: number | null | undefined, hasBaseline: boolean, threshold: number): StopState => {
+  const nowStopped = current !== null && current !== undefined && current >= threshold;
+  const wasStopped = previous !== null && previous !== undefined && previous >= threshold;
   // With nothing to compare against, every stop reads as "existing" rather
   // than flagging the whole chart red on its first ever day - claiming
   // everything is newly stopped would be worse than saying nothing changed.
@@ -239,6 +243,7 @@ export default function RevenuePage() {
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(true);
+  const [stopThreshold, setStopThreshold] = useState(DEFAULT_STOP_SELL_THRESHOLD);
   // The morning-before snapshot the calendar diffs against to tell a NEW stop
   // sale from one that was already in place. null until loaded, or when there
   // simply isn't an earlier snapshot to compare with yet.
@@ -761,10 +766,22 @@ export default function RevenuePage() {
         {calendarOpen && (
           report ? (
             <div>
-              <div className="flex flex-wrap items-baseline justify-between gap-3 mb-3">
-                <span className="text-[11px] text-[var(--text-primary)]/60">
-                  Stop-sale chart — a night at or above {STOP_SELL_THRESHOLD}% occupancy is stopped for travel agents.
-                </span>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
+                  <span>Stop-sale chart — a night at or above</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={100}
+                    value={stopThreshold}
+                    onChange={(e) => {
+                      const n = Number(e.target.value);
+                      if (Number.isFinite(n)) setStopThreshold(Math.min(100, Math.max(1, n)));
+                    }}
+                    className="w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                  />
+                  <span>% occupancy is stopped for travel agents.</span>
+                </div>
                 <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
                   {baseline
                     ? `compared against ${baseline.start_date}`
@@ -781,6 +798,14 @@ export default function RevenuePage() {
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
+                </span>
+                <span className="flex items-center gap-2">
+                  <span className="inline-flex">
+                    {[10, 40, 70, 95].map((v) => (
+                      <span key={v} style={heat(v)} className="w-4 h-6 border border-[var(--text-primary)]/14" />
+                    ))}
+                  </span>
+                  Occupancy below the line — darker is fuller (hover any night for the figure)
                 </span>
               </div>
 
@@ -814,12 +839,18 @@ export default function RevenuePage() {
                                   return <td key={day} className="border-b border-l border-[var(--text-primary)]/5 bg-[var(--text-primary)]/[0.03]" />;
                                 }
                                 const date = report.dates[idx];
-                                const state = stopState(c.percent[idx], baselineByKey.get(`${id}|${date}`), !!baseline);
+                                const value = c.percent[idx];
+                                const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
                                 const style = state === "none" ? null : STOP_CELL[state];
                                 return (
                                   <td
                                     key={day}
-                                    title={`${date} · ${pct(c.percent[idx])}${style ? ` · ${style.title}` : ""}`}
+                                    // Every night carries its occupancy as a tint, not just the
+                                    // ones over the line - otherwise a property whose forward book
+                                    // is still filling shows an empty grid that reads as "no data"
+                                    // when it actually means "nothing sold out yet".
+                                    style={style ? undefined : heat(value)}
+                                    title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
                                     className={`text-center text-[12px] p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? style.cls : ""}`}
                                   >
                                     {style ? style.symbol : ""}
@@ -837,7 +868,9 @@ export default function RevenuePage() {
 
               <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
                 Built from the Occupancy by Room Type figures above, so it follows whichever property, mode and
-                snapshot are loaded there. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
+                snapshot are loaded there. A blank-looking month means nothing has reached the threshold yet, not
+                missing data — the tint shows where demand is building, and lowering the threshold surfaces the
+                nights getting close. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
                 stored snapshot — until a second morning has been captured there is nothing to compare against, and
                 every stop is shown as existing rather than flagged as new.
               </p>
