@@ -13,6 +13,39 @@ router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
 # report). Two months is one MEWS call either way.
 SNAPSHOT_DAYS_FORWARD = 59
 
+# Snapshots kept per property, pruned by the daily auto-import - the same
+# newest-N-per-property mechanism BCP uses, sized to a week here. Counting
+# rows rather than measuring dates on purpose: if a morning is ever missed,
+# a date cutoff would leave the property with fewer than a week of history
+# to compare against, where newest-7 still holds seven real snapshots.
+#
+# Pruning deliberately does NOT happen inside sync_occupancy_day, so the
+# manual "Import To Data Mart" button can pull an older date up for a
+# one-off comparison without it being deleted the moment it lands. The next
+# 08:00 run tidies it away.
+SNAPSHOTS_KEPT = 7
+
+
+def prune_occupancy_snapshots(property_name: str) -> int:
+    """Drops everything past the newest SNAPSHOTS_KEPT for one property.
+    Returns how many rows went. Never raises - retention tidying must not
+    fail a capture that already succeeded."""
+    try:
+        old = sync_service.supabase.table("occupancy_sync") \
+            .select("id") \
+            .eq("property", property_name) \
+            .order("report_date", desc=True) \
+            .range(SNAPSHOTS_KEPT, SNAPSHOTS_KEPT + 200) \
+            .execute()
+        if not old.data:
+            return 0
+        ids = [r["id"] for r in old.data]
+        sync_service.supabase.table("occupancy_sync").delete().in_("id", ids).execute()
+        return len(ids)
+    except Exception as e:
+        print(f"Occupancy prune failed for {property_name}: {e}")
+        return 0
+
 
 async def sync_occupancy_day(property_name: str, date_str: str) -> None:
     """Fetches + upserts one (property, date) occupancy snapshot into

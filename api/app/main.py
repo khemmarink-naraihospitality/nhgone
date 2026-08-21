@@ -253,7 +253,12 @@ async def _sync_occupancy_for_property(prop, prop_id, date_str, sync_type="auto"
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
         await occupancy.sync_occupancy_day(prop, date_str)
-        _log_sync(prop, prop_id, "Occupancy", "success", 1, f"{label} Occupancy Sync: {date_str}", sync_type)
+        # Retention lives here rather than in sync_occupancy_day so the manual
+        # Import button can pull an older date up for a one-off comparison
+        # without it being pruned the instant it lands - this run tidies it.
+        pruned = occupancy.prune_occupancy_snapshots(prop)
+        detail = f"{label} Occupancy Sync: {date_str}" + (f" ({pruned} old snapshot(s) pruned)" if pruned else "")
+        _log_sync(prop, prop_id, "Occupancy", "success", 1, detail, sync_type)
         return True
     except Exception as e:
         err = str(e)[:1000]
