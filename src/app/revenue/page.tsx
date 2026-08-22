@@ -193,7 +193,7 @@ const stopState = (current: number | null | undefined, previous: number | null |
 
 const STOP_CELL: Record<Exclude<StopState, "none">, { symbol: string; cls: string; title: string }> = {
   "existing-stop": { symbol: "X", cls: "text-[var(--text-primary)] font-bold", title: "Existing stop sale" },
-  "new-stop": { symbol: "X", cls: "text-red-600 font-bold bg-red-500/10", title: "New stop sale" },
+  "new-stop": { symbol: "X", cls: "text-red-600 font-bold bg-yellow-300/60", title: "New stop sale" },
   reopen: { symbol: "o", cls: "text-cyan-700 font-bold bg-cyan-400/15", title: "Re-open" },
 };
 
@@ -825,7 +825,7 @@ export default function RevenuePage() {
                   <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
                 </span>
                 <span className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-red-500/10">X</span> New stop sale
+                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-yellow-300/60">X</span> New stop sale
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
