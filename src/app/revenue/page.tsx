@@ -137,13 +137,21 @@ const fmtMoney = (v: number | null | undefined, currency: string) => {
   }
 };
 
-// One line per option in the Snapshot Date picker: just the date itself -
-// the report title bar above the table already spells out nights/categories/
-// captured-at for whichever one is loaded, so the option doesn't need to
-// repeat it. The one exception is a date with nothing captured for it yet
-// (see snapshotOptions below): flagged so it doesn't look like a real
-// snapshot silently.
-const snapshotLabel = (s: SnapshotRow) => (s.synced_at ? s.date : `${s.date} (not captured yet)`);
+// Time only, Bangkok - the date is already the first half of the option's own
+// label, so repeating it there would just push the useful part out of a narrow
+// select.
+const fmtTime = (v?: string | null) => {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Bangkok" });
+};
+
+// The capture time matters, not just the day: the 08:00 auto-import and a
+// mid-afternoon manual re-import are different pictures of the same date, and
+// which one you are looking at is otherwise invisible.
+const snapshotLabel = (s: SnapshotRow) =>
+  s.synced_at ? `${s.date} · captured ${fmtTime(s.synced_at)}` : `${s.date} (not captured yet)`;
 
 // A wash of the brand green whose strength tracks occupancy, so a full house
 // and an empty one are distinguishable without reading every number. Kept
@@ -258,6 +266,10 @@ export default function RevenuePage() {
   // sale from one that was already in place. null until loaded, or when there
   // simply isn't an earlier snapshot to compare with yet.
   const [baseline, setBaseline] = useState<OccupancyReport | null>(null);
+  // Which snapshot the baseline came from. Not derivable from `baseline`
+  // itself: its start_date is the 1st of its month, not the morning it was
+  // captured, so labelling the comparison with it named the wrong day.
+  const [baselineDate, setBaselineDate] = useState<string | null>(null);
 
   useEffect(() => {
     getAllowedProperties().then(({ properties: list }) => {
@@ -351,6 +363,7 @@ export default function RevenuePage() {
   useEffect(() => {
     if (!report || !selectedProperty || snapshots.length === 0) {
       setBaseline(null);
+      setBaselineDate(null);
       return;
     }
     const currentDate = dataSource === "database" ? snapshotDate : null;
@@ -359,6 +372,7 @@ export default function RevenuePage() {
       : snapshots.find((s) => s.synced_at);
     if (!prior) {
       setBaseline(null);
+      setBaselineDate(null);
       return;
     }
     let cancelled = false;
@@ -366,9 +380,13 @@ export default function RevenuePage() {
       try {
         const res = await fetch(`/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${prior.date}`);
         const json = await res.json();
-        if (!cancelled) setBaseline(res.ok && json.status === "success" ? json.data : null);
+        const ok = res.ok && json.status === "success";
+        if (!cancelled) {
+          setBaseline(ok ? json.data : null);
+          setBaselineDate(ok ? prior.date : null);
+        }
       } catch {
-        if (!cancelled) setBaseline(null);
+        if (!cancelled) { setBaseline(null); setBaselineDate(null); }
       }
     })();
     return () => { cancelled = true; };
@@ -793,8 +811,11 @@ export default function RevenuePage() {
                   <span>% occupancy is stopped for travel agents.</span>
                 </div>
                 <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
-                  {baseline
-                    ? `compared against ${baseline.start_date}`
+                  {baseline && baselineDate
+                    ? `compared against ${baselineDate}${(() => {
+                        const t = fmtTime(snapshots.find((s) => s.date === baselineDate)?.synced_at);
+                        return t ? ` · captured ${t}` : "";
+                      })()}`
                     : "no earlier snapshot to compare — every stop shown as existing"}
                 </span>
               </div>
