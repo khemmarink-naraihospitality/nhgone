@@ -150,6 +150,12 @@ export default function RvPage() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyPage, setHistoryPage] = useState(1);
   const HISTORY_PAGE_SIZE = 10;
+  // Separate page per tab - Revenue and Payments are different row counts,
+  // so sharing one page number would land on an out-of-range page switching
+  // tabs (e.g. page 6 of Revenue showing nothing on a 3-page Payments table).
+  const [revenuePage, setRevenuePage] = useState(1);
+  const [paymentsPage, setPaymentsPage] = useState(1);
+  const JOURNAL_PAGE_SIZE = 10;
   const [previewFile, setPreviewFile] = useState<{ date: string; text: string; filename: string } | null>(null);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(true);
@@ -202,6 +208,8 @@ export default function RvPage() {
         throw new Error(`No imported RV report for ${selectedProperty} on ${targetDate} yet - switch MODE to MEWS, or use "Import To Data Mart" first.`);
       }
       setReport(result.data);
+      setRevenuePage(1);
+      setPaymentsPage(1);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -336,45 +344,72 @@ export default function RvPage() {
 
   // showSegment is on for revenue only: accommodation splits into one row per
   // market segment, so without the column those rows read as duplicates.
-  const journalTable = (rows: JournalRow[], amountLabel: string, showSegment = false) => {
+  const journalTable = (rows: JournalRow[], amountLabel: string, showSegment = false, page = 1, setPage?: (p: number) => void) => {
     const cols = showSegment ? 6 : 5;
+    const totalPages = Math.ceil(rows.length / JOURNAL_PAGE_SIZE);
+    const pageRows = rows.slice((page - 1) * JOURNAL_PAGE_SIZE, page * JOURNAL_PAGE_SIZE);
     return (
-      <table className="w-full text-left border-collapse min-w-max">
-        <thead>
-          <tr className="bg-[var(--text-primary)]/5">
-            <th className={thCls}>GL Account</th>
-            <th className={thCls}>Dept</th>
-            {showSegment && <th className={thCls}>Segment</th>}
-            <th className={thCls}>Description</th>
-            <th className={`${thCls} text-right`}>Items</th>
-            <th className={`${thCls} text-right`}>{amountLabel}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-[var(--text-primary)]/5">
-          {rows.length === 0 ? (
-            <tr><td colSpan={cols} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
-          ) : rows.map((r, i) => (
-            <tr key={r.gl_code + r.name + (r.market_segment || "") + i} className={`hover:bg-[var(--text-primary)]/[0.02] ${r.unmapped ? "bg-amber-500/[0.08]" : ""}`}>
-              <td className={`${tdCls} font-bold font-mono`}>
-                {r.gl_code || "—"}
-                {r.unmapped && <span className="ml-2 text-[9px] font-bold tracked-caps text-amber-700">Unmapped</span>}
-              </td>
-              <td className={`${tdCls} font-mono text-[var(--text-primary)]/60`}>{r.department || "—"}</td>
-              {showSegment && <td className={`${tdCls} font-mono text-[var(--text-primary)]/60`}>{r.market_segment || "—"}</td>}
-              <td className={tdCls}>{r.name}</td>
-              <td className={numCls}>{r.count}</td>
-              <td className={`${numCls} font-bold`}>{fmtMoney(r.amount)}</td>
-            </tr>
-          ))}
-          {rows.length > 0 && (
+      <>
+        <table className="w-full text-left border-collapse min-w-max">
+          <thead>
             <tr className="bg-[var(--text-primary)]/5">
-              <td className={`${tdCls} font-bold`} colSpan={cols - 2}>Total</td>
-              <td className={`${numCls} font-bold`}>{rows.reduce((s, r) => s + r.count, 0)}</td>
-              <td className={`${numCls} font-bold`}>{fmtMoney(rows.reduce((s, r) => s + r.amount, 0))}</td>
+              <th className={thCls}>GL Account</th>
+              <th className={thCls}>Dept</th>
+              {showSegment && <th className={thCls}>Segment</th>}
+              <th className={thCls}>Description</th>
+              <th className={`${thCls} text-right`}>Items</th>
+              <th className={`${thCls} text-right`}>{amountLabel}</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody className="divide-y divide-[var(--text-primary)]/5">
+            {rows.length === 0 ? (
+              <tr><td colSpan={cols} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">None for this date.</td></tr>
+            ) : pageRows.map((r, i) => (
+              <tr key={r.gl_code + r.name + (r.market_segment || "") + i} className={`hover:bg-[var(--text-primary)]/[0.02] ${r.unmapped ? "bg-amber-500/[0.08]" : ""}`}>
+                <td className={`${tdCls} font-bold font-mono`}>
+                  {r.gl_code || "—"}
+                  {r.unmapped && <span className="ml-2 text-[9px] font-bold tracked-caps text-amber-700">Unmapped</span>}
+                </td>
+                <td className={`${tdCls} font-mono text-[var(--text-primary)]/60`}>{r.department || "—"}</td>
+                {showSegment && <td className={`${tdCls} font-mono text-[var(--text-primary)]/60`}>{r.market_segment || "—"}</td>}
+                <td className={tdCls}>{r.name}</td>
+                <td className={numCls}>{r.count}</td>
+                <td className={`${numCls} font-bold`}>{fmtMoney(r.amount)}</td>
+              </tr>
+            ))}
+            {rows.length > 0 && (
+              <tr className="bg-[var(--text-primary)]/5">
+                <td className={`${tdCls} font-bold`} colSpan={cols - 2}>Total</td>
+                <td className={`${numCls} font-bold`}>{rows.reduce((s, r) => s + r.count, 0)}</td>
+                <td className={`${numCls} font-bold`}>{fmtMoney(rows.reduce((s, r) => s + r.amount, 0))}</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+        {setPage && rows.length > JOURNAL_PAGE_SIZE && (
+          <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+              SHOWING {(page - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(page * JOURNAL_PAGE_SIZE, rows.length)} OF {rows.length} — PAGE {page} OF {totalPages}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+                className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+              >
+                PREVIOUS
+              </button>
+              <button
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+                className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+              >
+                NEXT
+              </button>
+            </div>
+          </div>
+        )}
+      </>
     );
   };
 
@@ -422,8 +457,8 @@ export default function RvPage() {
   const renderTab = () => {
     if (!report) return null;
     switch (activeTab) {
-      case "revenue": return journalTable(report.revenue, `Amount (${currency})`, true);
-      case "payments": return journalTable(report.payments, `Amount (${currency})`);
+      case "revenue": return journalTable(report.revenue, `Amount (${currency})`, true, revenuePage, setRevenuePage);
+      case "payments": return journalTable(report.payments, `Amount (${currency})`, false, paymentsPage, setPaymentsPage);
       case "summary": return summaryTable(report);
       default: return null;
     }
