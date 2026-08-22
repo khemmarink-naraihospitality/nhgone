@@ -189,6 +189,16 @@ const STOP_CELL: Record<Exclude<StopState, "none">, { symbol: string; cls: strin
   reopen: { symbol: "o", cls: "text-cyan-700 font-bold bg-cyan-400/15", title: "Re-open" },
 };
 
+// The Occupancy tab's own `heat` tops out at 14% opacity, which works there
+// because the number is printed in the cell anyway. On the calendar it left a
+// 40%-occupied night at ~6% tint - invisible, and read as "no data". This
+// scale is far stronger, and the calendar prints the figure too.
+const calendarHeat = (v: number | null | undefined) => {
+  if (v === null || v === undefined) return undefined;
+  const a = Math.max(0, Math.min(100, v)) / 100;
+  return { backgroundColor: `color-mix(in srgb, var(--text-primary) ${(a * 38).toFixed(1)}%, transparent)` };
+};
+
 const MONTH_NAMES = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY",
   "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
@@ -801,11 +811,17 @@ export default function RevenuePage() {
                 </span>
                 <span className="flex items-center gap-2">
                   <span className="inline-flex">
-                    {[10, 40, 70, 95].map((v) => (
-                      <span key={v} style={heat(v)} className="w-4 h-6 border border-[var(--text-primary)]/14" />
+                    {[15, 45, 75].map((v) => (
+                      <span
+                        key={v}
+                        style={calendarHeat(v)}
+                        className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 text-[10px] text-[var(--text-primary)]/70 tabular-nums"
+                      >
+                        {v}
+                      </span>
                     ))}
                   </span>
-                  Occupancy below the line — darker is fuller (hover any night for the figure)
+                  Occupancy % on nights below the line — darker is fuller
                 </span>
               </div>
 
@@ -845,15 +861,16 @@ export default function RevenuePage() {
                                 return (
                                   <td
                                     key={day}
-                                    // Every night carries its occupancy as a tint, not just the
-                                    // ones over the line - otherwise a property whose forward book
-                                    // is still filling shows an empty grid that reads as "no data"
-                                    // when it actually means "nothing sold out yet".
-                                    style={style ? undefined : heat(value)}
+                                    // Every night shows its own occupancy figure, not just the ones
+                                    // over the line. A grid that only marks sold-out nights is
+                                    // blank for any property whose forward book is still filling,
+                                    // which reads as "no data" when it means "nothing sold out
+                                    // yet" - printing the number removes the ambiguity entirely.
+                                    style={style ? undefined : calendarHeat(value)}
                                     title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
-                                    className={`text-center text-[12px] p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? style.cls : ""}`}
+                                    className={`text-center p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? `text-[12px] ${style.cls}` : "text-[10px] text-[var(--text-primary)]/70 tabular-nums"}`}
                                   >
-                                    {style ? style.symbol : ""}
+                                    {style ? style.symbol : value === null || value === undefined ? "" : Math.round(value)}
                                   </td>
                                 );
                               })}
@@ -868,9 +885,9 @@ export default function RevenuePage() {
 
               <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
                 Built from the Occupancy by Room Type figures above, so it follows whichever property, mode and
-                snapshot are loaded there. A blank-looking month means nothing has reached the threshold yet, not
-                missing data — the tint shows where demand is building, and lowering the threshold surfaces the
-                nights getting close. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
+                snapshot are loaded there. Every night shows its occupancy percentage; a month with no X simply
+                has nothing at or above the threshold yet, which is not the same as missing data — lower the
+                threshold to surface the nights getting close. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
                 stored snapshot — until a second morning has been captured there is nothing to compare against, and
                 every stop is shown as existing rather than flagged as new.
               </p>
