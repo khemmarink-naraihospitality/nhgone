@@ -377,6 +377,33 @@ export default function RvPage() {
                 <td className={`${numCls} font-bold`}>{fmtMoney(r.amount)}</td>
               </tr>
             ))}
+            {setPage && rows.length > JOURNAL_PAGE_SIZE && (
+              <tr>
+                <td colSpan={cols} className="p-0">
+                  <div className="p-4 flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                      SHOWING {(page - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(page * JOURNAL_PAGE_SIZE, rows.length)} OF {rows.length} — PAGE {page} OF {totalPages}
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setPage(Math.max(1, page - 1))}
+                        disabled={page === 1}
+                        className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                      >
+                        PREVIOUS
+                      </button>
+                      <button
+                        onClick={() => setPage(Math.min(totalPages, page + 1))}
+                        disabled={page === totalPages}
+                        className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
+                      >
+                        NEXT
+                      </button>
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            )}
             {rows.length > 0 && (
               <tr className="bg-[var(--text-primary)]/5">
                 <td className={`${tdCls} font-bold`} colSpan={cols - 2}>Total</td>
@@ -386,29 +413,6 @@ export default function RvPage() {
             )}
           </tbody>
         </table>
-        {setPage && rows.length > JOURNAL_PAGE_SIZE && (
-          <div className="p-4 border-t border-[var(--text-primary)]/10 flex flex-col sm:flex-row justify-between items-center gap-3">
-            <div className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
-              SHOWING {(page - 1) * JOURNAL_PAGE_SIZE + 1}–{Math.min(page * JOURNAL_PAGE_SIZE, rows.length)} OF {rows.length} — PAGE {page} OF {totalPages}
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(Math.max(1, page - 1))}
-                disabled={page === 1}
-                className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
-              >
-                PREVIOUS
-              </button>
-              <button
-                onClick={() => setPage(Math.min(totalPages, page + 1))}
-                disabled={page === totalPages}
-                className="px-4 py-1.5 border border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/5 disabled:opacity-20 transition-all"
-              >
-                NEXT
-              </button>
-            </div>
-          </div>
-        )}
       </>
     );
   };
