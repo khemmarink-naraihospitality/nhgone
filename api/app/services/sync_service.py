@@ -3633,6 +3633,23 @@ class SyncService:
             "secondary_tax": {"codes": {"TH-PROVINCIAL-1%"}, "gl_code": "21609", "department": "", "label": "VAT"},
             "guest_ledger": ("21203", "000"),
         },
+        # Koh Tao books almost everything through its outlet tills, so its
+        # revenue GLs come entirely from the synced accountingCategories
+        # overrides (verified exact against its own file: room 237,226.22,
+        # F&B 22,793.93/30,834.54, laundry, transport, retail all to the
+        # satang) and this chart carries only what an override cannot supply -
+        # the payment accounts, the two tax buckets and the balancing row.
+        "Lub d Koh Tao Tanote Bay": {
+            "payments": {
+                "CashPayment":       ("11110", "0"),
+                "CreditCardPayment": ("11403", "0"),
+            },
+            "revenue": [],
+            "vat": ("21600", ""),
+            "vat_tax_codes": {"TH-2024-7%"},
+            "secondary_tax": {"codes": {"TH-PROVINCIAL-1%"}, "gl_code": "21609", "department": "", "label": "VAT"},
+            "guest_ledger": ("21203", "000"),
+        },
         "Marasca Samui": {
             "payments": {
                 "CashPayment":                   ("11110", "000"),
@@ -3806,10 +3823,15 @@ class SyncService:
         "MasterCard": "Mastercard",   # a card externally charged (not via terminal) still gets MEWS's card-brand spelling
     }
 
-    # Marasca books every cash payment as the flat label "Cash on Sales" - no
-    # currency, no notes suffix - unlike every other property's "Cash payment
-    # THB (...)" pattern. Confirmed against all 17 of its cash rows.
-    _RV_CASH_LABEL_OVERRIDES = {"Marasca Samui": "Cash on Sales"}
+    # Was {"Marasca Samui": "Cash on Sales"}, on the reading that Marasca
+    # labels every cash payment that way. It doesn't: "Cash on Sales" is the
+    # name its POS till gives its OWN cash line, and those rows now arrive
+    # from outletItems carrying that name themselves. Marasca's front-desk
+    # cash payments read "Cash payment THB (Bill#05477)" like everywhere
+    # else, so the override was renaming real payments to a label that
+    # belongs to a different ledger. Kept as an empty hook for any property
+    # that genuinely does relabel cash.
+    _RV_CASH_LABEL_OVERRIDES: dict = {}
 
     async def _rv_market_segments(self, property_name: str, items: list, stay_service_id) -> dict:
         """Maps stay-service ServiceOrderIds to their market segment code.
@@ -4123,13 +4145,18 @@ class SyncService:
         start_iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = (day + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        all_items, all_payments, services_res = await asyncio.gather(
+        all_items, all_payments, all_outlet_items, services_res = await asyncio.gather(
             self._rv_fetch_paged(
                 property_name, "/api/connector/v1/orderItems/getAll", "OrderItems",
                 {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}}),
             self._rv_fetch_paged(
                 property_name, "/api/connector/v1/payments/getAll", "Payments",
                 {"CreatedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}}),
+            # Outlet (POS) tills are a SEPARATE ledger in MEWS and never
+            # appear in orderItems/payments - see _rv_outlet_rows.
+            self._rv_fetch_paged(
+                property_name, "/api/connector/v1/outletItems/getAll", "OutletItems",
+                {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}}),
             mews_client.post(
                 "/api/connector/v1/services/getAll",
                 {"Limitation": {"Count": 100}},
@@ -4204,6 +4231,52 @@ class SyncService:
             row["amount"] += sc_tax_total
             row["count"] += 1
 
+        # --- Outlet (POS) tills --------------------------------------------
+        # Restaurant/bar/retail sales rung up on a MEWS Outlet are a separate
+        # ledger: they are NOT order items and their settlements are NOT
+        # payments, so both feeds above return nothing for them. Two of our
+        # properties run real outlets and were silently short a whole
+        # department because of it - Koh Tao books ALL its food and beverage
+        # this way (30110/30115/30210/30215/30550 came out as a flat 0.00
+        # against 22,793/30,834/2,767/13,052/990 in its own RV file), and
+        # Marasca splits F&B across both ledgers (its Food Cabanas - Lunch is
+        # 10,373.77 of order items plus 25,488.39 of outlet items, which is
+        # the 35,862.16 its file reports).
+        #
+        # Outlet lines carry no market segment and no TaxValues - an outlet's
+        # tax is rung up as its own line ("TAX", "VAT") against its own
+        # accounting category - so they never feed vat_total and never take
+        # the ABBSU/V07 stamp. GL and department come from the accounting
+        # category alone, the same accountingCategories chart the overrides
+        # are synced from.
+        outlet_payments = []
+        for item in all_outlet_items:
+            amount = item.get("UnitAmount") or {}
+            if amount.get("Currency"):
+                currencies[amount["Currency"]] += 1
+            net = (amount.get("NetValue") or 0.0) * (item.get("UnitCount") or 1)
+            name = item.get("Name") or ""
+            category = overrides.get(item.get("AccountingCategoryId") or "") or {}
+            gl = category.get("gl_code") or ""
+            dept = category.get("department") or ""
+            if item.get("Type") == "Payment":
+                # Money in, so MEWS signs it negative exactly like a normal
+                # payment; the row below flips it back to a magnitude.
+                outlet_payments.append({
+                    "gl_code": gl, "department": dept, "name": name,
+                    "amount": -net, "count": 1, "unmapped": not gl,
+                })
+                continue
+            # Revenue and NonRevenue alike: discounts arrive as NonRevenue
+            # negatives and service charge/tax as NonRevenue positives, and
+            # both belong on the revenue side of the journal against their own
+            # account, which is where the file puts them.
+            key = (gl, dept, name, "")
+            row = revenue.setdefault(key, {"gl_code": gl, "department": dept, "name": name,
+                                           "market_segment": "", "amount": 0.0, "count": 0})
+            row["amount"] += net
+            row["count"] += 1
+
         # --- Payments ------------------------------------------------------
         # One journal row per transaction, not one per GL account. The real
         # file does this and it can't be recovered later: the SunSystems PMSRV
@@ -4260,6 +4333,14 @@ class SyncService:
                 "count": 1,
                 "unmapped": not mapped,
             })
+
+        # Appended rather than merged: an outlet till row is already one line
+        # per transaction. Zero-value ones are kept deliberately - Koh Tao
+        # rings up 41 "ROOM PACKAGE" settlements at 0.00 a day (a package
+        # already paid for through the room) and its RV file carries every
+        # one of them, unlike the MEWS-payment loop above where a zero is
+        # noise.
+        payment_rows.extend(outlet_payments)
 
         # A group whose postings cancel out (a rebate against its own original
         # within the same billing name) nets to zero. MEWS omits those rows and
