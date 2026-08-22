@@ -3468,6 +3468,11 @@ class SyncService:
                 "ExternalPayment/OnlinePayment": ("11406", "0"),
                 "ExternalPayment/WireTransfer":  ("11406", "0"),
                 "ExternalPayment/Invoice":       ("11402", "0"),
+                # MEWS's catch-all external sub-type. Makati is the only
+                # property that actually uses it (an inflight-menu charge
+                # settled outside every other method); its own account, not
+                # folded into 11406 with the online/wire externals.
+                "ExternalPayment/Unspecified":   ("11800", "0"),
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
@@ -3552,6 +3557,11 @@ class SyncService:
                 "CashPayment":                   ("11110", "0"),
                 "CreditCardPayment":             ("11403", "0"),
                 "ExternalPayment/OnlinePayment": ("11399", "0"),
+                # City-ledger invoices, the same 11402 every other property
+                # books them to - department "000" here rather than the "0"
+                # this property's other payment rows carry, taken from the
+                # file's own KILROY invoice row rather than assumed.
+                "ExternalPayment/Invoice":       ("11402", "000"),
             },
             "revenue": [
                 ("no show",     "30010", "111"),
@@ -3598,6 +3608,9 @@ class SyncService:
                 "ExternalPayment/Visa":          ("11403", "000"),
                 "ExternalPayment/MasterCard":    ("11403", "000"),
                 "ExternalPayment/Amex":          ("11403", "000"),
+                # City-ledger invoices (this property's file books DTR02 and
+                # the SLH/Hilton settlements here), same 11402 as elsewhere.
+                "ExternalPayment/Invoice":       ("11402", "000"),
             },
             "revenue": [
                 ("room adjustment", "30005", "111"),
@@ -3744,6 +3757,31 @@ class SyncService:
         "Group Leisure Ad-Hoc": "106",
         "Travel Agent":         "",
     }
+
+    # MEWS caps a single getAll response and hands back a Cursor to continue
+    # from. Both of the RV report's own feeds really do overflow it: Lub d Koh
+    # Samui posted 1,133 order items on 21-Aug-2026, so the un-paged call
+    # silently returned the first 1,000 and dropped 133 - revenue that simply
+    # vanished from the journal with nothing to show anything was missing.
+    # Stop on a short page rather than on a missing Cursor: MEWS returns a
+    # Cursor on the LAST page too (Chinatown's 642-item day comes back with
+    # one), so trusting it alone would loop forever re-reading the same tail.
+    _RV_PAGE = 1000
+
+    async def _rv_fetch_paged(self, property_name: str, endpoint: str,
+                              collection: str, body: dict) -> list:
+        out, cursor = [], None
+        while True:
+            limitation = {"Count": self._RV_PAGE}
+            if cursor:
+                limitation["Cursor"] = cursor
+            res = await mews_client.post(
+                endpoint, {**body, "Limitation": limitation}, property_name=property_name)
+            chunk = res.get(collection) or []
+            out.extend(chunk)
+            cursor = res.get("Cursor")
+            if not cursor or len(chunk) < self._RV_PAGE:
+                return out
 
     @staticmethod
     def _rv_payment_key(payment: dict) -> str:
@@ -3919,22 +3957,34 @@ class SyncService:
         MEWS formats it per property - Chinatown returns "Night 8/6/2026" but
         Siem Reap returns "Night 06/08/2026" for the very same night - while
         both properties' RV files write it as M/D/YYYY. Rather than guess which
-        way round an ambiguous date is, the trailing date is only rewritten
-        when it parses (either order) to the day being reported, which is the
-        only date accommodation for that day can carry."""
+        way round an ambiguous date is, a date is only rewritten when it parses
+        (either order) to the day being reported, which is the only date
+        accommodation for that day can carry. A date for any OTHER day - a
+        rebate reversing an earlier night, say - is left exactly as MEWS wrote
+        it, since nothing here can tell 8/9 from 9/8 on a day that isn't this
+        one.
+
+        The date is matched wherever it sits, not just at the end: MEWS
+        suffixes the line when a charge is amended ("Night 8/21/2026 Rebate
+        (Bill 28328)", "Night 8/21/2026 (Originally consumed: 8/21/2026)"),
+        and an end-anchored match skipped exactly those rows - Siam's own
+        rebate line went out as "Night 21/08/2026 Rebate (Bill 28328)" where
+        the real file says "Night 8/21/2026 Rebate (Bill 28328)". Every
+        occurrence is rewritten, so the doubled-date form lands right too."""
         name = name or ""
         if report_day is None:
             return name
-        match = re.search(r"^(.*?)(\d{1,2})/(\d{1,2})/(\d{4})\s*$", name)
-        if not match:
-            return name
-        prefix, first, second, year = match.group(1), int(match.group(2)), int(match.group(3)), int(match.group(4))
-        if year != report_day.year:
-            return name
-        if not ((first, second) == (report_day.month, report_day.day)
-                or (second, first) == (report_day.month, report_day.day)):
-            return name
-        return f"{prefix}{report_day.month}/{report_day.day}/{report_day.year}"
+
+        def rewrite(match):
+            first, second, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+            if year != report_day.year:
+                return match.group(0)
+            if not ((first, second) == (report_day.month, report_day.day)
+                    or (second, first) == (report_day.month, report_day.day)):
+                return match.group(0)
+            return f"{report_day.month}/{report_day.day}/{report_day.year}"
+
+        return re.sub(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", rewrite, name)
 
     def _rv_gl_overrides(self, property_name: str) -> dict:
         """Per-AccountingCategoryId GL overrides from rv_gl_mappings, keyed by
@@ -4073,19 +4123,13 @@ class SyncService:
         start_iso = day.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         end_iso = (day + timedelta(days=1)).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        items_res, pays_res, services_res = await asyncio.gather(
-            mews_client.post(
-                "/api/connector/v1/orderItems/getAll",
-                {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso},
-                 "Limitation": {"Count": 1000}},
-                property_name=property_name,
-            ),
-            mews_client.post(
-                "/api/connector/v1/payments/getAll",
-                {"CreatedUtc": {"StartUtc": start_iso, "EndUtc": end_iso},
-                 "Limitation": {"Count": 1000}},
-                property_name=property_name,
-            ),
+        all_items, all_payments, services_res = await asyncio.gather(
+            self._rv_fetch_paged(
+                property_name, "/api/connector/v1/orderItems/getAll", "OrderItems",
+                {"ConsumedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}}),
+            self._rv_fetch_paged(
+                property_name, "/api/connector/v1/payments/getAll", "Payments",
+                {"CreatedUtc": {"StartUtc": start_iso, "EndUtc": end_iso}}),
             mews_client.post(
                 "/api/connector/v1/services/getAll",
                 {"Limitation": {"Count": 100}},
@@ -4098,9 +4142,9 @@ class SyncService:
         stay = self._resolve_stay_service(services_res.get("Services", []))
 
         # --- Revenue -------------------------------------------------------
-        live_items = [i for i in items_res.get("OrderItems", [])
+        live_items = [i for i in all_items
                       if i.get("AccountingState") != "Canceled"]
-        skipped_canceled = len(items_res.get("OrderItems", [])) - len(live_items)
+        skipped_canceled = len(all_items) - len(live_items)
         segments = await self._rv_market_segments(
             property_name, live_items, stay.get("Id") if stay else None)
 
@@ -4178,7 +4222,7 @@ class SyncService:
         # instead of once. Dedup by Id so it's counted exactly once.
         seen_payment_ids = set()
         live_payments = []
-        for pay in pays_res.get("Payments", []):
+        for pay in all_payments:
             if pay.get("State") == "Canceled":
                 continue
             # GhostPayments are MEWS's internal balancing placeholders, not
