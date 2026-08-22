@@ -3870,7 +3870,15 @@ class SyncService:
         except Exception as e:
             logger.info(f"RV: market segments unavailable for {property_name} ({e})")
             return {}
-        names = {s.get("Id"): s.get("Name") for s in segments_res.get("BusinessSegments", [])}
+        # Stripped, because MEWS stores whatever was typed into the segment
+        # name and several are saved with a trailing space - Koh Tao's are
+        # literally "Travel Agent " and "Group Business Series ". An exact
+        # lookup silently missed those and left the code blank, which is how
+        # six of its rows (its whole 107 bucket, Night 37,500.51 and the
+        # service charge and breakfast that follow the same reservations)
+        # went out unsegmented against a file that segments them.
+        names = {s.get("Id"): (s.get("Name") or "").strip()
+                 for s in segments_res.get("BusinessSegments", [])}
         return {rid: codes.get(names.get(bsid) or "", "")
                 for rid, bsid in business_segment_ids.items()}
 
