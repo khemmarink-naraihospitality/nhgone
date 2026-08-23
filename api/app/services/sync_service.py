@@ -2434,8 +2434,16 @@ class SyncService:
         ("first_name", "ชื่อ\nFirst Name *"), ("middle_name", "ชื่อกลาง\nMiddle Name"),
         ("last_name", "นามสกุล\nLast Name"), ("gender", "เพศ\nGender *"),
         ("passport_no", "เลขหนังสือเดินทาง\nPassport No. *"), ("nationality", "สัญชาติ\nNationality *"),
-        ("birth_date", "วัน เดือน ปี เกิด\nBirth Date DD/MM/YYYY"),
-        ("check_out_date", "วันที่แจ้งออกจากที่พัก\nCheck-out Date DD/MM/YYYY"),
+        # Both date columns carry the government form's own full instruction
+        # text, era marker and worked examples included - not an abbreviated
+        # "DD/MM/YYYY". The examples are load-bearing on the real form: they
+        # are what tell the filer the year is A.D. (ค.ศ.) rather than the
+        # Buddhist era used on RR4, and that an unknown day or month is
+        # written as 00 rather than left blank. Confirmed character-for-
+        # character against the TM30 tab of all six properties' reference
+        # sheets, 22-Aug-2026.
+        ("birth_date", "วัน เดือน ปี เกิด\nBirth Date\nDD/MM/YYYY(ค.ศ. / A.D.) \nเช่น 17/06/1985 หรือ 10/00/1985 หรือ 00/00/1985"),
+        ("check_out_date", "วันที่แจ้งออกจากที่พัก\nCheck-out Date\nDD/MM/YYYY(ค.ศ. / A.D.) \nเช่น 14/06/2023"),
         ("phone", "เบอร์โทรศัพท์\nPhone No."),
     ]
 
