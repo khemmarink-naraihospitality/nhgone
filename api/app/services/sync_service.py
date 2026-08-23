@@ -2331,10 +2331,7 @@ class SyncService:
         # Bangkok, among others) - proving the Parameter tab's "Start"
         # value isn't authoritative for which guests the Arrival-mode
         # export actually includes, unlike ImportInhouse's In-house-mode
-        # report where it is. Reverted; plain midnight is still correct.
-        # Yunmi Kang (created 22-Aug 23:17, checked in 23-Aug 00:48 -
-        # scheduled StartUtc snapped to exactly the midnight tick) is a
-        # one-guest walk-in edge case, not a systemic window problem.
+        # report where it is. Plain midnight-to-midnight is correct.
         #
         # The upper bound used to be day_end_utc, the RR4 window's close,
         # which let in guests who arrived in the small hours of the NEXT
@@ -2344,9 +2341,25 @@ class SyncService:
         # day's notification, and MEWS's own Arrival export excludes them.
         next_midnight_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
 
+        # Note which end is inclusive: a StartUtc landing EXACTLY on a
+        # midnight tick is filed under the day that is ENDING, not the one
+        # beginning - so this day's window is (00:00, next 00:00]. Same
+        # principle get_rr4_report already encodes on its own boundary (a
+        # checkout booked for exactly 00:00 means the guest slept the
+        # previous night - the Wiegratz family, Koh Tao 109/110), which is
+        # why both halves flip together rather than this being an arbitrary
+        # off-by-one. Confirmed against the 22-Aug-2026 reference sheets:
+        # Chinatown's only two midnight-tick guests sit one on each end and
+        # BOTH were filed the other way by a [00:00, next 00:00) window -
+        # Nam Ann Chia (StartUtc exactly 22-Aug 00:00, on the 21st's sheet,
+        # we wrongly added her to the 22nd) and Yunmi Kang (StartUtc exactly
+        # 23-Aug 00:00, on the 22nd's sheet, we wrongly dropped her). This
+        # form matches all 6 properties exactly, 289 guests, zero diffs;
+        # the other five have no midnight-tick guests that day, so it is
+        # also a no-op for every one of them.
         def in_window(ts):
             t = parse_utc(ts)
-            return t is not None and day <= t < next_midnight_utc
+            return t is not None and day < t <= next_midnight_utc
 
         def gregorian_date(ts):
             t = parse_utc(ts)
