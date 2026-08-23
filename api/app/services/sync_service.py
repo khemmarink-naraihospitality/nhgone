@@ -3643,6 +3643,12 @@ class SyncService:
             "payments": {
                 "CashPayment":       ("11110", "0"),
                 "CreditCardPayment": ("11403", "0"),
+                "ExternalPayment/Invoice":    ("11402", "0"),
+                # A card externally charged (not through the terminal) still
+                # settles to the same 11403 as a normal card payment - the
+                # same rule Koh Samui's chart already uses for its own
+                # ExternalPayment/Visa|MasterCard|Amex rows.
+                "ExternalPayment/MasterCard": ("11403", "0"),
             },
             "revenue": [],
             "vat": ("21600", ""),
@@ -3907,7 +3913,8 @@ class SyncService:
                 cards[card.get("Id")] = card
         return cards
 
-    def _rv_payment_description(self, pay: dict, cards: dict, property_name: str = "") -> str:
+    def _rv_payment_description(self, pay: dict, cards: dict, property_name: str = "",
+                                  force_payment_verb: bool = False) -> str:
         """Rebuilds the per-transaction narrative MEWS writes into field 8,
         verified line-by-line against the real file."""
         ptype = pay.get("Type") or ""
@@ -3923,7 +3930,16 @@ class SyncService:
         # real file - "Cash refund THB", "Card refund (...)", "External refund
         # (Prepayment)" - and it is only the wording that changes; the D/C flag
         # is derived from the amount separately.
-        verb = "refund" if (amount.get("NetValue") or 0.0) > 0 else "payment"
+        #
+        # GhostPayment is the one exception: MEWS narrates BOTH sides of a
+        # Ghost pair as "payment", never "refund", regardless of which way the
+        # amount points - confirmed against Chinatown's 22-Aug-2026 retry pair,
+        # whose credit-side Ghost row still reads "Card payment (...)" not
+        # "Card refund (...)". A Ghost isn't a real refund action a guest
+        # authorised; it's MEWS's own internal correction, and its wording
+        # says so.
+        verb = "payment" if force_payment_verb else (
+            "refund" if (amount.get("NetValue") or 0.0) > 0 else "payment")
 
         if ptype == "CashPayment":
             override = self._RV_CASH_LABEL_OVERRIDES.get(property_name)
@@ -4306,10 +4322,13 @@ class SyncService:
         for pay in all_payments:
             if pay.get("State") == "Canceled":
                 continue
-            # GhostPayments are MEWS's internal balancing placeholders, not
-            # money - they net to zero across the day and have no journal row.
-            if pay.get("Type") == "GhostPayment":
-                continue
+            # GhostPayment was assumed to be MEWS's own internal balancing
+            # placeholder and excluded on that theory. The real file proves
+            # that wrong: Chinatown, 22-Aug-2026, carries a matched
+            # +2,403.03/-2,403.03 GhostPayment pair (a failed charge and its
+            # retry) as two ordinary journal rows. Kept in now - a Ghost pair
+            # still nets to zero on any day that has one, so this can only
+            # add the rows the file already expects, never move a balance.
             if not ((pay.get("Amount") or {}).get("NetValue") or 0.0):
                 continue
             pay_id = pay.get("Id")
@@ -4319,15 +4338,47 @@ class SyncService:
                 seen_payment_ids.add(pay_id)
             live_payments.append(pay)
 
+        # A GhostPayment carries no card/brand/reference of its own - Data.Ghost
+        # only points at the real payment it's tracking via OriginalPaymentId,
+        # and MEWS's file describes the Ghost row exactly as that original
+        # ("Card payment (Mastercard ****8700 Virtual, 459909)" for a Ghost
+        # whose original was that Mastercard charge). Resolve it once so the
+        # key/description builders below can treat a Ghost as its original's
+        # Type+Data+Identifier while still using the GHOST's own Amount/Notes
+        # - the two must not be conflated, or the row's own D/C and any
+        # front-desk note on the correction itself would be lost.
+        ghost_original_ids = {
+            ((p.get("Data") or {}).get("Ghost") or {}).get("OriginalPaymentId")
+            for p in live_payments if p.get("Type") == "GhostPayment"
+        }
+        ghost_original_ids.discard(None)
+        ghost_originals = {}
+        if ghost_original_ids:
+            orig_res = await mews_client.post(
+                "/api/connector/v1/payments/getAll",
+                {"PaymentIds": list(ghost_original_ids), "Limitation": {"Count": len(ghost_original_ids)}},
+                property_name=property_name,
+            )
+            ghost_originals = {o["Id"]: o for o in orig_res.get("Payments", [])}
+
+        def effective_pay(pay: dict) -> dict:
+            if pay.get("Type") != "GhostPayment":
+                return pay
+            original = ghost_originals.get(((pay.get("Data") or {}).get("Ghost") or {}).get("OriginalPaymentId"))
+            if not original:
+                return pay
+            return {**original, "Amount": pay.get("Amount"), "Notes": pay.get("Notes")}
+
         cards = await self._rv_load_credit_cards(property_name, {
-            ((p.get("Data") or {}).get("CreditCard") or {}).get("CreditCardId")
-            for p in live_payments if p.get("Type") == "CreditCardPayment"
+            ((effective_pay(p).get("Data") or {}).get("CreditCard") or {}).get("CreditCardId")
+            for p in live_payments if effective_pay(p).get("Type") == "CreditCardPayment"
         })
 
         payment_rows = []
         for pay in live_payments:
             net = (pay.get("Amount") or {}).get("NetValue") or 0.0
-            key = self._rv_payment_key(pay)
+            eff = effective_pay(pay)
+            key = self._rv_payment_key(eff)
             mapped = (chart.get("payments") or {}).get(key)
             # An unrecognised payment type must NOT be quietly booked to some
             # real GL account - it's left unmapped so the UI can flag it and
@@ -4336,7 +4387,9 @@ class SyncService:
             payment_rows.append({
                 "gl_code": gl,
                 "department": dept,
-                "name": self._rv_payment_description(pay, cards, property_name) if mapped else (key or "Unknown payment type"),
+                "name": self._rv_payment_description(
+                    eff, cards, property_name, force_payment_verb=pay.get("Type") == "GhostPayment"
+                ) if mapped else (key or "Unknown payment type"),
                 "amount": -net,            # flip to positive money-in
                 "count": 1,
                 "unmapped": not mapped,
@@ -4515,14 +4568,20 @@ class SyncService:
             own row. A raw newline embedded in free-text guest/payment notes
             (seen live: a Notes field of literally "EXTEND\\n") is just as
             fatal - split into "|".join(lines) it breaks one logical row into
-            two ragged ones - so newlines are collapsed to spaces first; a
+            two ragged ones - so each newline/pipe becomes a space; a
             literal "|" would misalign every field after it the same way, so
             that's stripped too. The same all-or-nothing stake applies to
             non-ASCII: see _ascii_fold."""
-            # Collapse embedded newlines/pipes to a space (not .strip() - a
-            # few real product names carry a deliberate trailing space, e.g.
-            # "Coke ", that the real file preserves and this must not eat).
-            desc_clean = _ascii_fold(re.sub(r"[\r\n|]+", " ", description or ""))
+            # Each separator maps to its OWN space, not a collapsed run - Koh
+            # Samui's own Notes field is literally "...C/S\n\n" (two
+            # newlines), and the real file's description ends "...C/S  "
+            # (two trailing spaces). A run-collapsing regex was tried first
+            # and silently ate the second character; every multi-separator
+            # case checked against the file confirms 1:1, never N:1.
+            # Not .strip() either - a few real product names carry a
+            # deliberate trailing space, e.g. "Coke ", that the real file
+            # preserves and this must not eat.
+            desc_clean = _ascii_fold(re.sub(r"[\r\n|]", " ", description or ""))
             dc = natural_dc if amount >= 0 else ("D" if natural_dc == "C" else "C")
             value = f"{abs(amount):.2f}"
             # Fields 21-41 are blank except Analysis 6 (field 22), which the
