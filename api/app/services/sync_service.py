@@ -3647,8 +3647,20 @@ class SyncService:
                 # A card externally charged (not through the terminal) still
                 # settles to the same 11403 as a normal card payment - the
                 # same rule Koh Samui's chart already uses for its own
-                # ExternalPayment/Visa|MasterCard|Amex rows.
+                # ExternalPayment/Visa|MasterCard|Amex rows. Found via a
+                # 21-day sweep (2026-08-23) that also caught Visa going
+                # unmapped 10 of those days.
                 "ExternalPayment/MasterCard": ("11403", "0"),
+                "ExternalPayment/Visa":       ("11403", "0"),
+                # Same sweep: WireTransfer went unmapped 17 of 21 days -
+                # this property's single biggest export-blocking gap. Not a
+                # guess: Koh Tao's own outlet till posts a front-desk-style
+                # bank transfer as the literal line "BANK TRANSFER" to this
+                # exact GL/department, confirmed against the real file on
+                # both 21- and 22-Aug-2026. A wire transfer settled through
+                # MEWS's payments feed instead of the till is the same money
+                # by a different door.
+                "ExternalPayment/WireTransfer": ("11399", "0"),
             },
             "revenue": [],
             "vat": ("21600", ""),
