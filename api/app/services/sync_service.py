@@ -2319,6 +2319,23 @@ class SyncService:
         # records 02:05 to 02:05, and every other property's Master tab
         # shows the same split (ImportCP always on midnight).
         #
+        # A later Chinatown export (23-Aug-2026) showed Parameter-ImportCP's
+        # own "Start" field had drifted to read 12:15 too, matching
+        # ImportInhouse exactly - which looked at first like the window
+        # itself had changed (2 guests, Nam Ann Chia/Yunmi Kang, seemed to
+        # confirm it). It hadn't: re-testing a 12:15-anchored window against
+        # that day's FULL 71-guest reference list (not just those 2)
+        # excluded 13 real guests who check in most days between local
+        # midnight and 12:15 and are correctly on the reference sheet
+        # (Thomas Herd 12:09, Emma Wolfe 12:03, Laure Cautillo 11:12
+        # Bangkok, among others) - proving the Parameter tab's "Start"
+        # value isn't authoritative for which guests the Arrival-mode
+        # export actually includes, unlike ImportInhouse's In-house-mode
+        # report where it is. Reverted; plain midnight is still correct.
+        # Yunmi Kang (created 22-Aug 23:17, checked in 23-Aug 00:48 -
+        # scheduled StartUtc snapped to exactly the midnight tick) is a
+        # one-guest walk-in edge case, not a systemic window problem.
+        #
         # The upper bound used to be day_end_utc, the RR4 window's close,
         # which let in guests who arrived in the small hours of the NEXT
         # day: 7 rows on 20-Aug-2026 alone (Chinatown's room 333 pair plus
