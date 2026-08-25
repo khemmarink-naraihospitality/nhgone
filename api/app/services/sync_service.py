@@ -2188,6 +2188,25 @@ class SyncService:
         then the Thai column headers, then one row per guest. Returns
         (bytes, filename)."""
         report = await self.get_rr4_report(property_name, date)
+        property_code = property_name
+        if self.supabase:
+            try:
+                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+                    "property_name", property_name).limit(1).execute()
+                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
+            except Exception:
+                pass
+        return self._render_rr4_export(report, date, property_code)
+
+    def _render_rr4_export(self, report: dict, date: str, property_code: str) -> tuple:
+        """The actual .xlsx rendering behind get_rr4_export, split out so the
+        RR4/TM30 daily email (sync_service.send_rr4_tm30_property_email/
+        send_rr4_tm30_bundled_digest) can render straight from an
+        already-fetched report - either the live one get_rr4_export just
+        built, or one read back out of rr4_tm30_sync (the storage the daily
+        import job already populates) so the email never re-hits MEWS on
+        top of that day's import. Same reasoning as get_st_report_export
+        reading st_files_sync instead of re-fetching live."""
         n_cols = len(self._RR4_COLUMNS)
 
         wb = Workbook()
@@ -2263,14 +2282,6 @@ class SyncService:
         buf = BytesIO()
         wb.save(buf)
 
-        property_code = property_name
-        if self.supabase:
-            try:
-                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
-                    "property_name", property_name).limit(1).execute()
-                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
-            except Exception:
-                pass
         yyyymmdd = date.replace("-", "")
         filename = f"{property_code}_RR4_{yyyymmdd}.xlsx"
         return buf.getvalue(), filename
@@ -2464,7 +2475,19 @@ class SyncService:
         upload template uses (bilingual header row, one row per foreign
         arrival). Returns (bytes, filename)."""
         report = await self.get_tm30_report(property_name, date)
+        property_code = property_name
+        if self.supabase:
+            try:
+                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+                    "property_name", property_name).limit(1).execute()
+                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
+            except Exception:
+                pass
+        return self._render_tm30_export(report, date, property_code)
 
+    def _render_tm30_export(self, report: dict, date: str, property_code: str) -> tuple:
+        """The actual .xlsx rendering behind get_tm30_export - split out for
+        the same reason as _render_rr4_export above, same caller."""
         wb = Workbook()
         ws = wb.active
         ws.title = "TM30"
@@ -2482,14 +2505,6 @@ class SyncService:
         buf = BytesIO()
         wb.save(buf)
 
-        property_code = property_name
-        if self.supabase:
-            try:
-                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
-                    "property_name", property_name).limit(1).execute()
-                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
-            except Exception:
-                pass
         yyyymmdd = date.replace("-", "")
         filename = f"{property_code}_TM30_{yyyymmdd}.xlsx"
         return buf.getvalue(), filename
