@@ -2234,19 +2234,34 @@ class SyncService:
             cell.font = Font(size=9)
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # Columns B/C (date_check_in/time_check_in) get a literal leading
-        # "'" - confirmed against the reference sheet - so the Buddhist-year
-        # dd/mm/yyyy date and the HH.MM time can't get silently
-        # reinterpreted (as a Gregorian date, or as a decimal number) by
-        # Excel or a downstream import. date_check_out does NOT get one -
-        # confirmed against the reference sheet the other way, so a stray
-        # apostrophe there isn't carried into a government filing.
+        # The importer's rule, from its own official example file: the two
+        # DATE columns carry a literal leading "'", the two TIME columns must
+        # NOT. Both halves matter, and having them backwards is why filings
+        # were rejected even though an apostrophe was clearly present -
+        # timeCheckIn shipped "'11.34" (the marker makes it an invalid time)
+        # while dateCheckOut shipped a bare "24/08/2569" (missing the marker
+        # that keeps it a Buddhist-era string instead of a date).
+        #
+        # An earlier comment here claimed the reference sheet proved
+        # date_check_out takes no apostrophe. The generator sheets genuinely
+        # disagree with each other on that cell - Chinatown's formula is
+        # `"'" & TEXT(...)` while Samui's and Patong's is a bare `TEXT(...)`
+        # - so they cannot settle it; the importer's example file is the
+        # authority and it quotes both dates.
+        quoted = {"date_check_in", "date_check_out"}
         for i, row in enumerate(report["rows"], start=1):
             for col, (key, _label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
                 value = row.get(key, "")
-                if key in ("date_check_in", "time_check_in") and value:
+                if key in quoted and value:
                     value = f"'{value}"
-                ws.cell(field_key_row + i, col, value)
+                cell = ws.cell(field_key_row + i, col, value)
+                # Text, like the reference sheet, which uses "@" on all 27
+                # columns. Without it Excel is free to reinterpret a value the
+                # moment the file is opened or re-saved - a dd/mm/yyyy
+                # Buddhist-era date as a Gregorian one, an "08.21" time as the
+                # number 8.21 (losing the leading zero), or a 13-digit national
+                # ID as scientific notation.
+                cell.number_format = "@"
 
         buf = BytesIO()
         wb.save(buf)
