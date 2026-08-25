@@ -11,6 +11,7 @@ from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, APPROVED_TEMPLATE_KEY,
+    RR4_TM30_DAILY_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
 from app.services import ftp_service
@@ -113,6 +114,17 @@ class StFilesEmailSettingsUpdate(BaseModel):
     enabled: bool = True
 
 class StFilesPerPropertySendNow(BaseModel):
+    property_name: str
+
+class Rr4Tm30EmailSettingsUpdate(BaseModel):
+    subject: str
+    html_template: str
+    recipients: str
+    send_hour: int
+    send_minute: int
+    enabled: bool = True
+
+class Rr4Tm30PerPropertySendNow(BaseModel):
     property_name: str
 
 @router.post("/users")
@@ -774,6 +786,78 @@ async def send_st_files_per_property_email_now(request: StFilesPerPropertySendNo
     try:
         report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
         result = await sync_service.send_st_files_property_email(
+            request.property_name, report_date_str, mark_sent=False, sync_type="manual")
+        if not result["sent"]:
+            raise HTTPException(status_code=400, detail=result["skipped"])
+        return {"status": "success", "message": f"Sent for {request.property_name}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/email-template/rr4-tm30-daily")
+async def get_rr4_tm30_daily_email_template():
+    """Returns the RR4/TM30 daily digest's subject/body plus delivery
+    config, same shape as GET /email-template/st-files-daily."""
+    return {"status": "success", "data": email_service.get_rr4_tm30_daily_settings()}
+
+@router.post("/email-template/rr4-tm30-daily")
+async def save_rr4_tm30_daily_email_template(request: Rr4Tm30EmailSettingsUpdate):
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", RR4_TM30_DAILY_TEMPLATE_KEY).limit(1).execute()
+        payload = {
+            "template_key": RR4_TM30_DAILY_TEMPLATE_KEY,
+            "subject": request.subject,
+            "html_template": request.html_template,
+            "recipients": request.recipients,
+            "send_hour": request.send_hour,
+            "send_minute": request.send_minute,
+            "enabled": request.enabled,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": "RR4/TM30 email settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/email-template/rr4-tm30-daily/send-now")
+async def send_rr4_tm30_daily_email_now():
+    """
+    Manual "Send Test Now" trigger (Admin > Templates > RR4/TM30 Files >
+    All Property) - same shape as send_st_files_daily_email_now: builds and
+    sends ONLY the bundled email immediately, targeting YESTERDAY's report,
+    mark_sent=False so it can never suppress the real scheduled send.
+    """
+    try:
+        report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
+        result = await sync_service.send_rr4_tm30_bundled_digest(report_date_str, mark_sent=False, sync_type="manual")
+        if not result.get("sent"):
+            skipped = "; ".join(result.get("skipped", [])) or "no properties have yesterday's data imported yet"
+            raise HTTPException(status_code=400, detail=f"Nothing sent - {skipped}")
+        return {
+            "status": "success",
+            "message": f"Sent for {len(result['included'])} propert(y/ies)",
+            "included": result["included"],
+            "skipped": result["skipped"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/email-template/rr4-tm30-daily-per-property/send-now")
+async def send_rr4_tm30_per_property_email_now(request: Rr4Tm30PerPropertySendNow):
+    """
+    "Save and Test Email" trigger (Admin > Templates > RR4/TM30 Files >
+    Per-Property) - same shape as send_st_files_per_property_email_now.
+    """
+    try:
+        report_date_str = (datetime.now(ZoneInfo("Asia/Bangkok")).date() - timedelta(days=1)).isoformat()
+        result = await sync_service.send_rr4_tm30_property_email(
             request.property_name, report_date_str, mark_sent=False, sync_type="manual")
         if not result["sent"]:
             raise HTTPException(status_code=400, detail=result["skipped"])

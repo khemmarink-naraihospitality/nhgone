@@ -14,6 +14,8 @@ from app.services.encryption import encryption_service
 from app.services.email_service import (
     email_service, ST_FILES_DAILY_TEMPLATE_KEY, _escape_html,
     DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT, DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE,
+    RR4_TM30_DAILY_TEMPLATE_KEY,
+    DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_SUBJECT, DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_TEMPLATE,
 )
 from app.services import ftp_service
 from app.services.rr4_tm30_reference import RR4_NATIONALITY_CODE, TM30_NATIONALITY_CODE
@@ -4899,6 +4901,273 @@ class SyncService:
                 }).execute()
         except Exception as e:
             logger.warning(f"ST Files daily email: failed to record last_sent_date: {e}")
+
+    # ------------------------------------------------------------- RR4/TM30 email
+    #
+    # Thai Hotel Act filings only - Lub d Siem Reap (Cambodia) and Lub d
+    # Philippines Makati don't file RR4/TM30 at all, so both the bundled
+    # digest and the per-property email skip them outright rather than
+    # sending a report neither property actually needs.
+    _RR4_TM30_EMAIL_EXCLUDED_PROPERTIES = {"Lub d Siem Reap", "Lub d Philippines Makati"}
+
+    def _read_rr4_tm30_cached_day(self, property_name: str, date_str: str) -> Optional[dict]:
+        """Decrypts one already-imported (property, date) row out of
+        rr4_tm30_sync - same table/blob shape api/app/routers/rr4.py's own
+        read_managed_day reads, duplicated here (a router importing into a
+        service is the wrong direction) so send_rr4_tm30_property_email/
+        send_rr4_tm30_bundled_digest can render straight from whatever the
+        daily import job already fetched, with no live MEWS call of their
+        own - same reasoning get_st_report_export has for reading
+        st_files_sync instead of re-fetching live. Returns None if that day
+        hasn't been imported yet; callers treat that as "not ready", same as
+        ST Files treats a missing st_files_sync row."""
+        res = self.supabase.table("rr4_tm30_sync").select("data").eq(
+            "property", property_name).eq("report_date", date_str).limit(1).execute()
+        if not res.data:
+            return None
+        blob = (res.data[0].get("data") or {}).get("blob", "")
+        return json.loads(encryption_service.decrypt(blob))
+
+    def _resolve_property_code(self, property_name: str) -> str:
+        """One-off st_property_code lookup, used by the RR4/TM30 email
+        functions so both attachments for one property share a single query
+        instead of the two _render_rr4_export/_render_tm30_export would
+        otherwise each run when called through get_rr4_export/
+        get_tm30_export directly."""
+        property_code = property_name
+        if self.supabase:
+            try:
+                prop_res = self.supabase.table("property_api_settings").select("st_property_code").eq(
+                    "property_name", property_name).limit(1).execute()
+                property_code = (prop_res.data[0].get("st_property_code") if prop_res.data else None) or property_name
+            except Exception:
+                pass
+        return property_code
+
+    def _build_rr4_tm30_summary_table(self, rows: list) -> str:
+        """
+        Pre-built HTML for the <<StatsTable>> token in the RR4/TM30 daily
+        email (Admin > Templates > RR4/TM30 Files) - same reasoning as
+        _build_st_files_summary_table. rows: list of {"property_name",
+        "property_code", "rr4_count", "tm30_count"} in display order.
+        """
+        if not rows:
+            return '<p style="margin:0; font-size:12px; color:#152A00; opacity:0.6;">No properties included.</p>'
+        body_rows = []
+        for i, row in enumerate(rows):
+            bg = "#ffffff" if i % 2 == 0 else "#FFEFD2"
+            body_rows.append(
+                f'<tr style="background:{bg}; border-bottom:1px solid rgba(21,42,0,0.08);">'
+                f'<td style="padding:7px 10px; text-align:left; font-size:12px; color:#152A00; '
+                f'font-weight:700; white-space:nowrap;">{_escape_html(row["property_name"])}</td>'
+                f'<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; '
+                f'font-variant-numeric:tabular-nums;">{_escape_html(row["property_code"])}</td>'
+                f'<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; '
+                f'font-variant-numeric:tabular-nums;">{row["rr4_count"]}</td>'
+                f'<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; '
+                f'font-variant-numeric:tabular-nums;">{row["tm30_count"]}</td>'
+                f'</tr>'
+            )
+        return (
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">'
+            '<thead><tr style="background:#152A00;">'
+            '<th style="padding:8px 10px; text-align:left; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2; white-space:nowrap;">Property</th>'
+            '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2;">Code</th>'
+            '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2;">RR4 Guests</th>'
+            '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; '
+            'letter-spacing:0.03em; color:#FFEFD2;">TM30 Arrivals</th>'
+            '</tr></thead>'
+            f'<tbody>{"".join(body_rows)}</tbody>'
+            '</table>'
+        )
+
+    def _build_rr4_tm30_property_email(self, prop: str, date_display: str,
+                                        property_code: str, rr4_count: int, tm30_count: int,
+                                        per_property_settings: dict) -> tuple:
+        """Subject/body builder for one property's individual RR4/TM30
+        email, split out for readability - same shape as
+        _build_st_property_email."""
+        subject = per_property_settings["subject"] \
+            .replace("<<Property>>", prop) \
+            .replace("<<PropertyCode>>", property_code) \
+            .replace("<<Date>>", date_display)
+        html_body = per_property_settings["html_template"] \
+            .replace("<<Property>>", prop) \
+            .replace("<<PropertyCode>>", property_code) \
+            .replace("<<Date>>", date_display) \
+            .replace("<<StatsTable>>", self._build_rr4_tm30_summary_table(
+                [{"property_name": prop, "property_code": property_code,
+                  "rr4_count": rr4_count, "tm30_count": tm30_count}]))
+        return subject, html_body
+
+    async def send_rr4_tm30_property_email(self, property_name: str, date_str: str,
+                                            mark_sent: bool = True, sent_date_str: str = None,
+                                            sync_type: str = "auto") -> dict:
+        """
+        Builds and sends ONE property's own RR4/TM30 email (Admin >
+        Templates > RR4/TM30 Files (Per-Property)) - same shape as
+        send_st_files_property_email, reading rr4_tm30_sync (populated by
+        the daily RR4/TM30 auto-import) instead of hitting MEWS live, so
+        the email can never disagree with that day's stored/verified export.
+
+        No rr4_tm30_email_recipients (To) configured is a skip, not fatal -
+        same as no imported data for that day. mark_sent writes THIS
+        property's own rr4_tm30_email_last_sent_date.
+
+        Every outcome logs to sync_logs under target_table="RR4/TM30 Email
+        (Per-Property)".
+        """
+        p_res = self.supabase.table("property_api_settings").select(
+            "id, rr4_tm30_email_recipients, rr4_tm30_email_cc, rr4_tm30_email_bcc, "
+            "rr4_tm30_email_subject, rr4_tm30_email_template"
+        ).eq("property_name", property_name).limit(1).execute()
+        p = p_res.data[0] if p_res.data else {}
+        prop_id = p.get("id")
+        per_property_settings = {
+            "subject": p.get("rr4_tm30_email_subject") or DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_SUBJECT,
+            "html_template": p.get("rr4_tm30_email_template") or DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_TEMPLATE,
+        }
+        date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+
+        try:
+            payload = self._read_rr4_tm30_cached_day(property_name, date_str)
+            if not payload:
+                raise ValueError(f"no imported RR4/TM30 report for {date_str} - import it first")
+            property_code = self._resolve_property_code(property_name)
+            rr4_bytes, rr4_filename = self._render_rr4_export(payload["rr4"], date_str, property_code)
+            tm30_bytes, tm30_filename = self._render_tm30_export(payload["tm30"], date_str, property_code)
+        except Exception as e:
+            reason = f"{property_name}: {str(e)[:150]}"
+            self._log_sync_row(property_name, prop_id, "RR4/TM30 Email (Per-Property)", "error", 0, reason, sync_type)
+            return {"sent": False, "skipped": reason}
+
+        recipients = [e.strip() for e in (p.get("rr4_tm30_email_recipients") or "").split(",") if e.strip()]
+        if not recipients:
+            reason = f"{property_name}: no RR4/TM30 Email Recipients configured (Admin > Templates > RR4/TM30 Files > Per-Property)"
+            self._log_sync_row(property_name, prop_id, "RR4/TM30 Email (Per-Property)", "error", 0, reason, sync_type)
+            return {"sent": False, "skipped": reason}
+        cc = [e.strip() for e in (p.get("rr4_tm30_email_cc") or "").split(",") if e.strip()]
+        bcc = [e.strip() for e in (p.get("rr4_tm30_email_bcc") or "").split(",") if e.strip()]
+
+        subject, html_body = self._build_rr4_tm30_property_email(
+            property_name, date_display, property_code,
+            len(payload["rr4"].get("rows", [])), len(payload["tm30"].get("rows", [])),
+            per_property_settings)
+        email_service.send_email_with_attachments(
+            recipients, subject, html_body,
+            [(rr4_filename, rr4_bytes), (tm30_filename, tm30_bytes)],
+            cc_emails=cc, bcc_emails=bcc)
+        self._log_sync_row(property_name, prop_id, "RR4/TM30 Email (Per-Property)", "success", 1,
+                            f"Email sent to {', '.join(recipients)}", sync_type)
+
+        if mark_sent:
+            try:
+                self.supabase.table("property_api_settings").update(
+                    {"rr4_tm30_email_last_sent_date": sent_date_str or date_str}
+                ).eq("property_name", property_name).execute()
+            except Exception as e:
+                logger.warning(f"RR4/TM30 per-property email: failed to record last_sent_date for {property_name}: {e}")
+
+        return {"sent": True, "skipped": None}
+
+    async def send_rr4_tm30_bundled_digest(self, date_str: str, mark_sent: bool = True,
+                                            sent_date_str: str = None, sync_type: str = "auto") -> dict:
+        """
+        The bundled RR4/TM30 email (Admin > Templates > RR4/TM30 Files) -
+        one RR4+TM30 .xlsx pair per Thai property (see
+        _RR4_TM30_EMAIL_EXCLUDED_PROPERTIES) that already has that day's
+        report imported into rr4_tm30_sync. Standing master copy, same
+        independent-of-per-property-opt-in shape as
+        send_st_files_bundled_digest.
+
+        Logs one sync_logs row per included property, target_table=
+        "RR4/TM30 Email".
+        """
+        settings_row = email_service.get_rr4_tm30_daily_settings()
+        props_res = self.supabase.table("property_api_settings").select(
+            "id, property_name"
+        ).order("property_name").execute()
+        date_display = datetime.strptime(date_str, "%Y-%m-%d").strftime("%d/%m/%Y")
+
+        attachments, included, skipped, table_rows = [], [], [], []
+        prop_ids = {}
+        for p in (props_res.data or []):
+            prop = p["property_name"]
+            if prop in self._RR4_TM30_EMAIL_EXCLUDED_PROPERTIES:
+                continue
+            prop_ids[prop] = p.get("id")
+            try:
+                payload = self._read_rr4_tm30_cached_day(prop, date_str)
+                if not payload:
+                    raise ValueError(f"no imported RR4/TM30 report for {date_str} - import it first")
+                property_code = self._resolve_property_code(prop)
+                rr4_bytes, rr4_filename = self._render_rr4_export(payload["rr4"], date_str, property_code)
+                tm30_bytes, tm30_filename = self._render_tm30_export(payload["tm30"], date_str, property_code)
+                attachments.append((rr4_filename, rr4_bytes))
+                attachments.append((tm30_filename, tm30_bytes))
+                included.append(prop)
+                table_rows.append({
+                    "property_name": prop, "property_code": property_code,
+                    "rr4_count": len(payload["rr4"].get("rows", [])),
+                    "tm30_count": len(payload["tm30"].get("rows", [])),
+                })
+            except Exception as e:
+                reason = f"{prop}: {str(e)[:150]}"
+                skipped.append(reason)
+                self._log_sync_row(prop, prop_ids.get(prop), "RR4/TM30 Email", "error", 0, reason, sync_type)
+
+        if not attachments:
+            return {"sent": False, "included": included, "skipped": skipped}
+
+        recipients = [e.strip() for e in (settings_row["recipients"] or "").split(",") if e.strip()]
+        if not recipients:
+            for prop in included:
+                self._log_sync_row(prop, prop_ids.get(prop), "RR4/TM30 Email", "error", 0,
+                                    "Bundled RR4/TM30 Email has no recipients configured (Admin > Templates)", sync_type)
+            return {"sent": False, "included": [], "skipped": skipped + [f"{p}: bundled email has no recipients configured" for p in included]}
+
+        subject = settings_row["subject"].replace("<<Date>>", date_display)
+        html_body = settings_row["html_template"] \
+            .replace("<<Date>>", date_display) \
+            .replace("<<PropertyCount>>", str(len(included))) \
+            .replace("<<PropertyList>>", ", ".join(included)) \
+            .replace("<<StatsTable>>", self._build_rr4_tm30_summary_table(table_rows))
+
+        email_service.send_email_with_attachments(recipients, subject, html_body, attachments)
+        for prop in included:
+            self._log_sync_row(prop, prop_ids.get(prop), "RR4/TM30 Email", "success", 1,
+                                f"Bundled email sent to {', '.join(recipients)}", sync_type)
+
+        if mark_sent:
+            self._mark_rr4_tm30_daily_sent(settings_row, sent_date_str or date_str)
+
+        return {"sent": True, "included": included, "skipped": skipped}
+
+    def _mark_rr4_tm30_daily_sent(self, settings_row: dict, marker_date: str):
+        """Same-day dedup guard for send_rr4_tm30_bundled_digest - mirrors
+        _mark_st_files_daily_sent."""
+        try:
+            existing = self.supabase.table("email_templates").select("id") \
+                .eq("template_key", RR4_TM30_DAILY_TEMPLATE_KEY).limit(1).execute()
+            if existing.data:
+                self.supabase.table("email_templates").update({"last_sent_date": marker_date}) \
+                    .eq("id", existing.data[0]["id"]).execute()
+            else:
+                self.supabase.table("email_templates").insert({
+                    "template_key": RR4_TM30_DAILY_TEMPLATE_KEY,
+                    "subject": settings_row["subject"],
+                    "html_template": settings_row["html_template"],
+                    "recipients": settings_row["recipients"],
+                    "send_hour": settings_row["send_hour"],
+                    "send_minute": settings_row["send_minute"],
+                    "enabled": True,
+                    "last_sent_date": marker_date,
+                }).execute()
+        except Exception as e:
+            logger.warning(f"RR4/TM30 daily email: failed to record last_sent_date: {e}")
 
     def _log_sync_row(self, prop, prop_id, target, status, count, msg, sync_type="auto"):
         """

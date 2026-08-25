@@ -66,6 +66,48 @@ DEFAULT_ST_FILES_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#
   </table>
 </div>"""
 
+# Same sentinel-row pattern as ST_FILES_DAILY_TEMPLATE_KEY, for the once-a-day
+# RR4 + TM30 export digest (Admin > Templates > RR4/TM30 Files > All
+# Property). Thailand-only: Lub d Siem Reap and Lub d Philippines Makati
+# don't file under the Thai Hotel Act, so this bundled send and the
+# per-property one below both skip them (see
+# sync_service._RR4_TM30_EMAIL_EXCLUDED_PROPERTIES).
+RR4_TM30_DAILY_TEMPLATE_KEY = "rr4_tm30_daily"
+DEFAULT_RR4_TM30_DAILY_RECIPIENTS = "khemmarin.k@lubd.com"
+DEFAULT_RR4_TM30_DAILY_HOUR = 3
+DEFAULT_RR4_TM30_DAILY_MINUTE = 0
+DEFAULT_RR4_TM30_DAILY_SUBJECT = "NHGOne RR4/TM30 — <<Date>>"
+DEFAULT_RR4_TM30_DAILY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 Daily Export</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily RR4 and TM30 filings for <b><<Date>></b>, attached as one .xlsx pair per property (<<PropertyCount>> included).</p>
+        <<StatsTable>>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
+# Built-in fallback for the per-property RR4/TM30 email (Admin > Templates >
+# RR4/TM30 Files > Per-Property) - same "each property independently
+# customizable, null falls back to this" pattern as
+# DEFAULT_ST_FILES_DAILY_PER_PROPERTY_SUBJECT/TEMPLATE.
+DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_SUBJECT = "NHGOne RR4/TM30 — <<Property>> — <<Date>>"
+DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 Daily Export</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily RR4 and TM30 filings for <b><<Property>></b> (<<PropertyCode>>), <b><<Date>></b>, attached as two .xlsx files.</p>
+        <<StatsTable>>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.
@@ -381,6 +423,40 @@ class EmailService:
             "recipients": DEFAULT_ST_FILES_DAILY_RECIPIENTS,
             "send_hour": DEFAULT_ST_FILES_DAILY_HOUR,
             "send_minute": DEFAULT_ST_FILES_DAILY_MINUTE,
+            "enabled": True,
+            "last_sent_date": None,
+            "is_default": True,
+        }
+
+    def get_rr4_tm30_daily_settings(self) -> dict:
+        """Same shape/reasoning as get_st_files_daily_settings, for the
+        bundled RR4/TM30 digest (Admin > Templates > RR4/TM30 Files > All
+        Property)."""
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("email_templates").select(
+                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
+            ).eq("template_key", RR4_TM30_DAILY_TEMPLATE_KEY).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                return {
+                    "subject": row.get("subject") or DEFAULT_RR4_TM30_DAILY_SUBJECT,
+                    "html_template": row.get("html_template") or DEFAULT_RR4_TM30_DAILY_TEMPLATE,
+                    "recipients": row.get("recipients") or DEFAULT_RR4_TM30_DAILY_RECIPIENTS,
+                    "send_hour": row["send_hour"] if row.get("send_hour") is not None else DEFAULT_RR4_TM30_DAILY_HOUR,
+                    "send_minute": row["send_minute"] if row.get("send_minute") is not None else DEFAULT_RR4_TM30_DAILY_MINUTE,
+                    "enabled": row["enabled"] if row.get("enabled") is not None else True,
+                    "last_sent_date": row.get("last_sent_date"),
+                    "is_default": False,
+                }
+        except Exception as e:
+            logger.warning(f"email_templates (rr4_tm30_daily) lookup failed, using default: {e}")
+        return {
+            "subject": DEFAULT_RR4_TM30_DAILY_SUBJECT,
+            "html_template": DEFAULT_RR4_TM30_DAILY_TEMPLATE,
+            "recipients": DEFAULT_RR4_TM30_DAILY_RECIPIENTS,
+            "send_hour": DEFAULT_RR4_TM30_DAILY_HOUR,
+            "send_minute": DEFAULT_RR4_TM30_DAILY_MINUTE,
             "enabled": True,
             "last_sent_date": None,
             "is_default": True,

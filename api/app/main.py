@@ -937,6 +937,90 @@ async def send_st_files_per_property_emails(match_hour_only: bool = False):
         except Exception as e:
             print(f"Error in send_st_files_per_property_emails for {p['property_name']}: {str(e)}")
 
+async def send_rr4_tm30_daily_email(match_hour_only: bool = False):
+    """
+    Once-daily BUNDLED RR4/TM30 email (Admin > Templates > RR4/TM30 Files)
+    - same shape/reasoning as send_st_files_daily_email above, just reading
+    email_service.get_rr4_tm30_daily_settings and calling
+    sync_service.send_rr4_tm30_bundled_digest instead. Piggybacks the same
+    /sync/auto cron tick daily_auto_sync_rr4_tm30 uses, for the same
+    "once-a-day is coarser than the hourly cron already fires" reasoning.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        settings_row = email_service.get_rr4_tm30_daily_settings()
+    except Exception as e:
+        print(f"Error in send_rr4_tm30_daily_email (loading settings): {str(e)}")
+        return
+
+    if not settings_row.get("enabled"):
+        return
+
+    today_str = now.date().isoformat()
+    if settings_row.get("last_sent_date") == today_str:
+        return
+
+    hour_matches = now.hour == settings_row["send_hour"]
+    if match_hour_only:
+        if not (hour_matches and now.minute >= settings_row["send_minute"]):
+            return
+    elif not (hour_matches and now.minute == settings_row["send_minute"]):
+        return
+
+    # YESTERDAY's report, same convention as send_st_files_daily_email -
+    # matches daily_auto_sync_rr4_tm30's own capture date.
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
+    try:
+        result = await sync_service.send_rr4_tm30_bundled_digest(report_date_str, sent_date_str=today_str)
+        if result["sent"]:
+            print(f"[{now.isoformat()}] RR4/TM30 bundled email sent: {len(result['included'])} included, {len(result['skipped'])} skipped.")
+        else:
+            print(f"[{now.isoformat()}] RR4/TM30 bundled email: nothing ready to send yet ({len(result['skipped'])} propert(y/ies) not ready).")
+    except Exception as e:
+        print(f"Error in send_rr4_tm30_daily_email: {str(e)}")
+
+async def send_rr4_tm30_per_property_emails(match_hour_only: bool = False):
+    """
+    Per-property RR4/TM30 emails (Admin > Templates > RR4/TM30 Files
+    (Per-Property)) - same shape/reasoning as send_st_files_per_property_
+    emails above, reading rr4_tm30_email_enabled/_hour/_minute/
+    _last_sent_date instead of the st_files_email_* equivalents.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, rr4_tm30_email_hour, rr4_tm30_email_minute, rr4_tm30_email_last_sent_date") \
+            .eq("rr4_tm30_email_enabled", True)
+        if match_hour_only:
+            query = query.eq("rr4_tm30_email_hour", now.hour).lte("rr4_tm30_email_minute", now.minute)
+        else:
+            query = query.eq("rr4_tm30_email_hour", now.hour).eq("rr4_tm30_email_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        print(f"Error in send_rr4_tm30_per_property_emails (fetching properties): {str(e)}")
+        return
+
+    today_str = now.date().isoformat()
+    report_date_str = (now.date() - timedelta(days=1)).isoformat()
+    for p in items:
+        if p.get("rr4_tm30_email_last_sent_date") == today_str:
+            continue
+        try:
+            result = await sync_service.send_rr4_tm30_property_email(
+                p["property_name"], report_date_str, sent_date_str=today_str)
+            if result["sent"]:
+                print(f"[{now.isoformat()}] RR4/TM30 per-property email sent for {p['property_name']}.")
+            else:
+                print(f"[{now.isoformat()}] RR4/TM30 per-property email for {p['property_name']}: {result['skipped']}")
+        except Exception as e:
+            print(f"Error in send_rr4_tm30_per_property_emails for {p['property_name']}: {str(e)}")
+
 async def send_ftp_upload_job(match_hour_only: bool = False):
     """
     Once-daily plain-FTP upload (Admin > Sync > FTP Upload) of every ready
@@ -1276,6 +1360,10 @@ async def start_scheduler():
     scheduler.add_job(send_st_files_daily_email, 'cron', second=0)
     # ST Files per-property emails - each opted-in property's own send time.
     scheduler.add_job(send_st_files_per_property_emails, 'cron', second=0)
+    # RR4/TM30 daily email digest (bundled) - own configurable send_hour/minute.
+    scheduler.add_job(send_rr4_tm30_daily_email, 'cron', second=0)
+    # RR4/TM30 per-property emails - each opted-in property's own send time.
+    scheduler.add_job(send_rr4_tm30_per_property_emails, 'cron', second=0)
     # Daily FTP upload (ST and/or RV, per ftp_settings' checkboxes) - own
     # separate configurable upload_hour/minute.
     scheduler.add_job(send_ftp_upload_job, 'cron', second=0)
@@ -1315,6 +1403,10 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(send_st_files_daily_email, match_hour_only=True)
     # ST Files per-property emails - each opted-in property's own send time.
     background_tasks.add_task(send_st_files_per_property_emails, match_hour_only=True)
+    # RR4/TM30 daily email digest (bundled) - own configurable send_hour/minute.
+    background_tasks.add_task(send_rr4_tm30_daily_email, match_hour_only=True)
+    # RR4/TM30 per-property emails - each opted-in property's own send time.
+    background_tasks.add_task(send_rr4_tm30_per_property_emails, match_hour_only=True)
     # Daily FTP upload (ST and/or RV, per ftp_settings' checkboxes) - own
     # separate configurable upload_hour/minute.
     background_tasks.add_task(send_ftp_upload_job, match_hour_only=True)

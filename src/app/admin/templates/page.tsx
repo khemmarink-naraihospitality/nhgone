@@ -13,7 +13,9 @@ type TemplateType =
   | "google_signin_notice_email"
   | "approved_email"
   | "st_files_email"
-  | "st_files_email_per_property";
+  | "st_files_email_per_property"
+  | "rr4_tm30_email"
+  | "rr4_tm30_email_per_property";
 
 // Top-level tab groups - "System Email" bundles the account-lifecycle
 // emails (welcome/reset/approved/etc) and "Statistic Files" bundles the 2
@@ -21,7 +23,7 @@ type TemplateType =
 // pill instead of every member getting its own top-level tab, so the row
 // doesn't grow a new pill every time another one is added. Groups with a
 // single child behave exactly like a plain tab (no sub-tab row for them).
-type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files";
+type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files" | "rr4_tm30_files";
 
 const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateType[] }> = {
   billing: { label: "Billing", children: ["billing"] },
@@ -33,6 +35,10 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   statistic_files: {
     label: "Statistic Files",
     children: ["st_files_email", "st_files_email_per_property"],
+  },
+  rr4_tm30_files: {
+    label: "RR4 / TM30 Files",
+    children: ["rr4_tm30_email", "rr4_tm30_email_per_property"],
   },
 };
 
@@ -159,6 +165,37 @@ const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
   { name: "StatsTable", description: "Same pre-built HTML table as the bundled email, but with just this one property's row" },
 ];
 
+const RR4_TM30_EMAIL_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "Report date (DD/MM/YYYY)" },
+  { name: "PropertyCount", description: "Number of properties included in this email" },
+  { name: "PropertyList", description: "Comma-separated list of included property names" },
+  { name: "StatsTable", description: "Pre-built HTML table, one row per property: Property, Code, RR4 Guests, TM30 Arrivals" },
+];
+
+// Mirrors DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_SUBJECT/TEMPLATE in
+// api/app/services/email_service.py exactly - same fallback-when-unsaved
+// reasoning as DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT/TEMPLATE above.
+const DEFAULT_RR4_TM30_EMAIL_PER_PROPERTY_SUBJECT = "NHGOne RR4/TM30 — <<Property>> — <<Date>>";
+const DEFAULT_RR4_TM30_EMAIL_PER_PROPERTY_TEMPLATE = `<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:900px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 Daily Export</p>
+        <p style="margin:0 0 20px 0; font-size:14px; color:#152A00; line-height:1.6;">Daily RR4 and TM30 filings for <b><<Property>></b> (<<PropertyCode>>), <b><<Date>></b>, attached as two .xlsx files.</p>
+        <<StatsTable>>
+      </td>
+    </tr>
+  </table>
+</div>`;
+
+const RR4_TM30_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "Report date (DD/MM/YYYY)" },
+  { name: "Property", description: "This email's one property name" },
+  { name: "PropertyCode", description: "This property's ST Property Code" },
+  { name: "StatsTable", description: "Same pre-built HTML table as the bundled email, but with just this one property's row" },
+];
+
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
   // Absent for tabs whose editor isn't driven by this generic fetch/save
@@ -176,15 +213,33 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   // triggered-by-an-action template, so these stay optional or every
   // other tab would need to carry unused schedule fields too.
   hasScheduleFields?: boolean;
-  // ST Files Email (Per-Property) only - a per-property Enabled/To/Cc/Bcc/
-  // Subject/HTML panel (each property fully independent), edited on this
-  // tab instead of the generic single-endpoint fetch/save system below -
-  // see hasOwnEditor.
+  // Per-property Enabled/To/Cc/Bcc/Subject/HTML panel (each property fully
+  // independent), edited on this tab instead of the generic single-endpoint
+  // fetch/save system below - see hasOwnEditor. Currently ST Files Email
+  // (Per-Property) and RR4/TM30 Files (Per-Property) both use this, driven
+  // by the perProperty* fields beneath it so the two tabs share one editor
+  // implementation instead of each carrying its own copy.
   hasPerPropertyRecipients?: boolean;
   // True for tabs whose whole editor (Subject/Preview/Code/Save) is
   // replaced by their own bespoke UI - skips the generic fetchTemplate
   // effect and the generic Subject/Preview/Code/Save block entirely.
   hasOwnEditor?: boolean;
+  // The property_api_settings column prefix this tab's per-property panel
+  // reads/writes - e.g. "st_files_email" -> st_files_email_enabled,
+  // st_files_email_recipients, ..._cc, ..._bcc, ..._hour, ..._minute,
+  // ..._subject, ..._template. Required whenever hasPerPropertyRecipients
+  // is set.
+  perPropertyPrefix?: string;
+  // Backend route this tab's own "Send Test Now" button posts to.
+  perPropertySendNowEndpoint?: string;
+  // Fallback Subject/HTML shown (and saved as the live value) whenever a
+  // property hasn't customized its own yet - mirrors the backend's own
+  // DEFAULT_..._PER_PROPERTY_SUBJECT/TEMPLATE fallback constants exactly.
+  perPropertyDefaultSubject?: string;
+  perPropertyDefaultTemplate?: string;
+  // Sample token values for this tab's own preview iframe, one property's
+  // worth (StatsTable already scoped to a single row).
+  perPropertySampleBuilder?: (property: string) => Record<string, string>;
 }> = {
   billing: {
     label: "Billing",
@@ -276,6 +331,46 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     perProperty: false,
     hasPerPropertyRecipients: true,
     hasOwnEditor: true,
+    perPropertyPrefix: "st_files_email",
+    perPropertySendNowEndpoint: "/admin/email-template/st-files-daily-per-property/send-now",
+    perPropertyDefaultSubject: DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT,
+    perPropertyDefaultTemplate: DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE,
+    perPropertySampleBuilder: (property) => ({
+      Date: "06/08/2026",
+      Property: property || "Property Name",
+      PropertyCode: "XX",
+      StatsTable: buildStFilesStatsTableSample(1),
+    }),
+  },
+  rr4_tm30_email: {
+    label: "All Property",
+    endpoint: "/admin/email-template/rr4-tm30-daily",
+    tokens: RR4_TM30_EMAIL_TOKENS,
+    defaultNote: "No RR4/TM30 daily email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) with every ready Thai property's RR4 + TM30 .xlsx pair attached. Lub d Siem Reap and Lub d Philippines Makati are never included - they don't file under the Thai Hotel Act.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
+  },
+  rr4_tm30_email_per_property: {
+    label: "Per-Property",
+    tokens: RR4_TM30_EMAIL_PER_PROPERTY_TOKENS,
+    defaultNote: "",
+    tokenNote: "Each property below has its own independent Subject/HTML, not a shared template - a property with Enabled turned on gets its own separate email instead of joining the bundled All Property email for that day's send.",
+    perProperty: false,
+    hasPerPropertyRecipients: true,
+    hasOwnEditor: true,
+    perPropertyPrefix: "rr4_tm30_email",
+    perPropertySendNowEndpoint: "/admin/email-template/rr4-tm30-daily-per-property/send-now",
+    perPropertyDefaultSubject: DEFAULT_RR4_TM30_EMAIL_PER_PROPERTY_SUBJECT,
+    perPropertyDefaultTemplate: DEFAULT_RR4_TM30_EMAIL_PER_PROPERTY_TEMPLATE,
+    perPropertySampleBuilder: (property) => ({
+      Date: "06/08/2026",
+      Property: property || "Property Name",
+      PropertyCode: "XX",
+      StatsTable: buildRr4Tm30StatsTableSample(1),
+    }),
   },
 };
 
@@ -378,6 +473,21 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     PropertyCode: "MS",
     StatsTable: buildStFilesStatsTableSample(1),
   }),
+  rr4_tm30_email: () => ({
+    Date: "06/08/2026",
+    PropertyCount: "6",
+    PropertyList: "Lub d Bangkok Chinatown, Lub d Bangkok Siam, Lub d Koh Samui Chaweng Beach, Lub d Koh Tao Tanote Bay, Lub d Phuket Patong, Marasca Samui",
+    StatsTable: buildRr4Tm30StatsTableSample(),
+  }),
+  // Unused by the preview iframe (hasOwnEditor tabs skip it entirely and
+  // use perPropertySampleBuilder instead) - present only so this Record
+  // stays total over every TemplateType.
+  rr4_tm30_email_per_property: () => ({
+    Date: "06/08/2026",
+    Property: "Lub d Bangkok Chinatown",
+    PropertyCode: "MS",
+    StatsTable: buildRr4Tm30StatsTableSample(1),
+  }),
 };
 
 // Mirrors sync_service.py's _build_st_files_summary_table byte-for-byte
@@ -426,6 +536,46 @@ function buildStFilesStatsTableSample(limit?: number): string {
   );
 }
 
+// Mirrors sync_service.py's _build_rr4_tm30_summary_table byte-for-byte,
+// same reasoning as buildStFilesStatsTableSample above. Only the 6 Thai
+// properties RR4/TM30 actually files for - see
+// _RR4_TM30_EMAIL_EXCLUDED_PROPERTIES.
+function buildRr4Tm30StatsTableSample(limit?: number): string {
+  const allRows = [
+    { name: "Lub d Bangkok Chinatown", code: "MS", rr4: 238, tm30: 71 },
+    { name: "Lub d Bangkok Siam", code: "SM", rr4: 81, tm30: 20 },
+    { name: "Lub d Koh Samui Chaweng Beach", code: "SU", rr4: 268, tm30: 83 },
+    { name: "Lub d Koh Tao Tanote Bay", code: "KT", rr4: 116, tm30: 8 },
+    { name: "Lub d Phuket Patong", code: "PT", rr4: 227, tm30: 101 },
+    { name: "Marasca Samui", code: "S2", rr4: 157, tm30: 6 },
+  ];
+  const rows = limit ? allRows.slice(0, limit) : allRows;
+  const bodyRows = rows
+    .map((r, i) => {
+      const bg = i % 2 === 0 ? "#ffffff" : "#FFEFD2";
+      return (
+        `<tr style="background:${bg}; border-bottom:1px solid rgba(21,42,0,0.08);">` +
+        `<td style="padding:7px 10px; text-align:left; font-size:12px; color:#152A00; font-weight:700; white-space:nowrap;">${r.name}</td>` +
+        `<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; font-variant-numeric:tabular-nums;">${r.code}</td>` +
+        `<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; font-variant-numeric:tabular-nums;">${r.rr4}</td>` +
+        `<td style="padding:7px 6px; text-align:center; font-size:12px; color:#152A00; font-variant-numeric:tabular-nums;">${r.tm30}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+  return (
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 20px 0;">' +
+    '<thead><tr style="background:#152A00;">' +
+    '<th style="padding:8px 10px; text-align:left; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2; white-space:nowrap;">Property</th>' +
+    '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2;">Code</th>' +
+    '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2;">RR4 Guests</th>' +
+    '<th style="padding:8px 6px; text-align:center; font-size:8px; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#FFEFD2;">TM30 Arrivals</th>' +
+    "</tr></thead>" +
+    `<tbody>${bodyRows}</tbody>` +
+    "</table>"
+  );
+}
+
 function renderPreviewHtml(template: string, sample: Record<string, string>): string {
   let result = template;
   for (const [key, value] of Object.entries(sample)) {
@@ -455,9 +605,10 @@ export default function TemplatesPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // ST Files Email (Per-Property) tab's own per-property Enabled/To/Cc/Bcc
-  // panel (config.hasPerPropertyRecipients) - reads/writes
-  // property_api_settings directly, independent of the template save above
+  // Shared by every hasPerPropertyRecipients tab (currently ST Files Email
+  // and RR4/TM30 Files, both Per-Property) - reads/writes
+  // property_api_settings directly under that tab's own config.
+  // perPropertyPrefix column family, independent of the template save above
   // (different resource, different save action). Each property opts in
   // individually via recipEnabled - there's no single all-or-nothing switch.
   const [recipProperty, setRecipProperty] = useState("");
@@ -466,8 +617,8 @@ export default function TemplatesPage() {
   const [recipCc, setRecipCc] = useState("");
   const [recipBcc, setRecipBcc] = useState("");
   const [recipSendTime, setRecipSendTime] = useState("03:00");
-  const [recipSubject, setRecipSubject] = useState(DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT);
-  const [recipHtml, setRecipHtml] = useState(DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE);
+  const [recipSubject, setRecipSubject] = useState("");
+  const [recipHtml, setRecipHtml] = useState("");
   const [recipViewMode, setRecipViewMode] = useState<"preview" | "code">("preview");
   const [recipLoading, setRecipLoading] = useState(false);
   const [recipSaving, setRecipSaving] = useState(false);
@@ -501,28 +652,35 @@ export default function TemplatesPage() {
     fetchProperties();
   }, []);
 
-  // ST Files Email (Per-Property)'s own To/Cc/Bcc panel - reads/writes
+  // hasPerPropertyRecipients tabs' own To/Cc/Bcc panel - reads/writes
   // property_api_settings directly (same pattern Admin > Sync already uses
-  // for this table), independent of the template save above.
+  // for this table), independent of the template save above. Column names
+  // are built from config.perPropertyPrefix so this one effect serves every
+  // such tab (ST Files Email, RR4/TM30 Files, both Per-Property).
   useEffect(() => {
-    if (!config.hasPerPropertyRecipients || !recipProperty) return;
+    if (!config.hasPerPropertyRecipients || !config.perPropertyPrefix || !recipProperty) return;
+    const prefix = config.perPropertyPrefix;
+    const defaultSubject = config.perPropertyDefaultSubject || "";
+    const defaultTemplate = config.perPropertyDefaultTemplate || "";
     const fetchRecipients = async () => {
       setRecipLoading(true);
       try {
         const { data } = await supabase
           .from("property_api_settings")
-          .select("st_files_email_enabled, st_files_email_recipients, st_files_email_cc, st_files_email_bcc, st_files_email_hour, st_files_email_minute, st_files_email_subject, st_files_email_template")
+          .select(`${prefix}_enabled, ${prefix}_recipients, ${prefix}_cc, ${prefix}_bcc, ${prefix}_hour, ${prefix}_minute, ${prefix}_subject, ${prefix}_template`)
           .eq("property_name", recipProperty)
           .single();
-        setRecipEnabled(!!data?.st_files_email_enabled);
-        setRecipTo(data?.st_files_email_recipients || "");
-        setRecipCc(data?.st_files_email_cc || "");
-        setRecipBcc(data?.st_files_email_bcc || "");
-        const h = data?.st_files_email_hour ?? 3;
-        const m = data?.st_files_email_minute ?? 0;
+        const row = (data || {}) as Record<string, string | number | boolean | null>;
+        const str = (key: string) => (row[key] as string | null) || "";
+        setRecipEnabled(!!row[`${prefix}_enabled`]);
+        setRecipTo(str(`${prefix}_recipients`));
+        setRecipCc(str(`${prefix}_cc`));
+        setRecipBcc(str(`${prefix}_bcc`));
+        const h = (row[`${prefix}_hour`] as number | null) ?? 3;
+        const m = (row[`${prefix}_minute`] as number | null) ?? 0;
         setRecipSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
-        setRecipSubject(data?.st_files_email_subject || DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_SUBJECT);
-        setRecipHtml(data?.st_files_email_template || DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_TEMPLATE);
+        setRecipSubject(str(`${prefix}_subject`) || defaultSubject);
+        setRecipHtml(str(`${prefix}_template`) || defaultTemplate);
         setRecipViewMode("preview");
       } finally {
         setRecipLoading(false);
@@ -533,21 +691,22 @@ export default function TemplatesPage() {
   }, [recipProperty, templateType]);
 
   const handleSaveRecipients = async () => {
-    if (!recipProperty || !recipHtml.trim() || !recipSubject.trim()) return;
+    if (!config.perPropertyPrefix || !recipProperty || !recipHtml.trim() || !recipSubject.trim()) return;
+    const prefix = config.perPropertyPrefix;
     setRecipSaving(true);
     try {
       const [h, m] = recipSendTime.split(":").map(Number);
       const { error } = await supabase
         .from("property_api_settings")
         .update({
-          st_files_email_enabled: recipEnabled,
-          st_files_email_recipients: recipTo,
-          st_files_email_cc: recipCc,
-          st_files_email_bcc: recipBcc,
-          st_files_email_hour: h,
-          st_files_email_minute: m,
-          st_files_email_subject: recipSubject,
-          st_files_email_template: recipHtml,
+          [`${prefix}_enabled`]: recipEnabled,
+          [`${prefix}_recipients`]: recipTo,
+          [`${prefix}_cc`]: recipCc,
+          [`${prefix}_bcc`]: recipBcc,
+          [`${prefix}_hour`]: h,
+          [`${prefix}_minute`]: m,
+          [`${prefix}_subject`]: recipSubject,
+          [`${prefix}_template`]: recipHtml,
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
@@ -560,10 +719,10 @@ export default function TemplatesPage() {
   };
 
   const handleSendTestNowRecipients = async () => {
-    if (!recipProperty) return;
+    if (!recipProperty || !config.perPropertySendNowEndpoint) return;
     setRecipSendingTest(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/email-template/st-files-daily-per-property/send-now`, {
+      const res = await fetch(`${apiUrl}${config.perPropertySendNowEndpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ property_name: recipProperty }),
@@ -850,12 +1009,12 @@ export default function TemplatesPage() {
                     <div className="bg-slate-100 rounded-2xl p-5 border border-slate-200/70">
                       <iframe
                         title={`${recipProperty || "Per-Property"} preview`}
-                        srcDoc={renderPreviewHtml(recipHtml, {
-                          Date: "06/08/2026",
-                          Property: recipProperty || "Property Name",
-                          PropertyCode: "XX",
-                          StatsTable: buildStFilesStatsTableSample(1),
-                        })}
+                        srcDoc={renderPreviewHtml(
+                          recipHtml,
+                          config.perPropertySampleBuilder
+                            ? config.perPropertySampleBuilder(recipProperty)
+                            : { Date: "06/08/2026", Property: recipProperty || "Property Name", PropertyCode: "XX", StatsTable: "" }
+                        )}
                         className="w-full bg-white rounded-xl border border-slate-200/70 shadow-md"
                         style={{ minHeight: "480px" }}
                       />
