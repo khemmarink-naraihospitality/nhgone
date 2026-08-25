@@ -2234,33 +2234,30 @@ class SyncService:
             cell.font = Font(size=9)
             cell.alignment = Alignment(horizontal="center", vertical="center")
 
-        # The importer's rule, from its own official example file: the two
-        # DATE columns carry a literal leading "'", the two TIME columns must
-        # NOT. Both halves matter, and having them backwards is why filings
-        # were rejected even though an apostrophe was clearly present -
-        # timeCheckIn shipped "'11.34" (the marker makes it an invalid time)
-        # while dateCheckOut shipped a bare "24/08/2569" (missing the marker
-        # that keeps it a Buddhist-era string instead of a date).
-        #
-        # An earlier comment here claimed the reference sheet proved
-        # date_check_out takes no apostrophe. The generator sheets genuinely
-        # disagree with each other on that cell - Chinatown's formula is
-        # `"'" & TEXT(...)` while Samui's and Patong's is a bare `TEXT(...)`
-        # - so they cannot settle it; the importer's example file is the
-        # authority and it quotes both dates.
-        quoted = {"date_check_in", "date_check_out"}
+        # NO literal apostrophe on any column. The importer's own official
+        # example file (a plain CSV, not a formula-driven sheet) settles
+        # this: every data row's dateCheckIn/dateCheckOut/timeCheckIn/
+        # timeCheckOut is a bare value - "05/01/2568", "08.21", "08/01/2568",
+        # "12.00" - with no "'" character anywhere. The apostrophe shown once
+        # in that file's own instructions ("...Text... ' (...) ...'01/02/2568")
+        # is describing the Excel KEYSTROKE convention for a human typing a
+        # value into a General-formatted cell (typing ' first forces Excel's
+        # live quote-prefix mode, which is a display-only flag - the stored
+        # value never gains an actual apostrophe character). A formula like
+        # `"'" & TEXT(...)`, which several of the generator sheets use, does
+        # NOT reproduce that: string concatenation bakes a literal apostrophe
+        # character into the computed value, so it fails the importer's
+        # `^\d\d/\d\d/\d{4}$` check outright. A prior version of this comment
+        # concluded the opposite from reading those formulas directly - wrong;
+        # verified 2026-08-25 against a real "ต้องระบุด้วยรูปแบบ วว/ดด/ปปปป
+        # เท่านั้น" rejection on every row after shipping that literal
+        # apostrophe, confirming the official example's plain values are the
+        # authority, not the generator sheets' formulas. Text number_format
+        # ("@") is what actually keeps Excel from reinterpreting the value on
+        # open/re-save - no apostrophe, literal or quote-prefixed, is needed.
         for i, row in enumerate(report["rows"], start=1):
             for col, (key, _label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
-                value = row.get(key, "")
-                if key in quoted and value:
-                    value = f"'{value}"
-                cell = ws.cell(field_key_row + i, col, value)
-                # Text, like the reference sheet, which uses "@" on all 27
-                # columns. Without it Excel is free to reinterpret a value the
-                # moment the file is opened or re-saved - a dd/mm/yyyy
-                # Buddhist-era date as a Gregorian one, an "08.21" time as the
-                # number 8.21 (losing the leading zero), or a 13-digit national
-                # ID as scientific notation.
+                cell = ws.cell(field_key_row + i, col, row.get(key, ""))
                 cell.number_format = "@"
 
         buf = BytesIO()
