@@ -108,6 +108,75 @@ DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#
   </table>
 </div>"""
 
+# --------------------------------------------------------------- Monitoring
+#
+# Two verification mails that compare what NHGOne produces against the Google
+# Sheets that are the ground truth for what actually gets filed - ST Files
+# against each property's "<Name>-ST" sheet, RR4/TM30 against its
+# "RR4-TM30-<Name>-Gen" sheet. They exist to watch the new system during its
+# validation period, so unlike every other template here they default to one
+# person rather than a distribution list.
+#
+# Both follow the same sentinel-row shape as ST_FILES_DAILY_TEMPLATE_KEY: the
+# row carries subject/body AND delivery config (recipients/send_hour/
+# send_minute/enabled), plus last_sent_date as a same-day dedup guard. No new
+# table and no migration - email_templates already has every column these
+# need, so switching the monitoring off is deleting a row, not running SQL.
+#
+# 08:00 Asia/Bangkok sits after both inputs are ready for both mails: the ST
+# sheets are generated 01:20-02:25 against our own 00:20-02:03 import, and the
+# RR4/TM30 sheets 02:00-02:30 against our 02:15-02:30 import. Chinatown is the
+# exception on the RR4 side - it cuts its day at 12:15, so at 08:00 both its
+# sheet and our import are still on the previous day. That is why the RR4
+# comparison dates each property from its own sheet rather than demanding one
+# shared date (see rr4_compare_service.build_comparison).
+ST_COMPARE_TEMPLATE_KEY = "st_compare_test"
+DEFAULT_ST_COMPARE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
+DEFAULT_ST_COMPARE_HOUR = 8
+DEFAULT_ST_COMPARE_MINUTE = 0
+DEFAULT_ST_COMPARE_SUBJECT = "Test ST File <<Date>>"
+DEFAULT_ST_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files &mdash; Sheet Verification</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">เทียบตัวเลขของระบบกับชีต "&lt;Name&gt;-ST" ของทุก property ประจำวันที่ <b><<Date>></b></p>
+        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;">ตรงกัน <<Matched>>/<<Total>> ช่อง</p>
+        <<SummaryTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ตารางเต็ม &mdash; ระบบเรา / ชีต</h3>
+        <<GridTable>>
+        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">snapshot ของเราจับเวลา <<Window>> &middot; <<PropertyCount>> properties</p>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
+RR4_COMPARE_TEMPLATE_KEY = "rr4_compare_test"
+DEFAULT_RR4_COMPARE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
+DEFAULT_RR4_COMPARE_HOUR = 8
+DEFAULT_RR4_COMPARE_MINUTE = 0
+DEFAULT_RR4_COMPARE_SUBJECT = "Test RR4/TM30 File <<Date>>"
+DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 &mdash; Sheet Verification</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">เทียบทะเบียนของระบบกับชีต "RR4-TM30-&lt;Name&gt;-Gen" ที่ละแถว ประจำวันที่ <b><<Date>></b> (<<PropertyCount>> properties)</p>
+        <p style="margin:0 0 24px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> แถว &middot; ต่างจริง <b><<Rr4Diff>></b> &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> แถว &middot; ต่างจริง <b><<Tm30Diff>></b></p>
+        <<SummaryTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">คอลัมน์ที่ต่าง</h3>
+        <<ColumnTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ตัวอย่างแถวที่ต่าง</h3>
+        <<SampleTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ช่วงเวลาที่ export</h3>
+        <<WindowTable>>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.
@@ -461,6 +530,89 @@ class EmailService:
             "last_sent_date": None,
             "is_default": True,
         }
+
+    def _get_scheduled_settings(self, template_key: str, defaults: dict) -> dict:
+        """
+        Shared lookup for a scheduled-digest row: subject/html_template plus
+        the delivery config (recipients/send_hour/send_minute/enabled) and
+        last_sent_date that live on the same email_templates row. Same
+        fallback contract as _get_template - a missing table or an unsaved
+        row yields the built-in defaults with is_default=True, so a schedule
+        keeps running before anyone has opened Admin > Email Template.
+
+        get_st_files_daily_settings/get_rr4_tm30_daily_settings predate this
+        and keep their own copies; this is here so the monitoring pair (and
+        anything added after) don't make that four.
+        """
+        try:
+            supabase = get_supabase_client()
+            res = supabase.table("email_templates").select(
+                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
+            ).eq("template_key", template_key).limit(1).execute()
+            if res.data:
+                row = res.data[0]
+                return {
+                    "subject": row.get("subject") or defaults["subject"],
+                    "html_template": row.get("html_template") or defaults["html_template"],
+                    "recipients": row.get("recipients") or defaults["recipients"],
+                    "send_hour": row["send_hour"] if row.get("send_hour") is not None else defaults["send_hour"],
+                    "send_minute": row["send_minute"] if row.get("send_minute") is not None else defaults["send_minute"],
+                    "enabled": row["enabled"] if row.get("enabled") is not None else True,
+                    "last_sent_date": row.get("last_sent_date"),
+                    "is_default": False,
+                }
+        except Exception as e:
+            logger.warning(f"email_templates ({template_key}) lookup failed, using default: {e}")
+        return {**defaults, "enabled": True, "last_sent_date": None, "is_default": True}
+
+    def get_st_compare_settings(self) -> dict:
+        """Daily ST Files vs Google Sheet verification mail (Admin > Email
+        Template > System Email > Test ST File)."""
+        return self._get_scheduled_settings(ST_COMPARE_TEMPLATE_KEY, {
+            "subject": DEFAULT_ST_COMPARE_SUBJECT,
+            "html_template": DEFAULT_ST_COMPARE_TEMPLATE,
+            "recipients": DEFAULT_ST_COMPARE_RECIPIENTS,
+            "send_hour": DEFAULT_ST_COMPARE_HOUR,
+            "send_minute": DEFAULT_ST_COMPARE_MINUTE,
+        })
+
+    def get_rr4_compare_settings(self) -> dict:
+        """Daily RR4/TM30 vs generator-sheet verification mail (Admin > Email
+        Template > System Email > Test RR4/TM30 File)."""
+        return self._get_scheduled_settings(RR4_COMPARE_TEMPLATE_KEY, {
+            "subject": DEFAULT_RR4_COMPARE_SUBJECT,
+            "html_template": DEFAULT_RR4_COMPARE_TEMPLATE,
+            "recipients": DEFAULT_RR4_COMPARE_RECIPIENTS,
+            "send_hour": DEFAULT_RR4_COMPARE_HOUR,
+            "send_minute": DEFAULT_RR4_COMPARE_MINUTE,
+        })
+
+    def mark_template_sent(self, template_key: str, settings_row: dict, marker_date: str):
+        """Same-day dedup guard shared by the two monitoring mails - writes
+        marker_date onto that template_key's own last_sent_date, inserting
+        the row from the built-in defaults if Admin has never saved one.
+        Same shape as sync_service._mark_st_files_daily_sent, which does this
+        for the bundled ST digest."""
+        try:
+            supabase = get_supabase_client()
+            existing = supabase.table("email_templates").select("id") \
+                .eq("template_key", template_key).limit(1).execute()
+            if existing.data:
+                supabase.table("email_templates").update({"last_sent_date": marker_date}) \
+                    .eq("id", existing.data[0]["id"]).execute()
+            else:
+                supabase.table("email_templates").insert({
+                    "template_key": template_key,
+                    "subject": settings_row["subject"],
+                    "html_template": settings_row["html_template"],
+                    "recipients": settings_row["recipients"],
+                    "send_hour": settings_row["send_hour"],
+                    "send_minute": settings_row["send_minute"],
+                    "enabled": True,
+                    "last_sent_date": marker_date,
+                }).execute()
+        except Exception as e:
+            logger.warning(f"{template_key}: failed to record last_sent_date: {e}")
 
     def _get_template(self, template_key: str, default_subject: str, default_template: str) -> dict:
         """

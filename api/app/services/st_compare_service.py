@@ -2,12 +2,12 @@
 "<Name>-ST" Google Sheet, which is the ground truth for what actually gets
 filed.
 
-Deliberately NOT wired into email_templates / Admin > Email Template. This is
-a temporary monitoring feed while the new system is being validated, not a
-business email anyone should be editing the design of - and a template edit
-that dropped the table would silently turn the daily check into a blank page.
-Recipient and schedule are constants here; delete this module and its job in
-main.py to switch the monitoring off.
+This module is the comparison and its rendering only. The recipient, send
+time, subject and surrounding email design live in Admin > Email Template >
+System Email > Test ST File, like every other scheduled mail in this app -
+see email_service.ST_COMPARE_TEMPLATE_KEY. What this module hands the
+template is the two finished tables (render_tokens), so an edit to the
+template's wording can never silently produce a check with no numbers in it.
 
 Two things about the source sheets drive the whole design:
 
@@ -32,16 +32,6 @@ import httpx
 from openpyxl import load_workbook
 
 logger = logging.getLogger(__name__)
-
-# Where the daily monitoring mail goes. One address on purpose - see the
-# module docstring for why this is not an Admin-editable recipient list.
-MONITOR_RECIPIENT = "khemmarin.k@naraihospitality.com"
-
-# Asia/Bangkok, evaluated the same way every other scheduled job in main.py
-# is. 03:00 sits safely after both inputs are ready: the property sheets are
-# generated 01:20-02:25, and our own ST Files import runs 00:20-02:03.
-SEND_HOUR = 3
-SEND_MINUTE = 0
 
 # Same IDs as the links the front-office team maintains.
 SHEETS = OrderedDict([
@@ -251,30 +241,14 @@ _TD = "padding:6px 10px;border:1px solid #e2e8f0;font-size:13px;"
 _TH = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;"
 
 
-def render_html(result: dict) -> str:
-    """The email body. Inline styles only, plain tables - this has to survive
-    Outlook and Gmail, not just a browser."""
+def render_summary_table(result: dict) -> str:
+    """Per-column "ตรง X/8" summary - the <<SummaryTable>> token, and the
+    table this whole mail was originally asked for."""
     if result["status"] != "ok":
-        return f"<pre style=\"font-family:ui-monospace,monospace;font-size:13px\">{render_text(result)}</pre>"
+        return f'<pre style="font-family:ui-monospace,monospace;font-size:13px">{render_text(result)}</pre>'
 
-    day = datetime.strptime(result["date"], "%Y-%m-%d")
-    perfect = result["matched_cells"] == result["total_cells"]
-    banner_bg, banner_fg = ("#dcfce7", "#166534") if perfect else ("#fef9c3", "#854d0e")
-
-    h = [f"""<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0f172a;max-width:900px">
-<h2 style="margin:0 0 4px">สรุปตามคอลัมน์ — {_title(result)}</h2>
-<div style="background:{banner_bg};color:{banner_fg};padding:8px 12px;border-radius:6px;
- font-weight:700;font-size:14px;margin:10px 0">
- ตรงกัน {result['matched_cells']}/{result['total_cells']} ช่อง{' — ทุกช่องตรงหมด' if perfect else ''}</div>
-<p style="font-size:13px;color:#475569;margin:6px 0 14px">
-ชีตทั้ง {len(SHEETS)} ถือข้อมูลวันที่ {day.strftime('%-d %b %Y')} ตรงกัน"""]
-    if result["window"]:
-        h.append(f" · เทียบ snapshot ของเรา (จับเวลา {result['window'][0]} – {result['window'][1]}) กับชีต")
-    h.append("</p>")
-
-    # --- per-column summary (the table asked for) --------------------------
-    h.append(f'<table style="border-collapse:collapse;margin-bottom:22px"><tr>'
-             f'<th style="{_TH}">คอลัมน์</th><th style="{_TH}">ตรง</th><th style="{_TH}">หมายเหตุ</th></tr>')
+    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">คอลัมน์</th><th style="{_TH}">ตรง</th><th style="{_TH}">หมายเหตุ</th></tr>']
     for c in result["columns"]:
         good = c["matched"] == c["total"]
         note = "✅" if good else ", ".join(c["notes"])
@@ -283,10 +257,18 @@ def render_html(result: dict) -> str:
                  f'<td style="{_TD}{colour}">{c["matched"]}/{c["total"]}</td>'
                  f'<td style="{_TD}{colour}">{note}</td></tr>')
     h.append("</table>")
+    return "".join(h)
 
-    # --- full grid ---------------------------------------------------------
-    h.append('<h3 style="margin:0 0 8px;font-size:15px">ตารางเต็ม — ระบบเรา / ชีต</h3>')
-    h.append(f'<table style="border-collapse:collapse"><tr><th style="{_TH}">Property</th>')
+
+def render_grid_table(result: dict) -> str:
+    """Every property x every metric, ours / sheet - the <<GridTable>> token.
+    Wrapped in a horizontally scrollable box: ten columns of numbers is wider
+    than a phone, and a table that overflows the body is unreadable."""
+    if result["status"] != "ok":
+        return ""
+
+    h = ['<div style="overflow-x:auto">'
+         f'<table style="border-collapse:collapse"><tr><th style="{_TH}">Property</th>']
     for label, _ in METRICS:
         h.append(f'<th style="{_TH}">{label}</th>')
     h.append("</tr>")
@@ -295,16 +277,55 @@ def render_html(result: dict) -> str:
         for label, _k in METRICS:
             ov, sv = result["grid"].get(prop, {}).get(label, (None, None))
             if ov is None and sv is None:
-                cell, style = "—", "color:#94a3b8;"
+                cell, style = "\u2014", "color:#94a3b8;"
             elif ov == sv:
-                cell, style = f"✓ {ov}", "color:#475569;"
+                cell, style = f"\u2713 {ov}", "color:#475569;"
             else:
                 cell, style = f"<b>{ov} / {sv}</b>", "background:#fef3c7;color:#92400e;"
             h.append(f'<td style="{_TD}{style}">{cell}</td>')
         h.append("</tr>")
-    h.append("</table>")
+    h.append("</table></div>")
+    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
+             '\u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e23\u0e32 / \u0e0a\u0e35\u0e15 '
+             '\u2014 \u2713 \u0e04\u0e37\u0e2d\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19</p>')
+    return "".join(h)
 
-    h.append('<p style="font-size:11px;color:#94a3b8;margin-top:18px">'
-             'ระบบเรา / ชีต — ✓ คือตรงกัน · เมลเฝ้าระวังอัตโนมัติจาก NHGOne '
-             '(ไม่ได้ตั้งค่าใน Admin &gt; Email Template)</p></div>')
+
+def render_tokens(result: dict) -> dict:
+    """Everything the email template can substitute."""
+    day = datetime.strptime(result["date"], "%Y-%m-%d") if result.get("date") else None
+    window = result.get("window")
+    return {
+        "Date": day.strftime("%d/%m/%Y") if day else "\u2014",
+        "PropertyCount": str(len(SHEETS)),
+        "Matched": str(result.get("matched_cells", "\u2014")),
+        "Total": str(result.get("total_cells", "\u2014")),
+        "Window": f"{window[0]} \u2013 {window[1]}" if window else "\u2014",
+        "SummaryTable": render_summary_table(result),
+        "GridTable": render_grid_table(result),
+    }
+
+
+def render_html(result: dict) -> str:
+    """Standalone body, used by the CLI's --email flag and as the fallback if
+    the Admin template can't be read. The scheduled send builds its body from
+    the template instead, substituting render_tokens above."""
+    if result["status"] != "ok":
+        return f'<pre style="font-family:ui-monospace,monospace;font-size:13px">{render_text(result)}</pre>'
+
+    day = datetime.strptime(result["date"], "%Y-%m-%d")
+    perfect = result["matched_cells"] == result["total_cells"]
+    banner_bg, banner_fg = ("#dcfce7", "#166534") if perfect else ("#fef9c3", "#854d0e")
+
+    h = [f'''<div style="font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;color:#0f172a;max-width:900px">
+<h2 style="margin:0 0 4px">\u0e2a\u0e23\u0e38\u0e1b\u0e15\u0e32\u0e21\u0e04\u0e2d\u0e25\u0e31\u0e21\u0e19\u0e4c \u2014 {_title(result)}</h2>
+<div style="background:{banner_bg};color:{banner_fg};padding:8px 12px;border-radius:6px;
+ font-weight:700;font-size:14px;margin:10px 0">
+ \u0e15\u0e23\u0e07\u0e01\u0e31\u0e19 {result['matched_cells']}/{result['total_cells']} \u0e0a\u0e48\u0e2d\u0e07</div>
+<p style="font-size:13px;color:#475569;margin:6px 0 14px">
+\u0e0a\u0e35\u0e15\u0e17\u0e31\u0e49\u0e07 {len(SHEETS)} \u0e16\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 {day.strftime('%-d %b %Y')}</p>''']
+    h.append(render_summary_table(result))
+    h.append('<h3 style="margin:22px 0 8px;font-size:15px">\u0e15\u0e32\u0e23\u0e32\u0e07\u0e40\u0e15\u0e47\u0e21 \u2014 \u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e23\u0e32 / \u0e0a\u0e35\u0e15</h3>')
+    h.append(render_grid_table(result))
+    h.append("</div>")
     return "".join(h)

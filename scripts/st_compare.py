@@ -6,9 +6,9 @@
     .venv/bin/python scripts/st_compare.py 2026-08-25  # a specific date
     .venv/bin/python scripts/st_compare.py --email     # also send the monitoring mail
 
-A thin CLI over app.services.st_compare_service, which is the same code the
-scheduled 03:00 job in main.py runs - so what this prints and what lands in
-the mailbox can never disagree.
+A thin CLI over app.services.st_compare_service, and --email goes through the
+same compare_mail.send the 08:00 job and the Admin "Send Test Now" button use -
+so what this prints and what lands in the mailbox can never disagree.
 """
 import asyncio
 import os
@@ -22,11 +22,12 @@ _API = Path(__file__).resolve().parent.parent / "api"
 os.chdir(_API)
 sys.path.insert(0, str(_API))
 
+from app.services import compare_mail  # noqa: E402
 from app.services import st_compare_service as svc  # noqa: E402
 
 
 async def main():
-    args = [a for a in sys.argv[1:]]
+    args = sys.argv[1:]
     send = "--email" in args
     want = next((a for a in args if not a.startswith("-")), None)
 
@@ -36,18 +37,13 @@ async def main():
     print(svc.render_text(result))
 
     if send:
-        if result["status"] != "ok":
-            print("\n(ไม่ส่งเมล - ยังเทียบไม่ได้)")
-            return
-        from app.services.email_service import email_service
-        email_service.send_email(
-            svc.MONITOR_RECIPIENT,
-            f"[NHGOne Monitor] {svc._title(result)} — ตรงกัน "
-            f"{result['matched_cells']}/{result['total_cells']} ช่อง",
-            svc.render_html(result),
-            svc.render_text(result),
-        )
-        print(f"\nส่งเมลไปที่ {svc.MONITOR_RECIPIENT} แล้ว")
+        # mark_sent=False: a run from the terminal must never suppress that
+        # day's real scheduled send.
+        outcome = await compare_mail.send("st", mark_sent=False, want_date=want, sync_type="manual")
+        if outcome["sent"]:
+            print(f"\nส่งเมลไปที่ {', '.join(outcome['recipients'])} แล้ว")
+        else:
+            print(f"\n(ไม่ส่งเมล - {outcome['reason'][:200]})")
 
 
 asyncio.run(main())

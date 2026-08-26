@@ -1,0 +1,636 @@
+"""RR4 / TM30 verification: our stored register vs each property's own
+"RR4-TM30-<Name>-Gen" Google Sheet, which is the ground truth for what
+actually gets filed with the authorities.
+
+The RR4/TM30 counterpart to st_compare_service, and deliberately the same
+shape - but three things differ, each forced by the source sheets:
+
+1. **Thailand only.** Lub d Siem Reap and Lub d Philippines Makati don't file
+   under the Thai Hotel Act and have no generator sheet at all (same exclusion
+   sync_service._RR4_TM30_EMAIL_EXCLUDED_PROPERTIES already applies to the
+   daily RR4/TM30 digest).
+
+2. **Each property is compared at ITS OWN date**, not one date shared by all -
+   unlike the ST sheets, which are all pasted within an hour of each other.
+   These windows run to the property's own cutoff hour, and Chinatown's is
+   12:15 where everyone else's is ~02:00, so at any given moment Chinatown's
+   sheet is a full day behind the rest. Demanding one common date would mean
+   never sending a mail at all.
+
+3. **Rows are paired by identity, then compared column by column.** A
+   key-based diff that stops at "we found a row with this passport" hides real
+   defects (on 2026-08-22 a 4-field key called Patong's TM30 a perfect match
+   while a full-field diff surfaced 6 differing rows). So the passport/PID is
+   used ONLY to pair the two sides up; every column of a paired row is then
+   compared, and a name that changed shows up as a column difference rather
+   than as two unmatched rows.
+
+Known drift is reported separately from real differences - see _KNOWN_DRIFT
+below. Those four patterns have each been investigated and confirmed to be
+the sheet or MEWS moving on after the fact, not our bug; counting them as
+mismatches every single day would bury the differences that do matter.
+"""
+import asyncio
+import io
+import logging
+import re
+from collections import OrderedDict
+from datetime import datetime, timedelta, timezone
+
+import httpx
+from openpyxl import load_workbook
+
+logger = logging.getLogger(__name__)
+
+# The six Thai properties' generator workbooks. Marasca is the "MRCS"-style
+# sheet, NOT `1tY_kX...`/MRCKY-Gen, whose ImportInhouse was empty when checked.
+SHEETS = OrderedDict([
+    ("Lub d Bangkok Chinatown",       ("Chinatown", "1qT4ZClqvTLVUW9Bc4Oaxx2oy6u8QZo0dCVlyM35JRy4")),
+    ("Lub d Bangkok Siam",            ("Siam",      "1liiB8tqYGCgAyKqDsRCCaZSonubHgnMr2YSZQr7-SlQ")),
+    ("Lub d Koh Samui Chaweng Beach", ("Samui",     "1nanCOqRnRjiFzkQ_l0RyZqJ0oZ_LGJ6-RTB0qDMTAyg")),
+    ("Lub d Koh Tao Tanote Bay",      ("Koh Tao",   "1akGkOIoHKURs6DihwkCRw5zx37HkWVlaYFSdjj-KI6c")),
+    ("Lub d Phuket Patong",           ("Patong",    "1XKfU7pSyMwSFIiq7g1wKlKJB_gW9d1JtTuniahqBja8")),
+    ("Marasca Samui",                 ("Marasca",   "1YZD0CYpaOwxSiHLa7iH_7bK3ED5CAIhdR2GizwKKwuI")),
+])
+
+# rowNo is excluded from the comparison: both sides renumber their own rows
+# from 1, and the two exports don't emit guests in the same order (the sheet
+# lists a room's unnamed occupant slot first, we don't), so it would report a
+# difference on almost every row while meaning nothing.
+_SKIP_RR4_COLUMNS = {"row_no"}
+
+# Differences that have each been chased down and confirmed as the world
+# moving on after the sheet was generated, not a defect on our side. Reported
+# in their own column so the "ต่างจริง" number stays meaningful.
+_KNOWN_DRIFT = {
+    "time_check_in":
+        "MEWS เขียน ActualStartUtc เป็นวินาที :59 ทับหลังชีตถูกสร้าง (ชีตช้ากว่าพอดี 1 นาที)",
+    "date_check_out":
+        "แขก check out ก่อนกำหนด หลังจากชีตถูกสร้างแล้ว (ของเราเร็วกว่าชีต)",
+    "check_out_date":
+        "แขก check out ก่อนกำหนด หลังจากชีตถูกสร้างแล้ว (ของเราเร็วกว่าชีต)",
+    "birth_date":
+        "ชีตพิมพ์ 30/12/1899 เมื่อ MEWS ไม่มีวันเกิด (Excel render ของค่าว่าง) - ของเราเว้นว่างซึ่งถูกกว่า",
+}
+
+
+def _norm(v) -> str:
+    """One cell, normalized for comparison. Strips the leading apostrophe the
+    sheets use to force Text formatting (our export carries it too, on the
+    date columns only - see the RR4 importer's own rule), collapses 63 vs
+    63.0 vs "63", and treats None and "" as the same empty."""
+    if v is None:
+        return ""
+    if isinstance(v, datetime):
+        return v.strftime("%d/%m/%Y")
+    if isinstance(v, float) and v.is_integer():
+        v = int(v)
+    s = str(v).strip()
+    if s.startswith("'"):
+        s = s[1:].strip()
+    return s
+
+
+def _dmy(s: str):
+    """(y, m, d) from a dd/mm/yyyy string - Buddhist or Christian era, since
+    both sides of any one column always use the same one."""
+    m = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", s)
+    return (int(m.group(3)), int(m.group(2)), int(m.group(1))) if m else None
+
+
+def _hhmm(s: str):
+    """Minutes-since-midnight from the sheets' "HH.MM" check-in time."""
+    m = re.match(r"^(\d{1,2})[.:](\d{2})$", s)
+    return int(m.group(1)) * 60 + int(m.group(2)) if m else None
+
+
+def _is_known_drift(key: str, ours: str, sheet: str) -> bool:
+    if key == "time_check_in":
+        a, b = _hhmm(ours), _hhmm(sheet)
+        return a is not None and b is not None and b - a == 1
+    if key in ("date_check_out", "check_out_date"):
+        a, b = _dmy(ours), _dmy(sheet)
+        return a is not None and b is not None and a < b
+    if key == "birth_date":
+        return ours == "" and sheet == "30/12/1899"
+    return False
+
+
+def _pair_key(row: dict, kind: str) -> tuple:
+    """What identifies the same guest on both sides. Passport first (the one
+    field the filing itself is keyed on), then Thai national ID, then the
+    name - and for MEWS's unnamed occupant slots, which carry none of the
+    three, the room and check-in they were booked under."""
+    if kind == "rr4":
+        pp, pid = _norm(row.get("passport")).upper(), _norm(row.get("pid")).upper()
+        if pp:
+            return ("P", pp)
+        if pid:
+            return ("I", pid)
+        name = (_norm(row.get("name_en")) + "|" + _norm(row.get("surname_en"))).upper()
+        if name != "|":
+            return ("N", name)
+        return ("X", _norm(row.get("room_no")), _norm(row.get("date_check_in")), _norm(row.get("time_check_in")))
+    pp = _norm(row.get("passport_no")).upper()
+    if pp:
+        return ("P", pp)
+    return ("N", (_norm(row.get("first_name")) + "|" + _norm(row.get("last_name"))).upper())
+
+
+def _index(rows: list, kind: str) -> dict:
+    """Rows by pair key, with an occurrence counter appended so two guests
+    sharing a passport (or two unnamed slots in the same room) stay distinct
+    instead of one silently overwriting the other."""
+    out, seen = {}, {}
+    for row in rows:
+        k = _pair_key(row, kind)
+        seen[k] = seen.get(k, 0) + 1
+        out[k + (seen[k],)] = row
+    return out
+
+
+def _compare_rows(ours: list, sheet: list, kind: str, columns: list) -> dict:
+    """One property, one register. Pairs the two sides up by identity, then
+    compares every column of every paired row."""
+    ours_ix, sheet_ix = _index(ours, kind), _index(sheet, kind)
+    paired = ours_ix.keys() & sheet_ix.keys()
+
+    diff_rows, drift_rows = 0, 0
+    cols, drift_cols, samples = {}, {}, []
+    for k in paired:
+        o, s = ours_ix[k], sheet_ix[k]
+        real, drift = [], []
+        for key in columns:
+            ov, sv = _norm(o.get(key)), _norm(s.get(key))
+            if ov == sv:
+                continue
+            (drift if _is_known_drift(key, ov, sv) else real).append((key, ov, sv))
+        for key, _o, _s in drift:
+            drift_cols[key] = drift_cols.get(key, 0) + 1
+        for key, _o, _s in real:
+            cols[key] = cols.get(key, 0) + 1
+        if real:
+            diff_rows += 1
+            if len(samples) < 3:
+                label = (_norm(o.get("name_en")) or _norm(o.get("first_name")) or "—") + " " + \
+                        (_norm(o.get("surname_en")) or _norm(o.get("last_name")) or "")
+                samples.append((label.strip(), real[:4]))
+        elif drift:
+            drift_rows += 1
+
+    return {
+        "ours": len(ours),
+        "sheet": len(sheet),
+        "paired": len(paired),
+        "only_ours": len(ours_ix.keys() - sheet_ix.keys()),
+        "only_sheet": len(sheet_ix.keys() - ours_ix.keys()),
+        "clean_rows": len(paired) - diff_rows - drift_rows,
+        "diff_rows": diff_rows,
+        "drift_rows": drift_rows,
+        "cols": cols,
+        "drift_cols": drift_cols,
+        "samples": samples,
+    }
+
+
+def _parse_sheet(content: bytes) -> dict:
+    """One workbook's RR4 and TM30 tabs, plus the window each was exported
+    over. The Master tab is the only place every sheet agrees on: A2 is the
+    ImportInhouse (RR4) start and B2 the ImportCP (TM30) start. Chinatown also
+    carries Parameter-* tabs, but the other five don't."""
+    wb = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+
+    ms = wb["Master"]
+    rr4_start, tm30_start = ms.cell(2, 1).value, ms.cell(2, 2).value
+    date = rr4_start.strftime("%Y-%m-%d") if isinstance(rr4_start, datetime) else None
+
+    # RR4 tab: row 3 is the Thai header, row 4 the English field keys, data
+    # from row 5. Columns are located BY that field-key row rather than by
+    # position, so a sheet that gains a column doesn't silently shift the
+    # whole comparison one to the left.
+    from app.services.sync_service import sync_service
+    rr4_rows = []
+    if "RR4" in wb.sheetnames:
+        ws = wb["RR4"]
+        grid = [[c.value for c in row] for row in ws.iter_rows(min_row=4, max_col=27)]
+        keys = {_norm(v): i for i, v in enumerate(grid[0])} if grid else {}
+        by_key = {field: keys.get(field) for _k, _l, field in sync_service._RR4_COLUMNS}
+        for row in grid[1:]:
+            if _norm(row[0]) == "":
+                continue
+            rr4_rows.append({
+                key: (row[by_key[field]] if by_key.get(field) is not None else None)
+                for key, _label, field in sync_service._RR4_COLUMNS
+            })
+
+    # TM30 tab: one header row of the government form's own bilingual labels,
+    # then data. Nine fixed columns in the export's own order - matched
+    # positionally because those labels carry embedded newlines and stray
+    # spaces that differ between sheets.
+    tm30_rows = []
+    if "TM30" in wb.sheetnames:
+        ws = wb["TM30"]
+        for row in ws.iter_rows(min_row=2, max_col=len(sync_service._TM30_COLUMNS), values_only=True):
+            if _norm(row[0]) == "":
+                continue
+            tm30_rows.append({key: row[i] for i, (key, _label) in enumerate(sync_service._TM30_COLUMNS)})
+
+    wb.close()
+    return {
+        "date": date,
+        "rr4_rows": rr4_rows,
+        "tm30_rows": tm30_rows,
+        "rr4_window": rr4_start.strftime("%H:%M") if isinstance(rr4_start, datetime) else None,
+        "tm30_window": tm30_start.strftime("%H:%M") if isinstance(tm30_start, datetime) else None,
+    }
+
+
+async def _fetch_sheets() -> dict:
+    """All six workbooks over their public export URL, concurrently. One that
+    fails comes back as an error on that property's row rather than failing
+    the run - five comparable properties still beat none."""
+    async def one(prop, sheet_id):
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=120) as client:
+                r = await client.get(url)
+                r.raise_for_status()
+            return prop, _parse_sheet(r.content), None
+        except Exception as e:
+            logger.warning(f"RR4 compare: could not read {prop}'s sheet: {e}")
+            return prop, None, str(e)
+
+    results = await asyncio.gather(*(one(p, sid) for p, (_, sid) in SHEETS.items()))
+    return {p: {"data": d, "error": e} for p, d, e in results}
+
+
+def _windows() -> dict:
+    """Each property's configured RR4/TM30 day window, to be shown next to the
+    one the sheet was actually exported over. A stale value here silently
+    undercounts the register - a leftover 14:00/12:00 on Chinatown once
+    produced 160 rows where the real answer was 241 - and the sheets change
+    their window without warning, so this is worth a daily look."""
+    from app.services.sync_service import sync_service
+    try:
+        res = sync_service.supabase.table("property_api_settings").select(
+            "property_name, rr4_tm30_day_start_hour, rr4_tm30_day_start_minute").execute()
+        return {r["property_name"]: f"{r.get('rr4_tm30_day_start_hour') or 0:02d}:"
+                                    f"{r.get('rr4_tm30_day_start_minute') or 0:02d}"
+                for r in (res.data or [])}
+    except Exception as e:
+        logger.warning(f"RR4 compare: could not read property windows: {e}")
+        return {}
+
+
+def _local(ts: str) -> str:
+    """A stored UTC timestamp as Bangkok wall-clock. Every property here is in
+    Thailand, so there is only the one offset to apply."""
+    if not ts:
+        return ""
+    ts = re.sub(r"\.(\d+)", lambda m: "." + m.group(1)[:6].ljust(6, "0"), ts)
+    return datetime.fromisoformat(ts).astimezone(timezone(timedelta(hours=7))).strftime("%d %b %H:%M")
+
+
+async def build_comparison(want_date: str = None) -> dict:
+    """The whole check, as data.
+
+    `want_date` (the CLI's optional argument) pins every property to one date
+    instead of each following its own sheet - useful for reproducing a past
+    run, and it simply reports "ชีตถือวันที่อื่น" for any property whose sheet
+    has since moved on, because these workbooks hold one pasted export each
+    and a day they no longer hold cannot be reconstructed.
+    """
+    from app.routers.rr4 import read_managed_day
+
+    sheets = await _fetch_sheets()
+    windows = _windows()
+    props = []
+
+    for prop, (short, _sid) in SHEETS.items():
+        row = {"property": prop, "short": short, "date": None, "status": "error",
+               "note": "", "rr4": None, "tm30": None, "synced_at": "",
+               "sheet_rr4_window": "", "sheet_tm30_window": "", "our_window": windows.get(prop, "")}
+        sh = sheets[prop]["data"]
+        if not sh:
+            row["note"] = f"อ่านชีตไม่ได้ — {sheets[prop]['error']}"
+            props.append(row)
+            continue
+
+        row["date"] = sh["date"]
+        row["sheet_rr4_window"] = sh["rr4_window"] or ""
+        row["sheet_tm30_window"] = sh["tm30_window"] or ""
+        if not sh["date"]:
+            row["note"] = "ชีตไม่มีวันที่ใน Master"
+            props.append(row)
+            continue
+        if want_date and want_date != sh["date"]:
+            row["status"] = "other_date"
+            row["note"] = f"ชีตถือวันที่ {sh['date']} ไม่ใช่ {want_date}"
+            props.append(row)
+            continue
+
+        try:
+            payload = read_managed_day(prop, sh["date"])
+        except Exception as e:
+            row["note"] = f"อ่าน rr4_tm30_sync ไม่ได้ — {e}"
+            props.append(row)
+            continue
+        if not payload:
+            row["status"] = "missing"
+            row["note"] = f"ยังไม่ได้ import วันที่ {sh['date']} เข้าระบบ"
+            props.append(row)
+            continue
+
+        from app.services.sync_service import sync_service
+        rr4_cols = [k for k, _l, _f in sync_service._RR4_COLUMNS if k not in _SKIP_RR4_COLUMNS]
+        tm30_cols = [k for k, _l in sync_service._TM30_COLUMNS]
+        row["status"] = "ok"
+        row["synced_at"] = _local(payload.get("_synced_at") or "")
+        row["rr4"] = _compare_rows((payload.get("rr4") or {}).get("rows", []),
+                                   sh["rr4_rows"], "rr4", rr4_cols)
+        row["tm30"] = _compare_rows((payload.get("tm30") or {}).get("rows", []),
+                                    sh["tm30_rows"], "tm30", tm30_cols)
+        props.append(row)
+
+    compared = [p for p in props if p["status"] == "ok"]
+    if not compared:
+        return {"status": "no_data", "properties": props, "date": want_date}
+
+    # The headline date is whichever day most properties are sitting on -
+    # Chinatown's later cutoff routinely leaves it a day behind the other
+    # five, and naming its date in the subject line would misdescribe the mail.
+    counts = {}
+    for p in compared:
+        counts[p["date"]] = counts.get(p["date"], 0) + 1
+    date = max(counts, key=lambda d: (counts[d], d))
+
+    totals = {}
+    for kind in ("rr4", "tm30"):
+        totals[kind] = {
+            f: sum(p[kind][f] for p in compared)
+            for f in ("ours", "sheet", "paired", "only_ours", "only_sheet",
+                      "clean_rows", "diff_rows", "drift_rows")
+        }
+    return {
+        "status": "ok",
+        "date": date,
+        "mixed_dates": len(counts) > 1,
+        "properties": props,
+        "compared": len(compared),
+        "totals": totals,
+    }
+
+
+def _title(result: dict) -> str:
+    day = datetime.strptime(result["date"], "%Y-%m-%d")
+    return f"RR4/TM30 {day.strftime('%-d %b %Y')}"
+
+
+def _cols_note(block: dict) -> str:
+    if not block["cols"]:
+        return "✅"
+    return ", ".join(f"{k} ×{n}" for k, n in sorted(block["cols"].items(), key=lambda kv: -kv[1]))
+
+
+def render_text(result: dict) -> str:
+    """Plain-text form - the CLI output, and the email's text/plain part."""
+    if result["status"] != "ok":
+        out = ["⛔ ยังเทียบไม่ได้เลยสักที่:"]
+        for p in result["properties"]:
+            out.append(f"     {p['short']:<12} {p['note']}")
+        return "\n".join(out)
+
+    out = ["=" * 82, f"สรุปการเทียบ — {_title(result)}", "=" * 82]
+    if result["mixed_dates"]:
+        out.append("(แต่ละที่เทียบตามวันที่ในชีตของตัวเอง — Chinatown ตัดรอบ 12:15 จึงช้ากว่าที่อื่น 1 วัน)")
+    out.append("")
+    out.append(f"{'Property':<12}{'วันที่':<12}{'RR4 เรา/ชีต':<16}{'ตรง':<8}{'ต่าง':<7}{'TM30 เรา/ชีต':<16}{'ตรง':<8}ต่าง")
+    out.append("-" * 82)
+    for p in result["properties"]:
+        if p["status"] != "ok":
+            out.append(f"{p['short']:<12}{(p['date'] or '—'):<12}{p['note']}")
+            continue
+        r, t = p["rr4"], p["tm30"]
+        r_count = "{}/{}".format(r["ours"], r["sheet"])
+        t_count = "{}/{}".format(t["ours"], t["sheet"])
+        out.append(
+            f"{p['short']:<12}{p['date']:<12}"
+            f"{r_count:<16}{r['clean_rows']:<8}{r['diff_rows']:<7}"
+            f"{t_count:<16}{t['clean_rows']:<8}{t['diff_rows']}")
+    out.append("-" * 82)
+
+    tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
+    out.append(f"RR4  รวม {tr['ours']}/{tr['sheet']} แถว · จับคู่ได้ {tr['paired']} · ตรงทุกคอลัมน์ "
+               f"{tr['clean_rows']} · ต่างจริง {tr['diff_rows']} · drift ที่รู้แล้ว {tr['drift_rows']} · "
+               f"มีเฉพาะเรา {tr['only_ours']} · มีเฉพาะชีต {tr['only_sheet']}")
+    out.append(f"TM30 รวม {tt['ours']}/{tt['sheet']} แถว · จับคู่ได้ {tt['paired']} · ตรงทุกคอลัมน์ "
+               f"{tt['clean_rows']} · ต่างจริง {tt['diff_rows']} · drift ที่รู้แล้ว {tt['drift_rows']} · "
+               f"มีเฉพาะเรา {tt['only_ours']} · มีเฉพาะชีต {tt['only_sheet']}")
+
+    out += ["", "คอลัมน์ที่ต่างจริง (เรา / ชีต):"]
+    any_col = False
+    for p in result["properties"]:
+        if p["status"] != "ok":
+            continue
+        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
+            if p[kind]["cols"]:
+                any_col = True
+                out.append(f"  {p['short']:<12} {label:<5} {_cols_note(p[kind])}")
+    if not any_col:
+        out.append("  ✅ ไม่มี")
+
+    samples = [(p["short"], label, who, diffs)
+               for p in result["properties"] if p["status"] == "ok"
+               for kind, label in (("rr4", "RR4"), ("tm30", "TM30"))
+               for who, diffs in p[kind]["samples"]]
+    if samples:
+        out += ["", "ตัวอย่างแถวที่ต่าง (เรา / ชีต):"]
+        for short, label, who, diffs in samples:
+            out.append(f"  {short:<12} {label:<5} {who}")
+            for key, ov, sv in diffs:
+                out.append(f"       {key:<22} {ov or '—'}  /  {sv or '—'}")
+
+    out += ["", "ช่วงเวลาที่ export (ชีต) เทียบกับที่ตั้งไว้ในระบบ:"]
+    for p in result["properties"]:
+        flag = "" if p["sheet_rr4_window"] == p["our_window"] else "   ⚠️ ไม่ตรง"
+        out.append(f"  {p['short']:<12} RR4 ชีต {p['sheet_rr4_window'] or '—':<7} ระบบ "
+                   f"{p['our_window'] or '—':<7} · TM30 ชีต {p['sheet_tm30_window'] or '—'}{flag}")
+    return "\n".join(out)
+
+
+def _esc(s) -> str:
+    """Guest names, passport numbers and addresses come from MEWS, i.e. from
+    whatever a guest typed at check-in - they are never trusted as markup."""
+    return (str(s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+_TD = "padding:6px 10px;border:1px solid #e2e8f0;font-size:13px;"
+_TH = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;"
+_MUTED = "color:#94a3b8;"
+_BAD = "background:#fef3c7;color:#92400e;font-weight:700;"
+
+
+def render_summary_table(result: dict) -> str:
+    """Per-property counts - the <<SummaryTable>> token."""
+    if result["status"] != "ok":
+        return f'<pre style="font-family:ui-monospace,monospace;font-size:12px">{render_text(result)}</pre>'
+
+    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">วันที่</th>'
+         f'<th style="{_TH}">RR4<br>เรา / ชีต</th><th style="{_TH}">ตรง<br>ทุกคอลัมน์</th>'
+         f'<th style="{_TH}">ต่าง<br>จริง</th><th style="{_TH}">drift<br>ที่รู้แล้ว</th>'
+         f'<th style="{_TH}">TM30<br>เรา / ชีต</th><th style="{_TH}">ตรง<br>ทุกคอลัมน์</th>'
+         f'<th style="{_TH}">ต่าง<br>จริง</th><th style="{_TH}">drift<br>ที่รู้แล้ว</th></tr>']
+    for p in result["properties"]:
+        h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{p["short"]}</td>')
+        if p["status"] != "ok":
+            h.append(f'<td style="{_TD}" colspan="9">'
+                     f'<span style="{_BAD}padding:2px 6px;border-radius:4px">{p["note"]}</span></td></tr>')
+            continue
+        h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["date"]}</td>')
+        for block in (p["rr4"], p["tm30"]):
+            same = block["ours"] == block["sheet"]
+            h.append(f'<td style="{_TD}{"color:#475569;" if same else _BAD}">'
+                     f'{block["ours"]} / {block["sheet"]}</td>')
+            h.append(f'<td style="{_TD}color:#166534">{block["clean_rows"]}</td>')
+            h.append(f'<td style="{_TD}{"color:#475569;" if not block["diff_rows"] else _BAD}">'
+                     f'{block["diff_rows"]}</td>')
+            h.append(f'<td style="{_TD}{_MUTED}">{block["drift_rows"]}</td>')
+        h.append("</tr>")
+
+    tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
+    h.append(f'<tr style="background:#f1f5f9"><td style="{_TD}font-weight:700">รวม</td>'
+             f'<td style="{_TD}{_MUTED}">{result["compared"]} ที่</td>')
+    for b in (tr, tt):
+        h.append(f'<td style="{_TD}font-weight:700">{b["ours"]} / {b["sheet"]}</td>'
+                 f'<td style="{_TD}font-weight:700;color:#166534">{b["clean_rows"]}</td>'
+                 f'<td style="{_TD}font-weight:700">{b["diff_rows"]}</td>'
+                 f'<td style="{_TD}{_MUTED}">{b["drift_rows"]}</td>')
+    h.append("</tr></table>")
+    h.append(f'<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
+             f'จับคู่แถวด้วยเลขพาสปอร์ต/บัตรประชาชน แล้วเทียบ<b>ทุกคอลัมน์</b>ของแถวที่จับคู่ได้ '
+             f'(ยกเว้นเลขลำดับ ซึ่งทั้งสองฝั่งนับใหม่เอง) · '
+             f'RR4 มีเฉพาะเรา {tr["only_ours"]} / มีเฉพาะชีต {tr["only_sheet"]} · '
+             f'TM30 มีเฉพาะเรา {tt["only_ours"]} / มีเฉพาะชีต {tt["only_sheet"]}</p>')
+    return "".join(h)
+
+
+def render_column_table(result: dict) -> str:
+    """Which columns actually differ - the <<ColumnTable>> token."""
+    if result["status"] != "ok":
+        return ""
+
+    rows = []
+    for p in result["properties"]:
+        if p["status"] != "ok":
+            continue
+        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
+            for key, n in sorted(p[kind]["cols"].items(), key=lambda kv: -kv[1]):
+                rows.append((p["short"], label, key, n, ""))
+            for key, n in sorted(p[kind]["drift_cols"].items(), key=lambda kv: -kv[1]):
+                rows.append((p["short"], label, key, n, _KNOWN_DRIFT.get(key, "known drift")))
+    if not rows:
+        return ('<p style="font-size:13px;color:#166534;margin:0">'
+                '✅ ทุกคอลัมน์ของทุกแถวที่จับคู่ได้ ตรงกับชีตทั้งหมด</p>')
+
+    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">ทะเบียน</th><th style="{_TH}">คอลัมน์</th>'
+         f'<th style="{_TH}">กี่แถว</th><th style="{_TH}">หมายเหตุ</th></tr>']
+    for short, label, key, n, note in rows:
+        style = _MUTED if note else "color:#92400e;font-weight:700;"
+        h.append(f'<tr><td style="{_TD}white-space:nowrap">{short}</td>'
+                 f'<td style="{_TD}{_MUTED}">{label}</td>'
+                 f'<td style="{_TD}{style}">{key}</td>'
+                 f'<td style="{_TD}{style}">{n}</td>'
+                 f'<td style="{_TD}font-size:11px;color:#64748b">{note or "ต้องตรวจ"}</td></tr>')
+    h.append("</table>")
+    return "".join(h)
+
+
+def render_sample_table(result: dict) -> str:
+    """Up to three real differing rows per register - the <<SampleTable>>
+    token. "nationality ต่าง 2 แถว" is a number to worry about; "Nikolaos
+    Pantotis: GRC vs GRL" is something someone can act on this morning."""
+    if result["status"] != "ok":
+        return ""
+
+    rows = []
+    for p in result["properties"]:
+        if p["status"] != "ok":
+            continue
+        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
+            for who, diffs in p[kind]["samples"]:
+                rows.append((p["short"], label, who, diffs))
+    if not rows:
+        return ""
+
+    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">ทะเบียน</th>'
+         f'<th style="{_TH}">แขก</th><th style="{_TH}">คอลัมน์</th>'
+         f'<th style="{_TH}">ระบบเรา</th><th style="{_TH}">ชีต</th></tr>']
+    for short, label, who, diffs in rows:
+        for i, (key, ov, sv) in enumerate(diffs):
+            first = i == 0
+            h.append("<tr>")
+            if first:
+                span = f' rowspan="{len(diffs)}"'
+                h.append(f'<td style="{_TD}white-space:nowrap"{span}>{short}</td>'
+                         f'<td style="{_TD}{_MUTED}"{span}>{label}</td>'
+                         f'<td style="{_TD}"{span}>{_esc(who)}</td>')
+            h.append(f'<td style="{_TD}color:#92400e">{key}</td>'
+                     f'<td style="{_TD}font-weight:700">{_esc(ov) or "—"}</td>'
+                     f'<td style="{_TD}{_MUTED}">{_esc(sv) or "—"}</td></tr>')
+    h.append("</table>")
+    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
+             'แสดงไม่เกิน 3 แถวต่อทะเบียนต่อ property และไม่เกิน 4 คอลัมน์ต่อแถว</p>')
+    return "".join(h)
+
+
+def render_window_table(result: dict) -> str:
+    """Sheet export window vs our configured one - the <<WindowTable>> token.
+    See _windows() for why this is worth looking at every day."""
+    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">RR4 — ชีต</th>'
+         f'<th style="{_TH}">RR4 — ระบบเรา</th><th style="{_TH}">TM30 — ชีต</th>'
+         f'<th style="{_TH}">TM30 — ระบบเรา</th></tr>']
+    for p in result["properties"]:
+        ok = p["sheet_rr4_window"] == p["our_window"] and p["sheet_rr4_window"]
+        h.append(f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
+                 f'<td style="{_TD}">{p["sheet_rr4_window"] or "—"}</td>'
+                 f'<td style="{_TD}{"color:#475569;" if ok else _BAD}">{p["our_window"] or "—"}</td>'
+                 f'<td style="{_TD}">{p["sheet_tm30_window"] or "—"}</td>'
+                 f'<td style="{_TD}{_MUTED}">00:00</td></tr>')
+    h.append("</table>")
+    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
+             'RR4 ต้องตรงกัน — ชีตเปลี่ยนช่วงเวลาเองได้โดยไม่บอก และค่าเก่าค้างอยู่จะทำให้ทะเบียนขาดแถวเงียบๆ · '
+             'TM30 ของเราเริ่มเที่ยงคืนตามวันปฏิทินเสมอ ตั้งใจให้ต่างจากชีต '
+             '(ใช้เวลาตัดรอบแล้วแขกที่เช็คอินครึ่งวันแรกหายไป)</p>')
+    return "".join(h)
+
+
+def render_tokens(result: dict) -> dict:
+    """Everything the email template can substitute."""
+    t = result.get("totals") or {"rr4": {}, "tm30": {}}
+    day = datetime.strptime(result["date"], "%Y-%m-%d") if result.get("date") else None
+    return {
+        "Date": day.strftime("%d/%m/%Y") if day else "—",
+        "PropertyCount": str(result.get("compared", 0)),
+        "Rr4Diff": str(t["rr4"].get("diff_rows", "—")),
+        "Tm30Diff": str(t["tm30"].get("diff_rows", "—")),
+        "Rr4Rows": f"{t['rr4'].get('ours', '—')} / {t['rr4'].get('sheet', '—')}",
+        "Tm30Rows": f"{t['tm30'].get('ours', '—')} / {t['tm30'].get('sheet', '—')}",
+        "SummaryTable": render_summary_table(result),
+        "ColumnTable": render_column_table(result),
+        "SampleTable": render_sample_table(result),
+        "WindowTable": render_window_table(result),
+    }
+
+
+def subject_summary(result: dict) -> str:
+    if result["status"] != "ok":
+        return "ยังเทียบไม่ได้"
+    t = result["totals"]
+    bad = t["rr4"]["diff_rows"] + t["tm30"]["diff_rows"] \
+        + t["rr4"]["only_ours"] + t["rr4"]["only_sheet"] \
+        + t["tm30"]["only_ours"] + t["tm30"]["only_sheet"]
+    return "ตรงกับชีตทั้งหมด" if bad == 0 else f"ต้องตรวจ {bad} แถว"

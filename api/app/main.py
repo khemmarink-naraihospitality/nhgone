@@ -8,7 +8,7 @@ from app.services.sync_service import sync_service
 from app.services.encryption import encryption_service
 from app.services.email_service import email_service
 from app.services import ftp_service
-from app.services import st_compare_service
+from app.services import compare_mail
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
 import asyncio
@@ -1074,78 +1074,55 @@ async def send_ftp_upload_job(match_hour_only: bool = False):
     except Exception as e:
         print(f"Error in send_ftp_upload_job: {str(e)}")
 
-async def send_st_compare_email(match_hour_only: bool = False):
+async def _send_compare_mail_job(kind: str, match_hour_only: bool):
     """
-    Daily ST Files verification mail: our stored numbers vs each property's
-    own "<Name>-ST" Google Sheet, the ground truth for what actually gets
-    filed. Sent to one hardcoded address - see st_compare_service's own
-    docstring for why this deliberately sits OUTSIDE Admin > Email Template.
-    It is monitoring for the new system's validation period, not a business
-    email; delete this function, its two registrations below, and the service
-    module to switch it off.
+    Shared body of the two sheet-verification mails below. Both compare what
+    NHGOne produced against the Google Sheets that are the ground truth for
+    what actually gets filed, and both are configured at Admin > Email
+    Template > System Email (recipients, send time, subject and body) - see
+    compare_mail for the send path itself.
 
-    Runs at 03:00 Asia/Bangkok, after BOTH inputs exist: the property sheets
-    are generated 01:20-02:25 and our own ST Files import runs 00:20-02:03.
-
-    Dedup uses sync_logs rather than a last_sent_date column, so this needs no
-    migration to install or remove - and it puts the daily result in Admin >
-    Activity Log too, which for a monitoring feed is the point rather than
-    noise. Unlike the BCP captures (which log only failures because they run
-    every 5 minutes), one row a day is exactly what you want to be able to see.
+    Monitoring for the new system's validation period rather than a business
+    email: switching one off is unticking Enabled on its tab, and removing it
+    for good is deleting its email_templates row. No migration either way.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     if not sync_service.supabase:
         return
 
-    hour_matches = now.hour == st_compare_service.SEND_HOUR
-    if match_hour_only:
-        # Hour must match exactly, minute only needs to have been reached -
-        # same reasoning as daily_auto_sync's (Vercel's cron doesn't land on
-        # any particular minute).
-        if not (hour_matches and now.minute >= st_compare_service.SEND_MINUTE):
-            return
-    elif not (hour_matches and now.minute == st_compare_service.SEND_MINUTE):
+    try:
+        settings_row = compare_mail.get_settings(kind)
+    except Exception as e:
+        print(f"Error in {kind} compare mail (loading settings): {str(e)}")
+        return
+    if not compare_mail.due(settings_row, now, match_hour_only):
         return
 
-    today_str = now.date().isoformat()
     try:
-        already = sync_service.supabase.table("sync_logs").select("id") \
-            .eq("target_table", "st_compare") \
-            .gte("created_at", f"{today_str}T00:00:00") \
-            .limit(1).execute()
-        if already.data:
-            return
-    except Exception as e:
-        # A dedup lookup that fails must not stop the send - a duplicate mail
-        # is a far smaller problem than a silent gap in the monitoring.
-        print(f"send_st_compare_email: dedup check failed, sending anyway: {e}")
-
-    try:
-        result = await st_compare_service.build_comparison()
-        if result["status"] != "ok":
-            # The sheets aren't in a comparable state (nobody has pasted
-            # today's export yet, or they disagree about the date). Log it and
-            # stop - no mail, so a stale "all matched" can never go out.
-            _log_sync(None, None, "st_compare", "error", 0,
-                      st_compare_service.render_text(result)[:500], sync_type="monitor")
-            print(f"[{now.isoformat()}] ST compare: not comparable ({result['status']}), no mail sent.")
-            return
-
-        matched, total = result["matched_cells"], result["total_cells"]
-        email_service.send_email(
-            st_compare_service.MONITOR_RECIPIENT,
-            f"[NHGOne Monitor] {st_compare_service._title(result)} — ตรงกัน {matched}/{total} ช่อง",
-            st_compare_service.render_html(result),
-            st_compare_service.render_text(result),
-        )
-        _log_sync(None, None, "st_compare", "success", matched,
-                  f"{result['date']}: matched {matched}/{total} cells; sent to "
-                  f"{st_compare_service.MONITOR_RECIPIENT}", sync_type="monitor")
-        print(f"[{now.isoformat()}] ST compare mail sent: {matched}/{total} matched.")
+        outcome = await compare_mail.send(kind)
+        label = compare_mail.FEEDS[kind]["label"]
+        if outcome["sent"]:
+            print(f"[{now.isoformat()}] {label} compare mail sent: {outcome['summary']}")
+        else:
+            # Not comparable yet (nobody has pasted today's export, or nothing
+            # is imported). Logged, but no mail - a "ตรงกับชีตทั้งหมด" built
+            # from an empty comparison would read exactly like a real pass.
+            print(f"[{now.isoformat()}] {label} compare: not sent - {outcome['reason'][:200]}")
     except Exception as e:
         traceback.print_exc()
-        _log_sync(None, None, "st_compare", "error", 0, str(e)[:500], sync_type="monitor")
-        print(f"Error in send_st_compare_email: {str(e)}")
+        sync_service._log_sync_row(None, None, compare_mail.FEEDS[kind]["target_table"],
+                                   "error", 0, str(e)[:500], "auto")
+        print(f"Error in {kind} compare mail: {str(e)}")
+
+async def send_st_compare_email(match_hour_only: bool = False):
+    """ST Files vs each property's own "<Name>-ST" sheet, once a day
+    (Admin > Email Template > System Email > Test ST File)."""
+    await _send_compare_mail_job("st", match_hour_only)
+
+async def send_rr4_compare_email(match_hour_only: bool = False):
+    """RR4/TM30 vs each Thai property's "RR4-TM30-<Name>-Gen" sheet, once a
+    day (Admin > Email Template > System Email > Test RR4/TM30 File)."""
+    await _send_compare_mail_job("rr4", match_hour_only)
 
 async def retry_failed_syncs():
     """
@@ -1442,8 +1419,9 @@ async def start_scheduler():
     # separate configurable upload_hour/minute.
     scheduler.add_job(send_ftp_upload_job, 'cron', second=0)
     # Daily ST Files vs Google Sheet verification mail (03:00 Bangkok) -
-    # temporary monitoring, see send_st_compare_email's docstring.
+    # temporary monitoring, see _send_compare_mail_job's docstring.
     scheduler.add_job(send_st_compare_email, 'cron', second=0)
+    scheduler.add_job(send_rr4_compare_email, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -1488,8 +1466,9 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # separate configurable upload_hour/minute.
     background_tasks.add_task(send_ftp_upload_job, match_hour_only=True)
     # Daily ST Files vs Google Sheet verification mail - temporary monitoring
-    # for the new system's validation period, see send_st_compare_email.
+    # for the new system's validation period, see _send_compare_mail_job.
     background_tasks.add_task(send_st_compare_email, match_hour_only=True)
+    background_tasks.add_task(send_rr4_compare_email, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

@@ -12,6 +12,8 @@ type TemplateType =
   | "password_reset_email"
   | "google_signin_notice_email"
   | "approved_email"
+  | "st_compare_email"
+  | "rr4_compare_email"
   | "st_files_email"
   | "st_files_email_per_property"
   | "rr4_tm30_email"
@@ -30,7 +32,7 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   rr3: { label: "RR3", children: ["rr3"] },
   system_email: {
     label: "System Email",
-    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email"],
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "st_compare_email", "rr4_compare_email"],
   },
   statistic_files: {
     label: "Statistic Files",
@@ -196,6 +198,35 @@ const RR4_TM30_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
   { name: "StatsTable", description: "Same pre-built HTML table as the bundled email, but with just this one property's row" },
 ];
 
+// The two verification mails compare what NHGOne produced against the Google
+// Sheets that are the ground truth for what actually gets filed. Their tables
+// arrive pre-built rather than as loose values: an edit here changes the
+// wording around the check, never the numbers inside it.
+const ST_COMPARE_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "The date the sheets are holding (DD/MM/YYYY) - read from the sheets, not from today's clock" },
+  { name: "Matched", description: "How many cells matched, e.g. 68" },
+  { name: "Total", description: "How many cells were compared, e.g. 72 (9 metrics x 8 properties)" },
+  { name: "Summary", description: "One-line verdict, e.g. \"ตรงกัน 68/72 ช่อง\" - usable in the Subject too" },
+  { name: "PropertyCount", description: "How many properties were compared" },
+  { name: "Window", description: "When our own snapshots were captured, earliest to latest" },
+  { name: "SummaryTable", description: "Pre-built HTML: per-metric \"ตรง X/8\" summary with a note naming which properties differ" },
+  { name: "GridTable", description: "Pre-built HTML: every property x every metric, ours / sheet, mismatches highlighted" },
+];
+
+const RR4_COMPARE_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "The date most properties' sheets are holding (DD/MM/YYYY) - each property is still compared at its own sheet's date" },
+  { name: "Rr4Rows", description: "Total RR4 rows, ours / sheet" },
+  { name: "Tm30Rows", description: "Total TM30 rows, ours / sheet" },
+  { name: "Rr4Diff", description: "RR4 rows differing on at least one column, known drift excluded" },
+  { name: "Tm30Diff", description: "TM30 rows differing on at least one column, known drift excluded" },
+  { name: "Summary", description: "One-line verdict, e.g. \"ต้องตรวจ 8 แถว\" - usable in the Subject too" },
+  { name: "PropertyCount", description: "How many properties could be compared (of the 6 Thai ones)" },
+  { name: "SummaryTable", description: "Pre-built HTML: per-property row counts, rows matching on every column, real differences, known drift" },
+  { name: "ColumnTable", description: "Pre-built HTML: which columns differ and on how many rows, real differences separated from known drift" },
+  { name: "SampleTable", description: "Pre-built HTML: up to 3 real differing rows per register, naming the guest and the two values" },
+  { name: "WindowTable", description: "Pre-built HTML: the window each sheet was exported over vs the one configured in Admin > Property & API" },
+];
+
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
   // Absent for tabs whose editor isn't driven by this generic fetch/save
@@ -213,6 +244,11 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   // triggered-by-an-action template, so these stay optional or every
   // other tab would need to carry unused schedule fields too.
   hasScheduleFields?: boolean;
+  // Backend route this tab's own "Send Test Now" posts to. Required whenever
+  // hasScheduleFields is set - it used to be hardcoded to the ST Files digest,
+  // which meant the RR4/TM30 tab's button sent the ST Files email instead of
+  // its own.
+  sendNowEndpoint?: string;
   // Per-property Enabled/To/Cc/Bcc/Subject/HTML panel (each property fully
   // independent), edited on this tab instead of the generic single-endpoint
   // fetch/save system below - see hasOwnEditor. Currently ST Files Email
@@ -312,6 +348,30 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
   },
+  st_compare_email: {
+    label: "Test ST File",
+    endpoint: "/admin/email-template/st-compare",
+    tokens: ST_COMPARE_TOKENS,
+    defaultNote: "No Test ST File email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) comparing our ST Files numbers against each property's own \"<Name>-ST\" Google Sheet. Monitoring for the new system's validation period - untick Enabled to stop it. Nothing is sent on a day the sheets aren't in a comparable state, so a stale \"all matched\" can never go out.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
+    sendNowEndpoint: "/admin/email-template/st-compare/send-now",
+  },
+  rr4_compare_email: {
+    label: "Test RR4/TM30 File",
+    endpoint: "/admin/email-template/rr4-compare",
+    tokens: RR4_COMPARE_TOKENS,
+    defaultNote: "No Test RR4/TM30 File email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) comparing our RR4 and TM30 registers row by row against each Thai property's own \"RR4-TM30-<Name>-Gen\" Google Sheet. Lub d Siem Reap and Lub d Philippines Makati are never included - they don't file under the Thai Hotel Act and have no generator sheet.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
+    sendNowEndpoint: "/admin/email-template/rr4-compare/send-now",
+  },
   st_files_email: {
     label: "All Property",
     endpoint: "/admin/email-template/st-files-daily",
@@ -322,6 +382,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
     hasScheduleFields: true,
+    sendNowEndpoint: "/admin/email-template/st-files-daily/send-now",
   },
   st_files_email_per_property: {
     label: "Per-Property",
@@ -352,6 +413,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
     hasScheduleFields: true,
+    sendNowEndpoint: "/admin/email-template/rr4-tm30-daily/send-now",
   },
   rr4_tm30_email_per_property: {
     label: "Per-Property",
@@ -461,6 +523,49 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Email: "john.doe@example.com",
     AppLink: typeof window !== "undefined" ? window.location.origin : "https://one.naraihospitalitygroup.com",
   }),
+  st_compare_email: () => ({
+    Date: "25/08/2026",
+    Matched: "68",
+    Total: "72",
+    Summary: "ตรงกัน 68/72 ช่อง",
+    PropertyCount: "8",
+    Window: "26 Aug 01:20 – 26 Aug 02:03",
+    SummaryTable: buildCompareSampleTable(
+      ["คอลัมน์", "ตรง", "หมายเหตุ"],
+      [["Spaces", "8/8", "✅"], ["Occupied", "8/8", "✅"], ["Arrivals", "6/8", "Samui +3, Siem Reap +10"]],
+    ),
+    GridTable: buildCompareSampleTable(
+      ["Property", "Spaces", "Occupied", "Arrivals", "Departures"],
+      [["Chinatown", "✓ 176", "✓ 150", "✓ 30", "✓ 28"], ["Samui", "✓ 60", "✓ 55", "87 / 84", "✓ 9"]],
+    ),
+  }),
+  rr4_compare_email: () => ({
+    Date: "25/08/2026",
+    Rr4Rows: "952 / 952",
+    Tm30Rows: "341 / 343",
+    Rr4Diff: "1",
+    Tm30Diff: "3",
+    Summary: "ต้องตรวจ 8 แถว",
+    PropertyCount: "6",
+    SummaryTable: buildCompareSampleTable(
+      ["Property", "วันที่", "RR4 เรา / ชีต", "ต่างจริง", "TM30 เรา / ชีต", "ต่างจริง"],
+      [["Chinatown", "2026-08-25", "126 / 126", "0", "43 / 45", "0"],
+       ["Siam", "2026-08-25", "61 / 61", "1", "35 / 35", "2"]],
+    ),
+    ColumnTable: buildCompareSampleTable(
+      ["Property", "ทะเบียน", "คอลัมน์", "กี่แถว", "หมายเหตุ"],
+      [["Siam", "TM30", "nationality", "2", "ต้องตรวจ"],
+       ["Samui", "RR4", "time_check_in", "6", "known drift"]],
+    ),
+    SampleTable: buildCompareSampleTable(
+      ["Property", "ทะเบียน", "แขก", "คอลัมน์", "ระบบเรา", "ชีต"],
+      [["Siam", "TM30", "Nikolaos Pantotis", "nationality", "GRC", "GRL"]],
+    ),
+    WindowTable: buildCompareSampleTable(
+      ["Property", "RR4 — ชีต", "RR4 — ระบบเรา", "TM30 — ชีต", "TM30 — ระบบเรา"],
+      [["Chinatown", "12:15", "12:15", "12:15", "00:00"], ["Siam", "02:15", "02:15", "00:00", "00:00"]],
+    ),
+  }),
   st_files_email: () => ({
     Date: "06/08/2026",
     PropertyCount: "8",
@@ -493,6 +598,19 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
 // Mirrors sync_service.py's _build_st_files_summary_table byte-for-byte
 // (column order, colors, alternating row shading) so the Preview tab shows
 // what the real digest actually renders, not a generic placeholder table.
+// Plain bordered table matching what the two verification mails actually
+// emit (st_compare_service/rr4_compare_service render these server-side), so
+// the Preview tab shows the real shape instead of a bare <<SummaryTable>>.
+function buildCompareSampleTable(headers: string[], rows: string[][]): string {
+  const th = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;";
+  const td = "padding:6px 10px;border:1px solid #e2e8f0;font-size:13px;";
+  const head = headers.map((h) => `<th style="${th}">${h}</th>`).join("");
+  const body = rows
+    .map((r) => `<tr>${r.map((c) => `<td style="${td}">${c}</td>`).join("")}</tr>`)
+    .join("");
+  return `<table style="border-collapse:collapse;width:100%"><tr>${head}</tr>${body}</table>`;
+}
+
 function buildStFilesStatsTableSample(limit?: number): string {
   const columns = ["Spaces", "Occupied", "House Uses", "Out of Order", "Availability", "Customers", "Arrivals", "Departures", "Complimentary", "No. of Day"];
   const allRows = [
@@ -813,13 +931,17 @@ export default function TemplatesPage() {
   };
 
   const handleSendTestNow = async () => {
+    if (!config.sendNowEndpoint) return;
     setSendingTest(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/email-template/st-files-daily/send-now`, { method: "POST" });
+      const res = await fetch(`${apiUrl}${config.sendNowEndpoint}`, { method: "POST" });
       const result = await res.json();
       if (result.status === "success") {
+        // included/skipped are the digest endpoints' shape; the verification
+        // mails compare every property in one pass and report in the message.
+        const includedNote = result.included ? `\nIncluded: ${result.included.join(", ") || "none"}` : "";
         const skippedNote = result.skipped?.length ? `\nSkipped: ${result.skipped.join("; ")}` : "";
-        alert(`${result.message}\nIncluded: ${result.included.join(", ") || "none"}${skippedNote}`);
+        alert(`${result.message}${includedNote}${skippedNote}`);
       } else {
         alert("Error sending: " + (result.detail || result.message));
       }

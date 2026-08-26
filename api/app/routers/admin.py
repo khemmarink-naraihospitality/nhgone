@@ -11,10 +11,10 @@ from app.services.email_service import (
     email_service, WELCOME_TEMPLATE_KEY, ST_FILES_DAILY_TEMPLATE_KEY,
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, APPROVED_TEMPLATE_KEY,
-    RR4_TM30_DAILY_TEMPLATE_KEY,
+    RR4_TM30_DAILY_TEMPLATE_KEY, ST_COMPARE_TEMPLATE_KEY, RR4_COMPARE_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
-from app.services import ftp_service
+from app.services import compare_mail, ftp_service
 
 logger = logging.getLogger(__name__)
 
@@ -866,3 +866,83 @@ async def send_rr4_tm30_per_property_email_now(request: Rr4Tm30PerPropertySendNo
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# --------------------------------------------------------------- Monitoring
+#
+# The two sheet-verification mails (Admin > Email Template > System Email >
+# Test ST File / Test RR4/TM30 File). Same GET/POST/send-now trio as the ST
+# Files and RR4/TM30 digests above, but driven by one shared pair of handlers
+# since the only thing that differs between them is which template_key and
+# which comparison - see compare_mail.
+
+def _save_compare_settings(template_key: str, request: StFilesEmailSettingsUpdate, label: str):
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("email_templates").select("id") \
+            .eq("template_key", template_key).limit(1).execute()
+        payload = {
+            "template_key": template_key,
+            "subject": request.subject,
+            "html_template": request.html_template,
+            "recipients": request.recipients,
+            "send_hour": request.send_hour,
+            "send_minute": request.send_minute,
+            "enabled": request.enabled,
+        }
+        if existing.data:
+            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("email_templates").insert(payload).execute()
+        return {"status": "success", "message": f"{label} settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _send_compare_now(kind: str):
+    """
+    "Send Test Now" - runs the comparison and sends it immediately, bypassing
+    the schedule. mark_sent=False so a test can never suppress that day's real
+    scheduled send. Each property is compared at whatever date its own sheet
+    currently holds, which is the same thing the scheduled run does; there is
+    no date to pass, because these workbooks only ever hold one pasted export.
+    """
+    try:
+        outcome = await compare_mail.send(kind, mark_sent=False, sync_type="manual")
+        if not outcome["sent"]:
+            raise HTTPException(status_code=400, detail=f"Nothing sent - {outcome['reason']}")
+        return {
+            "status": "success",
+            "message": f"Sent to {', '.join(outcome['recipients'])} - {outcome['summary']}",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/email-template/st-compare")
+async def get_st_compare_email_template():
+    """Daily ST Files vs Google Sheet verification mail."""
+    return {"status": "success", "data": email_service.get_st_compare_settings()}
+
+@router.post("/email-template/st-compare")
+async def save_st_compare_email_template(request: StFilesEmailSettingsUpdate):
+    return _save_compare_settings(ST_COMPARE_TEMPLATE_KEY, request, "Test ST File")
+
+@router.post("/email-template/st-compare/send-now")
+async def send_st_compare_email_now():
+    return await _send_compare_now("st")
+
+@router.get("/email-template/rr4-compare")
+async def get_rr4_compare_email_template():
+    """Daily RR4/TM30 vs generator-sheet verification mail."""
+    return {"status": "success", "data": email_service.get_rr4_compare_settings()}
+
+@router.post("/email-template/rr4-compare")
+async def save_rr4_compare_email_template(request: StFilesEmailSettingsUpdate):
+    return _save_compare_settings(RR4_COMPARE_TEMPLATE_KEY, request, "Test RR4/TM30 File")
+
+@router.post("/email-template/rr4-compare/send-now")
+async def send_rr4_compare_email_now():
+    return await _send_compare_now("rr4")
