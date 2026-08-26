@@ -1621,17 +1621,51 @@ class SyncService:
             logger.warning(f"Could not resolve MEWS timezone for {property_name}, defaulting to Asia/Bangkok: {e}")
         return ZoneInfo("Asia/Bangkok")
 
-    # ST Files List's "Complimentary" column - a "Checked in" (State ==
-    # "Started") reservation counts if its Rate is named either of these,
-    # replicating the exact 2 labels in the user's own pre-existing
-    # spreadsheet formula for this metric (which also checked a "Voucher"
-    # field - dropped here since live testing found VoucherId essentially
-    # never populated on real reservations, 0 of 381 sampled, and this
-    # property's Connector token doesn't even have vouchers/getAll enabled,
-    # 401. "Complimentary Room" is confirmed live as a real, in-use Rate
-    # name here; "Complimentary" is kept too in case another property uses
-    # the shorter name).
+    # ST Files List's "Complimentary" column. The Master tab of all 8
+    # "<Name>-ST" sheets (the ground truth for what gets filed) computes it as:
+    #
+    #   Status = "Checked in"  AND  ( Rate = "Complimentary Room"
+    #                                 OR Segment = "Complimentary" )
+    #
+    # BOTH arms are load-bearing, and the Segment arm is the reliable one -
+    # checked against the four real complimentary rooms on 25-Aug-2026:
+    #
+    #   Chinatown #87434  Rate "Complimentary Room"                 Segment Complimentary
+    #   Marasca   #44501  Rate "Complimentary Room"                 Segment Complimentary
+    #   Koh Tao   #40971  Rate "Complimentary Room with Breakfast"  Segment Complimentary
+    #   Patong    #156361 Rate "Group Leisure Series - Room Only"   Segment Complimentary
+    #
+    # Segment is right on 4 of 4, Rate on only 2. Patong is the case that
+    # settles it: its rate is an ordinary commercial rate with nothing
+    # complimentary about the name, and only the Segment marks the room -
+    # so no amount of rate-name matching (prefix, fuzzy, or otherwise) could
+    # ever have found it. A Rate-only rule under-counted Koh Tao and Patong
+    # by one each.
+    #
+    # State == "Started" is MEWS's own "Checked in", so the Status arm needs
+    # no translation. Voucher is deliberately NOT checked, unlike an older
+    # version of the sheet formula: live testing found VoucherId essentially
+    # never populated (0 of 381 sampled) and several properties' Connector
+    # tokens don't have vouchers/getAll enabled at all (401).
+    #
+    # Lub d Siem Reap's own sheet uses a narrower formula of its own
+    # (Rate only, plus "not cancelled", no Segment and no Status). It is
+    # deliberately NOT reproduced: it would miss a Segment-only complimentary
+    # room exactly the way Patong's would have been missed. Both rules give
+    # Siem Reap 0 today, so nothing changes for it now.
     _COMPLIMENTARY_RATE_NAMES = {"Complimentary", "Complimentary Room"}
+    _COMPLIMENTARY_SEGMENT_NAMES = {"Complimentary"}
+
+    def _is_complimentary(self, res: dict, rates_by_id: dict, segments_by_id: dict) -> bool:
+        """The rule above, in one place - the ST file's headline Complimentary
+        count and the per-reservation audit flag both call this, so the two
+        can't drift into disagreeing about the same guest."""
+        if res.get("State") != "Started":
+            return False
+        rate_name = (rates_by_id.get(res.get("RateId"), {}).get("Name") or "").strip()
+        segment_name = (segments_by_id.get(res.get("BusinessSegmentId")) or "").strip()
+        return (rate_name in self._COMPLIMENTARY_RATE_NAMES
+                or segment_name in self._COMPLIMENTARY_SEGMENT_NAMES)
 
     # ST Files List's "Download" file - the legacy pipe-delimited PMSST/RMSST
     # statistics export. Field layout confirmed against the source Google
@@ -2742,8 +2776,8 @@ class SyncService:
         customers_map = {c["Id"]: c for c in resv_res.get("Customers", []) if c.get("Id")}
         resources_map = {r["Id"]: r for r in resv_res.get("Resources", []) if r.get("Id")}
 
-        # 6b. Complimentary count (see _COMPLIMENTARY_RATE_NAMES above for
-        # why this only checks Rate, not Voucher).
+        # 6b. Complimentary count - Rate AND Segment, see _is_complimentary
+        # above for the sheet formula both of them come from.
         rate_ids = list({r.get("RateId") for r in reservations if r.get("RateId")})
         rates_by_id = {}
         if rate_ids:
@@ -2756,10 +2790,31 @@ class SyncService:
                 rates_by_id = {r["Id"]: r for r in rates_res.get("Rates", []) if r.get("Id")}
             except Exception as e:
                 logger.warning(f"ST Files complimentary check: rates lookup failed for {property_name}: {e}")
+
+        # Unfiltered, like _rv_market_segments does it - a property has only a
+        # handful of segments, so fetching the lot is cheaper than assembling
+        # an id list. Degrades to {} on failure the same way the rates lookup
+        # above does: a segment outage must not fail a whole day's report, it
+        # just falls back to the Rate arm alone.
+        segments_by_id = {}
+        try:
+            segments_res = await mews_client.post(
+                "/api/connector/v1/businessSegments/getAll",
+                {"Limitation": {"Count": 200}},
+                property_name=property_name,
+            )
+            # Stripped: MEWS stores the segment name as typed, and several are
+            # saved with a trailing space (Koh Tao's are literally "Travel
+            # Agent " and "Group Business Series "). An exact lookup silently
+            # missed those in the RV report once already - see
+            # _rv_market_segments.
+            segments_by_id = {s.get("Id"): (s.get("Name") or "").strip()
+                              for s in segments_res.get("BusinessSegments", [])}
+        except Exception as e:
+            logger.warning(f"ST Files complimentary check: business segments lookup failed for {property_name}: {e}")
+
         complimentary_count = sum(
-            1 for r in reservations
-            if r.get("State") == "Started"
-            and rates_by_id.get(r.get("RateId"), {}).get("Name") in self._COMPLIMENTARY_RATE_NAMES
+            1 for r in reservations if self._is_complimentary(r, rates_by_id, segments_by_id)
         )
 
         # Full resource list + their category assignments. Needed for two
@@ -2944,10 +2999,15 @@ class SyncService:
                 "room": room.get("Name", ""),
                 "category": cat.get("short_name") or cat.get("name", ""),
                 "rate": rate.get("Name", ""),
+                # Carried alongside the rate because it is half of what decides
+                # the flag below, and on some properties it is the ONLY half
+                # that fires - without it, a row flagged complimentary on a
+                # perfectly ordinary-looking rate reads as a bug.
+                "segment": segments_by_id.get(res.get("BusinessSegmentId"), ""),
                 "state": res.get("State", ""),
                 "check_in": res.get("StartUtc", ""),
                 "check_out": res.get("EndUtc", ""),
-                "complimentary": res.get("State") == "Started" and rate.get("Name") in self._COMPLIMENTARY_RATE_NAMES,
+                "complimentary": self._is_complimentary(res, rates_by_id, segments_by_id),
             })
         reservation_audit_rows.sort(key=lambda r: r["room"] or "zzz")
 
