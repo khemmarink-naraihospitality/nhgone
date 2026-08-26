@@ -17,6 +17,7 @@ interface MenuPermissions {
   bcp: boolean;
   rr4_tm30: boolean;
   reconciliation: boolean;
+  users_report: boolean;
   admin: boolean;
 }
 
@@ -386,6 +387,23 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // logins and user counts.
   const adminNationalityOnly = !hasFullAdmin && !!menuPermissions?.rr4_tm30;
 
+  // Users Report is guarded on the route, not just by hiding its link -
+  // the same reasoning /admin/* has, and for the same kind of content: it
+  // lists every account's name, email, role and sign-in history, so a role
+  // without the box ticked shouldn't reach it by typing the URL either.
+  // (Like every role_permissions check in this app this is client-side; the
+  // profiles table itself is readable by any signed-in session under its own
+  // policy. It closes the front door, it isn't a server-side boundary.)
+  //
+  // Super Admin is not special-cased here the way it is for /admin: sidebar
+  // menus are read straight from role_permissions, and the migration that
+  // adds this column switches it on for Super Admin explicitly.
+  const onUsersReportPath = pathname === "/users-report";
+  useEffect(() => {
+    if (!onUsersReportPath || !permissionsLoaded) return;
+    if (!menuPermissions?.users_report) router.push("/dashboard");
+  }, [onUsersReportPath, permissionsLoaded, menuPermissions, router]);
+
   // Admin section access guard: redirects away once the role_permissions
   // fetch has actually settled (permissionsLoaded) and the role isn't
   // allowed - waiting for that explicit signal (rather than just checking
@@ -524,9 +542,12 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     bcp: !isFinanceRole,
     rr4_tm30: !isFinanceRole,
     reconciliation: !isFinanceRole,
+    // See the same field in src/lib/menuPermissions.ts for why this one
+    // stays off in the fallback where its neighbours don't.
+    users_report: false,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -589,6 +610,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           )}
           {perms.reconciliation && (
             <Link href="/reconciliation" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/reconciliation" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Reconciliation</Link>
+          )}
+          {perms.users_report && (
+            <Link href="/users-report" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/users-report" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Users Report</Link>
           )}
           {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
           <Link href="/log-import" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>

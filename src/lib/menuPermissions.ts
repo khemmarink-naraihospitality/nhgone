@@ -11,6 +11,7 @@ export interface MenuPermissions {
   bcp: boolean;
   rr4_tm30: boolean;
   reconciliation: boolean;
+  users_report: boolean;
   admin: boolean;
 }
 
@@ -33,6 +34,12 @@ export async function getMenuPermissions(): Promise<MenuPermissions> {
     bcp: !isFinance,
     rr4_tm30: !isFinance,
     reconciliation: !isFinance,
+    // Deliberately NOT !isFinance like the rest: the fallback exists so a
+    // missing role_permissions row can't strand someone with an empty
+    // sidebar, and a directory of every account's email and sign-in history
+    // is not what anyone needs to be un-stranded. It appears only when the
+    // role's real row says so.
+    users_report: false,
     admin: false,
   });
 
