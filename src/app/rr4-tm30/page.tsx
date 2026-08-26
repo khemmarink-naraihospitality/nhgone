@@ -90,7 +90,14 @@ interface ListRow {
   date: string;
   rr4_rows: number;
   tm30_rows: number;
+  // When the register was last pulled from MEWS (import / Re-Generate).
   synced_at?: string;
+  // When a person last changed what gets filed, via RR4|TM30 > Edit -
+  // deliberately its own column rather than folded into synced_at, since a
+  // Re-Generate refreshes the former and leaves the latter untouched.
+  updated_at?: string;
+  edited_rows?: number;
+  updated_by?: string;
 }
 
 type DataSource = "live" | "database";
@@ -642,13 +649,14 @@ export default function Rr4Tm30Page() {
                   <th className={`${thCls} text-right`}>RR4 Rows</th>
                   <th className={`${thCls} text-right`}>TM30 Rows</th>
                   <th className={thCls}>Imported</th>
+                  <th className={thCls}>Update</th>
                   <th className={thCls}>Files</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--text-primary)]/5">
                 {listRows.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
+                    <td colSpan={6} className="p-10 text-center text-[var(--text-primary)]/30 font-display text-2xl italic">
                       {selectedProperty ? "No imported days yet - use “Import To Data Mart” above, or wait for the nightly auto-import." : "Select a property to see imported RR4/TM30 history."}
                     </td>
                   </tr>
@@ -664,6 +672,18 @@ export default function Rr4Tm30Page() {
                       <td className={`${tdCls} text-right`}>{r.rr4_rows}</td>
                       <td className={`${tdCls} text-right`}>{r.tm30_rows}</td>
                       <td className={tdCls}>{fmtDateTime(r.synced_at)}</td>
+                      <td className={tdCls}>
+                        {r.updated_at ? (
+                          <span
+                            className="text-[#8f871e] font-bold"
+                            title={`${r.edited_rows} row${r.edited_rows === 1 ? "" : "s"} edited manually${r.updated_by ? ` · last by ${r.updated_by}` : ""}`}
+                          >
+                            {fmtDateTime(r.updated_at)}
+                          </span>
+                        ) : (
+                          <span className="text-[var(--text-primary)]/25">—</span>
+                        )}
+                      </td>
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
                           {(["rr4", "tm30"] as TabKey[]).map((kind) => {

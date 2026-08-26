@@ -158,6 +158,43 @@ async def sync_manual(payload: dict = Body(...)):
         raise HTTPException(status_code=500, detail=f"Manual RR4/TM30 sync failed: {str(e)}")
 
 
+def _edit_summary_by_date(property_name: str) -> dict:
+    """{report_date: {"updated_at": ..., "edited_rows": n, "updated_by": ...}}
+    for every day of this property that carries manual corrections - what the
+    Files table's Update column shows, kept separate from synced_at because
+    the two answer different questions: synced_at is when the register was
+    last pulled from MEWS, this is when a person last changed what gets
+    filed.
+
+    One query for the whole property (a day's worth is a handful of rows,
+    and the list is capped at 120 days) rather than one per listed day.
+    Nothing is decrypted here - only the metadata columns are read, so the
+    guest data in `data` never leaves the database for a listing."""
+    if not sync_service.supabase:
+        return {}
+    try:
+        res = sync_service.supabase.table(sync_service.OVERRIDES_TABLE).select(
+            "report_date, updated_at, updated_by").eq("property", property_name).execute()
+    except Exception:
+        # Same graceful degrade as everywhere else this table is read: a
+        # database without the migration still lists its files, just with an
+        # empty Update column.
+        return {}
+    out = {}
+    for row in res.data or []:
+        date_str = str(row.get("report_date") or "")
+        if not date_str:
+            continue
+        entry = out.setdefault(date_str, {"updated_at": None, "edited_rows": 0, "updated_by": ""})
+        entry["edited_rows"] += 1
+        updated_at = row.get("updated_at")
+        # Newest wins, and the name shown is whoever made that newest edit.
+        if updated_at and (entry["updated_at"] is None or updated_at > entry["updated_at"]):
+            entry["updated_at"] = updated_at
+            entry["updated_by"] = row.get("updated_by") or ""
+    return out
+
+
 @router.get("/list")
 async def get_list(property_name: str = Query(...)):
     """One summary row per day already imported for this property, newest
@@ -167,6 +204,7 @@ async def get_list(property_name: str = Query(...)):
             raise Exception("Supabase not initialized")
         res = sync_service.supabase.table("rr4_tm30_sync").select("report_date, data, synced_at").eq(
             "property", property_name).order("report_date", desc=True).limit(120).execute()
+        edits = _edit_summary_by_date(property_name)
         rows = []
         for row in res.data or []:
             try:
@@ -175,11 +213,15 @@ async def get_list(property_name: str = Query(...)):
                 # A row that won't decrypt (e.g. written under a rotated key)
                 # still shows its date rather than breaking the whole list.
                 payload = {}
+            edit = edits.get(str(row.get("report_date") or "")) or {}
             rows.append({
                 "date": row.get("report_date"),
                 "rr4_rows": len((payload.get("rr4") or {}).get("rows", [])),
                 "tm30_rows": len((payload.get("tm30") or {}).get("rows", [])),
                 "synced_at": row.get("synced_at"),
+                "updated_at": edit.get("updated_at"),
+                "edited_rows": edit.get("edited_rows", 0),
+                "updated_by": edit.get("updated_by", ""),
             })
         return {"status": "success", "data": rows}
     except Exception as e:
