@@ -57,6 +57,12 @@ export default function UsersReportPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  // Which properties the VIEWER is limited to, and role -> properties for
+  // everyone else. profiles has no property column at all - a user's
+  // property is only ever implied by their role - so the whole filter is
+  // resolved through role_permissions.restricted_properties.
+  const [myProperties, setMyProperties] = useState<string[]>([]);
+  const [propertiesByRole, setPropertiesByRole] = useState<Record<string, string[]>>({});
 
   // showSpinner=false on first mount: `loading` already starts true, so
   // setting it again would be a synchronous setState inside the effect (the
@@ -88,6 +94,26 @@ export default function UsersReportPage() {
     setLoading(false);
   };
 
+  // Resolved once on mount, alongside the user list. Super Admin - and any
+  // role with no restricted_properties - stays unrestricted, matching
+  // src/lib/allowedProperties.ts exactly so the property dropdowns elsewhere
+  // and this list can never disagree about who is scoped to what.
+  const fetchScope = async () => {
+    const { data: roleRows } = await supabase
+      .from("role_permissions")
+      .select("role, restricted_properties");
+    const map: Record<string, string[]> = {};
+    for (const r of roleRows || []) map[r.role] = r.restricted_properties || [];
+    setPropertiesByRole(map);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    const role = profile?.role;
+    if (!role || role === "Super Admin" || role === "super_admin") return;
+    setMyProperties(map[role] || []);
+  };
+
   useEffect(() => {
     // The rule can't see that fetchUsers(false) reaches no setState before
     // its first await, so it flags the call itself. Nothing here renders
@@ -95,9 +121,21 @@ export default function UsersReportPage() {
     // load passes false.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchUsers(false);
+    fetchScope();
   }, []);
 
-  const filteredUsers = users.filter(
+  const isRestricted = myProperties.length > 0;
+
+  // A restricted viewer sees only users whose own role is scoped to at least
+  // one of the same properties. A role with NO restriction (Super Admin, and
+  // head-office roles like IT BO / Revenue BO) has an empty list, so `.some`
+  // is false and they stay hidden - deliberate: those accounts belong to
+  // no single property, and a property-level viewer has no reason to see them.
+  const visibleUsers = isRestricted
+    ? users.filter((u) => (propertiesByRole[u.role] || []).some((p) => myProperties.includes(p)))
+    : users;
+
+  const filteredUsers = visibleUsers.filter(
     (u) =>
       u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -153,6 +191,15 @@ export default function UsersReportPage() {
         title="Users Report"
         description="Every NHGOne account, its role and its sign-in history. View only - changes are made in Admin > User Management."
       />
+
+      {isRestricted && (
+        // Without this, a colleague who is simply out of scope reads as a
+        // missing account rather than a filtered one.
+        <div className="mt-6 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm text-slate-600">
+          Showing accounts for <span className="font-bold text-slate-800">{myProperties.join(", ")}</span> only.
+          Users from other properties, and head-office accounts that belong to no single property, are not listed.
+        </div>
+      )}
 
       <div className="mt-6 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden mb-6">
         <div className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between border-b border-slate-100">
@@ -274,7 +321,7 @@ export default function UsersReportPage() {
 
         {!loading && (
           <div className="p-4 border-t border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            {sortedUsers.length} of {users.length} user{users.length === 1 ? "" : "s"}
+            {sortedUsers.length} of {visibleUsers.length} user{visibleUsers.length === 1 ? "" : "s"}
           </div>
         )}
       </div>
