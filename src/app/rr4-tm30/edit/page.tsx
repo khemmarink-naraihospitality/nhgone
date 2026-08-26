@@ -261,6 +261,13 @@ function Rr4Tm30EditContent() {
               <span className="font-bold text-slate-800">Reset</span> reverts a row to exactly what MEWS returned. Nothing
               is re-fetched to do it - the original values were never overwritten.
             </p>
+            <p>
+              <span className="font-bold text-slate-800">Rows with no name are listed here but are not filed.</span> MEWS
+              adds one row per booked headcount even when the companion&rsquo;s profile was never attached, so it carries a
+              check-in and a room and nothing else. Those rows are dropped from the .xlsx (and from Preview) and the
+              remaining rows are renumbered. They stay editable here on purpose: type the guest in and the row joins the
+              filing on its own.
+            </p>
           </div>
         )}
       </div>

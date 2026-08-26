@@ -2298,6 +2298,44 @@ class SyncService:
         ("remarks", "หมายเหตุ", "remarks"),
     ]
 
+    # Columns E-K of the filed RR4, i.e. every name column - the four Thai
+    # ones, then the English title/first/middle. Sliced out of _RR4_COLUMNS
+    # by position rather than hardcoded, so inserting a column can't quietly
+    # shift which cells this reads.
+    _RR4_NAME_COLUMN_KEYS = [k for k, _l, _f in _RR4_COLUMNS[4:11]]
+
+    def _rr4_filed_rows(self, rows: list) -> list:
+        """
+        Drops every row with nothing in columns E-K and renumbers what's
+        left, for the .xlsx that actually gets filed.
+
+        Those rows are MEWS's own unnamed occupant slots: "Customer profiles"
+        emits one per booked headcount even when the companion's profile was
+        never attached, so they carry a check-in, a room and nothing else.
+        The generator sheet keeps them (every column past the room is wrapped
+        in `if(<nameEn>="","",...)`, which blanks them rather than removing
+        the row); the filed file should not, since a row with no name is not
+        a lodger the Hotel Act asks us to register.
+
+        Applied at RENDER time, not in get_rr4_report, on purpose: the report
+        keeps the slots so Admin > RR4 & TM30 Files > Edit can still show one
+        and let someone type the missing guest in. Once named, the row stops
+        being blank and appears in the file on its own.
+
+        Runs after the overrides layer for the same reason - a correction
+        that supplies the name must be able to save the row, not be
+        discarded before it is read.
+        """
+        kept = [dict(r) for r in rows
+                if any(str(r.get(k) or "").strip() for k in self._RR4_NAME_COLUMN_KEYS)]
+        # row_no is positional and has to close the gaps the drop leaves, or
+        # the filed register counts 1, 2, 3, 5, 6. Renumbered on copies: the
+        # caller's report is shared (the email path renders it and then counts
+        # it) and must keep the numbering the on-screen table shows.
+        for i, row in enumerate(kept, start=1):
+            row["row_no"] = i
+        return kept
+
     async def get_rr4_export(self, property_name: str, date: str) -> tuple:
         """Renders get_rr4_report to the .xlsx layout the reference sheet
         uses: row 1 has the required-fields disclaimer, title, property
@@ -2396,7 +2434,7 @@ class SyncService:
         # authority, not the generator sheets' formulas. Text number_format
         # ("@") is what actually keeps Excel from reinterpreting the value on
         # open/re-save - no apostrophe, literal or quote-prefixed, is needed.
-        for i, row in enumerate(report["rows"], start=1):
+        for i, row in enumerate(self._rr4_filed_rows(report["rows"]), start=1):
             for col, (key, _label, _field_key) in enumerate(self._RR4_COLUMNS, start=1):
                 cell = ws.cell(field_key_row + i, col, row.get(key, ""))
                 cell.number_format = "@"
@@ -5214,7 +5252,8 @@ class SyncService:
 
         subject, html_body = self._build_rr4_tm30_property_email(
             property_name, date_display, property_code,
-            len(payload["rr4"].get("rows", [])), len(payload["tm30"].get("rows", [])),
+            len(self._rr4_filed_rows(payload["rr4"].get("rows", []))),
+            len(payload["tm30"].get("rows", [])),
             per_property_settings)
         email_service.send_email_with_attachments(
             recipients, subject, html_body,
@@ -5271,7 +5310,11 @@ class SyncService:
                 included.append(prop)
                 table_rows.append({
                     "property_name": prop, "property_code": property_code,
-                    "rr4_count": len(payload["rr4"].get("rows", [])),
+                    # The count in the email must match the attachment beside
+                    # it, so it counts the rows that survive _rr4_filed_rows -
+                    # not the report's, which still carries MEWS's nameless
+                    # occupant slots.
+                    "rr4_count": len(self._rr4_filed_rows(payload["rr4"].get("rows", []))),
                     "tm30_count": len(payload["tm30"].get("rows", [])),
                 })
             except Exception as e:
