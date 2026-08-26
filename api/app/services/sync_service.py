@@ -1887,7 +1887,76 @@ class SyncService:
             return identity_cards[0].get("Number", "")
         return ""
 
-    async def get_rr4_report(self, property_name: str, date: str) -> dict:
+    # ---- Manual edit overrides (RR4 & TM30 Files > Edit) ------------------
+    #
+    # A generated register is not always the one that can be filed: a guest's
+    # MEWS profile can be missing a passport number, carry a mis-typed name,
+    # or have no Thai name at all, and front office has to correct that
+    # before the file goes to the district office.
+    #
+    # Those corrections live in their own rr4_tm30_overrides table rather
+    # than being written back into the rr4_tm30_sync blob, because
+    # "Re-Generate Files" and the nightly auto-import both overwrite that
+    # blob wholesale - baking an edit into it means one Re-Generate silently
+    # un-does a correction on a document that has already been filed. Keeping
+    # the two apart also preserves the distinction between what MEWS said and
+    # what staff changed, which is exactly what you want to be able to show
+    # when a filing is queried.
+    #
+    # Rows are Fernet-encrypted individually, for the same reason the report
+    # blobs are: an override carries precisely the PII the register does
+    # (names, passport/ID numbers, addresses).
+    OVERRIDES_TABLE = "rr4_tm30_overrides"
+
+    def _rr4_tm30_overrides_map(self, property_name: str, date_str: str, kind: str) -> dict:
+        """{row_key: {field: value}} for one (property, date, kind), or {} if
+        nothing has been edited - and also {} when the table doesn't exist
+        yet (migration not run), the same graceful-degrade shape
+        ftp_service.get_ftp_settings uses: an un-migrated database must not
+        stop a register being generated."""
+        if not self.supabase:
+            return {}
+        try:
+            res = self.supabase.table(self.OVERRIDES_TABLE).select("row_key, data").eq(
+                "property", property_name).eq("report_date", date_str).eq("kind", kind).execute()
+        except Exception as e:
+            logger.info(f"RR4/TM30: no overrides for {property_name} {date_str} {kind} ({e})")
+            return {}
+        out = {}
+        for row in res.data or []:
+            try:
+                fields = json.loads(encryption_service.decrypt((row.get("data") or {}).get("blob", "")))
+            except Exception:
+                # A row that won't decrypt (e.g. written under a rotated key)
+                # is skipped rather than failing the whole register.
+                continue
+            if isinstance(fields, dict) and fields:
+                out[row["row_key"]] = fields
+        return out
+
+    def apply_rr4_tm30_overrides(self, report: dict, property_name: str, date_str: str, kind: str) -> dict:
+        """Patches a freshly-built or freshly-decrypted report in place with
+        whatever has been edited for that day, stamping each touched row with
+        `_edited` (the field names that are no longer MEWS's own answer) so
+        the Edit page can mark those cells and offer to reset them.
+
+        Assigns rather than only replacing existing keys: an override may
+        legitimately introduce a column the generator never sets - the RR4
+        export's four Thai-name columns come back blank from MEWS on every
+        guest, and filling one in is a correction, not a stray key."""
+        overrides = self._rr4_tm30_overrides_map(property_name, date_str, kind)
+        if not overrides:
+            return report
+        for row in report.get("rows") or []:
+            fields = overrides.get(row.get("_key") or "")
+            if not fields:
+                continue
+            for field, value in fields.items():
+                row[field] = value
+            row["_edited"] = sorted(fields.keys())
+        return report
+
+    async def get_rr4_report(self, property_name: str, date: str, apply_overrides: bool = True) -> dict:
         """
         Builds the daily RR4 (ร.ร.๔) hotel guest register: every guest whose
         stay overlaps the given day (Thai and foreign alike), in the Thai
@@ -2051,6 +2120,12 @@ class SyncService:
                 nationality_name = _rr4_country_name(nationality_code)
                 passport = c.get("Passport") or {}
                 rows.append({
+                    # Stable identity for the manual-edit overrides layer
+                    # (Admin-side "Edit" on the RR4 & TM30 Files table) -
+                    # reservation id + guest id, so a correction survives a
+                    # Re-Generate/re-import even though row_no below is
+                    # positional and shifts whenever MEWS data moves.
+                    "_key": f"{res.get('Id') or ''}:{guest_id}",
                     "date_check_in": buddhist_date(check_in_utc),
                     "time_check_in": time_hhmm(check_in_utc),
                     "room_no": room.get("Name", ""),
@@ -2090,8 +2165,11 @@ class SyncService:
             # row: 48 cells across the 8 placeholder rows of Lub d Bangkok
             # Siam's 19-Aug-2026 file alone.
             unattached = max(0, headcount - attached_count)
-            for _ in range(unattached):
+            for slot in range(unattached):
                 rows.append({
+                    # No guest id to key on - the slot's position within its
+                    # own reservation is the only stable handle these have.
+                    "_key": f"{res.get('Id') or ''}:placeholder:{slot}",
                     "date_check_in": buddhist_date(check_in_utc),
                     "time_check_in": time_hhmm(check_in_utc),
                     "room_no": room.get("Name", ""),
@@ -2120,13 +2198,21 @@ class SyncService:
             r["row_no"] = i
             del r["_sort_start"]
 
-        return {
+        report = {
             "property": property_name,
             "property_thai_name": await self._resolve_rr4_property_thai_name(property_name),
             "date": date,
             "date_buddhist": f"{day.day:02d}/{day.month:02d}/{day.year + 543}",
             "rows": rows,
         }
+        # Default on, so every consumer (export, preview, download, on-screen
+        # MEWS mode) shows the corrected register. The ONE caller that opts
+        # out is the import that writes rr4_tm30_sync - see
+        # routers/rr4.py:sync_rr4_tm30_day - which deliberately stores MEWS's
+        # raw answer so a reset can fall back to it without a re-fetch.
+        if apply_overrides:
+            self.apply_rr4_tm30_overrides(report, property_name, date, "rr4")
+        return report
 
     # Verbatim from the reference RR4 sheet's row 1 (bold+italic there, not
     # literal asterisks) - lists which fields are mandatory vs either/or
@@ -2288,7 +2374,7 @@ class SyncService:
         filename = f"{property_code}_RR4_{yyyymmdd}.xlsx"
         return buf.getvalue(), filename
 
-    async def get_tm30_report(self, property_name: str, date: str) -> dict:
+    async def get_tm30_report(self, property_name: str, date: str, apply_overrides: bool = True) -> dict:
         """
         Builds the daily TM30 foreign-national arrival notification: guests
         ARRIVING (checking in) on the given day, filtered to non-Thai
@@ -2432,6 +2518,8 @@ class SyncService:
                 identity_card = self._rr4_tm30_identity_card(c)
                 passport = (c.get("Passport") or {}).get("Number", "")
                 rows.append({
+                    # Same identity scheme as RR4's rows - see its own note.
+                    "_key": f"{res.get('Id') or ''}:{guest_id}",
                     "first_name": c.get("FirstName", ""),
                     "middle_name": c.get("SecondLastName", ""),
                     "last_name": c.get("LastName", ""),
@@ -2448,12 +2536,16 @@ class SyncService:
                     "phone": c.get("Phone", ""),
                 })
 
-        return {
+        report = {
             "property": property_name,
             "property_thai_name": await self._resolve_rr4_property_thai_name(property_name),
             "date": date,
             "rows": rows,
         }
+        # See get_rr4_report's note for why this defaults on and who opts out.
+        if apply_overrides:
+            self.apply_rr4_tm30_overrides(report, property_name, date, "tm30")
+        return report
 
     _TM30_COLUMNS = [
         ("first_name", "ชื่อ\nFirst Name *"), ("middle_name", "ชื่อกลาง\nMiddle Name"),
@@ -4926,7 +5018,15 @@ class SyncService:
         if not res.data:
             return None
         blob = (res.data[0].get("data") or {}).get("blob", "")
-        return json.loads(encryption_service.decrypt(blob))
+        payload = json.loads(encryption_service.decrypt(blob))
+        # The stored blob is MEWS's raw answer (sync_rr4_tm30_day opts out of
+        # overrides on purpose), so the manual corrections have to be laid
+        # over it here - otherwise the emailed attachment would be the only
+        # copy of the register that still shows the uncorrected data.
+        for kind in ("rr4", "tm30"):
+            if isinstance(payload.get(kind), dict):
+                self.apply_rr4_tm30_overrides(payload[kind], property_name, date_str, kind)
+        return payload
 
     def _resolve_property_code(self, property_name: str) -> str:
         """One-off st_property_code lookup, used by the RR4/TM30 email

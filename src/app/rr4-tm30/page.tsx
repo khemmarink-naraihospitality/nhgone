@@ -341,6 +341,15 @@ export default function Rr4Tm30Page() {
     window.open(`/rr4-tm30/preview?${params.toString()}`, "_blank", "noopener");
   };
 
+  // Opens that day's register in the editor, in its own tab for the same
+  // reason Preview does - it's a very wide table, and this page keeps its
+  // scroll position and loaded report for when the user comes back.
+  const handleEdit = (kind: TabKey, rowDate: string) => {
+    if (!selectedProperty) return;
+    const params = new URLSearchParams({ kind, property_name: selectedProperty, date: rowDate });
+    window.open(`/rr4-tm30/edit?${params.toString()}`, "_blank", "noopener");
+  };
+
   const rr4Table = (rows: Rr4Row[]) => (
     <table className="w-full text-left border-collapse min-w-max">
       <thead>
@@ -697,6 +706,18 @@ export default function Rr4Tm30Page() {
                                       className="w-full text-left px-2.5 py-1.5 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
                                     >
                                       Download
+                                    </button>
+                                    {/* Separated by a rule - the two above
+                                        only read the day, this one changes
+                                        what gets filed. */}
+                                    <button
+                                      onClick={() => {
+                                        setOpenFileMenu(null);
+                                        handleEdit(kind, r.date);
+                                      }}
+                                      className="w-full text-left px-2.5 py-1.5 mt-1 border-t border-[var(--text-primary)]/10 text-[10px] font-bold tracked-caps text-[var(--text-primary)] hover:bg-[var(--text-primary)]/5 transition-colors"
+                                    >
+                                      Edit
                                     </button>
                                   </div>
                                 )}
