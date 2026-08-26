@@ -38,12 +38,15 @@ interface UserProfile {
   created_by?: string | null;
 }
 
-type SortKey = "full_name" | "email" | "role" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
+type SortKey = "full_name" | "email" | "role" | "property" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
 
 const USER_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "full_name", label: "Name" },
   { key: "email", label: "Email" },
   { key: "role", label: "Role" },
+  // Resolved through the role, exactly as in Admin > User Management - see
+  // propertiesByRole below.
+  { key: "property", label: "Property" },
   { key: "auth_method", label: "User Authentication" },
   { key: "status", label: "Status" },
   { key: "last_login", label: "Last Log-in" },
@@ -51,10 +54,17 @@ const USER_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "created_by", label: "Created By" },
 ];
 
+// Property filter values, same contract as Admin > User Management's. "" is
+// no filter; the sentinel is the "belongs to no single property" bucket.
+const UNRESTRICTED_FILTER = "__unrestricted__";
+const UNRESTRICTED_LABEL = "All properties";
+
 export default function UsersReportPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [propertyFilter, setPropertyFilter] = useState("");
+  const [allProperties, setAllProperties] = useState<string[]>([]);
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   // Which properties the VIEWER is limited to, and role -> properties for
@@ -99,6 +109,9 @@ export default function UsersReportPage() {
   // src/lib/allowedProperties.ts exactly so the property dropdowns elsewhere
   // and this list can never disagree about who is scoped to what.
   const fetchScope = async () => {
+    supabase.from("property_api_settings").select("property_name").order("property_name")
+      .then(({ data }) => setAllProperties((data || []).map((r) => r.property_name)));
+
     const { data: roleRows } = await supabase
       .from("role_permissions")
       .select("role, restricted_properties");
@@ -135,11 +148,30 @@ export default function UsersReportPage() {
     ? users.filter((u) => (propertiesByRole[u.role] || []).some((p) => myProperties.includes(p)))
     : users;
 
-  const filteredUsers = visibleUsers.filter(
-    (u) =>
+  const userProperties = (u: UserProfile) => propertiesByRole[u.role] || [];
+  const propertyLabel = (u: UserProfile) => {
+    const list = userProperties(u);
+    return list.length ? list.join(", ") : UNRESTRICTED_LABEL;
+  };
+
+  // A restricted viewer can only ever see their own properties, so offering
+  // the rest in the dropdown would be a list of filters that always return
+  // nothing - and would name properties this account is not allowed to know
+  // the staffing of.
+  const filterOptions = isRestricted
+    ? allProperties.filter((prop) => myProperties.includes(prop))
+    : allProperties;
+
+  const filteredUsers = visibleUsers.filter((u) => {
+    const list = userProperties(u);
+    const matchesProperty =
+      !propertyFilter ||
+      (propertyFilter === UNRESTRICTED_FILTER ? list.length === 0 : list.includes(propertyFilter));
+    return matchesProperty && (
       u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+    );
+  });
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -159,6 +191,9 @@ export default function UsersReportPage() {
           const av = a[sortKey] ? new Date(a[sortKey] as string).getTime() : 0;
           const bv = b[sortKey] ? new Date(b[sortKey] as string).getTime() : 0;
           cmp = av - bv;
+        } else if (sortKey === "property") {
+          // Not a field on UserProfile - resolved through the role.
+          cmp = propertyLabel(a).localeCompare(propertyLabel(b));
         } else {
           cmp = (a[sortKey] || "").toString().localeCompare((b[sortKey] || "").toString());
         }
@@ -167,18 +202,24 @@ export default function UsersReportPage() {
     : filteredUsers;
 
   // Auth method and status are written as their display labels rather than
-  // the raw enum, to match what is actually on screen.
+  // the raw enum, to match what is actually on screen. Built by walking
+  // USER_COLUMNS rather than by position, so adding a column can never
+  // silently shift the export one cell to the left.
   const handleExportUsers = () => {
-    const rows = sortedUsers.map((u) => ({
-      [USER_COLUMNS[0].label]: u.full_name,
-      [USER_COLUMNS[1].label]: u.email,
-      [USER_COLUMNS[2].label]: u.role,
-      [USER_COLUMNS[3].label]: (u.auth_method || "google") === "internal" ? "Internal" : "Google",
-      [USER_COLUMNS[4].label]: u.status === "Pending" ? "Waiting for approve" : u.status,
-      [USER_COLUMNS[5].label]: u.last_login ? new Date(u.last_login).toLocaleString() : "Never",
-      [USER_COLUMNS[6].label]: u.created_at ? new Date(u.created_at).toLocaleString() : "",
-      [USER_COLUMNS[7].label]: u.created_by || "",
-    }));
+    const rows = sortedUsers.map((u) => {
+      const values: Record<SortKey, string> = {
+        full_name: u.full_name,
+        email: u.email,
+        role: u.role,
+        property: propertyLabel(u),
+        auth_method: (u.auth_method || "google") === "internal" ? "Internal" : "Google",
+        status: u.status === "Pending" ? "Waiting for approve" : u.status,
+        last_login: u.last_login ? new Date(u.last_login).toLocaleString() : "Never",
+        created_at: u.created_at ? new Date(u.created_at).toLocaleString() : "",
+        created_by: u.created_by || "",
+      };
+      return Object.fromEntries(USER_COLUMNS.map((c) => [c.label, values[c.key]]));
+    });
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
@@ -212,6 +253,21 @@ export default function UsersReportPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+          </div>
+          <div className="w-full md:w-64 md:mr-auto">
+            <select
+              value={propertyFilter}
+              onChange={(e) => setPropertyFilter(e.target.value)}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/10 transition-all"
+            >
+              <option value="">All Properties</option>
+              {filterOptions.map((prop) => (
+                <option key={prop} value={prop}>{prop}</option>
+              ))}
+              {/* A restricted viewer never sees unrestricted accounts at all
+                  (see visibleUsers), so the bucket would always be empty. */}
+              {!isRestricted && <option value={UNRESTRICTED_FILTER}>No property (head office)</option>}
+            </select>
           </div>
           <div className="flex gap-2">
             <button
@@ -260,7 +316,9 @@ export default function UsersReportPage() {
                 <tr><td colSpan={USER_COLUMNS.length} className="py-20 text-center"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#AAA024] mx-auto"></div></td></tr>
               ) : sortedUsers.length === 0 ? (
                 <tr><td colSpan={USER_COLUMNS.length} className="py-20 text-center text-slate-400 text-sm">
-                  {searchQuery ? `No user matches "${searchQuery}".` : "No users yet."}
+                  {searchQuery || propertyFilter
+                    ? `No user matches ${searchQuery ? `"${searchQuery}"` : "this filter"}.`
+                    : "No users yet."}
                 </td></tr>
               ) : sortedUsers.map((user) => (
                 <tr key={user.id} className={`hover:bg-slate-50/50 transition-colors ${user.status === "Pending" ? "bg-amber-50/50" : ""}`}>
@@ -274,6 +332,19 @@ export default function UsersReportPage() {
                     }`}>
                       {user.role}
                     </span>
+                  </td>
+                  <td className="px-6 py-5">
+                    {userProperties(user).length === 0 ? (
+                      <span className="text-[11px] font-bold text-slate-400">{UNRESTRICTED_LABEL}</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1 max-w-[260px]">
+                        {userProperties(user).map((prop) => (
+                          <span key={prop} className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                            {prop}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="px-6 py-5">
                     {(user.auth_method || "google") === "internal" ? (

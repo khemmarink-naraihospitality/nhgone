@@ -65,18 +65,29 @@ interface RolePermissionRow {
 // auth_method/status sort by their raw stored value (google/internal,
 // Active/Pending/Inactive), not the styled label the cell renders - simpler,
 // and both still group sensibly either way.
-type SortKey = "full_name" | "email" | "role" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
+type SortKey = "full_name" | "email" | "role" | "property" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
 
 const USER_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "full_name", label: "Name" },
   { key: "email", label: "Email" },
   { key: "role", label: "Role" },
+  // profiles has no property column at all - a user's property is only ever
+  // implied by their role, via role_permissions.restricted_properties. Sits
+  // next to Role because that is literally where the value comes from.
+  { key: "property", label: "Property" },
   { key: "auth_method", label: "User Authentication" },
   { key: "status", label: "Status" },
   { key: "last_login", label: "Last Log-in" },
   { key: "created_at", label: "Create Time" },
   { key: "created_by", label: "Created By" },
 ];
+
+// Property filter values. "" is no filter; this sentinel is the "belongs to
+// no single property" bucket - Super Admin and head-office roles like IT BO -
+// which would otherwise become unreachable the moment a real property is
+// picked, since an unrestricted role matches no property by name.
+const UNRESTRICTED_FILTER = "__unrestricted__";
+const UNRESTRICTED_LABEL = "All properties";
 
 const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_properties">; label: string }[] = [
   { key: "dashboard", label: "Dashboard" },
@@ -98,6 +109,7 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [propertyFilter, setPropertyFilter] = useState("");
   const [rolePermissions, setRolePermissions] = useState<RolePermissionRow[]>([]);
   const [loadingRoles, setLoadingRoles] = useState(true);
   const [newRoleName, setNewRoleName] = useState("");
@@ -463,10 +475,28 @@ export default function AdminUsersPage() {
     }
   };
 
-  const filteredUsers = users.filter(u =>
-    u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    u.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // role -> its properties, straight off the rows the Role Settings tab
+  // edits, so the two tabs can never disagree about who is scoped to what.
+  // An empty list means unrestricted, which reads as "All properties" rather
+  // than blank - blank would look like missing data.
+  const propertiesByRole: Record<string, string[]> = {};
+  for (const r of rolePermissions) propertiesByRole[r.role] = r.restricted_properties || [];
+  const userProperties = (u: UserProfile) => propertiesByRole[u.role] || [];
+  const propertyLabel = (u: UserProfile) => {
+    const list = userProperties(u);
+    return list.length ? list.join(", ") : UNRESTRICTED_LABEL;
+  };
+
+  const filteredUsers = users.filter(u => {
+    const list = userProperties(u);
+    const matchesProperty =
+      !propertyFilter ||
+      (propertyFilter === UNRESTRICTED_FILTER ? list.length === 0 : list.includes(propertyFilter));
+    return matchesProperty && (
+      u.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      u.email?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  });
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -488,6 +518,10 @@ export default function AdminUsersPage() {
           const av = a[sortKey] ? new Date(a[sortKey] as string).getTime() : 0;
           const bv = b[sortKey] ? new Date(b[sortKey] as string).getTime() : 0;
           cmp = av - bv;
+        } else if (sortKey === "property") {
+          // Not a field on UserProfile - resolved through the role, so it
+          // can't go through the generic a[sortKey] branch below.
+          cmp = propertyLabel(a).localeCompare(propertyLabel(b));
         } else {
           cmp = (a[sortKey] || "").toString().localeCompare((b[sortKey] || "").toString());
         }
@@ -495,28 +529,26 @@ export default function AdminUsersPage() {
       })
     : filteredUsers;
 
-  // CSV of exactly the columns the table shows (Name/Email/Role/User
-  // Authentication/Status/Last Log-in/Create Time/Created By), over
-  // sortedUsers so an active search AND sort order both carry into the
-  // export. auth method and status are written as their display labels,
-  // not the raw enum, to match what's actually on screen (e.g. "Waiting
-  // for approve" for a Pending row, same as the Status column renders it).
+  // Exactly the columns the table shows, over sortedUsers so an active
+  // search, property filter AND sort order all carry into the export. Built
+  // by walking USER_COLUMNS rather than by position, so adding a column can
+  // never silently shift the export one cell to the left. auth method and
+  // status are written as their display labels, not the raw enum, to match
+  // what's on screen (e.g. "Waiting for approve" for a Pending row).
   const handleExportUsers = () => {
     const rows = sortedUsers.map((u) => {
-      const authLabel = (u.auth_method || "google") === "internal" ? "Internal" : "Google";
-      const statusLabel = u.status === "Pending" ? "Waiting for approve" : u.status;
-      const lastLogin = u.last_login ? new Date(u.last_login).toLocaleString() : "Never";
-      const createTime = u.created_at ? new Date(u.created_at).toLocaleString() : "";
-      return {
-        [USER_COLUMNS[0].label]: u.full_name,
-        [USER_COLUMNS[1].label]: u.email,
-        [USER_COLUMNS[2].label]: u.role,
-        [USER_COLUMNS[3].label]: authLabel,
-        [USER_COLUMNS[4].label]: statusLabel,
-        [USER_COLUMNS[5].label]: lastLogin,
-        [USER_COLUMNS[6].label]: createTime,
-        [USER_COLUMNS[7].label]: u.created_by || "",
+      const values: Record<SortKey, string> = {
+        full_name: u.full_name,
+        email: u.email,
+        role: u.role,
+        property: propertyLabel(u),
+        auth_method: (u.auth_method || "google") === "internal" ? "Internal" : "Google",
+        status: u.status === "Pending" ? "Waiting for approve" : u.status,
+        last_login: u.last_login ? new Date(u.last_login).toLocaleString() : "Never",
+        created_at: u.created_at ? new Date(u.created_at).toLocaleString() : "",
+        created_by: u.created_by || "",
       };
+      return Object.fromEntries(USER_COLUMNS.map((c) => [c.label, values[c.key]]));
     });
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
@@ -564,6 +596,19 @@ export default function AdminUsersPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
+           </div>
+           <div className="w-full md:w-64 md:mr-auto">
+              <select
+                value={propertyFilter}
+                onChange={(e) => setPropertyFilter(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/10 transition-all"
+              >
+                <option value="">All Properties</option>
+                {properties.map((prop) => (
+                  <option key={prop} value={prop}>{prop}</option>
+                ))}
+                <option value={UNRESTRICTED_FILTER}>No property (head office)</option>
+              </select>
            </div>
            <div className="flex gap-2">
               <button
@@ -630,6 +675,19 @@ export default function AdminUsersPage() {
                      }`}>
                        {user.role}
                      </span>
+                  </td>
+                  <td className="px-6 py-5">
+                     {userProperties(user).length === 0 ? (
+                       <span className="text-[11px] font-bold text-slate-400">{UNRESTRICTED_LABEL}</span>
+                     ) : (
+                       <div className="flex flex-wrap gap-1 max-w-[260px]">
+                         {userProperties(user).map((prop) => (
+                           <span key={prop} className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
+                             {prop}
+                           </span>
+                         ))}
+                       </div>
+                     )}
                   </td>
                   <td className="px-6 py-5">
                      {(user.auth_method || "google") === "internal" ? (
