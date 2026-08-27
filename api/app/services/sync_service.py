@@ -2986,10 +2986,26 @@ class SyncService:
             # matching MEWS's own Availability/ST export (e.g. Lub d Siem Reap:
             # 10-bed dorm bookings count as 10 bed arrivals/departures).
             units = len(space_categories(res))
-            if in_window(res.get("StartUtc")):
+            arrives = in_window(res.get("StartUtc"))
+            departs = in_window(res.get("EndUtc"))
+            # A stay that checks in AND out inside the same day never occupies
+            # a night, and MEWS's Availability export leaves it out of
+            # Arrivals - while still counting it under Departures. The
+            # asymmetry looks wrong but is real, and it was the entire reason
+            # Arrivals kept coming up over the sheets: verified 2026-08-26
+            # against all 8 properties' own "<Name>-ST" workbooks, where
+            # dropping these fixed Chinatown 53->52, Siam 27->26 and Siem Reap
+            # 94->92 (the other five already agreed) while applying the same
+            # rule to Departures would have broken 28->27, 18->17 and 82->80.
+            # It is specifically same-day in-and-out, not a shifted business
+            # day: multi-night stays checking in at 00:00-02:00 (e.g. Siem
+            # Reap #149665, Chinatown #95502) are counted as arrivals by MEWS
+            # too, so the boundary really is midnight.
+            day_use = arrives and departs
+            if arrives and not day_use:
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
-            if in_window(res.get("EndUtc")):
+            if departs:
                 departures.append({**reservation_row(res), "spaces": units})
                 departures_count += units
             # MEWS counts a guest against the day they slept there, plus
@@ -2998,7 +3014,6 @@ class SyncService:
             # during the day - they belong to the previous day's file.
             end_utc = parse_utc(res.get("EndUtc"))
             stays_the_night = end_utc is not None and end_utc > day_end_utc
-            day_use = in_window(res.get("StartUtc")) and in_window(res.get("EndUtc"))
             if (stays_the_night or day_use) and units and requested_is_space_type(res):
                 customers_count += headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
