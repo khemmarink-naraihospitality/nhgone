@@ -258,6 +258,11 @@ def _rr3_country_name(code: str) -> str:
 # 104 - North Korea - the name "Korea (Republic of)", which is South Korea.
 # Add a code here only with a real MEWS export to confirm it against.
 _RR4_MEWS_COUNTRY_NAMES = {
+    # Confirmed 2026-08-26 from Siam's own ImportInhouse paste (the MEWS
+    # export itself), which writes "Brunei Darussalam" in both Nationality
+    # and Country where _RR3_COUNTRY_MAP carries the short "Brunei". Missed
+    # by the original 19-Aug sample only because no Brunei guest was in it.
+    "BN": "Brunei Darussalam",
     "BO": "Bolivia (Plurinational State of)",
     "CZ": "Czech Republic",
     "GB": "United Kingdom of Great Britain and Northern Ireland",
