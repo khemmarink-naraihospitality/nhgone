@@ -453,10 +453,21 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
     only hours old at the default 02:00 run time, before that day's
     check-outs/check-ins have actually happened, making the numbers wrong.
 
-    Same match_hour_only split as daily_auto_sync: exact minute match
-    locally (per-minute tick), hour-only in production (Vercel's cron is
-    hourly and not guaranteed to land on :00 - see daily_auto_sync's own
-    docstring for why).
+    Runs on its OWN dedicated Vercel Cron entry (/sync/st-files-auto,
+    * * * * * - see vercel.json), split out from /sync/auto's */5 tick for
+    the same kind of reason /sync/retry-check was. This schedule has to line
+    up with the MEWS-side export that fills each property's own "<Name>-ST"
+    Google Sheet - the ground truth we get compared against - and those
+    export at times like 01:59:23 and 01:22:56. On a 5-minute cron the `lte`
+    match below can only ever resolve to a 5-minute mark, which left Lub d
+    Philippines Makati 2 minutes off its sheet at the closest reachable
+    setting; worse, a minute like :59 could never fire AT ALL, there being no
+    */5 tick at or after it within the same hour. Firing every minute makes
+    the configured minute the actual pull minute.
+
+    Still `lte` rather than `eq` in production so a skipped tick catches up
+    on the next minute rather than losing the day - the per-day claim in
+    import_one is what stops that becoming a repeat run.
     """
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     if not sync_service.supabase:
@@ -507,6 +518,24 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
             print(f"ST Files auto-import for {prop}: sync lock busy.")
             return False
 
+        # Claim the day BEFORE the import runs, not after it finishes. A full
+        # 8-property import takes minutes, and /sync/st-files-auto now fires
+        # every minute (see its docstring) - marking afterwards left this
+        # property still unclaimed on the next tick, which would re-enter it,
+        # find its own lock busy, and log a bogus "sync lock still busy"
+        # error into the Activity Log while the first import was working fine.
+        # Deliberately still AFTER the lock check, so a property genuinely
+        # skipped for a busy lock stays unclaimed and gets picked up next tick.
+        # A failed import is not re-run by this marker either way (the old
+        # `finally` set it on failure too) - retry_scheduled_syncs is what
+        # covers that, and it reads sync_logs rather than this column.
+        try:
+            sync_service.supabase.table("property_api_settings").update(
+                {"st_files_sync_last_date": today_str}
+            ).eq("id", prop_id).execute()
+        except Exception as mark_err:
+            print(f"Failed to record st_files_sync_last_date for {prop}: {mark_err}")
+
         try:
             await _sync_st_files_for_property(prop, prop_id, report_date_str)
         finally:
@@ -514,12 +543,6 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
                 sync_service.supabase.rpc("release_sync_lock", {"target_property_id": prop_id}).execute()
             except Exception:
                 pass
-            try:
-                sync_service.supabase.table("property_api_settings").update(
-                    {"st_files_sync_last_date": today_str}
-                ).eq("id", prop_id).execute()
-            except Exception as mark_err:
-                print(f"Failed to record st_files_sync_last_date for {prop}: {mark_err}")
         return True
 
     # The every-5-minute BCP capture takes this same per-property lock, so a
@@ -1447,8 +1470,11 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # its own dedicated 5-minute cron (/sync/retry-check) so its interval can
     # be configured in minutes and actually fire at that granularity; see its
     # own docstring for why the hourly tick here couldn't support that.
-    # ST Files' own independent schedule.
-    background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
+    # ST Files deliberately NOT piggybacked here anymore - it has its own
+    # dedicated per-minute cron (/sync/st-files-auto) so its configured minute
+    # can match the MEWS export time behind each property's ST sheet exactly;
+    # see daily_auto_sync_st_files' own docstring. Leaving it here as well
+    # would let this */5 tick claim the day a few seconds off that time.
     # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
     background_tasks.add_task(daily_auto_sync_occupancy, match_hour_only=True)
     background_tasks.add_task(daily_auto_sync_rr4_tm30, match_hour_only=True)
@@ -1486,6 +1512,24 @@ async def trigger_retry_check(background_tasks: BackgroundTasks = None):
     retry_scheduled_syncs' own docstring for the full reasoning.
     """
     background_tasks.add_task(retry_scheduled_syncs)
+    return {"status": "accepted"}
+
+@app.get("/sync/st-files-auto")
+async def trigger_st_files_auto(background_tasks: BackgroundTasks = None):
+    """
+    Dedicated per-minute Vercel Cron entry (vercel.json) for
+    daily_auto_sync_st_files - split out from /sync/auto's */5 tick so each
+    property's configured st_files_sync_hour/minute is the minute it actually
+    pulls, instead of being rounded up to the next 5-minute mark. That
+    matters because these numbers are checked against the MEWS export sitting
+    in each property's own ST Google Sheet, and those export on the minute.
+    See daily_auto_sync_st_files' docstring for the full reasoning.
+
+    Cheap to fire this often: the job's first act is a single filtered
+    property_api_settings query, which returns nothing on all but one minute
+    of the day.
+    """
+    background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
     return {"status": "accepted"}
 
 @app.post("/sync/property")

@@ -17,6 +17,10 @@
     {
       "path": "/api/sync/retry-check",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/sync/st-files-auto",
+      "schedule": "* * * * *"
     }
   ],
   "functions": {
