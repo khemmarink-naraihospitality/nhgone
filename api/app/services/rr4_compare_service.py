@@ -130,29 +130,56 @@ def _pair_key(row: dict, kind: str) -> tuple:
         name = (_norm(row.get("name_en")) + "|" + _norm(row.get("surname_en"))).upper()
         if name != "|":
             return ("N", name)
-        return ("X", _norm(row.get("room_no")), _norm(row.get("date_check_in")), _norm(row.get("time_check_in")))
+        # Deliberately NOT keyed on time_check_in: the two exports routinely
+        # disagree by a minute on it (_is_known_drift has a rule for exactly
+        # that), and a field known to drift cannot also be an identity. When
+        # it was part of this key the drift stopped the row pairing at all,
+        # so one unnamed slot surfaced as "only ours" AND "only sheet"
+        # instead of as the known drift it is - Patong room 2313 on
+        # 2026-08-26 (ours 06.42, sheet 06.43) was doing exactly that. Room +
+        # check-in date still separates the slots; two of them sharing even
+        # that are paired by content in _index.
+        return ("X", _norm(row.get("room_no")), _norm(row.get("date_check_in")))
     pp = _norm(row.get("passport_no")).upper()
     if pp:
         return ("P", pp)
     return ("N", (_norm(row.get("first_name")) + "|" + _norm(row.get("last_name"))).upper())
 
 
-def _index(rows: list, kind: str) -> dict:
+def _index(rows: list, kind: str, columns: list) -> dict:
     """Rows by pair key, with an occurrence counter appended so two guests
     sharing a passport (or two unnamed slots in the same room) stay distinct
-    instead of one silently overwriting the other."""
-    out, seen = {}, {}
+    instead of one silently overwriting the other.
+
+    Where a key DOES repeat, the duplicates are ordered by their own compared
+    values rather than by the order the export happened to emit them. The two
+    sides genuinely do emit rows in different orders (see the module
+    docstring), so numbering by first-seen paired a guest's first row against
+    the sheet's second and reported every column that differs between the
+    guest's own two rows as a difference on both of them - twice over, once
+    in each direction. Verified 2026-08-26: Chinatown's Andrea Solves Vidal
+    (530 @ 21.43 + 404 @ 21.44) and Siam's PATTRAPORN CHANIM (105 @ 13.59 +
+    101 @ 14.00) each held identical data on both sides in opposite order,
+    and accounted for 4 of the 5 "real" RR4 differences that day. Sorting on
+    the compared columns is deterministic and identical on both sides, so
+    matching rows line up and genuinely different ones still report.
+    """
+    groups = {}
     for row in rows:
-        k = _pair_key(row, kind)
-        seen[k] = seen.get(k, 0) + 1
-        out[k + (seen[k],)] = row
+        groups.setdefault(_pair_key(row, kind), []).append(row)
+    out = {}
+    for k, group in groups.items():
+        if len(group) > 1:
+            group = sorted(group, key=lambda r: tuple(_norm(r.get(c)) for c in columns))
+        for i, row in enumerate(group, 1):
+            out[k + (i,)] = row
     return out
 
 
 def _compare_rows(ours: list, sheet: list, kind: str, columns: list) -> dict:
     """One property, one register. Pairs the two sides up by identity, then
     compares every column of every paired row."""
-    ours_ix, sheet_ix = _index(ours, kind), _index(sheet, kind)
+    ours_ix, sheet_ix = _index(ours, kind, columns), _index(sheet, kind, columns)
     paired = ours_ix.keys() & sheet_ix.keys()
 
     diff_rows, drift_rows = 0, 0
