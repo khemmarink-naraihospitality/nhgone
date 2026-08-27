@@ -2548,7 +2548,17 @@ class SyncService:
             t = parse_utc(ts)
             if not t:
                 return ""
-            local = t.astimezone(day.tzinfo)
+            # Two different kinds of value reach this helper: check_out_date is
+            # a real UTC instant (EndUtc, carries a "Z") and must be shifted
+            # into the property's local day, while birth_date is a plain
+            # calendar date MEWS returns with no timezone at all. Converting
+            # the naive one makes Python read it as the SERVER's local time -
+            # which raises OSError 22 on Windows for any pre-1970 birth date
+            # (one such guest was enough to fail the whole property's TM30
+            # report) and, on any server not behind the property's timezone,
+            # silently files the guest one day off. A date with no timezone is
+            # already the date to print.
+            local = t.astimezone(day.tzinfo) if t.tzinfo else t
             return f"{local.day:02d}/{local.month:02d}/{local.year}"
 
         rows = []

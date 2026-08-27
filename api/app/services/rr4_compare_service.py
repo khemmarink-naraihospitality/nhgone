@@ -383,7 +383,10 @@ async def build_comparison(want_date: str = None) -> dict:
 
 def _title(result: dict) -> str:
     day = datetime.strptime(result["date"], "%Y-%m-%d")
-    return f"RR4/TM30 {day.strftime('%-d %b %Y')}"
+    # "%-d" (unpadded day) is a glibc extension - it raises ValueError on
+    # Windows, which made this whole mail impossible to preview from a dev
+    # machine. Formatting the day separately is portable and identical.
+    return f"RR4/TM30 {day.day} {day.strftime('%b %Y')}"
 
 
 def _cols_note(block: dict) -> str:

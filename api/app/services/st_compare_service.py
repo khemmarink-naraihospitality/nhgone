@@ -198,7 +198,9 @@ async def build_comparison(want_date: str = None) -> dict:
 
 def _title(result: dict) -> str:
     day = datetime.strptime(result["date"], "%Y-%m-%d")
-    return f"ST Files {day.strftime('%-d %b %Y')}"
+    # "%-d" (unpadded day) is a glibc extension and raises ValueError on
+    # Windows - see the same note in rr4_compare_service._title.
+    return f"ST Files {day.day} {day.strftime('%b %Y')}"
 
 
 def render_text(result: dict) -> str:
@@ -216,7 +218,7 @@ def render_text(result: dict) -> str:
 
     out = ["=" * 78, f"สรุปตามคอลัมน์ — {_title(result)}", "=" * 78]
     day = datetime.strptime(result["date"], "%Y-%m-%d")
-    out.append(f"ชีตทั้ง {len(SHEETS)} ถือข้อมูลวันที่ {day.strftime('%-d %b %Y')} ตรงกัน")
+    out.append(f"ชีตทั้ง {len(SHEETS)} ถือข้อมูลวันที่ {day.day} {day.strftime('%b %Y')} ตรงกัน")
     if result["window"]:
         out.append(f"เทียบ snapshot ของเรา (จับเวลา {result['window'][0]} – {result['window'][1]}) กับชีต")
     out += ["", f"{'คอลัมน์':<16}{'ตรง':<8}หมายเหตุ", "-" * 78]
@@ -323,7 +325,7 @@ def render_html(result: dict) -> str:
  font-weight:700;font-size:14px;margin:10px 0">
  \u0e15\u0e23\u0e07\u0e01\u0e31\u0e19 {result['matched_cells']}/{result['total_cells']} \u0e0a\u0e48\u0e2d\u0e07</div>
 <p style="font-size:13px;color:#475569;margin:6px 0 14px">
-\u0e0a\u0e35\u0e15\u0e17\u0e31\u0e49\u0e07 {len(SHEETS)} \u0e16\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 {day.strftime('%-d %b %Y')}</p>''']
+\u0e0a\u0e35\u0e15\u0e17\u0e31\u0e49\u0e07 {len(SHEETS)} \u0e16\u0e37\u0e2d\u0e02\u0e49\u0e2d\u0e21\u0e39\u0e25\u0e27\u0e31\u0e19\u0e17\u0e35\u0e48 {day.day} {day.strftime('%b %Y')}</p>''']
     h.append(render_summary_table(result))
     h.append('<h3 style="margin:22px 0 8px;font-size:15px">\u0e15\u0e32\u0e23\u0e32\u0e07\u0e40\u0e15\u0e47\u0e21 \u2014 \u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e23\u0e32 / \u0e0a\u0e35\u0e15</h3>')
     h.append(render_grid_table(result))
