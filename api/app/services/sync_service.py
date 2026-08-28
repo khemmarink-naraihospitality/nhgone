@@ -215,6 +215,13 @@ _RR3_PROPERTY_THAI_NAMES = {
     "Marasca Samui": "มาราสก้า สมุย",
 }
 
+# Local hour before which a zero-night ("day use") stay is read as the tail of
+# the PREVIOUS night rather than a daytime day room. See the block in
+# get_st_files_report that uses it for the evidence on both sides; this cutoff
+# is the one number there that is inferred rather than measured, bounded by the
+# observations to somewhere after 02:00 and at or before 10:00.
+_ST_DAY_USE_NIGHT_END_HOUR = 6
+
 # The RR4 (ร.ร.๔) hotel-register filing needs the property's Thai REGISTERED
 # name, which is not always the same string as _RR3_PROPERTY_THAI_NAMES above
 # (that one backs guest-facing RR3 cards, a different, less formal use) -
@@ -3003,24 +3010,33 @@ class SyncService:
             units = len(space_categories(res))
             arrives = in_window(res.get("StartUtc"))
             departs = in_window(res.get("EndUtc"))
-            # A stay that checks in AND out inside the same day never occupies
-            # a night, and MEWS's Availability export leaves it out of
-            # Arrivals - while still counting it under Departures. The
-            # asymmetry looks wrong but is real, and it was the entire reason
-            # Arrivals kept coming up over the sheets: verified 2026-08-26
-            # against all 8 properties' own "<Name>-ST" workbooks, where
-            # dropping these fixed Chinatown 53->52, Siam 27->26 and Siem Reap
-            # 94->92 (the other five already agreed) while applying the same
-            # rule to Departures would have broken 28->27, 18->17 and 82->80.
-            # It is specifically same-day in-and-out, not a shifted business
-            # day: multi-night stays checking in at 00:00-02:00 (e.g. Siem
-            # Reap #149665, Chinatown #95502) are counted as arrivals by MEWS
-            # too, so the boundary really is midnight.
             day_use = arrives and departs
-            if arrives and not day_use:
+            # A zero-night stay lands on exactly ONE side of the register in
+            # MEWS's own Availability export, and which side depends on when it
+            # started. Both halves are measured, on different days:
+            #  - 26-Aug-2026: four stays that began 00:00-02:00 and ended that
+            #    same morning (Chinatown #95528, Siam #71156, Siem Reap #149736
+            #    and #149737) were counted as DEPARTURES only. They are the tail
+            #    of the night before - the guest walked in after midnight and
+            #    left the same morning - so their arrival was already filed
+            #    against the previous day.
+            #  - 27-Aug-2026: Samui #184016, a 10:00-17:00 day room, was counted
+            #    as an ARRIVAL only. Confirmed twice over: that sheet's own MEWS
+            #    "Reservation" tab lists 11 DKR arrivals against the Availability
+            #    tab's 12, and the one it omits is exactly this stay (the tab
+            #    covers in-house guests, and a day room has already left).
+            # Counting a day-use on both sides, or on neither, contradicts one
+            # of those two days; only this split satisfies both. Multi-night
+            # stays are untouched - a 00:00-02:00 check-in that DOES stay the
+            # night is an ordinary arrival (Siem Reap #149665, Chinatown #95502).
+            night_tail = False
+            if day_use:
+                started = parse_utc(res.get("StartUtc"))
+                night_tail = started.astimezone(property_tz).hour < _ST_DAY_USE_NIGHT_END_HOUR
+            if arrives and not (day_use and night_tail):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
-            if departs:
+            if departs and not (day_use and not night_tail):
                 departures.append({**reservation_row(res), "spaces": units})
                 departures_count += units
             # MEWS counts a guest against the day they slept there, plus
