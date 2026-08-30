@@ -55,9 +55,9 @@ def _summary(kind: str, result: dict) -> str:
     if kind == "rr4":
         return rr4_compare_service.subject_summary(result)
     if result["status"] != "ok":
-        return "ยังเทียบไม่ได้"
+        return "not comparable yet"
     matched, total = result["matched_cells"], result["total_cells"]
-    return "ตรงกับชีตทั้งหมด" if matched == total else f"ตรงกัน {matched}/{total} ช่อง"
+    return "matches sheet completely" if matched == total else f"{matched}/{total} cells match"
 
 
 async def send(kind: str, mark_sent: bool = True, want_date: str = None,

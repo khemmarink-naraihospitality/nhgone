@@ -250,7 +250,7 @@ def render_summary_table(result: dict) -> str:
         return f'<pre style="font-family:ui-monospace,monospace;font-size:13px">{render_text(result)}</pre>'
 
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">คอลัมน์</th><th style="{_TH}">ตรง</th><th style="{_TH}">หมายเหตุ</th></tr>']
+         f'<th style="{_TH}">Column</th><th style="{_TH}">Matched</th><th style="{_TH}">Notes</th></tr>']
     for c in result["columns"]:
         good = c["matched"] == c["total"]
         note = "✅" if good else ", ".join(c["notes"])
@@ -287,9 +287,7 @@ def render_grid_table(result: dict) -> str:
             h.append(f'<td style="{_TD}{style}">{cell}</td>')
         h.append("</tr>")
     h.append("</table></div>")
-    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             '\u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e23\u0e32 / \u0e0a\u0e35\u0e15 '
-             '\u2014 \u2713 \u0e04\u0e37\u0e2d\u0e15\u0e23\u0e07\u0e01\u0e31\u0e19</p>')
+    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">Ours / Sheet — ✓ = match</p>')
     return "".join(h)
 
 

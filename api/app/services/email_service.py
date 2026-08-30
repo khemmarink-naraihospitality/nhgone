@@ -141,12 +141,12 @@ DEFAULT_ST_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:4
       <td style="padding:40px;">
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">ST Files &mdash; Sheet Verification</p>
-        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">เทียบตัวเลขของระบบกับชีต "&lt;Name&gt;-ST" ของทุก property ประจำวันที่ <b><<Date>></b></p>
-        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;">ตรงกัน <<Matched>>/<<Total>> ช่อง</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our numbers against every property's own "&lt;Name&gt;-ST" sheet for <b><<Date>></b></p>
+        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<Matched>>/<<Total>> cells match</p>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ตารางเต็ม &mdash; ระบบเรา / ชีต</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Full Table &mdash; Ours / Sheet</h3>
         <<GridTable>>
-        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">snapshot ของเราจับเวลา <<Window>> &middot; <<PropertyCount>> properties</p>
+        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Our snapshot was captured <<Window>> &middot; <<PropertyCount>> properties</p>
       </td>
     </tr>
   </table>
@@ -163,14 +163,14 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
       <td style="padding:40px;">
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 &mdash; Sheet Verification</p>
-        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">เทียบทะเบียนของระบบกับชีต "RR4-TM30-&lt;Name&gt;-Gen" ที่ละแถว ประจำวันที่ <b><<Date>></b> (<<PropertyCount>> properties)</p>
-        <p style="margin:0 0 24px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> แถว &middot; ต่างจริง <b><<Rr4Diff>></b> &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> แถว &middot; ต่างจริง <b><<Tm30Diff>></b></p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our register against every property's own "RR4-TM30-&lt;Name&gt;-Gen" sheet, row by row, for <b><<Date>></b> (<<PropertyCount>> properties)</p>
+        <p style="margin:0 0 24px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> rows &middot; <b><<Rr4Diff>></b> differ &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> rows &middot; <b><<Tm30Diff>></b> differ</p>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">คอลัมน์ที่ต่าง</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Columns That Differ</h3>
         <<ColumnTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ตัวอย่างแถวที่ต่าง</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Example Differences</h3>
         <<SampleTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">ช่วงเวลาที่ export</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Export Window Check</h3>
         <<WindowTable>>
       </td>
     </tr>

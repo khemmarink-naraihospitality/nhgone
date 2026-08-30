@@ -61,16 +61,16 @@ _SKIP_RR4_COLUMNS = {"row_no"}
 
 # Differences that have each been chased down and confirmed as the world
 # moving on after the sheet was generated, not a defect on our side. Reported
-# in their own column so the "ต่างจริง" number stays meaningful.
+# in their own column so the "real differences" number stays meaningful.
 _KNOWN_DRIFT = {
     "time_check_in":
-        "MEWS เขียน ActualStartUtc เป็นวินาที :59 ทับหลังชีตถูกสร้าง (ชีตช้ากว่าพอดี 1 นาที)",
+        "MEWS wrote ActualStartUtc at :59 seconds, right after the sheet was generated (sheet is exactly 1 minute behind)",
     "date_check_out":
-        "แขก check out ก่อนกำหนด หลังจากชีตถูกสร้างแล้ว (ของเราเร็วกว่าชีต)",
+        "Guest checked out earlier than scheduled, after the sheet was generated (ours is ahead of the sheet)",
     "check_out_date":
-        "แขก check out ก่อนกำหนด หลังจากชีตถูกสร้างแล้ว (ของเราเร็วกว่าชีต)",
+        "Guest checked out earlier than scheduled, after the sheet was generated (ours is ahead of the sheet)",
     "birth_date":
-        "ชีตพิมพ์ 30/12/1899 เมื่อ MEWS ไม่มีวันเกิด (Excel render ของค่าว่าง) - ของเราเว้นว่างซึ่งถูกกว่า",
+        "Sheet prints 30/12/1899 when MEWS has no birth date (Excel's render of an empty value) - ours leaves it blank, which is correct",
 }
 
 
@@ -323,7 +323,7 @@ async def build_comparison(want_date: str = None) -> dict:
 
     `want_date` (the CLI's optional argument) pins every property to one date
     instead of each following its own sheet - useful for reproducing a past
-    run, and it simply reports "ชีตถือวันที่อื่น" for any property whose sheet
+    run, and it simply reports "the sheet holds a different date" for any property whose sheet
     has since moved on, because these workbooks hold one pasted export each
     and a day they no longer hold cannot be reconstructed.
     """
@@ -339,7 +339,7 @@ async def build_comparison(want_date: str = None) -> dict:
                "sheet_rr4_window": "", "sheet_tm30_window": "", "our_window": windows.get(prop, "")}
         sh = sheets[prop]["data"]
         if not sh:
-            row["note"] = f"อ่านชีตไม่ได้ — {sheets[prop]['error']}"
+            row["note"] = f"Could not read sheet — {sheets[prop]['error']}"
             props.append(row)
             continue
 
@@ -347,24 +347,24 @@ async def build_comparison(want_date: str = None) -> dict:
         row["sheet_rr4_window"] = sh["rr4_window"] or ""
         row["sheet_tm30_window"] = sh["tm30_window"] or ""
         if not sh["date"]:
-            row["note"] = "ชีตไม่มีวันที่ใน Master"
+            row["note"] = "Sheet has no date in Master"
             props.append(row)
             continue
         if want_date and want_date != sh["date"]:
             row["status"] = "other_date"
-            row["note"] = f"ชีตถือวันที่ {sh['date']} ไม่ใช่ {want_date}"
+            row["note"] = f"Sheet holds {sh['date']}, not {want_date}"
             props.append(row)
             continue
 
         try:
             payload = read_managed_day(prop, sh["date"])
         except Exception as e:
-            row["note"] = f"อ่าน rr4_tm30_sync ไม่ได้ — {e}"
+            row["note"] = f"Could not read rr4_tm30_sync — {e}"
             props.append(row)
             continue
         if not payload:
             row["status"] = "missing"
-            row["note"] = f"ยังไม่ได้ import วันที่ {sh['date']} เข้าระบบ"
+            row["note"] = f"{sh['date']} has not been imported yet"
             props.append(row)
             continue
 
@@ -425,16 +425,16 @@ def _cols_note(block: dict) -> str:
 def render_text(result: dict) -> str:
     """Plain-text form - the CLI output, and the email's text/plain part."""
     if result["status"] != "ok":
-        out = ["⛔ ยังเทียบไม่ได้เลยสักที่:"]
+        out = ["⛔ Not comparable yet, for any property:"]
         for p in result["properties"]:
             out.append(f"     {p['short']:<12} {p['note']}")
         return "\n".join(out)
 
-    out = ["=" * 82, f"สรุปการเทียบ — {_title(result)}", "=" * 82]
+    out = ["=" * 82, f"Comparison Summary — {_title(result)}", "=" * 82]
     if result["mixed_dates"]:
-        out.append("(แต่ละที่เทียบตามวันที่ในชีตของตัวเอง — Chinatown ตัดรอบ 12:15 จึงช้ากว่าที่อื่น 1 วัน)")
+        out.append("(Each property is compared at its own sheet's date — Chinatown cuts its day at 12:15, so it runs a day behind the rest)")
     out.append("")
-    out.append(f"{'Property':<12}{'วันที่':<12}{'RR4 เรา/ชีต':<16}{'ตรง':<8}{'ต่าง':<7}{'TM30 เรา/ชีต':<16}{'ตรง':<8}ต่าง")
+    out.append(f"{'Property':<12}{'Date':<12}{'RR4 Ours/Sheet':<16}{'Match':<8}{'Diff':<7}{'TM30 Ours/Sheet':<16}{'Match':<8}Diff")
     out.append("-" * 82)
     for p in result["properties"]:
         if p["status"] != "ok":
@@ -450,14 +450,14 @@ def render_text(result: dict) -> str:
     out.append("-" * 82)
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
-    out.append(f"RR4  รวม {tr['ours']}/{tr['sheet']} แถว · จับคู่ได้ {tr['paired']} · ตรงทุกคอลัมน์ "
-               f"{tr['clean_rows']} · ต่างจริง {tr['diff_rows']} · drift ที่รู้แล้ว {tr['drift_rows']} · "
-               f"มีเฉพาะเรา {tr['only_ours']} · มีเฉพาะชีต {tr['only_sheet']}")
-    out.append(f"TM30 รวม {tt['ours']}/{tt['sheet']} แถว · จับคู่ได้ {tt['paired']} · ตรงทุกคอลัมน์ "
-               f"{tt['clean_rows']} · ต่างจริง {tt['diff_rows']} · drift ที่รู้แล้ว {tt['drift_rows']} · "
-               f"มีเฉพาะเรา {tt['only_ours']} · มีเฉพาะชีต {tt['only_sheet']}")
+    out.append(f"RR4  total {tr['ours']}/{tr['sheet']} rows · paired {tr['paired']} · fully matched "
+               f"{tr['clean_rows']} · real diff {tr['diff_rows']} · known drift {tr['drift_rows']} · "
+               f"ours only {tr['only_ours']} · sheet only {tr['only_sheet']}")
+    out.append(f"TM30 total {tt['ours']}/{tt['sheet']} rows · paired {tt['paired']} · fully matched "
+               f"{tt['clean_rows']} · real diff {tt['diff_rows']} · known drift {tt['drift_rows']} · "
+               f"ours only {tt['only_ours']} · sheet only {tt['only_sheet']}")
 
-    out += ["", "คอลัมน์ที่ต่างจริง (เรา / ชีต):"]
+    out += ["", "Columns with real differences (ours / sheet):"]
     any_col = False
     for p in result["properties"]:
         if p["status"] != "ok":
@@ -467,24 +467,24 @@ def render_text(result: dict) -> str:
                 any_col = True
                 out.append(f"  {p['short']:<12} {label:<5} {_cols_note(p[kind])}")
     if not any_col:
-        out.append("  ✅ ไม่มี")
+        out.append("  ✅ None")
 
     samples = [(p["short"], label, who, diffs)
                for p in result["properties"] if p["status"] == "ok"
                for kind, label in (("rr4", "RR4"), ("tm30", "TM30"))
                for who, diffs in p[kind]["samples"]]
     if samples:
-        out += ["", "ตัวอย่างแถวที่ต่าง (เรา / ชีต):"]
+        out += ["", "Example differing rows (ours / sheet):"]
         for short, label, who, diffs in samples:
             out.append(f"  {short:<12} {label:<5} {who}")
             for key, ov, sv in diffs:
                 out.append(f"       {key:<22} {ov or '—'}  /  {sv or '—'}")
 
-    out += ["", "ช่วงเวลาที่ export (ชีต) เทียบกับที่ตั้งไว้ในระบบ:"]
+    out += ["", "Export window (sheet) vs configured window (ours):"]
     for p in result["properties"]:
-        flag = "" if p["sheet_rr4_window"] == p["our_window"] else "   ⚠️ ไม่ตรง"
-        out.append(f"  {p['short']:<12} RR4 ชีต {p['sheet_rr4_window'] or '—':<7} ระบบ "
-                   f"{p['our_window'] or '—':<7} · TM30 ชีต {p['sheet_tm30_window'] or '—'}{flag}")
+        flag = "" if p["sheet_rr4_window"] == p["our_window"] else "   ⚠️ mismatch"
+        out.append(f"  {p['short']:<12} RR4 sheet {p['sheet_rr4_window'] or '—':<7} ours "
+                   f"{p['our_window'] or '—':<7} · TM30 sheet {p['sheet_tm30_window'] or '—'}{flag}")
     return "\n".join(out)
 
 
@@ -500,50 +500,61 @@ _MUTED = "color:#94a3b8;"
 _BAD = "background:#fef3c7;color:#92400e;font-weight:700;"
 
 
+def _summary_cell(block: dict) -> str:
+    """One register's cell in the simplified summary grid - same visual
+    pattern as st_compare_service's GridTable: a plain "✓ N" when the two
+    sides genuinely agree, a bold highlighted "N / M" with a short note
+    otherwise. Known drift doesn't count as a real difference here (that's
+    the whole point of tracking it separately), so a day with only drift
+    still reads as clean at a glance - the detail tables below still show it."""
+    real = block["diff_rows"] + block["only_ours"] + block["only_sheet"]
+    if real == 0:
+        note = f" ({block['drift_rows']} known drift)" if block["drift_rows"] else ""
+        return f'<td style="{_TD}color:#475569;">✓ {block["ours"]}{note}</td>'
+    bits = []
+    if block["diff_rows"]:
+        bits.append(f"{block['diff_rows']} differ")
+    if block["only_ours"]:
+        bits.append(f"{block['only_ours']} ours only")
+    if block["only_sheet"]:
+        bits.append(f"{block['only_sheet']} sheet only")
+    return f'<td style="{_TD}{_BAD}"><b>{block["ours"]} / {block["sheet"]}</b> ({", ".join(bits)})</td>'
+
+
 def render_summary_table(result: dict) -> str:
-    """Per-property counts - the <<SummaryTable>> token."""
+    """Per-property counts - the <<SummaryTable>> token. Deliberately just
+    four columns (Property/Date/RR4/TM30), matching st_compare_service's
+    plain grid rather than the earlier 10-column version - the column-level
+    and row-level breakdowns still exist, just moved into the two detail
+    tables below where someone actually chasing a difference will look."""
     if result["status"] != "ok":
         return f'<pre style="font-family:ui-monospace,monospace;font-size:12px">{render_text(result)}</pre>'
 
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">วันที่</th>'
-         f'<th style="{_TH}">RR4<br>เรา / ชีต</th><th style="{_TH}">ตรง<br>ทุกคอลัมน์</th>'
-         f'<th style="{_TH}">ต่าง<br>จริง</th><th style="{_TH}">drift<br>ที่รู้แล้ว</th>'
-         f'<th style="{_TH}">TM30<br>เรา / ชีต</th><th style="{_TH}">ตรง<br>ทุกคอลัมน์</th>'
-         f'<th style="{_TH}">ต่าง<br>จริง</th><th style="{_TH}">drift<br>ที่รู้แล้ว</th></tr>']
+         f'<th style="{_TH}">Property</th><th style="{_TH}">Date</th>'
+         f'<th style="{_TH}">RR4</th><th style="{_TH}">TM30</th></tr>']
     for p in result["properties"]:
         h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{p["short"]}</td>')
         if p["status"] != "ok":
-            h.append(f'<td style="{_TD}" colspan="9">'
+            h.append(f'<td style="{_TD}" colspan="3">'
                      f'<span style="{_BAD}padding:2px 6px;border-radius:4px">{p["note"]}</span></td></tr>')
             continue
         h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["date"]}</td>')
-        for block in (p["rr4"], p["tm30"]):
-            same = block["ours"] == block["sheet"]
-            h.append(f'<td style="{_TD}{"color:#475569;" if same else _BAD}">'
-                     f'{block["ours"]} / {block["sheet"]}</td>')
-            h.append(f'<td style="{_TD}color:#166534">{block["clean_rows"]}</td>')
-            h.append(f'<td style="{_TD}{"color:#475569;" if not block["diff_rows"] else _BAD}">'
-                     f'{block["diff_rows"]}</td>')
-            h.append(f'<td style="{_TD}{_MUTED}">{block["drift_rows"]}</td>')
+        h.append(_summary_cell(p["rr4"]))
+        h.append(_summary_cell(p["tm30"]))
         h.append("</tr>")
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
-    h.append(f'<tr style="background:#f1f5f9"><td style="{_TD}font-weight:700">รวม</td>'
-             f'<td style="{_TD}{_MUTED}">{result["compared"]} ที่</td>')
-    for b in (tr, tt):
-        h.append(f'<td style="{_TD}font-weight:700">{b["ours"]} / {b["sheet"]}</td>'
-                 f'<td style="{_TD}font-weight:700;color:#166534">{b["clean_rows"]}</td>'
-                 f'<td style="{_TD}font-weight:700">{b["diff_rows"]}</td>'
-                 f'<td style="{_TD}{_MUTED}">{b["drift_rows"]}</td>')
+    h.append(f'<tr style="background:#f1f5f9"><td style="{_TD}font-weight:700">Total</td>'
+             f'<td style="{_TD}{_MUTED}">{result["compared"]} properties</td>')
+    h.append(_summary_cell(tr))
+    h.append(_summary_cell(tt))
     h.append("</tr></table>")
     h.append(f'<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             f'จับคู่แถวด้วยเลขพาสปอร์ต/บัตรประชาชน แล้วเทียบ<b>ทุกคอลัมน์</b>ของแถวที่จับคู่ได้ '
-             f'(ยกเว้นเลขลำดับ ซึ่งทั้งสองฝั่งนับใหม่เอง) · '
-             f'RR4 มีเฉพาะเรา {tr["only_ours"]} / มีเฉพาะชีต {tr["only_sheet"]} · '
-             f'TM30 มีเฉพาะเรา {tt["only_ours"]} / มีเฉพาะชีต {tt["only_sheet"]}<br>'
-             f'แถวที่ไม่มีชื่อ (คอลัมน์ E–K ว่าง — ที่นั่งที่ MEWS จองไว้แต่ยังไม่ผูกโปรไฟล์แขก) '
-             f'ยังนับอยู่ในตารางนี้ เพราะชีตก็เก็บไว้เหมือนกัน แต่ถูกตัดออกจากไฟล์ .xlsx ที่ยื่นจริง</p>')
+             f'Rows are paired by passport/ID number, then every column of each paired row is compared '
+             f'(except the row number, which both sides renumber on their own). '
+             f'Rows with no name (an MEWS-booked slot not yet linked to a guest profile) are counted here '
+             f'because the sheet keeps them too, but are dropped from the filed .xlsx.</p>')
     return "".join(h)
 
 
@@ -563,26 +574,27 @@ def render_column_table(result: dict) -> str:
                 rows.append((p["short"], label, key, n, _KNOWN_DRIFT.get(key, "known drift")))
     if not rows:
         return ('<p style="font-size:13px;color:#166534;margin:0">'
-                '✅ ทุกคอลัมน์ของทุกแถวที่จับคู่ได้ ตรงกับชีตทั้งหมด</p>')
+                '✅ Every column of every paired row matches the sheet</p>')
 
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">ทะเบียน</th><th style="{_TH}">คอลัมน์</th>'
-         f'<th style="{_TH}">กี่แถว</th><th style="{_TH}">หมายเหตุ</th></tr>']
+         f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th><th style="{_TH}">Column</th>'
+         f'<th style="{_TH}">Rows</th><th style="{_TH}">Note</th></tr>']
     for short, label, key, n, note in rows:
         style = _MUTED if note else "color:#92400e;font-weight:700;"
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{short}</td>'
                  f'<td style="{_TD}{_MUTED}">{label}</td>'
                  f'<td style="{_TD}{style}">{key}</td>'
                  f'<td style="{_TD}{style}">{n}</td>'
-                 f'<td style="{_TD}font-size:11px;color:#64748b">{note or "ต้องตรวจ"}</td></tr>')
+                 f'<td style="{_TD}font-size:11px;color:#64748b">{note or "needs review"}</td></tr>')
     h.append("</table>")
     return "".join(h)
 
 
 def render_sample_table(result: dict) -> str:
     """Up to three real differing rows per register - the <<SampleTable>>
-    token. "nationality ต่าง 2 แถว" is a number to worry about; "Nikolaos
-    Pantotis: GRC vs GRL" is something someone can act on this morning."""
+    token. "nationality differs on 2 rows" is a number to worry about;
+    "Nikolaos Pantotis: GRC vs GRL" is something someone can act on this
+    morning."""
     if result["status"] != "ok":
         return ""
 
@@ -597,9 +609,9 @@ def render_sample_table(result: dict) -> str:
         return ""
 
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">ทะเบียน</th>'
-         f'<th style="{_TH}">แขก</th><th style="{_TH}">คอลัมน์</th>'
-         f'<th style="{_TH}">ระบบเรา</th><th style="{_TH}">ชีต</th></tr>']
+         f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th>'
+         f'<th style="{_TH}">Guest</th><th style="{_TH}">Column</th>'
+         f'<th style="{_TH}">Ours</th><th style="{_TH}">Sheet</th></tr>']
     for short, label, who, diffs in rows:
         for i, (key, ov, sv) in enumerate(diffs):
             first = i == 0
@@ -614,7 +626,7 @@ def render_sample_table(result: dict) -> str:
                      f'<td style="{_TD}{_MUTED}">{_esc(sv) or "—"}</td></tr>')
     h.append("</table>")
     h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             'แสดงไม่เกิน 3 แถวต่อทะเบียนต่อ property และไม่เกิน 4 คอลัมน์ต่อแถว</p>')
+             'Shows up to 3 rows per register per property, and up to 4 columns per row</p>')
     return "".join(h)
 
 
@@ -622,9 +634,9 @@ def render_window_table(result: dict) -> str:
     """Sheet export window vs our configured one - the <<WindowTable>> token.
     See _windows() for why this is worth looking at every day."""
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">RR4 — ชีต</th>'
-         f'<th style="{_TH}">RR4 — ระบบเรา</th><th style="{_TH}">TM30 — ชีต</th>'
-         f'<th style="{_TH}">TM30 — ระบบเรา</th></tr>']
+         f'<th style="{_TH}">Property</th><th style="{_TH}">RR4 — Sheet</th>'
+         f'<th style="{_TH}">RR4 — Ours</th><th style="{_TH}">TM30 — Sheet</th>'
+         f'<th style="{_TH}">TM30 — Ours</th></tr>']
     for p in result["properties"]:
         ok = p["sheet_rr4_window"] == p["our_window"] and p["sheet_rr4_window"]
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
@@ -634,9 +646,10 @@ def render_window_table(result: dict) -> str:
                  f'<td style="{_TD}{_MUTED}">00:00</td></tr>')
     h.append("</table>")
     h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             'RR4 ต้องตรงกัน — ชีตเปลี่ยนช่วงเวลาเองได้โดยไม่บอก และค่าเก่าค้างอยู่จะทำให้ทะเบียนขาดแถวเงียบๆ · '
-             'TM30 ของเราเริ่มเที่ยงคืนตามวันปฏิทินเสมอ ตั้งใจให้ต่างจากชีต '
-             '(ใช้เวลาตัดรอบแล้วแขกที่เช็คอินครึ่งวันแรกหายไป)</p>')
+             'RR4 should match — the sheet can change its window without warning, and a stale value here '
+             'silently undercounts the register · '
+             'Our TM30 always starts at calendar midnight, deliberately different from the sheet '
+             '(using the cutoff hour instead drops guests who check in during the first half of the day)</p>')
     return "".join(h)
 
 
@@ -660,9 +673,9 @@ def render_tokens(result: dict) -> dict:
 
 def subject_summary(result: dict) -> str:
     if result["status"] != "ok":
-        return "ยังเทียบไม่ได้"
+        return "not comparable yet"
     t = result["totals"]
     bad = t["rr4"]["diff_rows"] + t["tm30"]["diff_rows"] \
         + t["rr4"]["only_ours"] + t["rr4"]["only_sheet"] \
         + t["tm30"]["only_ours"] + t["tm30"]["only_sheet"]
-    return "ตรงกับชีตทั้งหมด" if bad == 0 else f"ต้องตรวจ {bad} แถว"
+    return "matches sheet completely" if bad == 0 else f"{bad} rows need review"
