@@ -259,6 +259,28 @@ def _rr3_country_name(code: str) -> str:
 # (countries/getAll 401s on the property tokens), so anything unlisted keeps
 # its _RR3_COUNTRY_MAP name.
 #
+# Per-property TM30 arrival-day start, as each generator sheet's own
+# Parameter-ImportCP tab declares it. Only a stopgap default: the DB columns
+# tm30_day_start_hour/_minute (api/sql/tm30_day_window.sql) override this, and
+# are what should actually be edited once that migration has been run - these
+# windows change on the sheet side without warning, so a hardcoded value will
+# go stale. See _resolve_tm30_day_start.
+#
+# Chinatown is the only property whose sheet exports TM30 over anything but
+# plain midnight; the other five declare 00:00 and are left at the default.
+# NOTE the consequence, measured against the real 29-Aug-2026 sheet: a 12:15
+# window yields 56 of that sheet's 67 guests, where plain midnight yields all
+# 67 plus 9 more. The 9 extra are real arrivals MEWS timestamps StartUtc
+# 00:15 while their ActualStartUtc is 00:34-01:41; the 11 lost are guests
+# checking in between midnight and 12:15 who ARE on the filed sheet. This is
+# configured to match the sheet by explicit instruction - matching the filed
+# document is the standing rule for this module - but it does mean TM30 files
+# fewer foreign arrivals than MEWS reports for the day, which is worth
+# re-testing whenever the sheet's window changes.
+_TM30_DAY_START_FALLBACK = {
+    "Lub d Bangkok Chinatown": (12, 15),
+}
+
 # Three entries in those lookup tables were deliberately NOT copied here: they
 # label Georgia "Georgian", Guinea "Guine" and Somalia "Somali" (demonyms and a
 # typo, none of which MEWS has ever actually emitted), and they give RR4 code
@@ -1899,6 +1921,39 @@ class SyncService:
                 pass
         return codes
 
+    async def _resolve_tm30_day_start(self, property_name: str) -> tuple:
+        """(hour, minute) that TM30's own arrival day opens at, per property.
+
+        SEPARATE from RR4's rr4_tm30_day_start_* on purpose: the generator
+        sheets declare the two windows independently, and on five of the six
+        Thai properties they genuinely differ (Siam's sheet exports RR4 over
+        02:15 but TM30 over plain midnight, and so on). Tying TM30 to RR4's
+        window would move those five off midnight and break registers that
+        currently match their sheet exactly.
+
+        Reads tm30_day_start_hour/_minute from property_api_settings when
+        those columns exist (api/sql/tm30_day_window.sql), falling back to
+        _TM30_DAY_START_FALLBACK and then to midnight - same degrade-to-
+        default shape as get_ftp_settings, so this keeps working before
+        anyone has run the migration.
+        """
+        h, m = _TM30_DAY_START_FALLBACK.get(property_name, (0, 0))
+        if self.supabase:
+            try:
+                res = self.supabase.table("property_api_settings").select(
+                    "tm30_day_start_hour, tm30_day_start_minute").eq(
+                    "property_name", property_name).limit(1).execute()
+                row = res.data[0] if res.data else {}
+                # `is not None` rather than `or`: an explicit 0 configured in
+                # Admin means midnight and must beat the fallback, not read as
+                # "unset" and hand the property back its hardcoded 12:15.
+                if row.get("tm30_day_start_hour") is not None:
+                    h = row["tm30_day_start_hour"]
+                    m = row.get("tm30_day_start_minute") or 0
+            except Exception:
+                pass
+        return h, m
+
     async def _resolve_tm30_nationality_codes(self) -> dict:
         """Same shape/rationale as _resolve_rr4_nationality_codes, for TM30's
         own admin-editable alpha-3 code table (tm30_nationality_codes, Admin
@@ -2469,33 +2524,40 @@ class SyncService:
         _resolve_tm30_nationality_codes (Admin > TM30-Nationality, editable)
         layered over the hardcoded fallback in rr4_tm30_reference.py.
 
-        "Arriving" is NOT get_st_files_report's Arrivals-tab window
-        (day_start_utc, the RR4-style configured cutoff hour - e.g. 12:15pm
-        for Chinatown) - it uses the day's own local MIDNIGHT as the lower
-        bound instead, keeping day_end_utc (the next day's cutoff) as the
-        upper bound unchanged. Confirmed against real MEWS "Customer
-        profiles Arrival" exports for Chinatown, 16 & 17-Aug-2026: a guest
-        whose single, organic check-in happens in the FIRST HALF of their
-        own calendar day (before the cutoff hour) still needs to be filed
-        under THAT day, not shifted back to the day before - day_start_utc
-        alone missed 9 guests on the 17th and 3 more on the 16th this way,
-        e.g. one checking in 09:58am was wrongly excluded from that day's
-        file because the window didn't open until 12:15pm. Widening only the
-        lower bound cannot double-file anyone: MEWS's own reservations/getAll
-        StartUtc/EndUtc filter already scopes each reservation to exactly one
-        day's candidate pool by some mechanism of its own (confirmed against
-        12 guests directly - both the newly-included ones and the ones
-        already correctly filed near the window's far edge, checking in just
-        after midnight on the NEXT calendar day, were each retrievable from
-        only one specific day's raw fetch, never both its own day's and the
-        adjacent day's) - so this can only recover missing guests, never
-        duplicate one across two days' filings.
+        "Arriving" runs over TM30's OWN per-property window
+        (_resolve_tm30_day_start, start to start+24h), which is independent
+        of both get_st_files_report's Arrivals tab and RR4's
+        rr4_tm30_day_start_*. It defaults to local midnight, which is what
+        five of the six Thai generator sheets declare; Chinatown's declares
+        12:15 and is configured to match it.
+
+        The midnight default is not arbitrary. Confirmed against real MEWS
+        "Customer profiles Arrival" exports for Chinatown, 16 & 17-Aug-2026:
+        a guest whose single, organic check-in happens in the FIRST HALF of
+        their own calendar day still needs to be filed under THAT day, not
+        shifted back to the day before - a 12:15 lower bound missed 9 guests
+        on the 17th and 3 more on the 16th, e.g. one checking in 09:58am.
+        Re-measured on 29-Aug-2026 the same effect costs 11 of that sheet's
+        own 67 guests. Chinatown is set to 12:15 anyway, by explicit
+        instruction, because matching the filed sheet is this module's
+        standing rule - but that is a deliberate trade, not a free one, and
+        _TM30_DAY_START_FALLBACK records what it costs.
+
+        Moving the lower bound EARLIER cannot double-file anyone: MEWS's own
+        reservations/getAll StartUtc/EndUtc filter already scopes each
+        reservation to exactly one day's candidate pool by some mechanism of
+        its own (confirmed against 12 guests directly - both the
+        newly-included ones and the ones already correctly filed near the
+        window's far edge, checking in just after midnight on the NEXT
+        calendar day, were each retrievable from only one specific day's raw
+        fetch, never both its own day's and the adjacent day's).
         """
         # day_start_utc (RR4's cutoff-hour window start) is intentionally
-        # unused below - see in_window's docstring note for why TM30's own
-        # lower bound is `day` (local midnight) instead.
+        # unused below - TM30 resolves its own independent window instead,
+        # see _resolve_tm30_day_start and in_window.
         day, _day_start_utc, day_end_utc, reservations, customers_map, resources_map = \
             await self._rr4_tm30_fetch_day(property_name, date)
+        tm30_start_hour, tm30_start_minute = await self._resolve_tm30_day_start(property_name)
         nationality_codes = await self._resolve_tm30_nationality_codes()
 
         def parse_utc(ts):
@@ -2534,27 +2596,39 @@ class SyncService:
         # Palangdao, Siam's Ainul and the two Pujols, Patong's Waters), and
         # Patong's Wu Zheng on 19-Aug. Each of them belongs to the next
         # day's notification, and MEWS's own Arrival export excludes them.
-        next_midnight_utc = (day + timedelta(days=1)).astimezone(timezone.utc)
+        #
+        # The whole window now shifts by the property's own configured TM30
+        # start (_resolve_tm30_day_start), which is 00:00 for five of the six
+        # Thai properties and so leaves this exactly as described above for
+        # them. Chinatown's sheet declares 12:15 and is set to match it - see
+        # _TM30_DAY_START_FALLBACK for what that costs and why it was chosen.
+        # The end is always start + 24h rather than RR4's separately
+        # configurable rr4_tm30_day_end_*: an arrival register covers one
+        # day, and RR4's end exists to support deliberately non-24h stay
+        # windows, which has no meaning here.
+        window_start_utc = (day + timedelta(hours=tm30_start_hour,
+                                            minutes=tm30_start_minute)).astimezone(timezone.utc)
+        window_end_utc = window_start_utc + timedelta(days=1)
 
-        # Note which end is inclusive: a StartUtc landing EXACTLY on a
-        # midnight tick is filed under the day that is ENDING, not the one
-        # beginning - so this day's window is (00:00, next 00:00]. Same
-        # principle get_rr4_report already encodes on its own boundary (a
-        # checkout booked for exactly 00:00 means the guest slept the
-        # previous night - the Wiegratz family, Koh Tao 109/110), which is
-        # why both halves flip together rather than this being an arbitrary
-        # off-by-one. Confirmed against the 22-Aug-2026 reference sheets:
-        # Chinatown's only two midnight-tick guests sit one on each end and
-        # BOTH were filed the other way by a [00:00, next 00:00) window -
-        # Nam Ann Chia (StartUtc exactly 22-Aug 00:00, on the 21st's sheet,
-        # we wrongly added her to the 22nd) and Yunmi Kang (StartUtc exactly
-        # 23-Aug 00:00, on the 22nd's sheet, we wrongly dropped her). This
-        # form matches all 6 properties exactly, 289 guests, zero diffs;
-        # the other five have no midnight-tick guests that day, so it is
-        # also a no-op for every one of them.
+        # Note which end is inclusive: a StartUtc landing EXACTLY on the
+        # window tick is filed under the day that is ENDING, not the one
+        # beginning - so the window is (start, start+24h]. Same principle
+        # get_rr4_report already encodes on its own boundary (a checkout
+        # booked for exactly 00:00 means the guest slept the previous night -
+        # the Wiegratz family, Koh Tao 109/110), which is why both halves
+        # flip together rather than this being an arbitrary off-by-one.
+        # Confirmed against the 22-Aug-2026 reference sheets: Chinatown's
+        # only two midnight-tick guests sit one on each end and BOTH were
+        # filed the other way by a [00:00, next 00:00) window - Nam Ann Chia
+        # (StartUtc exactly 22-Aug 00:00, on the 21st's sheet, we wrongly
+        # added her to the 22nd) and Yunmi Kang (StartUtc exactly 23-Aug
+        # 00:00, on the 22nd's sheet, we wrongly dropped her). This form
+        # matches all 6 properties exactly, 289 guests, zero diffs; the other
+        # five have no midnight-tick guests that day, so it is also a no-op
+        # for every one of them.
         def in_window(ts):
             t = parse_utc(ts)
-            return t is not None and day < t <= next_midnight_utc
+            return t is not None and window_start_utc < t <= window_end_utc
 
         def gregorian_date(ts):
             t = parse_utc(ts)

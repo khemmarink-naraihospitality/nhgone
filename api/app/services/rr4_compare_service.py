@@ -292,8 +292,8 @@ async def _fetch_sheets() -> dict:
 
 
 def _windows() -> dict:
-    """Each property's configured RR4/TM30 day window, to be shown next to the
-    one the sheet was actually exported over. A stale value here silently
+    """Each property's configured RR4 day window, to be shown next to the one
+    the sheet was actually exported over. A stale value here silently
     undercounts the register - a leftover 14:00/12:00 on Chinatown once
     produced 160 rows where the real answer was 241 - and the sheets change
     their window without warning, so this is worth a daily look."""
@@ -307,6 +307,22 @@ def _windows() -> dict:
     except Exception as e:
         logger.warning(f"RR4 compare: could not read property windows: {e}")
         return {}
+
+
+async def _tm30_windows() -> dict:
+    """TM30's own configured window per property - a separate setting from
+    RR4's, so the mail has to ask for it separately too. Read through
+    _resolve_tm30_day_start rather than the table directly, so this column
+    can never disagree with the one the register was actually built on."""
+    from app.services.sync_service import sync_service
+    out = {}
+    for prop in SHEETS:
+        try:
+            h, m = await sync_service._resolve_tm30_day_start(prop)
+            out[prop] = f"{h:02d}:{m:02d}"
+        except Exception as e:
+            logger.warning(f"RR4 compare: could not read {prop}'s TM30 window: {e}")
+    return out
 
 
 def _local(ts: str) -> str:
@@ -331,12 +347,15 @@ async def build_comparison(want_date: str = None) -> dict:
 
     sheets = await _fetch_sheets()
     windows = _windows()
+    tm30_windows = await _tm30_windows()
     props = []
 
     for prop, (short, _sid) in SHEETS.items():
         row = {"property": prop, "short": short, "date": None, "status": "error",
                "note": "", "rr4": None, "tm30": None, "synced_at": "",
-               "sheet_rr4_window": "", "sheet_tm30_window": "", "our_window": windows.get(prop, "")}
+               "sheet_rr4_window": "", "sheet_tm30_window": "",
+               "our_window": windows.get(prop, ""),
+               "our_tm30_window": tm30_windows.get(prop, "")}
         sh = sheets[prop]["data"]
         if not sh:
             row["note"] = f"Could not read sheet — {sheets[prop]['error']}"
@@ -482,9 +501,12 @@ def render_text(result: dict) -> str:
 
     out += ["", "Export window (sheet) vs configured window (ours):"]
     for p in result["properties"]:
-        flag = "" if p["sheet_rr4_window"] == p["our_window"] else "   ⚠️ mismatch"
+        bad = (p["sheet_rr4_window"] != p["our_window"]
+               or p["sheet_tm30_window"] != p["our_tm30_window"])
+        flag = "   ⚠️ mismatch" if bad else ""
         out.append(f"  {p['short']:<12} RR4 sheet {p['sheet_rr4_window'] or '—':<7} ours "
-                   f"{p['our_window'] or '—':<7} · TM30 sheet {p['sheet_tm30_window'] or '—'}{flag}")
+                   f"{p['our_window'] or '—':<7} · TM30 sheet {p['sheet_tm30_window'] or '—':<7} ours "
+                   f"{p['our_tm30_window'] or '—':<7}{flag}")
     return "\n".join(out)
 
 
@@ -639,17 +661,18 @@ def render_window_table(result: dict) -> str:
          f'<th style="{_TH}">TM30 — Ours</th></tr>']
     for p in result["properties"]:
         ok = p["sheet_rr4_window"] == p["our_window"] and p["sheet_rr4_window"]
+        tm_ok = p["sheet_tm30_window"] == p["our_tm30_window"] and p["sheet_tm30_window"]
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
                  f'<td style="{_TD}">{p["sheet_rr4_window"] or "—"}</td>'
                  f'<td style="{_TD}{"color:#475569;" if ok else _BAD}">{p["our_window"] or "—"}</td>'
                  f'<td style="{_TD}">{p["sheet_tm30_window"] or "—"}</td>'
-                 f'<td style="{_TD}{_MUTED}">00:00</td></tr>')
+                 f'<td style="{_TD}{"color:#475569;" if tm_ok else _BAD}">'
+                 f'{p["our_tm30_window"] or "—"}</td></tr>')
     h.append("</table>")
     h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             'RR4 should match — the sheet can change its window without warning, and a stale value here '
-             'silently undercounts the register · '
-             'Our TM30 always starts at calendar midnight, deliberately different from the sheet '
-             '(using the cutoff hour instead drops guests who check in during the first half of the day)</p>')
+             'Both columns should match their sheet — the sheets change these windows without warning, '
+             'and a stale value silently undercounts the register. '
+             'TM30 has its own setting per property, separate from RR4\'s.</p>')
     return "".join(h)
 
 
