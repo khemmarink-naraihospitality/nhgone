@@ -522,14 +522,25 @@ _MUTED = "color:#94a3b8;"
 _BAD = "background:#fef3c7;color:#92400e;font-weight:700;"
 
 
-def _summary_cell(block: dict) -> str:
+def _summary_cell(block: dict, window: str = "") -> str:
     """One register's cell in the simplified summary grid - same visual
     pattern as st_compare_service's GridTable: a plain "✓ N" when the two
     sides genuinely agree, a bold highlighted "N / M" with a short note
     otherwise. Known drift doesn't count as a real difference here (that's
     the whole point of tracking it separately), so a day with only drift
-    still reads as clean at a glance - the detail tables below still show it."""
+    still reads as clean at a glance - the detail tables below still show it.
+
+    `window` is the property's configured TM30 start. A non-midnight one
+    files a shorter day than the sheet holds on purpose (Chinatown's 12:15
+    drops every guest arriving before noon - 2 to 20 of them on each of the
+    seven days measured to 29-Aug-2026), so its shortfall is annotated as
+    the configured consequence it is. Deliberately still highlighted rather
+    than hidden: unlike _KNOWN_DRIFT, this cannot be verified row by row -
+    TM30 carries no check-in column to test each missing guest against - so
+    a genuine new miss would look identical, and the number stays in view.
+    """
     real = block["diff_rows"] + block["only_ours"] + block["only_sheet"]
+    shifted = bool(window) and window != "00:00"
     if real == 0:
         note = f" ({block['drift_rows']} known drift)" if block["drift_rows"] else ""
         return f'<td style="{_TD}color:#475569;">✓ {block["ours"]}{note}</td>'
@@ -539,7 +550,8 @@ def _summary_cell(block: dict) -> str:
     if block["only_ours"]:
         bits.append(f"{block['only_ours']} ours only")
     if block["only_sheet"]:
-        bits.append(f"{block['only_sheet']} sheet only")
+        bits.append(f"{block['only_sheet']} sheet only"
+                    + (f", expected from the {window} window" if shifted else ""))
     return f'<td style="{_TD}{_BAD}"><b>{block["ours"]} / {block["sheet"]}</b> ({", ".join(bits)})</td>'
 
 
@@ -563,7 +575,7 @@ def render_summary_table(result: dict) -> str:
             continue
         h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["date"]}</td>')
         h.append(_summary_cell(p["rr4"]))
-        h.append(_summary_cell(p["tm30"]))
+        h.append(_summary_cell(p["tm30"], p.get("our_tm30_window", "")))
         h.append("</tr>")
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
