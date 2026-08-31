@@ -99,6 +99,73 @@ interface CategoryRow {
   percent: (number | null)[];
 }
 
+// One month's own Room Types checkbox panel - the calendar renders one of
+// these per MonthBlock rather than a single filter shared across all of
+// them, so a category worth watching in a busy month doesn't have to stay
+// toggled on (or off) for every quiet one too. `selected` undefined means
+// "everything", matching FilterDropdown's own null-means-all convention.
+function RoomTypesFilter({
+  categories,
+  selected,
+  onChange,
+}: {
+  categories: CategoryRow[];
+  selected: Set<string> | undefined;
+  onChange: (next: Set<string> | undefined) => void;
+}) {
+  return (
+    <FilterDropdown
+      label="Room Types"
+      active={!!selected}
+      summary={!selected ? "All" : `${selected.size} of ${categories.length}`}
+    >
+      {() => (
+        <>
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--text-primary)]/10">
+            <button
+              onClick={() => onChange(undefined)}
+              className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
+            >
+              Select All
+            </button>
+            <button
+              onClick={() => onChange(new Set())}
+              className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
+            >
+              Clear
+            </button>
+          </div>
+          {categories.map((c) => {
+            const id = c.short_name || c.name;
+            const checked = !selected || selected.has(id);
+            return (
+              <label
+                key={id}
+                className="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none hover:bg-[var(--text-primary)]/[0.03] text-[12px]"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const base = selected ?? new Set(categories.map((c2) => c2.short_name || c2.name));
+                    const next = new Set(base);
+                    if (next.has(id)) next.delete(id);
+                    else next.add(id);
+                    onChange(next);
+                  }}
+                  className="w-3.5 h-3.5 accent-[var(--text-primary)] shrink-0"
+                />
+                <span className="font-bold shrink-0">{id}</span>
+                <span className="text-[var(--text-primary)]/45 truncate">{c.name}</span>
+              </label>
+            );
+          })}
+        </>
+      )}
+    </FilterDropdown>
+  );
+}
+
 interface RateCategoryRow {
   short_name: string;
   name: string;
@@ -331,13 +398,14 @@ export default function RevenuePage() {
   // itself: its start_date is the 1st of its month, not the morning it was
   // captured, so labelling the comparison with it named the wrong day.
   const [baselineDate, setBaselineDate] = useState<string | null>(null);
-  // Which room-type rows and which month(s) the calendar shows. Keyed by
-  // the same `short_name || name` / MonthBlock.key used to build the table
-  // itself, so a filter here can never drift from what's actually on screen.
-  // null means "everything" - the calendar's default, and how a report that
-  // hasn't been re-filtered yet still shows every row/month.
-  const [visibleCategories, setVisibleCategories] = useState<Set<string> | null>(null);
-  const [visibleMonth, setVisibleMonth] = useState<string | null>(null);
+  // Which room-type rows each month's table shows - one filter PER MONTH
+  // rather than one shared across all of them, since a category worth
+  // watching in a busy month (say, dorm beds in August) is often just noise
+  // in a quiet one. Keyed by MonthBlock.key -> a Set of `short_name || name`
+  // (the same id the table rows themselves use, so a filter can never drift
+  // from what's on screen), or undefined/absent for "everything", which is
+  // every month's default until that month's own dropdown is touched.
+  const [visibleCategoriesByMonth, setVisibleCategoriesByMonth] = useState<Record<string, Set<string>>>({});
 
   useEffect(() => {
     getAllowedProperties().then(({ properties: list }) => {
@@ -544,22 +612,19 @@ export default function RevenuePage() {
   // hasn't been captured yet, and the option's own label says so.
   const monthBlocks = useMemo(() => (report ? buildMonthBlocks(report.dates) : []), [report]);
 
-  // The filters reset to "everything" on every new report rather than
-  // persisting across fetches - a category picked for one property's chart
-  // may not exist on the next, and silently carrying a month filter past
-  // its report would leave the calendar looking empty for no visible reason.
+  // The filter resets to "everything, every month" on every new report
+  // rather than persisting across fetches - a category picked for one
+  // property's chart may not exist on the next.
   useEffect(() => {
-    setVisibleCategories(null);
-    setVisibleMonth(null);
+    setVisibleCategoriesByMonth({});
   }, [report]);
 
-  const visibleCategoryRows = useMemo(
-    () => (visibleCategories ? report?.categories.filter((c) => visibleCategories.has(c.short_name || c.name)) ?? [] : report?.categories ?? []),
-    [report, visibleCategories]
-  );
-  const visibleMonthBlocks = useMemo(
-    () => (visibleMonth ? monthBlocks.filter((b) => b.key === visibleMonth) : monthBlocks),
-    [monthBlocks, visibleMonth]
+  const categoryRowsForMonth = useCallback(
+    (monthKey: string) => {
+      const picked = visibleCategoriesByMonth[monthKey];
+      return picked ? report?.categories.filter((c) => picked.has(c.short_name || c.name)) ?? [] : report?.categories ?? [];
+    },
+    [report, visibleCategoriesByMonth]
   );
 
   // Baseline occupancy looked up by "<category> <date>" rather than by array
@@ -932,161 +997,83 @@ export default function RevenuePage() {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[var(--text-primary)]/10">
-                <FilterDropdown
-                  label="Room Types"
-                  active={!!visibleCategories}
-                  summary={
-                    !visibleCategories
-                      ? "All"
-                      : `${visibleCategories.size} of ${report.categories.length}`
-                  }
-                >
-                  {() => (
-                    <>
-                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--text-primary)]/10">
-                        <button
-                          onClick={() => setVisibleCategories(null)}
-                          className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
-                        >
-                          Select All
-                        </button>
-                        <button
-                          onClick={() => setVisibleCategories(new Set())}
-                          className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
-                        >
-                          Clear
-                        </button>
+              <div className="space-y-8">
+                {monthBlocks.map((block) => {
+                  const rows = categoryRowsForMonth(block.key);
+                  const selected = visibleCategoriesByMonth[block.key];
+                  return (
+                    <div key={block.key}>
+                      <div className="flex flex-wrap items-center justify-between gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
+                        <span className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{block.label}</span>
+                        <RoomTypesFilter
+                          categories={report.categories}
+                          selected={selected}
+                          onChange={(next) =>
+                            setVisibleCategoriesByMonth((prev) => {
+                              const copy = { ...prev };
+                              if (next === undefined) delete copy[block.key];
+                              else copy[block.key] = next;
+                              return copy;
+                            })
+                          }
+                        />
                       </div>
-                      {report.categories.map((c) => {
-                        const id = c.short_name || c.name;
-                        const checked = !visibleCategories || visibleCategories.has(id);
-                        return (
-                          <label
-                            key={id}
-                            className="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none hover:bg-[var(--text-primary)]/[0.03] text-[12px]"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() =>
-                                setVisibleCategories((prev) => {
-                                  const base = prev ?? new Set(report.categories.map((c2) => c2.short_name || c2.name));
-                                  const next = new Set(base);
-                                  if (next.has(id)) next.delete(id);
-                                  else next.add(id);
-                                  return next;
-                                })
-                              }
-                              className="w-3.5 h-3.5 accent-[var(--text-primary)] shrink-0"
-                            />
-                            <span className="font-bold shrink-0">{id}</span>
-                            <span className="text-[var(--text-primary)]/45 truncate">{c.name}</span>
-                          </label>
-                        );
-                      })}
-                    </>
-                  )}
-                </FilterDropdown>
 
-                <FilterDropdown
-                  label="Month"
-                  active={!!visibleMonth}
-                  summary={visibleMonth ? monthBlocks.find((b) => b.key === visibleMonth)?.label ?? visibleMonth : "All Months"}
-                >
-                  {(close) => (
-                    <>
-                      <button
-                        onClick={() => {
-                          setVisibleMonth(null);
-                          close();
-                        }}
-                        className={`flex items-center justify-between w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--text-primary)]/[0.03] ${
-                          !visibleMonth ? "font-bold" : ""
-                        }`}
-                      >
-                        All Months
-                        {!visibleMonth && <span className="text-[var(--text-primary)]/50">✓</span>}
-                      </button>
-                      <div className="border-t border-[var(--text-primary)]/10" />
-                      {monthBlocks.map((b) => (
-                        <button
-                          key={b.key}
-                          onClick={() => {
-                            setVisibleMonth(b.key);
-                            close();
-                          }}
-                          className={`flex items-center justify-between w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--text-primary)]/[0.03] ${
-                            visibleMonth === b.key ? "font-bold" : ""
-                          }`}
-                        >
-                          {b.label}
-                          {visibleMonth === b.key && <span className="text-[var(--text-primary)]/50">✓</span>}
-                        </button>
-                      ))}
-                    </>
-                  )}
-                </FilterDropdown>
-              </div>
-
-              {visibleCategoryRows.length === 0 ? (
-                <div className="p-8 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/40 text-[13px]">
-                  No room types selected — check at least one above to show the calendar.
-                </div>
-              ) : (
-              <div className="space-y-6">
-                {visibleMonthBlocks.map((block) => (
-                  <div key={block.key} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto overscroll-contain">
-                    <table className="w-full text-left border-separate border-spacing-0">
-                      <thead>
-                        <tr className="bg-[var(--text-primary)]/5">
-                          <th colSpan={block.daysInMonth + 1} className={`${thCls} text-center`}>{block.label}</th>
-                        </tr>
-                        <tr className="bg-[var(--text-primary)]/[0.03]">
-                          <th className={`${thCls} sticky left-0 z-10 bg-[#F2EEE4] w-56 min-w-56`}>Date</th>
-                          {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => (
-                            <th key={day} className={`${thCls} text-center px-0 w-8 min-w-8`}>{day}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {visibleCategoryRows.map((c) => {
-                          const id = c.short_name || c.name;
-                          return (
-                            <tr key={id} className="hover:bg-[var(--text-primary)]/[0.02]">
-                              <td className={`${tdCls} sticky left-0 z-10 bg-[var(--paper)] border-b border-[var(--text-primary)]/5`}>
-                                <span className="font-bold">{c.short_name || c.name}</span>
-                                <span className="ml-2 text-[11px] text-[var(--text-primary)]/45">{c.name}</span>
-                              </td>
-                              {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => {
-                                const idx = block.dayIndex[day];
-                                if (idx < 0) {
-                                  return <td key={day} className="border-b border-l border-[var(--text-primary)]/5 bg-[var(--text-primary)]/[0.03]" />;
-                                }
-                                const date = report.dates[idx];
-                                const value = c.percent[idx];
-                                const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
-                                const style = state === "none" ? null : STOP_CELL[state];
+                      {rows.length === 0 ? (
+                        <div className="p-8 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/40 text-[13px]">
+                          No room types selected for {block.label} — check at least one above to show this month.
+                        </div>
+                      ) : (
+                        <div className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto overscroll-contain">
+                          <table className="w-full text-left border-separate border-spacing-0">
+                            <thead>
+                              <tr className="bg-[var(--text-primary)]/[0.03]">
+                                <th className={`${thCls} sticky left-0 z-10 bg-[#F2EEE4] w-56 min-w-56`}>Date</th>
+                                {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => (
+                                  <th key={day} className={`${thCls} text-center px-0 w-8 min-w-8`}>{day}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {rows.map((c) => {
+                                const id = c.short_name || c.name;
                                 return (
-                                  <td
-                                    key={day}
-                                    style={style ? undefined : calendarHeat(value)}
-                                    title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
-                                    className={`text-center p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? `text-[12px] ${style.cls}` : "text-[10px] text-[var(--text-primary)]/70 tabular-nums"}`}
-                                  >
-                                    {style ? style.symbol : ""}
-                                  </td>
+                                  <tr key={id} className="hover:bg-[var(--text-primary)]/[0.02]">
+                                    <td className={`${tdCls} sticky left-0 z-10 bg-[var(--paper)] border-b border-[var(--text-primary)]/5`}>
+                                      <span className="font-bold">{c.short_name || c.name}</span>
+                                      <span className="ml-2 text-[11px] text-[var(--text-primary)]/45">{c.name}</span>
+                                    </td>
+                                    {Array.from({ length: block.daysInMonth }, (_, i) => i + 1).map((day) => {
+                                      const idx = block.dayIndex[day];
+                                      if (idx < 0) {
+                                        return <td key={day} className="border-b border-l border-[var(--text-primary)]/5 bg-[var(--text-primary)]/[0.03]" />;
+                                      }
+                                      const date = report.dates[idx];
+                                      const value = c.percent[idx];
+                                      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
+                                      const style = state === "none" ? null : STOP_CELL[state];
+                                      return (
+                                        <td
+                                          key={day}
+                                          style={style ? undefined : calendarHeat(value)}
+                                          title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
+                                          className={`text-center p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? `text-[12px] ${style.cls}` : "text-[10px] text-[var(--text-primary)]/70 tabular-nums"}`}
+                                        >
+                                          {style ? style.symbol : ""}
+                                        </td>
+                                      );
+                                    })}
+                                  </tr>
                                 );
                               })}
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              )}
 
               <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
                 Built from the Occupancy by Room Type figures above, so it follows whichever property, mode and
