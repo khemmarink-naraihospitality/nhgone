@@ -217,10 +217,16 @@ _RR3_PROPERTY_THAI_NAMES = {
 
 # Local hour before which a zero-night ("day use") stay is read as the tail of
 # the PREVIOUS night rather than a daytime day room. See the block in
-# get_st_files_report that uses it for the evidence on both sides; this cutoff
-# is the one number there that is inferred rather than measured, bounded by the
-# observations to somewhere after 02:00 and at or before 10:00.
-_ST_DAY_USE_NIGHT_END_HOUR = 6
+# get_st_files_report that uses it for the evidence on both sides.
+#
+# Bounded, not derived: a 02:00 start is a night tail (Siem Reap #149736/#149737,
+# 26-Aug-2026) so this must be > 2, and a 04:30 start is a day room (Patong
+# #190439/#190440, 30-Aug-2026 - both counted as arrivals by MEWS's own export)
+# so it must be <= 4. That leaves 3 or 4; 4 is chosen as the wider reading of
+# "still night". The 30-Aug pair is what pulled this down from 6, which had
+# been inferred against a much looser upper bound of 10:00 and was costing
+# Patong two arrivals a day.
+_ST_DAY_USE_NIGHT_END_HOUR = 4
 
 # The RR4 (ร.ร.๔) hotel-register filing needs the property's Thai REGISTERED
 # name, which is not always the same string as _RR3_PROPERTY_THAI_NAMES above
@@ -3085,9 +3091,9 @@ class SyncService:
             arrives = in_window(res.get("StartUtc"))
             departs = in_window(res.get("EndUtc"))
             day_use = arrives and departs
-            # A zero-night stay lands on exactly ONE side of the register in
-            # MEWS's own Availability export, and which side depends on when it
-            # started. Both halves are measured, on different days:
+            # A zero-night ("day use") stay ALWAYS counts as a departure; what
+            # varies is whether it also counts as an arrival, and that turns on
+            # the hour it started. Measured across three days:
             #  - 26-Aug-2026: four stays that began 00:00-02:00 and ended that
             #    same morning (Chinatown #95528, Siam #71156, Siem Reap #149736
             #    and #149737) were counted as DEPARTURES only. They are the tail
@@ -3099,10 +3105,30 @@ class SyncService:
             #    "Reservation" tab lists 11 DKR arrivals against the Availability
             #    tab's 12, and the one it omits is exactly this stay (the tab
             #    covers in-house guests, and a day room has already left).
-            # Counting a day-use on both sides, or on neither, contradicts one
-            # of those two days; only this split satisfies both. Multi-night
-            # stays are untouched - a 00:00-02:00 check-in that DOES stay the
-            # night is an ordinary arrival (Siem Reap #149665, Chinatown #95502).
+            #  - 30-Aug-2026: Patong #190439 (04:40-07:33) and #190440
+            #    (04:38-11:33) were counted on BOTH sides - that sheet files 63
+            #    arrivals and 80 departures, and no one-side-only rule reaches
+            #    both numbers. This is what retired the previous "exactly one
+            #    side" model and pulled the cutoff down from 6, which had been
+            #    inferred against a much looser upper bound.
+            # Multi-night stays are untouched - a 00:00-02:00 check-in that DOES
+            # stay the night is an ordinary arrival (Siem Reap #149665,
+            # Chinatown #95502).
+            #
+            # Two of the nine measured stays still come out wrong, and both are
+            # on the departure side or unexplainable by any hour: Samui #184016
+            # (counted as an arrival but NOT a departure) and Chinatown #96148
+            # below. 16 of 18 arrival/departure decisions is the best any tested
+            # rule managed; the earlier split forms scored 15 and "count on both
+            # sides always" scored 12.
+            #
+            # Known unexplained, and part of that remaining 2 of 18:
+            # Chinatown #96148 and #96160 both started 00:00 on 30-Aug (actual
+            # check-ins 00:12 and 01:43) and MEWS counted the FIRST as an
+            # arrival and the second not. No field on the two reservations
+            # separates them - same state, origin, rate, creator, both walk-ins
+            # created the evening before - so no hour cutoff can express it and
+            # Chinatown reads one arrival short on days like that.
             night_tail = False
             if day_use:
                 started = parse_utc(res.get("StartUtc"))
@@ -3110,7 +3136,14 @@ class SyncService:
             if arrives and not (day_use and night_tail):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
-            if departs and not (day_use and not night_tail):
+            # Departures take EVERY zero-night stay, whichever side of the
+            # cutoff it started. The earlier "one side only" split was wrong
+            # here: Patong on 30-Aug-2026 filed 63 arrivals AND 80 departures,
+            # and the only way to reach both is for its two 04:30 day rooms to
+            # appear on both sides. Scored against all nine measured day-use
+            # stays (26-Aug, 27-Aug and 30-Aug), this form gets 16 of 18
+            # arrival/departure decisions right where either split form got 15.
+            if departs:
                 departures.append({**reservation_row(res), "spaces": units})
                 departures_count += units
             # MEWS counts a guest against the day they slept there, plus
