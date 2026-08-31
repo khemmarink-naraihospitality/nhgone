@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
@@ -25,6 +25,67 @@ function CollapsibleSection({ label, open, onToggle, children }: { label?: strin
         </button>
       )}
       {open && <div className={label ? "mt-2" : ""}>{children}</div>}
+    </div>
+  );
+}
+
+// A compact trigger-button-plus-panel dropdown, for filters that would
+// otherwise sprawl into a full row of pills/checkboxes (the Occupancy By
+// Type Calendar's Room Types and Month filters both used to be exactly
+// that). Closes on an outside click - same interaction UserHeader.tsx's
+// profile menu uses, restyled here with this page's own paper/text-primary
+// tokens instead of that component's hardcoded dark-menu classes, so it
+// reads as part of this page rather than a transplanted piece of chrome.
+// Children are a render prop so a single-select panel (Month) can close
+// itself the moment an option is picked, while a multi-select one (Room
+// Types) can leave itself open across several checkbox clicks.
+function FilterDropdown({
+  label,
+  summary,
+  active,
+  children,
+}: {
+  label: string;
+  summary: string;
+  active: boolean;
+  children: (close: () => void) => ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`flex items-center gap-2 pl-3 pr-2.5 py-1.5 border text-[11px] transition-colors ${
+          active
+            ? "border-[var(--text-primary)]/30 bg-[var(--text-primary)]/[0.05]"
+            : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/[0.03]"
+        }`}
+      >
+        <span className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40">{label}</span>
+        <span className="font-bold whitespace-nowrap">{summary}</span>
+        <svg
+          className={`w-3 h-3 text-[var(--text-primary)]/40 transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-20 min-w-[240px] max-h-80 overflow-y-auto bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-xl">
+          {children(() => setOpen(false))}
+        </div>
+      )}
     </div>
   );
 }
@@ -871,70 +932,101 @@ export default function RevenuePage() {
                 </span>
               </div>
 
-              <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mb-4 pb-4 border-b border-[var(--text-primary)]/10">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <span className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mr-1">Room Types</span>
-                  <button
-                    onClick={() => setVisibleCategories(null)}
-                    className={`px-2 py-0.5 border text-[10px] font-bold tracked-caps transition-colors ${
-                      !visibleCategories
-                        ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
-                        : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
-                    }`}
-                  >
-                    All
-                  </button>
-                  {report.categories.map((c) => {
-                    const id = c.short_name || c.name;
-                    const checked = !visibleCategories || visibleCategories.has(id);
-                    return (
-                      <label key={id} className="flex items-center gap-1.5 cursor-pointer select-none text-[11px]">
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() =>
-                            setVisibleCategories((prev) => {
-                              const base = prev ?? new Set(report.categories.map((c2) => c2.short_name || c2.name));
-                              const next = new Set(base);
-                              if (next.has(id)) next.delete(id);
-                              else next.add(id);
-                              return next;
-                            })
-                          }
-                          className="w-3.5 h-3.5 accent-[var(--text-primary)]"
-                        />
-                        <span className="font-bold">{id}</span>
-                      </label>
-                    );
-                  })}
-                </div>
+              <div className="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[var(--text-primary)]/10">
+                <FilterDropdown
+                  label="Room Types"
+                  active={!!visibleCategories}
+                  summary={
+                    !visibleCategories
+                      ? "All"
+                      : `${visibleCategories.size} of ${report.categories.length}`
+                  }
+                >
+                  {() => (
+                    <>
+                      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-[var(--text-primary)]/10">
+                        <button
+                          onClick={() => setVisibleCategories(null)}
+                          className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
+                        >
+                          Select All
+                        </button>
+                        <button
+                          onClick={() => setVisibleCategories(new Set())}
+                          className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/60 hover:text-[var(--text-primary)]"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                      {report.categories.map((c) => {
+                        const id = c.short_name || c.name;
+                        const checked = !visibleCategories || visibleCategories.has(id);
+                        return (
+                          <label
+                            key={id}
+                            className="flex items-center gap-2 px-3 py-1.5 cursor-pointer select-none hover:bg-[var(--text-primary)]/[0.03] text-[12px]"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() =>
+                                setVisibleCategories((prev) => {
+                                  const base = prev ?? new Set(report.categories.map((c2) => c2.short_name || c2.name));
+                                  const next = new Set(base);
+                                  if (next.has(id)) next.delete(id);
+                                  else next.add(id);
+                                  return next;
+                                })
+                              }
+                              className="w-3.5 h-3.5 accent-[var(--text-primary)] shrink-0"
+                            />
+                            <span className="font-bold shrink-0">{id}</span>
+                            <span className="text-[var(--text-primary)]/45 truncate">{c.name}</span>
+                          </label>
+                        );
+                      })}
+                    </>
+                  )}
+                </FilterDropdown>
 
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
-                  <span className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mr-1">Month</span>
-                  <button
-                    onClick={() => setVisibleMonth(null)}
-                    className={`px-2.5 py-1 border text-[10px] font-bold tracked-caps transition-colors ${
-                      !visibleMonth
-                        ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
-                        : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
-                    }`}
-                  >
-                    All Months
-                  </button>
-                  {monthBlocks.map((b) => (
-                    <button
-                      key={b.key}
-                      onClick={() => setVisibleMonth(b.key)}
-                      className={`px-2.5 py-1 border text-[10px] font-bold tracked-caps transition-colors ${
-                        visibleMonth === b.key
-                          ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
-                          : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
-                      }`}
-                    >
-                      {b.label}
-                    </button>
-                  ))}
-                </div>
+                <FilterDropdown
+                  label="Month"
+                  active={!!visibleMonth}
+                  summary={visibleMonth ? monthBlocks.find((b) => b.key === visibleMonth)?.label ?? visibleMonth : "All Months"}
+                >
+                  {(close) => (
+                    <>
+                      <button
+                        onClick={() => {
+                          setVisibleMonth(null);
+                          close();
+                        }}
+                        className={`flex items-center justify-between w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--text-primary)]/[0.03] ${
+                          !visibleMonth ? "font-bold" : ""
+                        }`}
+                      >
+                        All Months
+                        {!visibleMonth && <span className="text-[var(--text-primary)]/50">✓</span>}
+                      </button>
+                      <div className="border-t border-[var(--text-primary)]/10" />
+                      {monthBlocks.map((b) => (
+                        <button
+                          key={b.key}
+                          onClick={() => {
+                            setVisibleMonth(b.key);
+                            close();
+                          }}
+                          className={`flex items-center justify-between w-full px-3 py-1.5 text-left text-[12px] hover:bg-[var(--text-primary)]/[0.03] ${
+                            visibleMonth === b.key ? "font-bold" : ""
+                          }`}
+                        >
+                          {b.label}
+                          {visibleMonth === b.key && <span className="text-[var(--text-primary)]/50">✓</span>}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </FilterDropdown>
               </div>
 
               {visibleCategoryRows.length === 0 ? (
