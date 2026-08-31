@@ -1003,7 +1003,7 @@ export default function RevenuePage() {
                   const selected = visibleCategoriesByMonth[block.key];
                   return (
                     <div key={block.key}>
-                      <div className="flex flex-wrap items-center justify-between gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
+                      <div className="flex flex-wrap items-center gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
                         <span className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{block.label}</span>
                         <RoomTypesFilter
                           categories={report.categories}
