@@ -270,6 +270,13 @@ export default function RevenuePage() {
   // itself: its start_date is the 1st of its month, not the morning it was
   // captured, so labelling the comparison with it named the wrong day.
   const [baselineDate, setBaselineDate] = useState<string | null>(null);
+  // Which room-type rows and which month(s) the calendar shows. Keyed by
+  // the same `short_name || name` / MonthBlock.key used to build the table
+  // itself, so a filter here can never drift from what's actually on screen.
+  // null means "everything" - the calendar's default, and how a report that
+  // hasn't been re-filtered yet still shows every row/month.
+  const [visibleCategories, setVisibleCategories] = useState<Set<string> | null>(null);
+  const [visibleMonth, setVisibleMonth] = useState<string | null>(null);
 
   useEffect(() => {
     getAllowedProperties().then(({ properties: list }) => {
@@ -475,6 +482,24 @@ export default function RevenuePage() {
   // value is today (the default) never renders blank just because today
   // hasn't been captured yet, and the option's own label says so.
   const monthBlocks = useMemo(() => (report ? buildMonthBlocks(report.dates) : []), [report]);
+
+  // The filters reset to "everything" on every new report rather than
+  // persisting across fetches - a category picked for one property's chart
+  // may not exist on the next, and silently carrying a month filter past
+  // its report would leave the calendar looking empty for no visible reason.
+  useEffect(() => {
+    setVisibleCategories(null);
+    setVisibleMonth(null);
+  }, [report]);
+
+  const visibleCategoryRows = useMemo(
+    () => (visibleCategories ? report?.categories.filter((c) => visibleCategories.has(c.short_name || c.name)) ?? [] : report?.categories ?? []),
+    [report, visibleCategories]
+  );
+  const visibleMonthBlocks = useMemo(
+    () => (visibleMonth ? monthBlocks.filter((b) => b.key === visibleMonth) : monthBlocks),
+    [monthBlocks, visibleMonth]
+  );
 
   // Baseline occupancy looked up by "<category> <date>" rather than by array
   // index: the earlier snapshot starts on its own date and so is offset from
@@ -846,8 +871,79 @@ export default function RevenuePage() {
                 </span>
               </div>
 
+              <div className="flex flex-wrap items-start gap-x-6 gap-y-3 mb-4 pb-4 border-b border-[var(--text-primary)]/10">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                  <span className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mr-1">Room Types</span>
+                  <button
+                    onClick={() => setVisibleCategories(null)}
+                    className={`px-2 py-0.5 border text-[10px] font-bold tracked-caps transition-colors ${
+                      !visibleCategories
+                        ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
+                        : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
+                    }`}
+                  >
+                    All
+                  </button>
+                  {report.categories.map((c) => {
+                    const id = c.short_name || c.name;
+                    const checked = !visibleCategories || visibleCategories.has(id);
+                    return (
+                      <label key={id} className="flex items-center gap-1.5 cursor-pointer select-none text-[11px]">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() =>
+                            setVisibleCategories((prev) => {
+                              const base = prev ?? new Set(report.categories.map((c2) => c2.short_name || c2.name));
+                              const next = new Set(base);
+                              if (next.has(id)) next.delete(id);
+                              else next.add(id);
+                              return next;
+                            })
+                          }
+                          className="w-3.5 h-3.5 accent-[var(--text-primary)]"
+                        />
+                        <span className="font-bold">{id}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5">
+                  <span className="text-[9px] font-bold tracked-caps text-[var(--text-primary)]/40 mr-1">Month</span>
+                  <button
+                    onClick={() => setVisibleMonth(null)}
+                    className={`px-2.5 py-1 border text-[10px] font-bold tracked-caps transition-colors ${
+                      !visibleMonth
+                        ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
+                        : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
+                    }`}
+                  >
+                    All Months
+                  </button>
+                  {monthBlocks.map((b) => (
+                    <button
+                      key={b.key}
+                      onClick={() => setVisibleMonth(b.key)}
+                      className={`px-2.5 py-1 border text-[10px] font-bold tracked-caps transition-colors ${
+                        visibleMonth === b.key
+                          ? "bg-[var(--text-primary)] text-[var(--paper)] border-[var(--text-primary)]"
+                          : "border-[var(--text-primary)]/14 hover:bg-[var(--text-primary)]/5"
+                      }`}
+                    >
+                      {b.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {visibleCategoryRows.length === 0 ? (
+                <div className="p-8 bg-[var(--paper)] border border-[var(--text-primary)]/14 text-center text-[var(--text-primary)]/40 text-[13px]">
+                  No room types selected — check at least one above to show the calendar.
+                </div>
+              ) : (
               <div className="space-y-6">
-                {monthBlocks.map((block) => (
+                {visibleMonthBlocks.map((block) => (
                   <div key={block.key} className="bg-[var(--paper)] border border-[var(--text-primary)]/14 overflow-x-auto overscroll-contain">
                     <table className="w-full text-left border-separate border-spacing-0">
                       <thead>
@@ -862,7 +958,7 @@ export default function RevenuePage() {
                         </tr>
                       </thead>
                       <tbody>
-                        {report.categories.map((c) => {
+                        {visibleCategoryRows.map((c) => {
                           const id = c.short_name || c.name;
                           return (
                             <tr key={id} className="hover:bg-[var(--text-primary)]/[0.02]">
@@ -882,16 +978,11 @@ export default function RevenuePage() {
                                 return (
                                   <td
                                     key={day}
-                                    // Every night shows its own occupancy figure, not just the ones
-                                    // over the line. A grid that only marks sold-out nights is
-                                    // blank for any property whose forward book is still filling,
-                                    // which reads as "no data" when it means "nothing sold out
-                                    // yet" - printing the number removes the ambiguity entirely.
                                     style={style ? undefined : calendarHeat(value)}
                                     title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
                                     className={`text-center p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? `text-[12px] ${style.cls}` : "text-[10px] text-[var(--text-primary)]/70 tabular-nums"}`}
                                   >
-                                    {style ? style.symbol : value === null || value === undefined ? "" : Math.round(value)}
+                                    {style ? style.symbol : ""}
                                   </td>
                                 );
                               })}
@@ -903,10 +994,11 @@ export default function RevenuePage() {
                   </div>
                 ))}
               </div>
+              )}
 
               <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
                 Built from the Occupancy by Room Type figures above, so it follows whichever property, mode and
-                snapshot are loaded there. Every night shows its occupancy percentage; a month with no X simply
+                snapshot are loaded there. A month with no X simply
                 has nothing at or above the threshold yet, which is not the same as missing data — lower the
                 threshold to surface the nights getting close. &ldquo;New&rdquo; and &ldquo;Re-open&rdquo; are changes against the previous
                 stored snapshot — until a second morning has been captured there is nothing to compare against, and
