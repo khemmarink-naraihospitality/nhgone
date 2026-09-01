@@ -3109,6 +3109,12 @@ class SyncService:
 
         arrivals, departures = [], []
         arrivals_count = departures_count = customers_count = 0
+        # Units excluded from arrivals by the night-tail half of the day-use
+        # rule below - surfaced in the report so a mismatch against the
+        # sheet can be told apart from an unrelated bug at a glance (see
+        # st_compare_service's use of it) rather than needing this file's
+        # own comments re-read every time the mail shows a difference.
+        day_use_arrivals_excluded = 0
         night_guest_ids = set()
         for res in reservations:
             if res.get("State") not in active_states:
@@ -3165,6 +3171,8 @@ class SyncService:
             if arrives and not (day_use and night_tail):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
+            elif arrives and day_use and night_tail:
+                day_use_arrivals_excluded += units
             # Departures take EVERY zero-night stay, whichever side of the
             # cutoff it started. The earlier "one side only" split was wrong
             # here: Patong on 30-Aug-2026 filed 63 arrivals AND 80 departures,
@@ -3258,6 +3266,9 @@ class SyncService:
             "departures_count": departures_count,
             "complimentary": complimentary_count,
             "reservations": reservation_audit_rows,
+            # See day_use_arrivals_excluded's own comment above - how many
+            # arrival units the night-tail rule held back today.
+            "day_use_arrivals_excluded": day_use_arrivals_excluded,
         }
         return report
 
@@ -3654,6 +3665,9 @@ class SyncService:
                 # Reports imported before the complimentary field existed
                 # (see get_st_files_report) simply show 0 here, not an error.
                 "complimentary": report.get("complimentary", 0),
+                # Same fallback reasoning: a report imported before this
+                # field existed shows 0 rather than an error.
+                "day_use_arrivals_excluded": report.get("day_use_arrivals_excluded", 0),
                 "synced_at": row.get("synced_at"),
             })
         return rows

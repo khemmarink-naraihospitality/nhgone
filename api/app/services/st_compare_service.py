@@ -176,7 +176,23 @@ async def build_comparison(want_date: str = None) -> dict:
             if sv == ov:
                 ok += 1
             else:
-                notes.append(f"{short} {ov - sv:+d}")
+                note = f"{short} {ov - sv:+d}"
+                # Arrivals is the one metric with a KNOWN, named source of
+                # drift: the day-use night-tail rule (sync_service's
+                # _ST_DAY_USE_NIGHT_END_HOUR) holds back same-day-checkout
+                # stays that started before its cutoff, and MEWS's own
+                # classification of those isn't purely hour-based - see that
+                # rule's own comment for the contradictory evidence. Surfacing
+                # the count here doesn't claim it explains the whole gap
+                # (the exclusion count and the sheet gap can differ, e.g. a
+                # separate bug on top), just saves whoever reads this mail
+                # from re-deriving "is this the day-use thing again?" by hand
+                # every single day.
+                if key == "arrivals":
+                    excluded = ou.get("day_use_arrivals_excluded", 0)
+                    if excluded:
+                        note += f" ({excluded} day-use excluded as night-tail)"
+                notes.append(note)
                 detail.setdefault(prop, []).append((label, ov, sv))
         columns.append({"label": label, "matched": ok, "total": len(SHEETS), "notes": notes})
 
