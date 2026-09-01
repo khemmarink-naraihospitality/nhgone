@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
+import { downloadStopSaleXlsx, type StopSaleChartData, type StopSaleDayCell } from "@/lib/stopSaleChartExport";
 
 // Same collapsible-header pattern as Statistic Files' own page - one
 // shared open/close toggle hides the property/date controls and the
@@ -325,16 +326,6 @@ const STOP_CELL: Record<Exclude<StopState, "none">, { symbol: string; cls: strin
   reopen: { symbol: "o", cls: "text-cyan-700 font-bold bg-cyan-400/15", title: "Re-open" },
 };
 
-// The Occupancy tab's own `heat` tops out at 14% opacity, which works there
-// because the number is printed in the cell anyway. On the calendar it left a
-// 40%-occupied night at ~6% tint - invisible, and read as "no data". This
-// scale is far stronger, and the calendar prints the figure too.
-const calendarHeat = (v: number | null | undefined) => {
-  if (v === null || v === undefined) return undefined;
-  const a = Math.max(0, Math.min(100, v)) / 100;
-  return { backgroundColor: `color-mix(in srgb, var(--text-primary) ${(a * 38).toFixed(1)}%, transparent)` };
-};
-
 const MONTH_NAMES = ["JANUARY", "FEBRUARY", "MARCH", "APRIL", "MAY", "JUNE", "JULY",
   "AUGUST", "SEPTEMBER", "OCTOBER", "NOVEMBER", "DECEMBER"];
 
@@ -641,6 +632,73 @@ export default function RevenuePage() {
     return map;
   }, [baseline]);
 
+  // The one place a category/day turns into a stop-sale cell state - used
+  // by the on-screen table AND the export/print views below, so none of
+  // them can ever disagree with each other about what a cell shows.
+  const dayState = useCallback(
+    (c: CategoryRow, block: MonthBlock, day: number): { exists: boolean; state: StopState } => {
+      const idx = block.dayIndex[day];
+      if (idx < 0 || !report) return { exists: false, state: "none" };
+      const id = c.short_name || c.name;
+      const date = report.dates[idx];
+      const value = c.percent[idx];
+      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
+      return { exists: true, state };
+    },
+    [report, baselineByKey, baseline, stopThreshold]
+  );
+
+  // dd/mm/yyyy for the "Report as of" line - the calendar's own date
+  // (whichever stored snapshot is selected in NHG mode, or today in MEWS
+  // live mode), not the comparison baseline shown alongside the legend.
+  const reportAsOf = useMemo(() => {
+    const d = dataSource === "database" ? snapshotDate : iso(new Date());
+    const [y, m, day] = d.split("-");
+    return `${day}/${m}/${y}`;
+  }, [dataSource, snapshotDate]);
+
+  // The full Stop Sale Chart, in export-ready shape - every month, honoring
+  // each month's own Room Types selection, built from the same dayState()
+  // the on-screen table renders from.
+  const stopSaleChartData: StopSaleChartData | null = useMemo(() => {
+    if (!report) return null;
+    return {
+      propertyName: selectedProperty,
+      reportAsOf,
+      months: monthBlocks.map((block) => ({
+        key: block.key,
+        label: block.label,
+        daysInMonth: block.daysInMonth,
+        categories: categoryRowsForMonth(block.key).map((c) => ({
+          label: c.short_name || c.name,
+          cells: Array.from({ length: 31 }, (_, i) => {
+            const day = i + 1;
+            const { exists, state } = dayState(c, block, day);
+            return { day, exists, state } as StopSaleDayCell;
+          }),
+        })),
+      })),
+    };
+  }, [report, selectedProperty, reportAsOf, monthBlocks, categoryRowsForMonth, dayState]);
+
+  // Renames the tab title while printing so a browser's "Save as PDF" picks
+  // a sane filename, then restores it - same pattern bcp/page.tsx's Reg Card
+  // print (handlePrintRegCard) already uses. This app has no server-side PDF
+  // route by deliberate choice (see CLAUDE.md: one was built, worked, and was
+  // removed again for the Chromium function's server cost) - browser print
+  // is the established way every other print-to-PDF page here works.
+  const handlePrintStopSaleChart = () => {
+    if (!stopSaleChartData) return;
+    const originalTitle = document.title;
+    document.title = `StopSaleChart_${stopSaleChartData.propertyName.replace(/\s+/g, "")}`;
+    const restoreTitle = () => {
+      document.title = originalTitle;
+      window.removeEventListener("afterprint", restoreTitle);
+    };
+    window.addEventListener("afterprint", restoreTitle);
+    window.print();
+  };
+
   const snapshotOptions = (() => {
     const byDate = new Map(snapshots.map((s) => [s.date, s]));
     if (!byDate.has(snapshotDate)) {
@@ -944,7 +1002,12 @@ export default function RevenuePage() {
 
         {calendarOpen && (
           report ? (
-            <div>
+            // no-print: the on-screen grid uses theme-var colours and a
+            // horizontal scroll that don't survive pagination. The purpose-
+            // built print-only table just below (hidden print:block) is
+            // what actually prints, same split BCP's Timeline/housekeeping
+            // sheet already uses.
+            <div className="no-print">
               <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
                 <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
                   <span>Stop-sale chart — a night at or above</span>
@@ -981,20 +1044,23 @@ export default function RevenuePage() {
                 <span className="flex items-center gap-2">
                   <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
                 </span>
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex">
-                    {[15, 45, 75].map((v) => (
-                      <span
-                        key={v}
-                        style={calendarHeat(v)}
-                        className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 text-[10px] text-[var(--text-primary)]/70 tabular-nums"
-                      >
-                        {v}
-                      </span>
-                    ))}
-                  </span>
-                  Occupancy % on nights below the line — darker is fuller
-                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                <button
+                  onClick={() => stopSaleChartData && downloadStopSaleXlsx(stopSaleChartData)}
+                  disabled={!stopSaleChartData}
+                  className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Export Stop Sale Chart (.xlsx)
+                </button>
+                <button
+                  onClick={handlePrintStopSaleChart}
+                  disabled={!stopSaleChartData}
+                  className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                >
+                  Print / Save as PDF
+                </button>
               </div>
 
               <div className="space-y-8">
@@ -1055,7 +1121,6 @@ export default function RevenuePage() {
                                       return (
                                         <td
                                           key={day}
-                                          style={style ? undefined : calendarHeat(value)}
                                           title={`${date} · ${pct(value)}${style ? ` · ${style.title}` : ""}`}
                                           className={`text-center p-1 border-b border-l border-[var(--text-primary)]/5 ${style ? `text-[12px] ${style.cls}` : "text-[10px] text-[var(--text-primary)]/70 tabular-nums"}`}
                                         >
@@ -1091,6 +1156,103 @@ export default function RevenuePage() {
               </div>
             )
           )
+        )}
+
+        {/* Print-only Stop Sale Chart - the on-screen calendar above is
+            marked no-print (see its own comment) because its theme colours
+            and horizontal scroll don't survive pagination. This is a plain,
+            explicitly-black-on-white table built from the exact same
+            stopSaleChartData the .xlsx export uses, so print/PDF and xlsx
+            can never show different numbers. print-color-adjust is set
+            inline because browsers strip background fills by default when
+            printing (to save ink) - without it every coloured cell below
+            would print as plain white. Landscape fits the 31 day columns
+            far better than portrait; pick that in the browser's print
+            dialog when saving as PDF. */}
+        {stopSaleChartData && (
+          <div className="hidden print:block text-black" style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}>
+            <div className="mb-1 px-2 py-1 bg-[#1F3864] text-white font-bold text-[13px]">
+              STOP SALE CHART :&nbsp;&nbsp;{stopSaleChartData.propertyName}
+            </div>
+            <div className="mb-4 text-[11px]">
+              <span className="font-bold text-[#C00000]">Report as of :</span>{" "}
+              <span className="bg-[#FFFF00] font-bold px-1">{stopSaleChartData.reportAsOf}</span>
+            </div>
+
+            {stopSaleChartData.months.map((month) => (
+              <table key={month.key} className="border-collapse mb-4 break-inside-avoid">
+                <thead>
+                  <tr>
+                    <th colSpan={32} className="bg-[#D9E2F3] border border-gray-400 text-[11px] font-bold py-1">
+                      {month.label}
+                    </th>
+                  </tr>
+                  <tr>
+                    <th className="bg-[#DCE6F1] border border-gray-400 text-[9px] font-bold w-24 min-w-24 px-1 text-left">Date</th>
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <th
+                        key={day}
+                        className={`border border-gray-400 text-[8px] font-bold w-5 min-w-5 ${day > month.daysInMonth ? "bg-black" : "bg-[#DCE6F1]"}`}
+                      >
+                        {day <= month.daysInMonth ? day : ""}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {month.categories.map((cat) => (
+                    <tr key={cat.label}>
+                      <td className="border border-gray-400 text-[9px] font-bold px-1 whitespace-nowrap">{cat.label}</td>
+                      {cat.cells.map((day) => (
+                        <td
+                          key={day.day}
+                          className={`border border-gray-400 text-[8px] text-center font-bold ${
+                            !day.exists
+                              ? "bg-black"
+                              : day.state === "new-stop"
+                                ? "bg-[#FFFF00] text-[#C00000]"
+                                : day.state === "reopen"
+                                  ? "bg-[#22D3EE] text-[#063B4A]"
+                                  : ""
+                          }`}
+                        >
+                          {day.exists && day.state === "existing-stop" ? "X" : ""}
+                          {day.exists && day.state === "new-stop" ? "X" : ""}
+                          {day.exists && day.state === "reopen" ? "o" : ""}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="border border-gray-400 text-[9px] font-bold px-1 text-[#C00000] whitespace-nowrap">EXTRA BED</td>
+                    {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                      <td key={day} className={`border border-gray-400 ${day > month.daysInMonth ? "bg-black" : ""}`} />
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            ))}
+
+            <div className="text-[10px]">
+              <div className="font-bold underline mb-1">Remark</div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="inline-flex items-center justify-center w-4 h-4 border border-gray-400 bg-[#FFFF00] text-[#C00000] font-bold">X</span>
+                New Stop Sales
+              </div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="inline-flex items-center justify-center w-4 h-4 border border-gray-400 font-bold">X</span>
+                Existing Stop Sales
+              </div>
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="inline-flex items-center justify-center w-4 h-4 border border-gray-400 bg-[#22D3EE] text-[#063B4A] font-bold">o</span>
+                Re-open
+              </div>
+              <div className="flex items-center gap-2 text-[#C00000]">
+                <span className="inline-flex items-center justify-center w-4 h-4 border border-gray-400 font-bold">&nbsp;</span>
+                Extra Bed Stop Sale — not tracked in MEWS; fill in by hand
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>
