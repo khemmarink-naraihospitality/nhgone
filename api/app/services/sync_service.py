@@ -3021,7 +3021,36 @@ class SyncService:
         def reservation_row(res):
             customer = customers_map.get(res.get("CustomerId"), {})
             room = resources_map.get(res.get("AssignedResourceId"), {})
-            cat = categories.get(res.get("RequestedCategoryId"), {})
+            # The room actually ASSIGNED, not RequestedCategoryId - a guest
+            # who requested one category and was moved to (or upgraded into)
+            # another shows up here under the one they're actually sleeping
+            # in, matching the category space_categories() above counts them
+            # under. Confirmed against Lub d Siem Reap, 31-Aug-2026: three
+            # DKR-requested guests assigned into DTR rooms were filed as DKR
+            # arrivals under the old RequestedCategoryId lookup while the
+            # aggregate arrivals_count (built from space_categories(), which
+            # already resolves off the assignment) correctly counted them as
+            # DTR - so the per-category numbers in the exported ST file
+            # disagreed with the total next to them. Same resolution order
+            # as space_categories() - assigned resource's own category first,
+            # then (for a whole-unit booking like a connecting suite whose
+            # own category isn't one of this report's space types) the first
+            # in-report child, then RequestedCategoryId as a last resort for
+            # a reservation with no assignment on record at all. Reservation
+            # #150326 that same day (booked on the whole "402/404" connecting
+            # suite, itself category DXCN/Suite - not in this report - whose
+            # two child rooms are both DCR) is what the child fallback is for.
+            assigned_id = res.get("AssignedResourceId")
+            assigned_cat_id = resource_category.get(assigned_id)
+            if not categories.get(assigned_cat_id, {}).get("in_report"):
+                child_cat_id = next(
+                    (cc for cc in (resource_category.get(k) for k in parent_children.get(assigned_id, []))
+                     if categories.get(cc, {}).get("in_report")),
+                    None,
+                )
+                if child_cat_id:
+                    assigned_cat_id = child_cat_id
+            cat = categories.get(assigned_cat_id) or categories.get(res.get("RequestedCategoryId"), {})
             return {
                 "number": res.get("Number", ""),
                 "guest": f"{customer.get('FirstName', '')} {customer.get('LastName', '')}".strip(),
