@@ -163,14 +163,14 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
       <td style="padding:40px;">
         <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
         <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RR4 / TM30 &mdash; Sheet Verification</p>
-        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our register against every property's own "RR4-TM30-&lt;Name&gt;-Gen" sheet, row by row, for <b><<Date>></b> (<<PropertyCount>> properties)</p>
-        <p style="margin:0 0 24px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> rows &middot; <b><<Rr4Diff>></b> differ &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> rows &middot; <b><<Tm30Diff>></b> differ</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our register against every property's own "RR4-TM30-&lt;Name&gt;-Gen" Google Sheet, row by row, for <b><<Date>></b> (<<PropertyCount>> properties)</p>
+        <p style="margin:0 0 4px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> rows &middot; <b><<Rr4Diff>></b> differ &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> rows &middot; <b><<Tm30Diff>></b> differ</p>
+        <p style="margin:0 0 24px 0; font-size:11px; color:#94a3b8;">Every pair of numbers in this email reads <b>Google Sheet / NHGOne</b></p>
+        <h3 style="margin:0 0 8px 0; font-size:15px; color:#152A00;">1. Every Property</h3>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Columns That Differ</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Differs</h3>
         <<ColumnTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Example Differences</h3>
-        <<SampleTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Export Window Check</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">3. When Each Side Pulled Its Data</h3>
         <<WindowTable>>
       </td>
     </tr>

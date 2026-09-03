@@ -215,16 +215,19 @@ const ST_COMPARE_TOKENS: TokenDoc[] = [
 
 const RR4_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Date", description: "The date most properties' sheets are holding (DD/MM/YYYY) - each property is still compared at its own sheet's date" },
-  { name: "Rr4Rows", description: "Total RR4 rows, ours / sheet" },
-  { name: "Tm30Rows", description: "Total TM30 rows, ours / sheet" },
+  { name: "Rr4Rows", description: "Total RR4 rows, Google Sheet / NHGOne" },
+  { name: "Tm30Rows", description: "Total TM30 rows, Google Sheet / NHGOne" },
   { name: "Rr4Diff", description: "RR4 rows differing on at least one column, known drift excluded" },
   { name: "Tm30Diff", description: "TM30 rows differing on at least one column, known drift excluded" },
-  { name: "Summary", description: "One-line verdict, e.g. \"ต้องตรวจ 8 แถว\" - usable in the Subject too" },
+  { name: "Summary", description: "One-line verdict, e.g. \"8 rows need review\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties could be compared (of the 6 Thai ones)" },
-  { name: "SummaryTable", description: "Pre-built HTML: per-property row counts, rows matching on every column, real differences, known drift" },
-  { name: "ColumnTable", description: "Pre-built HTML: which columns differ and on how many rows, real differences separated from known drift" },
-  { name: "SampleTable", description: "Pre-built HTML: up to 3 real differing rows per register, naming the guest and the two values" },
-  { name: "WindowTable", description: "Pre-built HTML: the window each sheet was exported over vs the one configured in Admin > Property & API" },
+  { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property, RR4 and TM30 as Google Sheet / NHGOne, green tick when they agree and red cross when they don't" },
+  { name: "ColumnTable", description: "Table 2 - pre-built HTML: every difference behind table 1, naming the guests; red needs review, amber is already-explained known drift or a configured-window shortfall" },
+  { name: "WindowTable", description: "Table 3 - pre-built HTML: the time each side started sweeping its day (sheet vs ours, RR4 and TM30 separately) and when our own import ran" },
+  // SampleTable is deliberately absent: its example rows are part of
+  // ColumnTable now. The backend still substitutes it as an empty string so a
+  // template saved before that change renders nothing there rather than the
+  // literal text "<<SampleTable>>", but there is no reason to offer it here.
 ];
 
 const TEMPLATE_CONFIG: Record<TemplateType, {
@@ -546,32 +549,46 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
       [["Chinatown", "✓ 176", "✓ 150", "✓ 30", "✓ 28"], ["Samui", "✓ 60", "✓ 55", "87 / 84", "✓ 9"]],
     ),
   }),
+  // Mirrors rr4_compare_service's three render_* tables - same column order,
+  // same "Google Sheet / NHGOne" reading direction, same green-tick /
+  // red-cross / amber-known-drift treatment - so the Preview tab shows the
+  // shape the 08:00 mail actually sends rather than a generic placeholder.
   rr4_compare_email: () => ({
-    Date: "25/08/2026",
-    Rr4Rows: "952 / 952",
-    Tm30Rows: "341 / 343",
-    Rr4Diff: "1",
-    Tm30Diff: "3",
-    Summary: "ต้องตรวจ 8 แถว",
+    Date: "02/09/2026",
+    Rr4Rows: "832 / 832",
+    Tm30Rows: "239 / 230",
+    Rr4Diff: "0",
+    Tm30Diff: "0",
+    Summary: "9 rows need review",
     PropertyCount: "6",
     SummaryTable: buildCompareSampleTable(
-      ["Property", "วันที่", "RR4 เรา / ชีต", "ต่างจริง", "TM30 เรา / ชีต", "ต่างจริง"],
-      [["Chinatown", "2026-08-25", "126 / 126", "0", "43 / 45", "0"],
-       ["Siam", "2026-08-25", "61 / 61", "1", "35 / 35", "2"]],
+      ["Property", "Date", "RR4 — Sheet / NHGOne", "TM30 — Sheet / NHGOne"],
+      [["Chinatown", "2026-09-01", ok("✓ 132 (2 known drift)"),
+        bad("✗ 32 / 26 (6 only in the sheet, as our 12:15 window intends)")],
+       ["Siam", "2026-09-02", ok("✓ 86"), ok("✓ 20 (1 known drift)")],
+       ["Patong", "2026-09-02", ok("✓ 166 (3 known drift)"),
+        bad("✗ 42 / 39 (3 only in the sheet, as our 02:05 window intends)")]],
     ),
     ColumnTable: buildCompareSampleTable(
-      ["Property", "ทะเบียน", "คอลัมน์", "กี่แถว", "หมายเหตุ"],
-      [["Siam", "TM30", "nationality", "2", "ต้องตรวจ"],
-       ["Samui", "RR4", "time_check_in", "6", "known drift"]],
-    ),
-    SampleTable: buildCompareSampleTable(
-      ["Property", "ทะเบียน", "แขก", "คอลัมน์", "ระบบเรา", "ชีต"],
-      [["Siam", "TM30", "Nikolaos Pantotis", "nationality", "GRC", "GRL"]],
+      ["Property", "Register", "What differs", "Guest", "Google Sheet", "NHGOne", "Why"],
+      [["Siam", "TM30", "nationality<br><small>2 rows</small>", "Nikolaos Pantotis · AP1234567",
+        "GRL", "GRC", bad("Needs review")],
+       ["Chinatown", "TM30", "Guest only in the sheet<br><small>6 rows</small>",
+        "Marco Rossi · YB9912345", "present", "missing",
+        amber("Expected — our TM30 day starts at 12:15, so a guest arriving before that is filed on the previous day")],
+       ["Samui", "RR4", "time_check_in<br><small>3 rows</small>", "Anna Weber · C01X45678",
+        "14.31", "14.30",
+        muted("MEWS wrote ActualStartUtc at :59 seconds, right after the sheet was generated")]],
     ),
     WindowTable: buildCompareSampleTable(
-      ["Property", "RR4 — ชีต", "RR4 — ระบบเรา", "TM30 — ชีต", "TM30 — ระบบเรา"],
-      [["Chinatown", "12:15", "12:15", "12:15", "00:00"], ["Siam", "02:15", "02:15", "00:00", "00:00"]],
+      ["Property", "RR4 — Google Sheet", "RR4 — NHGOne", "TM30 — Google Sheet", "TM30 — NHGOne", "NHGOne built the file"],
+      [["Chinatown", "12:15", ok("✓ 12:15"), "12:15", ok("✓ 12:15"), "02 Sep 12:30"],
+       ["Koh Tao", "02:05", ok("✓ 02:05"), "01:59", bad("✗ 02:00"), "03 Sep 02:30"]],
     ),
+    // Retained empty for the same reason the backend keeps substituting it:
+    // a template saved before the tables were reorganised still carries
+    // <<SampleTable>>, and an unknown token is left in the body verbatim.
+    SampleTable: "",
   }),
   st_files_email: () => ({
     Date: "06/08/2026",
@@ -608,6 +625,16 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
 // Plain bordered table matching what the two verification mails actually
 // emit (st_compare_service/rr4_compare_service render these server-side), so
 // the Preview tab shows the real shape instead of a bare <<SummaryTable>>.
+// The three states the two verification mails colour their cells with, kept
+// to the same hex values rr4_compare_service.py's _OK / _BAD / _EXPECTED use
+// so the Preview tab and the sent mail can't drift apart on what green, red
+// and amber mean. Cell contents are inlined into <td> as HTML by
+// buildCompareSampleTable, which is why these return markup.
+const ok = (s: string) => `<span style="color:#166534;font-weight:700">${s}</span>`;
+const bad = (s: string) => `<span style="background:#fee2e2;color:#b91c1c;font-weight:700">${s}</span>`;
+const amber = (s: string) => `<span style="background:#fef3c7;color:#92400e;font-weight:700">${s}</span>`;
+const muted = (s: string) => `<span style="color:#94a3b8">${s}</span>`;
+
 function buildCompareSampleTable(headers: string[], rows: string[][]): string {
   const th = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;";
   const td = "padding:6px 10px;border:1px solid #e2e8f0;font-size:13px;";

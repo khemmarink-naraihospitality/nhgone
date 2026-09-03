@@ -146,6 +146,38 @@ def _pair_key(row: dict, kind: str) -> tuple:
     return ("N", (_norm(row.get("first_name")) + "|" + _norm(row.get("last_name"))).upper())
 
 
+def _row_label(row: dict, kind: str) -> str:
+    """One guest, named well enough to be found in MEWS from the mail alone.
+
+    Name first because that is what a person recognises, then the number the
+    filing is actually keyed on, then (RR4 only) the room - which is all there
+    is to go on for MEWS's unnamed occupant slots, since they carry neither of
+    the first two. TM30 has no room column at all, so it gets name + passport.
+    """
+    if kind == "rr4":
+        name = " ".join(x for x in (_norm(row.get("name_en")), _norm(row.get("surname_en"))) if x)
+        ident = _norm(row.get("passport")) or _norm(row.get("pid"))
+        room = _norm(row.get("room_no"))
+    else:
+        name = " ".join(x for x in (_norm(row.get("first_name")), _norm(row.get("last_name"))) if x)
+        ident = _norm(row.get("passport_no"))
+        room = ""
+    bits = [name or "(no name)"]
+    if ident:
+        bits.append(ident)
+    if room:
+        bits.append(f"room {room}")
+    return " · ".join(bits)
+
+
+# How many differing guests the detail table names per column, and per
+# one-side-only group. The counts printed beside them are always the FULL
+# number and the table's own footnote states these caps, so a truncated list
+# can never be read as the complete one.
+_EXAMPLES_PER_COLUMN = 3
+_EXAMPLES_PER_MISSING_GROUP = 6
+
+
 def _index(rows: list, kind: str, columns: list) -> dict:
     """Rows by pair key, with an occurrence counter appended so two guests
     sharing a passport (or two unnamed slots in the same room) stay distinct
@@ -183,8 +215,13 @@ def _compare_rows(ours: list, sheet: list, kind: str, columns: list) -> dict:
     paired = ours_ix.keys() & sheet_ix.keys()
 
     diff_rows, drift_rows = 0, 0
-    cols, drift_cols, samples = {}, {}, []
-    for k in paired:
+    cols, drift_cols = {}, {}
+    col_examples, drift_col_examples = {}, {}
+    # sorted() rather than the set's own order: which guests end up as the
+    # mail's named examples must not move between two runs over identical
+    # data, or someone comparing this morning's mail against yesterday's sees
+    # a change that never happened.
+    for k in sorted(paired):
         o, s = ours_ix[k], sheet_ix[k]
         real, drift = [], []
         for key in columns:
@@ -192,31 +229,51 @@ def _compare_rows(ours: list, sheet: list, kind: str, columns: list) -> dict:
             if ov == sv:
                 continue
             (drift if _is_known_drift(key, ov, sv) else real).append((key, ov, sv))
-        for key, _o, _s in drift:
+        who = _row_label(o, kind)
+        for key, ov, sv in drift:
             drift_cols[key] = drift_cols.get(key, 0) + 1
-        for key, _o, _s in real:
+            ex = drift_col_examples.setdefault(key, [])
+            if len(ex) < _EXAMPLES_PER_COLUMN:
+                ex.append((who, ov, sv))
+        for key, ov, sv in real:
             cols[key] = cols.get(key, 0) + 1
+            ex = col_examples.setdefault(key, [])
+            if len(ex) < _EXAMPLES_PER_COLUMN:
+                ex.append((who, ov, sv))
         if real:
             diff_rows += 1
-            if len(samples) < 3:
-                label = (_norm(o.get("name_en")) or _norm(o.get("first_name")) or "—") + " " + \
-                        (_norm(o.get("surname_en")) or _norm(o.get("last_name")) or "")
-                samples.append((label.strip(), real[:4]))
         elif drift:
             drift_rows += 1
 
+    # Named, not just counted. A morning that reads "3 rows only in the sheet"
+    # tells nobody which three, and the answer is not derivable from the mail;
+    # with the names in hand the same reader can open those guests in MEWS
+    # before the register is filed.
+    only_ours_keys = sorted(ours_ix.keys() - sheet_ix.keys())
+    only_sheet_keys = sorted(sheet_ix.keys() - ours_ix.keys())
     return {
         "ours": len(ours),
         "sheet": len(sheet),
         "paired": len(paired),
-        "only_ours": len(ours_ix.keys() - sheet_ix.keys()),
-        "only_sheet": len(sheet_ix.keys() - ours_ix.keys()),
+        "only_ours": len(only_ours_keys),
+        "only_sheet": len(only_sheet_keys),
+        "only_ours_rows": [_row_label(ours_ix[k], kind)
+                           for k in only_ours_keys[:_EXAMPLES_PER_MISSING_GROUP]],
+        "only_sheet_rows": [_row_label(sheet_ix[k], kind)
+                            for k in only_sheet_keys[:_EXAMPLES_PER_MISSING_GROUP]],
         "clean_rows": len(paired) - diff_rows - drift_rows,
         "diff_rows": diff_rows,
         "drift_rows": drift_rows,
         "cols": cols,
         "drift_cols": drift_cols,
-        "samples": samples,
+        # There used to be a separate `samples` list here - up to 3 whole rows
+        # with up to 4 of their differing columns each - feeding its own table.
+        # It is gone rather than kept alongside col_examples, because two
+        # parallel example paths can name different guests for the same
+        # difference, and it could never carry a known-drift row at all (it was
+        # only appended inside `if real:`).
+        "col_examples": col_examples,
+        "drift_col_examples": drift_col_examples,
     }
 
 
@@ -435,12 +492,6 @@ def _title(result: dict) -> str:
     return f"RR4/TM30 {day.day} {day.strftime('%b %Y')}"
 
 
-def _cols_note(block: dict) -> str:
-    if not block["cols"]:
-        return "✅"
-    return ", ".join(f"{k} ×{n}" for k, n in sorted(block["cols"].items(), key=lambda kv: -kv[1]))
-
-
 def render_text(result: dict) -> str:
     """Plain-text form - the CLI output, and the email's text/plain part."""
     if result["status"] != "ok":
@@ -449,64 +500,65 @@ def render_text(result: dict) -> str:
             out.append(f"     {p['short']:<12} {p['note']}")
         return "\n".join(out)
 
-    out = ["=" * 82, f"Comparison Summary — {_title(result)}", "=" * 82]
+    out = ["=" * 88, f"Comparison Summary — {_title(result)}", "=" * 88]
     if result["mixed_dates"]:
         out.append("(Each property is compared at its own sheet's date — Chinatown cuts its day at 12:15, so it runs a day behind the rest)")
-    out.append("")
-    out.append(f"{'Property':<12}{'Date':<12}{'RR4 Ours/Sheet':<16}{'Match':<8}{'Diff':<7}{'TM30 Ours/Sheet':<16}{'Match':<8}Diff")
-    out.append("-" * 82)
+
+    # The same three sections the HTML mail is built from, in the same order,
+    # so the text/plain part of a message can never describe a different check
+    # from the part most people actually read.
+    out += ["", "1. EVERY PROPERTY — Google Sheet / NHGOne", "-" * 88]
+    out.append(f"{'Property':<12}{'Date':<12}{'RR4 sheet/ours':<17}{'Diff':<7}"
+               f"{'TM30 sheet/ours':<17}Diff")
     for p in result["properties"]:
         if p["status"] != "ok":
             out.append(f"{p['short']:<12}{(p['date'] or '—'):<12}{p['note']}")
             continue
         r, t = p["rr4"], p["tm30"]
-        r_count = "{}/{}".format(r["ours"], r["sheet"])
-        t_count = "{}/{}".format(t["ours"], t["sheet"])
+        r_count = "{}/{}".format(r["sheet"], r["ours"])
+        t_count = "{}/{}".format(t["sheet"], t["ours"])
+        r_bad = r["diff_rows"] + r["only_ours"] + r["only_sheet"]
+        t_bad = t["diff_rows"] + t["only_ours"] + t["only_sheet"]
         out.append(
             f"{p['short']:<12}{p['date']:<12}"
-            f"{r_count:<16}{r['clean_rows']:<8}{r['diff_rows']:<7}"
-            f"{t_count:<16}{t['clean_rows']:<8}{t['diff_rows']}")
-    out.append("-" * 82)
+            f"{r_count:<17}{('✓' if r_bad == 0 else '✗ ' + str(r_bad)):<7}"
+            f"{t_count:<17}{'✓' if t_bad == 0 else '✗ ' + str(t_bad)}")
+    out.append("-" * 88)
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
-    out.append(f"RR4  total {tr['ours']}/{tr['sheet']} rows · paired {tr['paired']} · fully matched "
+    out.append(f"RR4  total {tr['sheet']}/{tr['ours']} rows · paired {tr['paired']} · fully matched "
                f"{tr['clean_rows']} · real diff {tr['diff_rows']} · known drift {tr['drift_rows']} · "
-               f"ours only {tr['only_ours']} · sheet only {tr['only_sheet']}")
-    out.append(f"TM30 total {tt['ours']}/{tt['sheet']} rows · paired {tt['paired']} · fully matched "
+               f"only in sheet {tr['only_sheet']} · only in NHGOne {tr['only_ours']}")
+    out.append(f"TM30 total {tt['sheet']}/{tt['ours']} rows · paired {tt['paired']} · fully matched "
                f"{tt['clean_rows']} · real diff {tt['diff_rows']} · known drift {tt['drift_rows']} · "
-               f"ours only {tt['only_ours']} · sheet only {tt['only_sheet']}")
+               f"only in sheet {tt['only_sheet']} · only in NHGOne {tt['only_ours']}")
 
-    out += ["", "Columns with real differences (ours / sheet):"]
-    any_col = False
-    for p in result["properties"]:
-        if p["status"] != "ok":
-            continue
-        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
-            if p[kind]["cols"]:
-                any_col = True
-                out.append(f"  {p['short']:<12} {label:<5} {_cols_note(p[kind])}")
-    if not any_col:
-        out.append("  ✅ None")
+    out += ["", "2. WHAT DIFFERS (sheet / NHGOne)", "-" * 88]
+    groups = _diff_groups(result)
+    if not groups:
+        out.append("  ✅ Every column of every paired row matches, and both sides hold the same guests")
+    for g in groups:
+        tag = {"real": "!!", "expected": "..", "drift": "  "}[g["tone"]]
+        shown = "" if len(g["ex"]) >= g["n"] else f" (showing {len(g['ex'])})"
+        out.append(f"{tag} {g['short']:<12} {g['reg']:<5} {g['what']}  "
+                   f"× {g['n']}{shown}  — {g['why']}")
+        for who, ours, sheet in g["ex"]:
+            out.append(f"       {_clip(who, 46):<48} {_clip(sheet, 30) or '—'}  /  "
+                       f"{_clip(ours, 30) or '—'}")
+    if groups:
+        out.append("   (!! needs review today · .. expected from a configured window · "
+                   "blank = known drift, already explained)")
 
-    samples = [(p["short"], label, who, diffs)
-               for p in result["properties"] if p["status"] == "ok"
-               for kind, label in (("rr4", "RR4"), ("tm30", "TM30"))
-               for who, diffs in p[kind]["samples"]]
-    if samples:
-        out += ["", "Example differing rows (ours / sheet):"]
-        for short, label, who, diffs in samples:
-            out.append(f"  {short:<12} {label:<5} {who}")
-            for key, ov, sv in diffs:
-                out.append(f"       {key:<22} {ov or '—'}  /  {sv or '—'}")
-
-    out += ["", "Export window (sheet) vs configured window (ours):"]
+    out += ["", "3. WHEN EACH SIDE PULLED ITS DATA", "-" * 88]
     for p in result["properties"]:
         bad = (p["sheet_rr4_window"] != p["our_window"]
                or p["sheet_tm30_window"] != p["our_tm30_window"])
         flag = "   ⚠️ mismatch" if bad else ""
         out.append(f"  {p['short']:<12} RR4 sheet {p['sheet_rr4_window'] or '—':<7} ours "
                    f"{p['our_window'] or '—':<7} · TM30 sheet {p['sheet_tm30_window'] or '—':<7} ours "
-                   f"{p['our_tm30_window'] or '—':<7}{flag}")
+                   f"{p['our_tm30_window'] or '—':<7} · built {p['synced_at'] or '—':<13}{flag}")
+    out.append("   Each side sweeps a 24-hour day that STARTS at these times — both halves of a "
+               "pair must match.")
     return "\n".join(out)
 
 
@@ -519,61 +571,139 @@ def _esc(s) -> str:
 _TD = "padding:6px 10px;border:1px solid #e2e8f0;font-size:13px;"
 _TH = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;"
 _MUTED = "color:#94a3b8;"
-_BAD = "background:#fef3c7;color:#92400e;font-weight:700;"
+
+# Three states, three colours, used consistently by all three tables so a
+# colour means the same thing wherever it appears:
+#   green  the sheet and NHGOne agree - nothing to do
+#   red    a real difference - somebody has to look at it today
+#   amber  a difference that has already been explained (_KNOWN_DRIFT, or a
+#          shortfall the property's own configured window is supposed to
+#          produce) - worth seeing, not worth chasing
+# Amber was the only highlight before this; splitting it means the daily
+# known-drift rows stop competing for attention with the rare real ones.
+_OK = "color:#166534;font-weight:700;"
+_BAD = "background:#fee2e2;color:#b91c1c;font-weight:700;"
+_EXPECTED = "background:#fef3c7;color:#92400e;font-weight:700;"
+
+# An em dash as a name rather than inline: an f-string expression cannot
+# contain a backslash before Python 3.12, and this file has to import on the
+# 3.10 that runs it locally as well as the 3.12 on Vercel.
+_DASH = "—"
+_TICK = "✓"
+_CROSS = "✗"
+
+
+_TABLE_OPEN = '<table style="border-collapse:collapse">'
+
+
+def _scroll(parts: list, footnote: str) -> str:
+    """Every table here is wider than a phone, so each one scrolls inside its
+    own box rather than forcing the email body to - the same wrapper
+    st_compare_service.render_grid_table uses, and the reason _TABLE_OPEN
+    carries no width:100%: a table pinned to 100% of an overflow-x box can
+    never overflow it, so the cells squash instead of the box scrolling.
+
+    Outlook desktop (the Word rendering engine) ignores overflow-x entirely
+    and widens the card instead. That is survivable and is why the tables stay
+    as narrow as they do; it is not a reason to add columns.
+    """
+    return ('<div style="overflow-x:auto">' + "".join(parts) + "</div>"
+            + f'<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">{footnote}</p>')
+
+
+def _clip(value: str, limit: int = 60) -> str:
+    """MEWS free text can be long - an RR4 `address` is a whole postal address -
+    and one long value in a cell widens the whole card in the clients that
+    ignore overflow-x. Cut it here rather than trusting a CSS property Outlook
+    doesn't implement."""
+    s = str(value or "")
+    return s if len(s) <= limit else s[:limit - 1].rstrip() + "…"
+
+
+def _dmy_display(iso: str) -> str:
+    """The sheets' own ISO date as DD/MM/YYYY, so the cells agree with the
+    <<Date>> token in the line above them instead of printing 2026-09-02
+    beside 02/09/2026."""
+    try:
+        return datetime.strptime(iso, "%Y-%m-%d").strftime("%d/%m/%Y")
+    except (TypeError, ValueError):
+        return iso or _DASH
 
 
 def _summary_cell(block: dict, window: str = "") -> str:
-    """One register's cell in the simplified summary grid - same visual
-    pattern as st_compare_service's GridTable: a plain "✓ N" when the two
-    sides genuinely agree, a bold highlighted "N / M" with a short note
-    otherwise. Known drift doesn't count as a real difference here (that's
-    the whole point of tracking it separately), so a day with only drift
-    still reads as clean at a glance - the detail tables below still show it.
+    """One register's cell in table 1: a green "✓ N" when the sheet and
+    NHGOne hold the same guests with the same details, a red "✗ sheet / ours"
+    naming what differs when they don't.
+
+    Sheet first, then ours, in that order everywhere in this mail - it is the
+    sheet that is the ground truth being checked against, so it reads as
+    "what should be there / what we produced".
+
+    Known drift does NOT make a cell red: it has each been chased down and
+    explained (see _KNOWN_DRIFT), so a day carrying only drift still reads as
+    clean at a glance and the amber row in table 2 carries the detail.
 
     `window` is the property's configured TM30 start. A non-midnight one
-    files a shorter day than the sheet holds on purpose (Chinatown's 12:15
+    files a shorter day than the sheet holds ON PURPOSE (Chinatown's 12:15
     drops every guest arriving before noon - 2 to 20 of them on each of the
-    seven days measured to 29-Aug-2026), so its shortfall is annotated as
-    the configured consequence it is. Deliberately still highlighted rather
-    than hidden: unlike _KNOWN_DRIFT, this cannot be verified row by row -
-    TM30 carries no check-in column to test each missing guest against - so
-    a genuine new miss would look identical, and the number stays in view.
+    seven days measured to 29-Aug-2026), so its shortfall is annotated as the
+    configured consequence it is. Deliberately still red rather than hidden or
+    amber: unlike _KNOWN_DRIFT this cannot be verified row by row - TM30
+    carries no check-in column to test each missing guest against - so a
+    genuine new miss would look identical, and the number stays in view.
     """
     real = block["diff_rows"] + block["only_ours"] + block["only_sheet"]
+    # Deliberately "is our window non-midnight", NOT "does our window differ
+    # from the sheet's". The sheets DECLARE a TM30 window in Master!B2 that
+    # they do not actually filter by: on 02-Sep-2026 Chinatown's sheet said
+    # 12:15, exactly what we are configured to, and still held 32 arrivals to
+    # our 26 - and Patong's said 02:05 to our 02:05, 42 to our 39. Comparing
+    # the two windows would therefore find them equal and call both shortfalls
+    # unexplained every single morning. Our own non-midnight start is the real
+    # cause (an earlier check found midnight reproduces Chinatown's sheet
+    # exactly, 67 for 67, where 12:15 gives 56), so that is what is tested.
     shifted = bool(window) and window != "00:00"
     if real == 0:
-        note = f" ({block['drift_rows']} known drift)" if block["drift_rows"] else ""
-        return f'<td style="{_TD}color:#475569;">✓ {block["ours"]}{note}</td>'
+        note = ""
+        if block["drift_rows"]:
+            note = (f'<span style="{_MUTED}font-weight:400"> '
+                    f'({block["drift_rows"]} known drift)</span>')
+        return f'<td style="{_TD}{_OK}">{_TICK} {block["sheet"]}{note}</td>'
     bits = []
     if block["diff_rows"]:
         bits.append(f"{block['diff_rows']} differ")
     if block["only_ours"]:
-        bits.append(f"{block['only_ours']} ours only")
+        bits.append(f"{block['only_ours']} only in NHGOne")
     if block["only_sheet"]:
-        bits.append(f"{block['only_sheet']} sheet only"
-                    + (f", expected from the {window} window" if shifted else ""))
-    return f'<td style="{_TD}{_BAD}"><b>{block["ours"]} / {block["sheet"]}</b> ({", ".join(bits)})</td>'
+        bits.append(f"{block['only_sheet']} only in the sheet"
+                    + (f", as our {window} window intends" if shifted else ""))
+    # The counts stay on one line; the note after them is allowed to wrap, or
+    # "6 only in the sheet, as our 12:15 window intends" pushes the table past
+    # the card in every client that honours nowrap.
+    return (f'<td style="{_TD}{_BAD}">'
+            f'<span style="white-space:nowrap">{_CROSS} {block["sheet"]} / {block["ours"]}</span>'
+            f'<span style="font-weight:400;font-size:11px"> ({", ".join(bits)})</span></td>')
 
 
 def render_summary_table(result: dict) -> str:
-    """Per-property counts - the <<SummaryTable>> token. Deliberately just
-    four columns (Property/Date/RR4/TM30), matching st_compare_service's
-    plain grid rather than the earlier 10-column version - the column-level
-    and row-level breakdowns still exist, just moved into the two detail
-    tables below where someone actually chasing a difference will look."""
+    """TABLE 1 - every property, both registers, Google Sheet / NHGOne with a
+    green tick or a red cross. The <<SummaryTable>> token, and the one table
+    that has to answer "is anything wrong this morning?" on its own."""
     if result["status"] != "ok":
         return f'<pre style="font-family:ui-monospace,monospace;font-size:12px">{render_text(result)}</pre>'
 
-    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
+    h = [f'{_TABLE_OPEN}<tr>'
          f'<th style="{_TH}">Property</th><th style="{_TH}">Date</th>'
-         f'<th style="{_TH}">RR4</th><th style="{_TH}">TM30</th></tr>']
+         f'<th style="{_TH}">RR4 &mdash; Google Sheet / NHGOne</th>'
+         f'<th style="{_TH}">TM30 &mdash; Google Sheet / NHGOne</th></tr>']
     for p in result["properties"]:
         h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{p["short"]}</td>')
         if p["status"] != "ok":
             h.append(f'<td style="{_TD}" colspan="3">'
-                     f'<span style="{_BAD}padding:2px 6px;border-radius:4px">{p["note"]}</span></td></tr>')
+                     f'<span style="{_BAD}padding:2px 6px;border-radius:4px">'
+                     f'{_esc(p["note"])}</span></td></tr>')
             continue
-        h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["date"]}</td>')
+        h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{_dmy_display(p["date"])}</td>')
         h.append(_summary_cell(p["rr4"]))
         h.append(_summary_cell(p["tm30"], p.get("our_tm30_window", "")))
         h.append("</tr>")
@@ -584,108 +714,179 @@ def render_summary_table(result: dict) -> str:
     h.append(_summary_cell(tr))
     h.append(_summary_cell(tt))
     h.append("</tr></table>")
-    h.append(f'<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             f'Rows are paired by passport/ID number, then every column of each paired row is compared '
-             f'(except the row number, which both sides renumber on their own). '
-             f'Rows with no name (an MEWS-booked slot not yet linked to a guest profile) are counted here '
-             f'because the sheet keeps them too, but are dropped from the filed .xlsx.</p>')
-    return "".join(h)
+    return _scroll(
+        h,
+        f'{_TICK} the sheet and NHGOne hold the same guests with the same details &nbsp;·&nbsp; '
+        f'{_CROSS} shows <b>Google Sheet / NHGOne</b> row counts and what differs, '
+        f'listed in full in the next table. '
+        f'Rows are paired by passport/ID number, then every column of each paired row is compared '
+        f'(except the row number, which both sides renumber on their own). '
+        f'Rows with no name (a MEWS-booked slot not yet linked to a guest profile) are counted here '
+        f'because the sheet keeps them too, but are dropped from the filed .xlsx.')
+
+
+def _diff_groups(result: dict) -> list:
+    """Every difference in the whole comparison as one group each, ordered so
+    the ones somebody has to act on today come first.
+
+    A group is one (property, register, thing that differs) with up to a few
+    named guests under it. Three kinds go in, and they used to live in two
+    separate tables plus a summary note:
+      real      a column whose value differs, or a guest one side has and the
+                other doesn't - nobody has explained these yet
+      expected  a guest the sheet holds and we don't BECAUSE of the property's
+                own configured TM30 window - the shortfall the setting is for
+      drift     _KNOWN_DRIFT: already chased down, already explained
+    """
+    groups = []
+    for p in result["properties"]:
+        if p["status"] != "ok":
+            continue
+        window = p.get("our_tm30_window", "")
+        shifted = bool(window) and window != "00:00"
+        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
+            b = p[kind]
+            for key, n in sorted(b["cols"].items(), key=lambda kv: -kv[1]):
+                groups.append({
+                    "short": p["short"], "reg": label, "what": key, "n": n,
+                    "ex": b["col_examples"].get(key, []),
+                    "why": "Needs review", "tone": "real",
+                })
+            if b["only_sheet"]:
+                why = "In the sheet but not in our register — needs review"
+                tone = "real"
+                if kind == "tm30" and shifted:
+                    why = (f"Expected — our TM30 day starts at {window}, so a guest arriving "
+                           f"before that is filed on the previous day, not this one")
+                    tone = "expected"
+                groups.append({
+                    "short": p["short"], "reg": label,
+                    "what": "Guest only in the sheet", "n": b["only_sheet"],
+                    "ex": [(who, "missing", "present") for who in b["only_sheet_rows"]],
+                    "why": why, "tone": tone,
+                })
+            if b["only_ours"]:
+                groups.append({
+                    "short": p["short"], "reg": label,
+                    "what": "Guest only in NHGOne", "n": b["only_ours"],
+                    "ex": [(who, "present", "missing") for who in b["only_ours_rows"]],
+                    "why": "In our register but not in the sheet — needs review",
+                    "tone": "real",
+                })
+            for key, n in sorted(b["drift_cols"].items(), key=lambda kv: -kv[1]):
+                groups.append({
+                    "short": p["short"], "reg": label, "what": key, "n": n,
+                    "ex": b["drift_col_examples"].get(key, []),
+                    "why": _KNOWN_DRIFT.get(key, "Known drift"), "tone": "drift",
+                })
+    rank = {"real": 0, "expected": 1, "drift": 2}
+    # Stable, so within a tone the properties keep SHEETS' own order.
+    groups.sort(key=lambda g: rank[g["tone"]])
+    return groups
 
 
 def render_column_table(result: dict) -> str:
-    """Which columns actually differ - the <<ColumnTable>> token."""
+    """TABLE 2 - the detail behind every red and amber cell in table 1, the
+    <<ColumnTable>> token.
+
+    This is the old ColumnTable ("nationality differs on 2 rows") and
+    SampleTable ("Nikolaos Pantotis: GRC vs GRL") merged into one, plus the
+    guests that only one side holds, which were previously counted in table 1
+    and then named nowhere - so a morning like 02-Sep-2026, whose ONLY
+    differences were 6 Chinatown and 3 Patong TM30 guests missing on our side,
+    showed red cells above a detail table that said everything matched.
+    """
     if result["status"] != "ok":
         return ""
 
-    rows = []
-    for p in result["properties"]:
-        if p["status"] != "ok":
-            continue
-        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
-            for key, n in sorted(p[kind]["cols"].items(), key=lambda kv: -kv[1]):
-                rows.append((p["short"], label, key, n, ""))
-            for key, n in sorted(p[kind]["drift_cols"].items(), key=lambda kv: -kv[1]):
-                rows.append((p["short"], label, key, n, _KNOWN_DRIFT.get(key, "known drift")))
-    if not rows:
+    groups = _diff_groups(result)
+    if not groups:
         return ('<p style="font-size:13px;color:#166534;margin:0">'
-                '✅ Every column of every paired row matches the sheet</p>')
+                f'{_TICK} Every column of every paired row matches the sheet, '
+                'and both sides hold exactly the same guests</p>')
 
-    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th><th style="{_TH}">Column</th>'
-         f'<th style="{_TH}">Rows</th><th style="{_TH}">Note</th></tr>']
-    for short, label, key, n, note in rows:
-        style = _MUTED if note else "color:#92400e;font-weight:700;"
-        h.append(f'<tr><td style="{_TD}white-space:nowrap">{short}</td>'
-                 f'<td style="{_TD}{_MUTED}">{label}</td>'
-                 f'<td style="{_TD}{style}">{key}</td>'
-                 f'<td style="{_TD}{style}">{n}</td>'
-                 f'<td style="{_TD}font-size:11px;color:#64748b">{note or "needs review"}</td></tr>')
+    tone_style = {"real": "color:#b91c1c;font-weight:700;",
+                  "expected": "color:#92400e;font-weight:700;",
+                  "drift": _MUTED}
+    h = [f'{_TABLE_OPEN}<tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th>'
+         f'<th style="{_TH}">What differs</th><th style="{_TH}">Guest</th>'
+         f'<th style="{_TH}">Google Sheet</th><th style="{_TH}">NHGOne</th>'
+         f'<th style="{_TH}">Why</th></tr>']
+    for g in groups:
+        ex = g["ex"] or [(_DASH, "", "")]
+        span = f' rowspan="{len(ex)}"' if len(ex) > 1 else ""
+        style = tone_style[g["tone"]]
+        shown = "" if len(ex) >= g["n"] else f' (showing {len(ex)})'
+        for i, (who, ours, sheet) in enumerate(ex):
+            h.append("<tr>")
+            if i == 0:
+                h.append(
+                    f'<td style="{_TD}white-space:nowrap"{span}>{g["short"]}</td>'
+                    f'<td style="{_TD}{_MUTED}"{span}>{g["reg"]}</td>'
+                    f'<td style="{_TD}{style}"{span}>{_esc(g["what"])}'
+                    f'<div style="font-weight:400;font-size:11px;color:#64748b">'
+                    f'{g["n"]} row{"s" if g["n"] != 1 else ""}{shown}</div></td>')
+            h.append(f'<td style="{_TD}">{_esc(_clip(who, 46))}</td>'
+                     f'<td style="{_TD}{_MUTED}">{_esc(_clip(sheet)) or _DASH}</td>'
+                     f'<td style="{_TD}font-weight:700">{_esc(_clip(ours)) or _DASH}</td>')
+            if i == 0:
+                h.append(f'<td style="{_TD}font-size:11px;{style}"{span}>{g["why"]}</td>')
+            h.append("</tr>")
     h.append("</table>")
-    return "".join(h)
+    return _scroll(
+        h,
+        f'<b style="color:#b91c1c">Red</b> needs review today. '
+        f'<b style="color:#92400e">Amber</b> has already been explained — either known drift '
+        f'(the sheet and MEWS moving on after the export) or the shortfall a property\'s own '
+        f'configured window is meant to produce. '
+        f'Up to {_EXAMPLES_PER_COLUMN} guests are named per column and '
+        f'{_EXAMPLES_PER_MISSING_GROUP} per missing-guest group; '
+        f'the row count beside each is always the full number.')
 
 
 def render_sample_table(result: dict) -> str:
-    """Up to three real differing rows per register - the <<SampleTable>>
-    token. "nationality differs on 2 rows" is a number to worry about;
-    "Nikolaos Pantotis: GRC vs GRL" is something someone can act on this
-    morning."""
-    if result["status"] != "ok":
-        return ""
-
-    rows = []
-    for p in result["properties"]:
-        if p["status"] != "ok":
-            continue
-        for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
-            for who, diffs in p[kind]["samples"]:
-                rows.append((p["short"], label, who, diffs))
-    if not rows:
-        return ""
-
-    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th>'
-         f'<th style="{_TH}">Guest</th><th style="{_TH}">Column</th>'
-         f'<th style="{_TH}">Ours</th><th style="{_TH}">Sheet</th></tr>']
-    for short, label, who, diffs in rows:
-        for i, (key, ov, sv) in enumerate(diffs):
-            first = i == 0
-            h.append("<tr>")
-            if first:
-                span = f' rowspan="{len(diffs)}"'
-                h.append(f'<td style="{_TD}white-space:nowrap"{span}>{short}</td>'
-                         f'<td style="{_TD}{_MUTED}"{span}>{label}</td>'
-                         f'<td style="{_TD}"{span}>{_esc(who)}</td>')
-            h.append(f'<td style="{_TD}color:#92400e">{key}</td>'
-                     f'<td style="{_TD}font-weight:700">{_esc(ov) or "—"}</td>'
-                     f'<td style="{_TD}{_MUTED}">{_esc(sv) or "—"}</td></tr>')
-    h.append("</table>")
-    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             'Shows up to 3 rows per register per property, and up to 4 columns per row</p>')
-    return "".join(h)
+    """Retained deliberately, and empty. The example rows this used to render
+    are part of ColumnTable now. An Admin template saved before that change
+    still carries <<SampleTable>>, and an unknown token is left in the body
+    verbatim - so this keeps that template rendering nothing there instead of
+    the literal text "<<SampleTable>>" in somebody's mail."""
+    return ""
 
 
 def render_window_table(result: dict) -> str:
-    """Sheet export window vs our configured one - the <<WindowTable>> token.
-    See _windows() for why this is worth looking at every day."""
-    h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">RR4 — Sheet</th>'
-         f'<th style="{_TH}">RR4 — Ours</th><th style="{_TH}">TM30 — Sheet</th>'
-         f'<th style="{_TH}">TM30 — Ours</th></tr>']
+    """TABLE 3 - when each side pulled its data, the <<WindowTable>> token.
+
+    Both sides sweep a 24-hour day that STARTS at the time in these columns,
+    so a pair that disagrees means the two registers are counting different
+    guests, whatever the row counts in table 1 happen to say. See _windows()
+    for why that is worth a look every single morning; the last column is when
+    our own import actually ran.
+    """
+    h = [f'{_TABLE_OPEN}<tr>'
+         f'<th style="{_TH}">Property</th>'
+         f'<th style="{_TH}">RR4 &mdash; Google Sheet</th><th style="{_TH}">RR4 &mdash; NHGOne</th>'
+         f'<th style="{_TH}">TM30 &mdash; Google Sheet</th><th style="{_TH}">TM30 &mdash; NHGOne</th>'
+         f'<th style="{_TH}">NHGOne built the file</th></tr>']
     for p in result["properties"]:
         ok = p["sheet_rr4_window"] == p["our_window"] and p["sheet_rr4_window"]
         tm_ok = p["sheet_tm30_window"] == p["our_tm30_window"] and p["sheet_tm30_window"]
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
-                 f'<td style="{_TD}">{p["sheet_rr4_window"] or "—"}</td>'
-                 f'<td style="{_TD}{"color:#475569;" if ok else _BAD}">{p["our_window"] or "—"}</td>'
-                 f'<td style="{_TD}">{p["sheet_tm30_window"] or "—"}</td>'
-                 f'<td style="{_TD}{"color:#475569;" if tm_ok else _BAD}">'
-                 f'{p["our_tm30_window"] or "—"}</td></tr>')
+                 f'<td style="{_TD}{_MUTED}">{p["sheet_rr4_window"] or _DASH}</td>'
+                 f'<td style="{_TD}{_OK if ok else _BAD}">'
+                 f'{_TICK if ok else _CROSS} {p["our_window"] or _DASH}</td>'
+                 f'<td style="{_TD}{_MUTED}">{p["sheet_tm30_window"] or _DASH}</td>'
+                 f'<td style="{_TD}{_OK if tm_ok else _BAD}">'
+                 f'{_TICK if tm_ok else _CROSS} {p["our_tm30_window"] or _DASH}</td>'
+                 f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["synced_at"] or _DASH}</td></tr>')
     h.append("</table>")
-    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
-             'Both columns should match their sheet — the sheets change these windows without warning, '
-             'and a stale value silently undercounts the register. '
-             'TM30 has its own setting per property, separate from RR4\'s.</p>')
-    return "".join(h)
+    return _scroll(
+        h,
+        'Each side sweeps a 24-hour day that <b>starts</b> at the time shown, so both halves of a '
+        'pair have to match or the two registers are counting different guests. '
+        'The sheets change these windows without warning, and a stale value on our side silently '
+        'undercounts the register. TM30 has its own setting per property, separate from RR4\'s — '
+        'Chinatown\'s 12:15 is deliberate. The last column is when our own import ran.')
 
 
 def render_tokens(result: dict) -> dict:
@@ -693,12 +894,14 @@ def render_tokens(result: dict) -> dict:
     t = result.get("totals") or {"rr4": {}, "tm30": {}}
     day = datetime.strptime(result["date"], "%Y-%m-%d") if result.get("date") else None
     return {
-        "Date": day.strftime("%d/%m/%Y") if day else "—",
+        "Date": day.strftime("%d/%m/%Y") if day else _DASH,
         "PropertyCount": str(result.get("compared", 0)),
-        "Rr4Diff": str(t["rr4"].get("diff_rows", "—")),
-        "Tm30Diff": str(t["tm30"].get("diff_rows", "—")),
-        "Rr4Rows": f"{t['rr4'].get('ours', '—')} / {t['rr4'].get('sheet', '—')}",
-        "Tm30Rows": f"{t['tm30'].get('ours', '—')} / {t['tm30'].get('sheet', '—')}",
+        "Rr4Diff": str(t["rr4"].get("diff_rows", _DASH)),
+        "Tm30Diff": str(t["tm30"].get("diff_rows", _DASH)),
+        # Sheet first, then ours - the same order every table in this mail
+        # reads in, so the header line and the tables can't contradict.
+        "Rr4Rows": f"{t['rr4'].get('sheet', _DASH)} / {t['rr4'].get('ours', _DASH)}",
+        "Tm30Rows": f"{t['tm30'].get('sheet', _DASH)} / {t['tm30'].get('ours', _DASH)}",
         "SummaryTable": render_summary_table(result),
         "ColumnTable": render_column_table(result),
         "SampleTable": render_sample_table(result),
