@@ -112,6 +112,12 @@ class StFilesEmailSettingsUpdate(BaseModel):
     send_hour: int
     send_minute: int
     enabled: bool = True
+    # Only read/saved by the two compare/verification mails (_save_compare_
+    # settings) - the ST/RR4/TM30 daily digest saves that also use this model
+    # never send them, so they default to "" and are simply not included in
+    # those endpoints' own hand-built payload dicts.
+    cc: str = ""
+    bcc: str = ""
 
 class StFilesPerPropertySendNow(BaseModel):
     property_name: str
@@ -886,14 +892,28 @@ def _save_compare_settings(template_key: str, request: StFilesEmailSettingsUpdat
             "subject": request.subject,
             "html_template": request.html_template,
             "recipients": request.recipients,
+            "cc": request.cc,
+            "bcc": request.bcc,
             "send_hour": request.send_hour,
             "send_minute": request.send_minute,
             "enabled": request.enabled,
         }
-        if existing.data:
-            admin_supabase.table("email_templates").update(payload).eq("id", existing.data[0]["id"]).execute()
-        else:
-            admin_supabase.table("email_templates").insert(payload).execute()
+
+        def upsert(p: dict):
+            if existing.data:
+                admin_supabase.table("email_templates").update(p).eq("id", existing.data[0]["id"]).execute()
+            else:
+                admin_supabase.table("email_templates").insert(p).execute()
+
+        try:
+            upsert(payload)
+        except Exception:
+            # cc/bcc (api/sql/email_templates_cc_bcc.sql) not migrated yet -
+            # retry without them so Save still works; CC/BCC just won't
+            # persist until the migration runs.
+            payload.pop("cc", None)
+            payload.pop("bcc", None)
+            upsert(payload)
         return {"status": "success", "message": f"{label} settings saved"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

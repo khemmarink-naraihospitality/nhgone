@@ -244,6 +244,11 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
   // triggered-by-an-action template, so these stay optional or every
   // other tab would need to carry unused schedule fields too.
   hasScheduleFields?: boolean;
+  // Cc/Bcc fields alongside To - only the two compare/verification mails
+  // (Test ST File, Test RR4/TM30 File) have them. The ST/RR4 Files daily
+  // digest tabs share hasScheduleFields but not this, so they keep the
+  // plain single-recipient row they've always had.
+  hasCcBcc?: boolean;
   // Backend route this tab's own "Send Test Now" posts to. Required whenever
   // hasScheduleFields is set - it used to be hardcoded to the ST Files digest,
   // which meant the RR4/TM30 tab's button sent the ST Files email instead of
@@ -353,11 +358,12 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     endpoint: "/admin/email-template/st-compare",
     tokens: ST_COMPARE_TOKENS,
     defaultNote: "No Test ST File email configured yet - showing the built-in default. Save to customize it.",
-    tokenNote: "Sent once a day (Time to Send below) comparing our ST Files numbers against each property's own \"<Name>-ST\" Google Sheet. Monitoring for the new system's validation period - untick Enabled to stop it. Nothing is sent on a day the sheets aren't in a comparable state, so a stale \"all matched\" can never go out.",
+    tokenNote: "Sent once a day (Time to Send below) comparing our ST Files numbers against each property's own \"<Name>-ST\" Google Sheet, with every property's ST export CSV attached. Monitoring for the new system's validation period - untick Enabled to stop it. Nothing is sent on a day the sheets aren't in a comparable state, so a stale \"all matched\" can never go out.",
     perProperty: false,
     hasSubject: true,
     previewable: true,
     hasScheduleFields: true,
+    hasCcBcc: true,
     sendNowEndpoint: "/admin/email-template/st-compare/send-now",
   },
   rr4_compare_email: {
@@ -370,6 +376,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasSubject: true,
     previewable: true,
     hasScheduleFields: true,
+    hasCcBcc: true,
     sendNowEndpoint: "/admin/email-template/rr4-compare/send-now",
   },
   st_files_email: {
@@ -718,6 +725,12 @@ export default function TemplatesPage() {
   // and split into send_hour/send_minute on save, matching the native
   // <input type="time"> the rest of the app already uses for date/time entry.
   const [recipients, setRecipients] = useState("");
+  // config.hasCcBcc tabs only (the two compare mails) - same comma-separated
+  // shape as recipients, and distinct from the recipCc/recipBcc pair further
+  // down, which belongs to the per-property panel's own property_api_settings
+  // columns rather than this template row.
+  const [cc, setCc] = useState("");
+  const [bcc, setBcc] = useState("");
   const [sendTime, setSendTime] = useState("03:00");
   const [enabled, setEnabled] = useState(true);
   const [sendingTest, setSendingTest] = useState(false);
@@ -873,6 +886,8 @@ export default function TemplatesPage() {
           setIsDefault(!!result.data.is_default);
           if (config.hasScheduleFields) {
             setRecipients(result.data.recipients || "");
+            setCc(result.data.cc || "");
+            setBcc(result.data.bcc || "");
             const h = result.data.send_hour ?? 3;
             const m = result.data.send_minute ?? 0;
             setSendTime(`${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`);
@@ -910,6 +925,10 @@ export default function TemplatesPage() {
         body.send_hour = h;
         body.send_minute = m;
         body.enabled = enabled;
+        if (config.hasCcBcc) {
+          body.cc = cc;
+          body.bcc = bcc;
+        }
       }
       const res = await fetch(`${apiUrl}${config.endpoint}`, {
         method: "POST",
@@ -1215,6 +1234,30 @@ export default function TemplatesPage() {
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
                     />
                   </div>
+                  {config.hasCcBcc && (
+                    <>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Cc (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={cc}
+                          onChange={(e) => setCc(e.target.value)}
+                          placeholder="Optional — visible to every recipient"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Bcc (comma-separated)</label>
+                        <input
+                          type="text"
+                          value={bcc}
+                          onChange={(e) => setBcc(e.target.value)}
+                          placeholder="Optional — hidden from other recipients"
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 focus:bg-white transition-all text-slate-900"
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="flex items-center gap-2.5 md:col-span-2">
                     <button
                       type="button"

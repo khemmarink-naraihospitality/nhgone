@@ -534,8 +534,8 @@ class EmailService:
     def _get_scheduled_settings(self, template_key: str, defaults: dict) -> dict:
         """
         Shared lookup for a scheduled-digest row: subject/html_template plus
-        the delivery config (recipients/send_hour/send_minute/enabled) and
-        last_sent_date that live on the same email_templates row. Same
+        the delivery config (recipients/cc/bcc/send_hour/send_minute/enabled)
+        and last_sent_date that live on the same email_templates row. Same
         fallback contract as _get_template - a missing table or an unsaved
         row yields the built-in defaults with is_default=True, so a schedule
         keeps running before anyone has opened Admin > Email Template.
@@ -546,15 +546,27 @@ class EmailService:
         """
         try:
             supabase = get_supabase_client()
-            res = supabase.table("email_templates").select(
-                "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
-            ).eq("template_key", template_key).limit(1).execute()
+            try:
+                res = supabase.table("email_templates").select(
+                    "subject, html_template, recipients, cc, bcc, send_hour, send_minute, enabled, last_sent_date"
+                ).eq("template_key", template_key).limit(1).execute()
+            except Exception:
+                # cc/bcc (api/sql/email_templates_cc_bcc.sql) not migrated
+                # yet - retry on the original column list so a real saved
+                # subject/body still loads; cc/bcc just read as empty until
+                # the migration runs, same degrade-before-migrated pattern
+                # every other config reader in this app follows.
+                res = supabase.table("email_templates").select(
+                    "subject, html_template, recipients, send_hour, send_minute, enabled, last_sent_date"
+                ).eq("template_key", template_key).limit(1).execute()
             if res.data:
                 row = res.data[0]
                 return {
                     "subject": row.get("subject") or defaults["subject"],
                     "html_template": row.get("html_template") or defaults["html_template"],
                     "recipients": row.get("recipients") or defaults["recipients"],
+                    "cc": row.get("cc") or "",
+                    "bcc": row.get("bcc") or "",
                     "send_hour": row["send_hour"] if row.get("send_hour") is not None else defaults["send_hour"],
                     "send_minute": row["send_minute"] if row.get("send_minute") is not None else defaults["send_minute"],
                     "enabled": row["enabled"] if row.get("enabled") is not None else True,
@@ -563,7 +575,7 @@ class EmailService:
                 }
         except Exception as e:
             logger.warning(f"email_templates ({template_key}) lookup failed, using default: {e}")
-        return {**defaults, "enabled": True, "last_sent_date": None, "is_default": True}
+        return {**defaults, "cc": "", "bcc": "", "enabled": True, "last_sent_date": None, "is_default": True}
 
     def get_st_compare_settings(self) -> dict:
         """Daily ST Files vs Google Sheet verification mail (Admin > Email

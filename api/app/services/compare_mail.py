@@ -60,6 +60,31 @@ def _summary(kind: str, result: dict) -> str:
     return "matches sheet completely" if matched == total else f"{matched}/{total} cells match"
 
 
+def _st_attachments(result: dict) -> list:
+    """One ST export CSV per property for the comparison date - the actual
+    file that would be filed, so whoever reads this mail can check the real
+    numbers against the sheet without opening the app. Same
+    get_st_report_export the ST Files daily digest attaches from (see
+    sync_service.send_st_files_bundled_digest) - same file, same filename,
+    just triggered by this mail's own schedule instead of that one's.
+
+    Skips (rather than failing the whole send for) any property missing
+    st_property_code or with nothing imported for this date - the same two
+    conditions get_st_report_export itself raises on - since one property's
+    filing gap shouldn't cost every other property's attachment too.
+    """
+    from app.services.sync_service import sync_service
+
+    out = []
+    for prop in st_compare_service.SHEETS:
+        try:
+            csv_text, filename = sync_service.get_st_report_export(prop, result["date"])
+            out.append((filename, csv_text.encode("utf-8")))
+        except Exception as e:
+            logger.warning(f"ST compare mail: could not attach {prop}'s export: {e}")
+    return out
+
+
 async def send(kind: str, mark_sent: bool = True, want_date: str = None,
                sync_type: str = "auto") -> dict:
     """Build the comparison, render it into the Admin template and send it.
@@ -99,11 +124,22 @@ async def send(kind: str, mark_sent: bool = True, want_date: str = None,
             text = text.replace(f"<<{name}>>", value)
         return text
 
+    cc = [e.strip() for e in (settings_row.get("cc") or "").split(",") if e.strip()]
+    bcc = [e.strip() for e in (settings_row.get("bcc") or "").split(",") if e.strip()]
+    # Only the ST feed attaches anything for now - the per-property export
+    # file this mail is actually verifying against the sheet. RR4/TM30's own
+    # filed form is two .xlsx per property rather than one CSV, which is a
+    # different enough shape (and wasn't asked for) to leave for its own pass.
+    attachments = _st_attachments(result) if kind == "st" else []
+
     email_service.send_email_with_attachments(
         recipients,
         fill(settings_row["subject"]),
         fill(settings_row["html_template"]),
+        attachments=attachments,
         text_body=module.render_text(result),
+        cc_emails=cc,
+        bcc_emails=bcc,
     )
 
     sync_service._log_sync_row(
