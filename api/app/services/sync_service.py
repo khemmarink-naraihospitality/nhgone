@@ -228,6 +228,41 @@ _RR3_PROPERTY_THAI_NAMES = {
 # Patong two arrivals a day.
 _ST_DAY_USE_NIGHT_END_HOUR = 4
 
+# ...but the hour alone was never the whole rule, and a WALK-IN overrides it.
+#
+# A guest who walks up to the desk at 02:00 and takes a room for the day is an
+# arrival however early it is - MEWS counts them - while a booking that merely
+# ENDS in those hours is the tail of the night before. The rate name is what
+# separates the two, and it separates them better than any hour can: scored
+# against all 14 day-use stays whose true answer is known from MEWS's own
+# per-category Arrivals export (26-Aug, 30-Aug and 04-Sep-2026), the hour rule
+# alone gets 10 and "walk-in rate OR hour >= 4" gets 13 - and the three it adds
+# are strictly extra, its misses being a subset of the hour rule's.
+#
+# 04-Sep-2026 is what forced this: Siam filed 24 arrivals to our 22 and Siem
+# Reap 117 to our 116, and the sheets' own Arrivals tabs put every unit of both
+# gaps on one category each (Siam UPG 2/0, Siem Reap DKR 21/20). Those were
+# exactly three 'Walk In Room Only' day rooms starting 02:00, 02:00 and 00:36 -
+# while the OTA and Advance Purchase stays alongside them, starting 01:28,
+# 00:10 and 00:18, were correctly left out by BOTH sides.
+#
+# The one case still unexplained is the documented irreducible pair: Chinatown
+# #96148 and #96160, 30-Aug-2026, both 00:00, both "Static Room Only B2B",
+# neither a walk-in, and MEWS counted the first and not the second. No field on
+# the two reservations separates them, so no rule expressible here can.
+#
+# Matched on the rate NAME because that is what the property actually types;
+# the three live variants are "Walk In Room Only", "Walk In Room with
+# Breakfast" and "Walk In with Breakfast", and nothing else in any property's
+# rate list contains the word. Deliberately NOT the business segment: "Direct
+# Host" covers walk-ins but also covers Extend Stay and B2B rows that MEWS
+# leaves out (Siem Reap #149737, Chinatown #96160), and scored worse.
+#
+# Word-bounded so a rate that merely CONTAINS the letters can't trip it - an
+# unanchored search matched "Sidewalk Inn". Nothing like that is in any
+# property's rate list today, but a rate name is free text somebody types.
+_ST_WALK_IN_RATE_RE = re.compile(r"\bwalk[\s-]*in\b", re.IGNORECASE)
+
 # The RR4 (ร.ร.๔) hotel-register filing needs the property's Thai REGISTERED
 # name, which is not always the same string as _RR3_PROPERTY_THAI_NAMES above
 # (that one backs guest-facing RR3 cards, a different, less formal use) -
@@ -3167,7 +3202,15 @@ class SyncService:
             night_tail = False
             if day_use:
                 started = parse_utc(res.get("StartUtc"))
-                night_tail = started.astimezone(property_tz).hour < _ST_DAY_USE_NIGHT_END_HOUR
+                # A walk-in is an arrival at any hour - somebody physically
+                # turned up at the desk and took a room - so it is never the
+                # tail of the night before, however early it starts. See
+                # _ST_WALK_IN_RATE_RE for the 14 measured cases this beats the
+                # bare hour cutoff on.
+                walk_in = bool(_ST_WALK_IN_RATE_RE.search(
+                    (rates_by_id.get(res.get("RateId"), {}) or {}).get("Name") or ""))
+                night_tail = (not walk_in
+                              and started.astimezone(property_tz).hour < _ST_DAY_USE_NIGHT_END_HOUR)
             if arrives and not (day_use and night_tail):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
