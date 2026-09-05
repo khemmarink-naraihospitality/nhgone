@@ -48,18 +48,11 @@ interface PropertySyncSettings {
   // undercounted a property's RR4 register - see sync_service's own note.
   rr4_tm30_day_end_hour: number | null;
   rr4_tm30_day_end_minute: number | null;
-  // TM30's OWN arrival-day start, independent of rr4_tm30_day_start_* above.
-  // The two sheets declare their windows separately, and on most properties
-  // they differ (e.g. a property's RR4 export runs over 02:15 while its
-  // TM30 export runs over plain midnight) - reusing RR4's value here would
-  // move every property still on the shared default off midnight. NULL
-  // falls back to a per-property hardcoded default
-  // (sync_service._TM30_DAY_START_FALLBACK) and then to midnight; 0 means
-  // an explicit midnight and is NOT treated as unset. Always a 24-hour
-  // window from this start - unlike RR4, TM30 has no separately
-  // configurable end.
-  tm30_day_start_hour: number | null;
-  tm30_day_start_minute: number | null;
+  // There is deliberately no TM30 day-start field here. TM30 sweeps plain
+  // property-local midnight to midnight everywhere, by rule - a per-property
+  // tm30_day_start_hour/_minute pair existed briefly and under-filed the
+  // register every day it was set (see sync_service.get_tm30_report). The
+  // columns are dropped by api/sql/tm30_day_window_drop.sql.
   // RV Files' own independent schedule - the revenue journal can run on a
   // different clock than any of the other three (or not at all). Always
   // imports YESTERDAY's Bangkok date, same reasoning as RR4/TM30.
@@ -152,7 +145,7 @@ export default function AdminSyncPage() {
     try {
       const { data, error } = await supabase
         .from("property_api_settings")
-        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_day_start_hour, rr4_tm30_day_start_minute, rr4_tm30_day_end_hour, rr4_tm30_day_end_minute, tm30_day_start_hour, tm30_day_start_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
+        .select("id, property_name, sync_hour, sync_minute, sync_enabled, sync_reservations, sync_members, sync_payments, sync_bills, sync_resources, st_files_sync_enabled, st_files_sync_hour, st_files_sync_minute, rr4_tm30_sync_enabled, rr4_tm30_sync_hour, rr4_tm30_sync_minute, rr4_tm30_day_start_hour, rr4_tm30_day_start_minute, rr4_tm30_day_end_hour, rr4_tm30_day_end_minute, rv_sync_enabled, rv_sync_hour, rv_sync_minute")
         .order("property_name");
 
       if (error) throw error;
@@ -339,8 +332,6 @@ export default function AdminSyncPage() {
           rr4_tm30_day_start_minute: editingProperty.rr4_tm30_day_start_minute,
           rr4_tm30_day_end_hour: editingProperty.rr4_tm30_day_end_hour,
           rr4_tm30_day_end_minute: editingProperty.rr4_tm30_day_end_minute,
-          tm30_day_start_hour: editingProperty.tm30_day_start_hour,
-          tm30_day_start_minute: editingProperty.tm30_day_start_minute,
           rv_sync_enabled: editingProperty.rv_sync_enabled,
           rv_sync_hour: editingProperty.rv_sync_hour,
           rv_sync_minute: editingProperty.rv_sync_minute,
@@ -953,59 +944,20 @@ export default function AdminSyncPage() {
                              </div>
                              <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
                           </div>
-                          <div className="text-[10px] text-white/30 mt-2 ml-1">Sets the RR4 register above. TM30 has its own start time below.</div>
+                          <div className="text-[10px] text-white/30 mt-2 ml-1">Sets the RR4 register only. TM30 always sweeps plain midnight to midnight.</div>
                        </div>
 
-                       {/* TM30's own arrival-day start, independent of the RR4
-                           window above - the two sheets declare their windows
-                           separately, and on most properties they differ (e.g.
-                           an RR4 export running 02:15 to 02:15 while TM30 runs
-                           plain midnight to midnight). Always a 24h window
-                           from this start, unlike RR4's independently
-                           configurable end - an arrival register covers one
-                           day. Confirmed against every Thai property's own
-                           sheet on 2026-08-29: midnight matches 5 of 6 sheets
-                           exactly; only Chinatown's own filed sheet uses
-                           12:15, and moving it there drops guests arriving
-                           before noon (11 of that day's 67) since TM30 has no
-                           per-guest check-in column to verify a shortfall
-                           against - see the row this property gets flagged
-                           with on the RR4/TM30 sheet-verification mail
-                           whenever this isn't 0:00. */}
-                       <div>
-                          <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-2 ml-1">TM30 Arrival Day Starts At</div>
-                          <div className="flex items-center justify-center gap-3 bg-black/20 border border-white/5 rounded-xl py-3">
-                             <div className="flex flex-col items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="23"
-                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                                  value={editingProperty.tm30_day_start_hour ?? 0}
-                                  onChange={(e) => setEditingProperty({...editingProperty, tm30_day_start_hour: parseInt(e.target.value) || 0})}
-                                />
-                                <span className="text-[9px] font-bold text-white/25 tracking-widest">HOUR</span>
-                             </div>
-                             <span className="text-2xl font-bold text-white/15 -mt-3">:</span>
-                             <div className="flex flex-col items-center">
-                                <input
-                                  type="number"
-                                  min="0"
-                                  max="59"
-                                  className="w-14 bg-transparent text-center text-2xl font-mono font-bold text-white outline-none"
-                                  value={editingProperty.tm30_day_start_minute ?? 0}
-                                  onChange={(e) => setEditingProperty({...editingProperty, tm30_day_start_minute: parseInt(e.target.value) || 0})}
-                                />
-                                <span className="text-[9px] font-bold text-white/25 tracking-widest">MINUTE</span>
-                             </div>
-                             <span className="text-[10px] font-bold text-white/25 uppercase tracking-widest ml-1">Bangkok</span>
-                          </div>
-                          <div className="text-[10px] text-white/30 mt-2 ml-1">
-                            {((editingProperty.tm30_day_start_hour ?? 0) === 0 && (editingProperty.tm30_day_start_minute ?? 0) === 0)
-                              ? "Midnight — matches every property's sheet except Chinatown's."
-                              : "Non-midnight: drops foreign arrivals checking in before this time. Verify against this property's own sheet before leaving it set."}
-                          </div>
-                       </div>
+                       {/* No TM30 day-start control, deliberately. TM30
+                           sweeps plain property-local midnight to midnight
+                           for every property - a per-property start lived
+                           here for a week and under-filed the register every
+                           day it was set (04-Sep-2026: the only three
+                           properties missing guests their sheet held were the
+                           only three carrying a non-midnight start). The
+                           window a generator sheet DECLARES is not the one
+                           its Arrival export actually filters by, so there is
+                           nothing to configure against. See
+                           sync_service.get_tm30_report. */}
 
                        <div>
                           <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest mb-2 ml-1">Generate File At</div>

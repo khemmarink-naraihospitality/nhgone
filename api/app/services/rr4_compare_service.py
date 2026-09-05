@@ -366,20 +366,16 @@ def _windows() -> dict:
         return {}
 
 
-async def _tm30_windows() -> dict:
-    """TM30's own configured window per property - a separate setting from
-    RR4's, so the mail has to ask for it separately too. Read through
-    _resolve_tm30_day_start rather than the table directly, so this column
-    can never disagree with the one the register was actually built on."""
-    from app.services.sync_service import sync_service
-    out = {}
-    for prop in SHEETS:
-        try:
-            h, m = await sync_service._resolve_tm30_day_start(prop)
-            out[prop] = f"{h:02d}:{m:02d}"
-        except Exception as e:
-            logger.warning(f"RR4 compare: could not read {prop}'s TM30 window: {e}")
-    return out
+# TM30 has no per-property window any more: get_tm30_report sweeps plain
+# property-local midnight to midnight everywhere, so this is a constant, not
+# a lookup. Still shown in table 3 next to the sheet's own declared value
+# because the two routinely differ and the difference is the point - a sheet
+# declaring 12:15 or 02:05 does NOT filter its Arrival export by it (measured
+# 02-Sep-2026: Chinatown declared 12:15 and held 32 arrivals to the 26 a
+# 12:15 window gave us; Patong declared 02:05, 42 to our 39), which is why
+# following that declared value under-filed the register every day it was
+# configured.
+_OUR_TM30_WINDOW = "00:00"
 
 
 def _local(ts: str) -> str:
@@ -404,7 +400,6 @@ async def build_comparison(want_date: str = None) -> dict:
 
     sheets = await _fetch_sheets()
     windows = _windows()
-    tm30_windows = await _tm30_windows()
     props = []
 
     for prop, (short, _sid) in SHEETS.items():
@@ -412,7 +407,7 @@ async def build_comparison(want_date: str = None) -> dict:
                "note": "", "rr4": None, "tm30": None, "synced_at": "",
                "sheet_rr4_window": "", "sheet_tm30_window": "",
                "our_window": windows.get(prop, ""),
-               "our_tm30_window": tm30_windows.get(prop, "")}
+               "our_tm30_window": _OUR_TM30_WINDOW}
         sh = sheets[prop]["data"]
         if not sh:
             row["note"] = f"Could not read sheet — {sheets[prop]['error']}"
@@ -538,7 +533,7 @@ def render_text(result: dict) -> str:
     if not groups:
         out.append("  ✅ Every column of every paired row matches, and both sides hold the same guests")
     for g in groups:
-        tag = {"real": "!!", "expected": "..", "drift": "  "}[g["tone"]]
+        tag = {"real": "!!", "drift": "  "}[g["tone"]]
         shown = "" if len(g["ex"]) >= g["n"] else f" (showing {len(g['ex'])})"
         out.append(f"{tag} {g['short']:<12} {g['reg']:<5} {g['what']}  "
                    f"× {g['n']}{shown}  — {g['why']}")
@@ -546,19 +541,20 @@ def render_text(result: dict) -> str:
             out.append(f"       {_clip(who, 46):<48} {_clip(sheet, 30) or '—'}  /  "
                        f"{_clip(ours, 30) or '—'}")
     if groups:
-        out.append("   (!! needs review today · .. expected from a configured window · "
-                   "blank = known drift, already explained)")
+        out.append("   (!! needs review today · blank = known drift, already explained)")
 
     out += ["", "3. WHEN EACH SIDE PULLED ITS DATA", "-" * 88]
     for p in result["properties"]:
-        bad = (p["sheet_rr4_window"] != p["our_window"]
-               or p["sheet_tm30_window"] != p["our_tm30_window"])
+        # Only RR4's pair can mismatch: TM30 is plain local midnight on our
+        # side by rule, and a sheet declaring 02:05 or 12:15 does not filter
+        # its own Arrival export by that value - see _OUR_TM30_WINDOW.
+        bad = p["sheet_rr4_window"] != p["our_window"]
         flag = "   ⚠️ mismatch" if bad else ""
         out.append(f"  {p['short']:<12} RR4 sheet {p['sheet_rr4_window'] or '—':<7} ours "
                    f"{p['our_window'] or '—':<7} · TM30 sheet {p['sheet_tm30_window'] or '—':<7} ours "
                    f"{p['our_tm30_window'] or '—':<7} · built {p['synced_at'] or '—':<13}{flag}")
-    out.append("   Each side sweeps a 24-hour day that STARTS at these times — both halves of a "
-               "pair must match.")
+    out.append("   Each side sweeps a 24-hour day that STARTS at these times. RR4's pair must "
+               "match; TM30 is always plain midnight on our side, whatever the sheet declares.")
     return "\n".join(out)
 
 
@@ -576,14 +572,15 @@ _MUTED = "color:#94a3b8;"
 # colour means the same thing wherever it appears:
 #   green  the sheet and NHGOne agree - nothing to do
 #   red    a real difference - somebody has to look at it today
-#   amber  a difference that has already been explained (_KNOWN_DRIFT, or a
-#          shortfall the property's own configured window is supposed to
-#          produce) - worth seeing, not worth chasing
-# Amber was the only highlight before this; splitting it means the daily
-# known-drift rows stop competing for attention with the rare real ones.
+#   grey   a difference that has already been explained (_KNOWN_DRIFT) -
+#          worth seeing, not worth chasing
+# One highlight colour was all there was before this; splitting it means the
+# daily known-drift rows stop competing for attention with the rare real ones.
+# An amber "expected" tone sat between them for as long as TM30 had a
+# per-property window whose shortfall was deliberate; that window is gone, so
+# nothing is expected-but-missing any more and the tone went with it.
 _OK = "color:#166534;font-weight:700;"
 _BAD = "background:#fee2e2;color:#b91c1c;font-weight:700;"
-_EXPECTED = "background:#fef3c7;color:#92400e;font-weight:700;"
 
 # An em dash as a name rather than inline: an f-string expression cannot
 # contain a backslash before Python 3.12, and this file has to import on the
@@ -630,7 +627,7 @@ def _dmy_display(iso: str) -> str:
         return iso or _DASH
 
 
-def _summary_cell(block: dict, window: str = "") -> str:
+def _summary_cell(block: dict) -> str:
     """One register's cell in table 1: a green "✓ N" when the sheet and
     NHGOne hold the same guests with the same details, a red "✗ sheet / ours"
     naming what differs when they don't.
@@ -641,28 +638,15 @@ def _summary_cell(block: dict, window: str = "") -> str:
 
     Known drift does NOT make a cell red: it has each been chased down and
     explained (see _KNOWN_DRIFT), so a day carrying only drift still reads as
-    clean at a glance and the amber row in table 2 carries the detail.
+    clean at a glance and the grey row in table 2 carries the detail.
 
-    `window` is the property's configured TM30 start. A non-midnight one
-    files a shorter day than the sheet holds ON PURPOSE (Chinatown's 12:15
-    drops every guest arriving before noon - 2 to 20 of them on each of the
-    seven days measured to 29-Aug-2026), so its shortfall is annotated as the
-    configured consequence it is. Deliberately still red rather than hidden or
-    amber: unlike _KNOWN_DRIFT this cannot be verified row by row - TM30
-    carries no check-in column to test each missing guest against - so a
-    genuine new miss would look identical, and the number stays in view.
+    Nothing here is annotated as "expected" any more. A TM30 shortfall used
+    to be labelled as the consequence of the property's own configured
+    non-midnight window; that window is gone (see get_tm30_report), so a
+    guest the sheet holds and we don't is a real miss again, in a statutory
+    notification, and reads as one.
     """
     real = block["diff_rows"] + block["only_ours"] + block["only_sheet"]
-    # Deliberately "is our window non-midnight", NOT "does our window differ
-    # from the sheet's". The sheets DECLARE a TM30 window in Master!B2 that
-    # they do not actually filter by: on 02-Sep-2026 Chinatown's sheet said
-    # 12:15, exactly what we are configured to, and still held 32 arrivals to
-    # our 26 - and Patong's said 02:05 to our 02:05, 42 to our 39. Comparing
-    # the two windows would therefore find them equal and call both shortfalls
-    # unexplained every single morning. Our own non-midnight start is the real
-    # cause (an earlier check found midnight reproduces Chinatown's sheet
-    # exactly, 67 for 67, where 12:15 gives 56), so that is what is tested.
-    shifted = bool(window) and window != "00:00"
     if real == 0:
         note = ""
         if block["drift_rows"]:
@@ -675,11 +659,10 @@ def _summary_cell(block: dict, window: str = "") -> str:
     if block["only_ours"]:
         bits.append(f"{block['only_ours']} only in NHGOne")
     if block["only_sheet"]:
-        bits.append(f"{block['only_sheet']} only in the sheet"
-                    + (f", as our {window} window intends" if shifted else ""))
+        bits.append(f"{block['only_sheet']} only in the sheet")
     # The counts stay on one line; the note after them is allowed to wrap, or
-    # "6 only in the sheet, as our 12:15 window intends" pushes the table past
-    # the card in every client that honours nowrap.
+    # a long "N only in the sheet, M only in NHGOne" pushes the table past the
+    # card in every client that honours nowrap.
     return (f'<td style="{_TD}{_BAD}">'
             f'<span style="white-space:nowrap">{_CROSS} {block["sheet"]} / {block["ours"]}</span>'
             f'<span style="font-weight:400;font-size:11px"> ({", ".join(bits)})</span></td>')
@@ -705,7 +688,7 @@ def render_summary_table(result: dict) -> str:
             continue
         h.append(f'<td style="{_TD}{_MUTED}white-space:nowrap">{_dmy_display(p["date"])}</td>')
         h.append(_summary_cell(p["rr4"]))
-        h.append(_summary_cell(p["tm30"], p.get("our_tm30_window", "")))
+        h.append(_summary_cell(p["tm30"]))
         h.append("</tr>")
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
@@ -730,20 +713,22 @@ def _diff_groups(result: dict) -> list:
     the ones somebody has to act on today come first.
 
     A group is one (property, register, thing that differs) with up to a few
-    named guests under it. Three kinds go in, and they used to live in two
+    named guests under it. Two kinds go in, and they used to live in two
     separate tables plus a summary note:
       real      a column whose value differs, or a guest one side has and the
                 other doesn't - nobody has explained these yet
-      expected  a guest the sheet holds and we don't BECAUSE of the property's
-                own configured TM30 window - the shortfall the setting is for
       drift     _KNOWN_DRIFT: already chased down, already explained
+
+    A third, "expected", used to cover a TM30 guest the sheet held and we
+    didn't because of the property's own configured non-midnight window. That
+    setting is gone (see get_tm30_report) - TM30 sweeps plain local midnight
+    everywhere now - so that shortfall is a real miss again, not an expected
+    one, and known drift is the only explained tone left.
     """
     groups = []
     for p in result["properties"]:
         if p["status"] != "ok":
             continue
-        window = p.get("our_tm30_window", "")
-        shifted = bool(window) and window != "00:00"
         for kind, label in (("rr4", "RR4"), ("tm30", "TM30")):
             b = p[kind]
             for key, n in sorted(b["cols"].items(), key=lambda kv: -kv[1]):
@@ -755,10 +740,6 @@ def _diff_groups(result: dict) -> list:
             if b["only_sheet"]:
                 why = "In the sheet but not in our register — needs review"
                 tone = "real"
-                if kind == "tm30" and shifted:
-                    why = (f"Expected — our TM30 day starts at {window}, so a guest arriving "
-                           f"before that is filed on the previous day, not this one")
-                    tone = "expected"
                 groups.append({
                     "short": p["short"], "reg": label,
                     "what": "Guest only in the sheet", "n": b["only_sheet"],
@@ -779,14 +760,15 @@ def _diff_groups(result: dict) -> list:
                     "ex": b["drift_col_examples"].get(key, []),
                     "why": _KNOWN_DRIFT.get(key, "Known drift"), "tone": "drift",
                 })
-    rank = {"real": 0, "expected": 1, "drift": 2}
+    rank = {"real": 0, "drift": 1}
     # Stable, so within a tone the properties keep SHEETS' own order.
     groups.sort(key=lambda g: rank[g["tone"]])
     return groups
 
 
 def render_column_table(result: dict) -> str:
-    """TABLE 2 - the detail behind every red and amber cell in table 1, the
+    """TABLE 2 - the detail behind every red cell in table 1 and the drift
+    behind every green one carrying a "known drift" note, the
     <<ColumnTable>> token.
 
     This is the old ColumnTable ("nationality differs on 2 rows") and
@@ -806,7 +788,6 @@ def render_column_table(result: dict) -> str:
                 'and both sides hold exactly the same guests</p>')
 
     tone_style = {"real": "color:#b91c1c;font-weight:700;",
-                  "expected": "color:#92400e;font-weight:700;",
                   "drift": _MUTED}
     h = [f'{_TABLE_OPEN}<tr>'
          f'<th style="{_TH}">Property</th><th style="{_TH}">Register</th>'
@@ -837,9 +818,8 @@ def render_column_table(result: dict) -> str:
     return _scroll(
         h,
         f'<b style="color:#b91c1c">Red</b> needs review today. '
-        f'<b style="color:#92400e">Amber</b> has already been explained — either known drift '
-        f'(the sheet and MEWS moving on after the export) or the shortfall a property\'s own '
-        f'configured window is meant to produce. '
+        f'Grey has already been explained — known drift, the sheet and MEWS moving on '
+        f'after the export. '
         f'Up to {_EXAMPLES_PER_COLUMN} guests are named per column and '
         f'{_EXAMPLES_PER_MISSING_GROUP} per missing-guest group; '
         f'the row count beside each is always the full number.')
@@ -857,11 +837,16 @@ def render_sample_table(result: dict) -> str:
 def render_window_table(result: dict) -> str:
     """TABLE 3 - when each side pulled its data, the <<WindowTable>> token.
 
-    Both sides sweep a 24-hour day that STARTS at the time in these columns,
-    so a pair that disagrees means the two registers are counting different
-    guests, whatever the row counts in table 1 happen to say. See _windows()
-    for why that is worth a look every single morning; the last column is when
-    our own import actually ran.
+    Both sides sweep a 24-hour day that STARTS at the time in these columns.
+    For RR4 a pair that disagrees means the two registers are counting
+    different guests, whatever the row counts in table 1 happen to say - see
+    _windows() for why that is worth a look every single morning.
+
+    TM30's pair is NOT expected to match and is never crossed: our side is
+    plain local midnight by rule, and the value a sheet declares is not the
+    one its Arrival export filters by (see _OUR_TM30_WINDOW). It stays in the
+    table because a sheet moving its declared window is still worth seeing.
+    The last column is when our own import actually ran.
     """
     h = [f'{_TABLE_OPEN}<tr>'
          f'<th style="{_TH}">Property</th>'
@@ -870,23 +855,23 @@ def render_window_table(result: dict) -> str:
          f'<th style="{_TH}">NHGOne built the file</th></tr>']
     for p in result["properties"]:
         ok = p["sheet_rr4_window"] == p["our_window"] and p["sheet_rr4_window"]
-        tm_ok = p["sheet_tm30_window"] == p["our_tm30_window"] and p["sheet_tm30_window"]
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
                  f'<td style="{_TD}{_MUTED}">{p["sheet_rr4_window"] or _DASH}</td>'
                  f'<td style="{_TD}{_OK if ok else _BAD}">'
                  f'{_TICK if ok else _CROSS} {p["our_window"] or _DASH}</td>'
                  f'<td style="{_TD}{_MUTED}">{p["sheet_tm30_window"] or _DASH}</td>'
-                 f'<td style="{_TD}{_OK if tm_ok else _BAD}">'
-                 f'{_TICK if tm_ok else _CROSS} {p["our_tm30_window"] or _DASH}</td>'
+                 f'<td style="{_TD}{_MUTED}">{p["our_tm30_window"]} (always)</td>'
                  f'<td style="{_TD}{_MUTED}white-space:nowrap">{p["synced_at"] or _DASH}</td></tr>')
     h.append("</table>")
     return _scroll(
         h,
-        'Each side sweeps a 24-hour day that <b>starts</b> at the time shown, so both halves of a '
-        'pair have to match or the two registers are counting different guests. '
-        'The sheets change these windows without warning, and a stale value on our side silently '
-        'undercounts the register. TM30 has its own setting per property, separate from RR4\'s — '
-        'Chinatown\'s 12:15 is deliberate. The last column is when our own import ran.')
+        'Each side sweeps a 24-hour day that <b>starts</b> at the time shown. '
+        'RR4\'s two halves have to match or the registers are counting different guests — the '
+        'sheets change that window without warning, and a stale value on our side silently '
+        'undercounts the register. <b>TM30 is always plain midnight on our side</b>, for every '
+        'property: a sheet declaring 12:15 or 02:05 does not actually filter its Arrival export '
+        'by it, and following the declared value dropped real foreign arrivals every day it was '
+        'configured. The last column is when our own import ran.')
 
 
 def render_tokens(result: dict) -> dict:
