@@ -318,6 +318,24 @@ def _rr3_country_name(code: str) -> str:
 # document is the standing rule for this module - but it does mean TM30 files
 # fewer foreign arrivals than MEWS reports for the day, which is worth
 # re-testing whenever the sheet's window changes.
+#
+# SETTLED 05-Sep-2026, after the same question came up a third time. The five
+# non-Chinatown properties had at some point been configured to the ~02:00
+# times their sheets DECLARE in Master!B2, on the reasoning that matching the
+# declared window would match the numbers. Measured across all six sheets for
+# 04-Sep-2026 it does the opposite: the declared windows reconciled on 2 of 6
+# properties, plain midnight on 4 of 6, and midnight made no property worse.
+# The sheets declare a window they do not actually filter by - Chinatown's
+# said 12:15 while holding 58 arrivals to our 53, Patong's said 02:05 while
+# agreeing with us either way. So the five are back on midnight and only
+# Chinatown keeps a shifted window, again by explicit instruction.
+#
+# Two guests are what this cost per day: Siam's PEI FANG LEE (StartUtc
+# 2026-09-03T18:28Z = 01:28 local) and Samui's Pulkit Chaudhary
+# (2026-09-03T17:06Z = 00:06 local), both on their sheets, both dropped by an
+# 02:0x lower bound and both recovered by midnight. Do not "fix" a future
+# mismatch by setting these back to the sheet's declared time without
+# re-measuring - that is the change this note exists to stop.
 _TM30_DAY_START_FALLBACK = {
     "Lub d Bangkok Chinatown": (12, 15),
 }
