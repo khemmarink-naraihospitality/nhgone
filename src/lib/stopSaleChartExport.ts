@@ -229,7 +229,13 @@ export async function downloadStopSaleXlsx(data: StopSaleChartData): Promise<voi
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `StopSaleChart_${data.propertyName.replace(/\s+/g, "")}.xlsx`;
+  // Export is now a per-month button (revenue/page.tsx passes months: [one
+  // section]) as well as the whole-report shape this always supported - the
+  // month's own label goes in the filename whenever there's exactly one, so
+  // a September export and an October export don't overwrite each other in
+  // a Downloads folder.
+  const monthSuffix = data.months.length === 1 ? `_${data.months[0].label.replace(/\s+/g, "")}` : "";
+  a.download = `StopSaleChart_${data.propertyName.replace(/\s+/g, "")}${monthSuffix}.xlsx`;
   document.body.appendChild(a);
   a.click();
   a.remove();

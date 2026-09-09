@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
@@ -681,16 +682,30 @@ export default function RevenuePage() {
     };
   }, [report, selectedProperty, reportAsOf, monthBlocks, categoryRowsForMonth, dayState]);
 
+  // Which single month's print-only table should actually render, set right
+  // before printing (see handlePrintStopSaleChart) - Export and Print now
+  // live per month, same as the Room Types filter, rather than one button
+  // exporting/printing every month in the report at once.
+  const [printMonthKey, setPrintMonthKey] = useState<string | null>(null);
+
   // Renames the tab title while printing so a browser's "Save as PDF" picks
   // a sane filename, then restores it - same pattern bcp/page.tsx's Reg Card
   // print (handlePrintRegCard) already uses. This app has no server-side PDF
   // route by deliberate choice (see CLAUDE.md: one was built, worked, and was
   // removed again for the Chromium function's server cost) - browser print
   // is the established way every other print-to-PDF page here works.
-  const handlePrintStopSaleChart = () => {
+  //
+  // flushSync forces the printMonthKey state update (and the print-only
+  // table filtering by it) to actually commit to the DOM before window.print()
+  // is called. window.print() is synchronous and blocks the tab immediately -
+  // without flushSync, React's normal batching can leave the update pending
+  // until after the print dialog has already captured the page, printing the
+  // PREVIOUS month (or every month, on the very first click).
+  const handlePrintStopSaleChart = (monthKey: string, monthLabel: string) => {
     if (!stopSaleChartData) return;
+    flushSync(() => setPrintMonthKey(monthKey));
     const originalTitle = document.title;
-    document.title = `StopSaleChart_${stopSaleChartData.propertyName.replace(/\s+/g, "")}`;
+    document.title = `StopSaleChart_${stopSaleChartData.propertyName.replace(/\s+/g, "")}_${monthLabel.replace(/\s+/g, "")}`;
     const restoreTitle = () => {
       document.title = originalTitle;
       window.removeEventListener("afterprint", restoreTitle);
@@ -1008,65 +1023,16 @@ export default function RevenuePage() {
             // what actually prints, same split BCP's Timeline/housekeeping
             // sheet already uses.
             <div className="no-print">
-              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-                <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
-                  <span>Stop-sale chart — a night at or above</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={100}
-                    value={stopThreshold}
-                    onChange={(e) => {
-                      const n = Number(e.target.value);
-                      if (Number.isFinite(n)) setStopThreshold(Math.min(100, Math.max(1, n)));
-                    }}
-                    className="w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-                  />
-                  <span>% occupancy is stopped for travel agents.</span>
-                </div>
-                <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
-                  {baseline && baselineDate
-                    ? `compared against ${baselineDate}${(() => {
-                        const t = fmtTime(snapshots.find((s) => s.date === baselineDate)?.synced_at);
-                        return t ? ` · captured ${t}` : "";
-                      })()}`
-                    : "no earlier snapshot to compare — every stop shown as existing"}
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-4 text-[11px] text-[var(--text-primary)]/70">
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-yellow-300/60">X</span> New stop sale
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
-                </span>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 mb-6">
-                <button
-                  onClick={() => stopSaleChartData && downloadStopSaleXlsx(stopSaleChartData)}
-                  disabled={!stopSaleChartData}
-                  className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Export Stop Sale Chart (.xlsx)
-                </button>
-                <button
-                  onClick={handlePrintStopSaleChart}
-                  disabled={!stopSaleChartData}
-                  className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                >
-                  Print / Save as PDF
-                </button>
-              </div>
-
               <div className="space-y-8">
                 {monthBlocks.map((block) => {
                   const rows = categoryRowsForMonth(block.key);
                   const selected = visibleCategoriesByMonth[block.key];
+                  // This month's own slice of stopSaleChartData - built once
+                  // above for every month, sliced out here so Export/Print
+                  // can hand a single-month payload to the exact same
+                  // downloadStopSaleXlsx/print-only table the "export
+                  // everything" version used, instead of a second code path.
+                  const monthChartData = stopSaleChartData?.months.find((m) => m.key === block.key) ?? null;
                   return (
                     <div key={block.key}>
                       <div className="flex flex-wrap items-center gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
@@ -1083,6 +1049,80 @@ export default function RevenuePage() {
                             })
                           }
                         />
+                      </div>
+
+                      {/* Stop-sale threshold, legend and Export/Print - one
+                          copy per month (same move Room Types made earlier)
+                          rather than a single shared block above every
+                          month, so working on October never means scrolling
+                          back up to September's controls. The threshold
+                          itself stays ONE shared value across every month
+                          (it's the business definition of "stopped", not a
+                          per-month view filter like Room Types) - every copy
+                          of this input reads/writes the same stopThreshold
+                          state, so changing it from any month's block updates
+                          all of them at once. */}
+                      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
+                          <span>Stop-sale chart — a night at or above</span>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={stopThreshold}
+                            onChange={(e) => {
+                              const n = Number(e.target.value);
+                              if (Number.isFinite(n)) setStopThreshold(Math.min(100, Math.max(1, n)));
+                            }}
+                            className="w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                          />
+                          <span>% occupancy is stopped for travel agents.</span>
+                        </div>
+                        <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
+                          {baseline && baselineDate
+                            ? `compared against ${baselineDate}${(() => {
+                                const t = fmtTime(snapshots.find((s) => s.date === baselineDate)?.synced_at);
+                                return t ? ` · captured ${t}` : "";
+                              })()}`
+                            : "no earlier snapshot to compare — every stop shown as existing"}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-3 text-[11px] text-[var(--text-primary)]/70">
+                        <span className="flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-yellow-300/60">X</span> New stop sale
+                        </span>
+                        <span className="flex items-center gap-2">
+                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
+                        </span>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
+                        <button
+                          onClick={() =>
+                            monthChartData &&
+                            stopSaleChartData &&
+                            downloadStopSaleXlsx({
+                              propertyName: stopSaleChartData.propertyName,
+                              reportAsOf: stopSaleChartData.reportAsOf,
+                              months: [monthChartData],
+                            })
+                          }
+                          disabled={!monthChartData}
+                          className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Export Stop Sale Chart (.xlsx)
+                        </button>
+                        <button
+                          onClick={() => handlePrintStopSaleChart(block.key, block.label)}
+                          disabled={!monthChartData}
+                          className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Print / Save as PDF
+                        </button>
                       </div>
 
                       {rows.length === 0 ? (
@@ -1168,7 +1208,13 @@ export default function RevenuePage() {
             printing (to save ink) - without it every coloured cell below
             would print as plain white. Landscape fits the 31 day columns
             far better than portrait; pick that in the browser's print
-            dialog when saving as PDF. */}
+            dialog when saving as PDF.
+
+            Filtered to printMonthKey - Print is now a per-month button (see
+            each month's own control row above), and this block stays mounted
+            for every month at once (just hidden outside print media) so
+            handlePrintStopSaleChart's flushSync has something to update
+            before window.print() reads the DOM. */}
         {stopSaleChartData && (
           <div className="hidden print:block text-black" style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}>
             <div className="mb-1 px-2 py-1 bg-[#1F3864] text-white font-bold text-[13px]">
@@ -1179,7 +1225,7 @@ export default function RevenuePage() {
               <span className="bg-[#FFFF00] font-bold px-1">{stopSaleChartData.reportAsOf}</span>
             </div>
 
-            {stopSaleChartData.months.map((month) => (
+            {stopSaleChartData.months.filter((month) => month.key === printMonthKey).map((month) => (
               <table key={month.key} className="border-collapse mb-4 break-inside-avoid">
                 <thead>
                   <tr>
