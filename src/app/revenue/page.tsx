@@ -92,6 +92,72 @@ function FilterDropdown({
   );
 }
 
+// One button, two outcomes - collapses the old side-by-side "Export
+// Stop Sale Chart (.xlsx)" / "Print / Save as PDF" pair into a single
+// Export trigger with a small choice menu, closing on an outside click
+// the same way FilterDropdown does.
+function ExportMenu({
+  disabled,
+  onExcel,
+  onPdf,
+}: {
+  disabled: boolean;
+  onExcel: () => void;
+  onPdf: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [open]);
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className="flex items-center gap-1.5 px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+      >
+        Export
+        <svg
+          className={`w-3 h-3 text-[var(--text-primary)]/40 transition-transform shrink-0 ${open ? "rotate-180" : ""}`}
+          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full mt-1.5 z-20 min-w-[160px] bg-[var(--paper)] border border-[var(--text-primary)]/14 shadow-xl">
+          <button
+            onClick={() => {
+              setOpen(false);
+              onExcel();
+            }}
+            className="block w-full text-left px-3 py-2 text-[11px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04]"
+          >
+            Excel (.xlsx)
+          </button>
+          <button
+            onClick={() => {
+              setOpen(false);
+              onPdf();
+            }}
+            className="block w-full text-left px-3 py-2 text-[11px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] border-t border-[var(--text-primary)]/10"
+          >
+            PDF
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface CategoryRow {
   short_name: string;
   name: string;
@@ -1155,8 +1221,9 @@ export default function RevenuePage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <button
-                          onClick={() =>
+                        <ExportMenu
+                          disabled={!monthChartData}
+                          onExcel={() =>
                             monthChartData &&
                             stopSaleChartData &&
                             downloadStopSaleXlsx({
@@ -1165,18 +1232,8 @@ export default function RevenuePage() {
                               months: [monthChartData],
                             })
                           }
-                          disabled={!monthChartData}
-                          className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Export Stop Sale Chart (.xlsx)
-                        </button>
-                        <button
-                          onClick={() => handlePrintStopSaleChart(block.key, block.label)}
-                          disabled={!monthChartData}
-                          className="px-3 py-1.5 border border-[var(--text-primary)]/14 text-[10px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Print / Save as PDF
-                        </button>
+                          onPdf={() => handlePrintStopSaleChart(block.key, block.label)}
+                        />
                       </div>
 
                       {rows.length === 0 ? (
