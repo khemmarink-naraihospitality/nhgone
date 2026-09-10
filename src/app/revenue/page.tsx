@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { flushSync } from "react-dom";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { getAllowedProperties } from "@/lib/allowedProperties";
@@ -792,12 +791,6 @@ export default function RevenuePage() {
     };
   }, [report, selectedProperty, reportAsOf, monthBlocks, categoryRowsForMonth, dayState]);
 
-  // Which single month's print-only table should actually render, set right
-  // before printing (see handlePrintStopSaleChart) - Export and Print now
-  // live per month, same as the Room Types filter, rather than one button
-  // exporting/printing every month in the report at once.
-  const [printMonthKey, setPrintMonthKey] = useState<string | null>(null);
-
   // Renames the tab title while printing so a browser's "Save as PDF" picks
   // a sane filename, then restores it - same pattern bcp/page.tsx's Reg Card
   // print (handlePrintRegCard) already uses. This app has no server-side PDF
@@ -805,17 +798,13 @@ export default function RevenuePage() {
   // removed again for the Chromium function's server cost) - browser print
   // is the established way every other print-to-PDF page here works.
   //
-  // flushSync forces the printMonthKey state update (and the print-only
-  // table filtering by it) to actually commit to the DOM before window.print()
-  // is called. window.print() is synchronous and blocks the tab immediately -
-  // without flushSync, React's normal batching can leave the update pending
-  // until after the print dialog has already captured the page, printing the
-  // PREVIOUS month (or every month, on the very first click).
-  const handlePrintStopSaleChart = (monthKey: string, monthLabel: string) => {
+  // One button for every month in the report, not per-month - Export lives
+  // once at the top of the calendar (see its own render site), unlike the
+  // Room Types filter and Stop-Sale threshold which stay per month.
+  const handlePrintStopSaleChart = () => {
     if (!stopSaleChartData) return;
-    flushSync(() => setPrintMonthKey(monthKey));
     const originalTitle = document.title;
-    document.title = `StopSaleChart_${stopSaleChartData.propertyName.replace(/\s+/g, "")}_${monthLabel.replace(/\s+/g, "")}`;
+    document.title = `StopSaleChart_${stopSaleChartData.propertyName.replace(/\s+/g, "")}`;
     const restoreTitle = () => {
       document.title = originalTitle;
       window.removeEventListener("afterprint", restoreTitle);
@@ -1133,16 +1122,23 @@ export default function RevenuePage() {
             // what actually prints, same split BCP's Timeline/housekeeping
             // sheet already uses.
             <div className="no-print">
+              {/* One Export for the whole report, not per month - Room
+                  Types and the Stop-Sale threshold stay per month (each
+                  genuinely scoped to that month's own view/business rule),
+                  but Export/Print always covers every month at once, same
+                  as before months got their own filters. */}
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                <ExportMenu
+                  disabled={!stopSaleChartData}
+                  onExcel={() => stopSaleChartData && downloadStopSaleXlsx(stopSaleChartData)}
+                  onPdf={handlePrintStopSaleChart}
+                />
+              </div>
+
               <div className="space-y-8">
                 {monthBlocks.map((block) => {
                   const rows = categoryRowsForMonth(block.key);
                   const selected = visibleCategoriesByMonth[block.key];
-                  // This month's own slice of stopSaleChartData - built once
-                  // above for every month, sliced out here so Export/Print
-                  // can hand a single-month payload to the exact same
-                  // downloadStopSaleXlsx/print-only table the "export
-                  // everything" version used, instead of a second code path.
-                  const monthChartData = stopSaleChartData?.months.find((m) => m.key === block.key) ?? null;
                   return (
                     <div key={block.key}>
                       <div className="flex flex-wrap items-center gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
@@ -1218,22 +1214,6 @@ export default function RevenuePage() {
                               })()}`
                             : "no earlier snapshot to compare — every stop shown as existing"}
                         </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-2 mb-3">
-                        <ExportMenu
-                          disabled={!monthChartData}
-                          onExcel={() =>
-                            monthChartData &&
-                            stopSaleChartData &&
-                            downloadStopSaleXlsx({
-                              propertyName: stopSaleChartData.propertyName,
-                              reportAsOf: stopSaleChartData.reportAsOf,
-                              months: [monthChartData],
-                            })
-                          }
-                          onPdf={() => handlePrintStopSaleChart(block.key, block.label)}
-                        />
                       </div>
 
                       {rows.length === 0 ? (
@@ -1321,11 +1301,9 @@ export default function RevenuePage() {
             far better than portrait; pick that in the browser's print
             dialog when saving as PDF.
 
-            Filtered to printMonthKey - Print is now a per-month button (see
-            each month's own control row above), and this block stays mounted
-            for every month at once (just hidden outside print media) so
-            handlePrintStopSaleChart's flushSync has something to update
-            before window.print() reads the DOM. */}
+            Every month in the report prints, one table per month - there is
+            only the one Export/Print control now (see above the calendar),
+            covering everything rather than a single month at a time. */}
         {stopSaleChartData && (
           <div className="hidden print:block text-black" style={{ WebkitPrintColorAdjust: "exact", printColorAdjust: "exact" }}>
             <div className="mb-1 px-2 py-1 bg-[#1F3864] text-white font-bold text-[13px]">
@@ -1336,7 +1314,7 @@ export default function RevenuePage() {
               <span className="bg-[#FFFF00] font-bold px-1">{stopSaleChartData.reportAsOf}</span>
             </div>
 
-            {stopSaleChartData.months.filter((month) => month.key === printMonthKey).map((month) => (
+            {stopSaleChartData.months.map((month) => (
               <table key={month.key} className="border-collapse mb-4 break-inside-avoid">
                 <thead>
                   <tr>
