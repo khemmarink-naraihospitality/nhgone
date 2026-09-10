@@ -879,6 +879,13 @@ export default function RevenuePage() {
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
       <div className="max-w-[100rem] mx-auto">
+        {/* no-print: everything above the Stop Sale Chart - the page title,
+            mode toggle, property/date controls and the Occupancy by Room
+            Type table - is on-screen navigation and a different report,
+            not part of what "Print / Save as PDF" is printing. Only the
+            purpose-built print-only table further down (hidden print:block,
+            see its own comment) should reach the page. */}
+        <div className="no-print">
         <PageHeader
           title="Revenue"
           description="Occupancy and pace reporting per property, straight from MEWS or from the nightly snapshot kept in the Data Mart."
@@ -1160,6 +1167,7 @@ export default function RevenuePage() {
         )}
           </>
         )}
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3 mt-10 mb-3">
           <button
