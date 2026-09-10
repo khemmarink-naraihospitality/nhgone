@@ -1093,27 +1093,17 @@ export default function RevenuePage() {
                             })
                           }
                         />
-                      </div>
-
-                      {/* Stop-sale threshold, legend and Export/Print - one
-                          copy per month (same move Room Types made earlier)
-                          rather than a single shared block above every
-                          month, so working on October never means scrolling
-                          back up to September's controls. The threshold
-                          itself stays ONE shared value across every month
-                          (it's the business definition of "stopped", not a
-                          per-month view filter like Room Types) - every copy
-                          of this input reads/writes the same stopThreshold
-                          state, so changing it from any month's block updates
-                          all of them at once. */}
-                      <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                        {/* Stop-sale threshold - same row as the month label
+                            and Room Types now, rather than its own line below.
+                            One shared stopThreshold state across every month
+                            (see that state's own comment) - PIN-gated
+                            (Admin > Revenue Settings), readOnly and
+                            click-to-unlock rather than disabled, so it still
+                            looks and focuses like a normal field once
+                            unlocked, and the click itself is what opens the
+                            PIN modal on a locked one. */}
                         <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
                           <span>Stop-sale chart — a night at or above</span>
-                          {/* PIN-gated (Admin > Revenue Settings) - readOnly
-                              and click-to-unlock rather than disabled, so it
-                              still looks and focuses like a normal field
-                              once unlocked, and the click itself is what
-                              opens the PIN modal on a locked one. */}
                           <input
                             type="number"
                             min={1}
@@ -1136,6 +1126,9 @@ export default function RevenuePage() {
                           />
                           <span>% occupancy is stopped for travel agents.</span>
                         </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-3 mb-2">
                         <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
                           {baseline && baselineDate
                             ? `compared against ${baselineDate}${(() => {
