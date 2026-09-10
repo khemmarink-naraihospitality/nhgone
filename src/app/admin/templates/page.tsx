@@ -859,6 +859,13 @@ export default function TemplatesPage() {
     | { kind: "result"; success: boolean; message: string };
   const [sendNowModal, setSendNowModal] = useState<SendNowModalState | null>(null);
 
+  // Same themed result popup as sendNowModal's "result" kind, for the two
+  // plain Save buttons on this page (the main template Save, and the
+  // per-property recipients panel's Save) - no "confirm"/"sending" steps
+  // for either, since Save already acts the moment it's clicked; this only
+  // reports what happened afterward, replacing a native alert().
+  const [saveResultModal, setSaveResultModal] = useState<{ success: boolean; message: string } | null>(null);
+
   // Shared by every hasPerPropertyRecipients tab (currently ST Files Email
   // and RR4/TM30 Files, both Per-Property) - reads/writes
   // property_api_settings directly under that tab's own config.
@@ -964,9 +971,9 @@ export default function TemplatesPage() {
         })
         .eq("property_name", recipProperty);
       if (error) throw error;
-      alert(`Settings saved for ${recipProperty}`);
-    } catch (err: any) {
-      alert("Error saving recipients: " + err.message);
+      setSaveResultModal({ success: true, message: `Settings saved for ${recipProperty}` });
+    } catch (err) {
+      setSaveResultModal({ success: false, message: "Error saving recipients: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
       setRecipSaving(false);
     }
@@ -1061,13 +1068,13 @@ export default function TemplatesPage() {
       });
       const result = await res.json();
       if (result.status === "success") {
-        alert(`${config.label} template saved`);
+        setSaveResultModal({ success: true, message: `${config.label} template saved` });
         setIsDefault(false);
       } else {
-        alert("Error saving: " + (result.detail || result.message));
+        setSaveResultModal({ success: false, message: "Error saving: " + (result.detail || result.message) });
       }
-    } catch (err: any) {
-      alert("Error saving template: " + err.message);
+    } catch (err) {
+      setSaveResultModal({ success: false, message: "Error saving template: " + (err instanceof Error ? err.message : String(err)) });
     } finally {
       setSaving(false);
     }
@@ -1554,6 +1561,39 @@ export default function TemplatesPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Save result popup - same design as the Send Test Now modal's own
+          "result" kind above, dismissible with a click on the backdrop or
+          OK since (unlike a send) there's nothing left running to protect. */}
+      {saveResultModal && (
+        <div
+          className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+          onClick={() => setSaveResultModal(null)}
+        >
+          <div
+            className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-6 text-center">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-4 mx-auto ${saveResultModal.success ? "bg-[#152A00]/10" : "bg-red-50"}`}>
+                {saveResultModal.success ? (
+                  <svg className="w-6 h-6 text-[#152A00]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                ) : (
+                  <svg className="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" /></svg>
+                )}
+              </div>
+              <h2 className="text-xl font-bold text-slate-800 mb-2">{saveResultModal.success ? "Saved" : "Couldn't Save"}</h2>
+              <p className="text-sm text-slate-500 mb-6 whitespace-pre-line">{saveResultModal.message}</p>
+              <button
+                onClick={() => setSaveResultModal(null)}
+                className="w-full bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all"
+              >
+                OK
+              </button>
+            </div>
           </div>
         </div>
       )}
