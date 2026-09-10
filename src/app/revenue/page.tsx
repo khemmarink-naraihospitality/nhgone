@@ -382,6 +382,50 @@ export default function RevenuePage() {
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(true);
   const [stopThreshold, setStopThreshold] = useState(DEFAULT_STOP_SELL_THRESHOLD);
+  // Whether the threshold field has been unlocked THIS session (see the PIN
+  // modal below) - one shared flag, since every month's copy of the input
+  // edits the same underlying stopThreshold value (see that field's own
+  // comment). Resets on reload; there is no "remember me" for a setting that
+  // changes the business definition of stop-sale.
+  const [stopThresholdUnlocked, setStopThresholdUnlocked] = useState(false);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinVerifying, setPinVerifying] = useState(false);
+
+  const openPinModal = () => {
+    setPinInput("");
+    setPinError(null);
+    setPinModalOpen(true);
+  };
+
+  // Verified server-side (Admin > Revenue Settings owns the real PIN) rather
+  // than compared against a value shipped in this bundle - anyone could read
+  // the correct PIN straight out of the JS otherwise, which would defeat the
+  // point of gating the field at all.
+  const submitPin = async () => {
+    if (pinVerifying) return;
+    setPinVerifying(true);
+    setPinError(null);
+    try {
+      const res = await fetch("/api/occupancy/verify-stop-sale-pin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pinInput }),
+      });
+      const result = await res.json();
+      if (result.status === "success" && result.data?.ok) {
+        setStopThresholdUnlocked(true);
+        setPinModalOpen(false);
+      } else {
+        setPinError("Incorrect PIN");
+      }
+    } catch {
+      setPinError("Could not verify the PIN - check your connection and try again");
+    } finally {
+      setPinVerifying(false);
+    }
+  };
   // The morning-before snapshot the calendar diffs against to tell a NEW stop
   // sale from one that was already in place. null until loaded, or when there
   // simply isn't an earlier snapshot to compare with yet.
@@ -1065,16 +1109,30 @@ export default function RevenuePage() {
                       <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2 text-[11px] text-[var(--text-primary)]/60">
                           <span>Stop-sale chart — a night at or above</span>
+                          {/* PIN-gated (Admin > Revenue Settings) - readOnly
+                              and click-to-unlock rather than disabled, so it
+                              still looks and focuses like a normal field
+                              once unlocked, and the click itself is what
+                              opens the PIN modal on a locked one. */}
                           <input
                             type="number"
                             min={1}
                             max={100}
                             value={stopThreshold}
+                            readOnly={!stopThresholdUnlocked}
+                            onClick={(e) => {
+                              if (!stopThresholdUnlocked) {
+                                e.currentTarget.blur();
+                                openPinModal();
+                              }
+                            }}
                             onChange={(e) => {
+                              if (!stopThresholdUnlocked) return;
                               const n = Number(e.target.value);
                               if (Number.isFinite(n)) setStopThreshold(Math.min(100, Math.max(1, n)));
                             }}
-                            className="w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                            title={stopThresholdUnlocked ? undefined : "PIN required to change this"}
+                            className={`w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none ${!stopThresholdUnlocked ? "cursor-pointer" : ""}`}
                           />
                           <span>% occupancy is stopped for travel agents.</span>
                         </div>
@@ -1301,6 +1359,55 @@ export default function RevenuePage() {
           </div>
         )}
       </div>
+
+      {/* PIN gate on the Stop-Sale threshold - Admin > Revenue Settings owns
+          the real PIN, verified server-side (see submitPin above). Once
+          entered correctly it stays unlocked for the rest of this page
+          session, matching how the threshold itself is one shared value
+          across every month rather than something re-locked per month. */}
+      {pinModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => !pinVerifying && setPinModalOpen(false)}
+        >
+          <div
+            className="bg-[var(--paper)] border border-[var(--text-primary)]/14 rounded-sm w-full max-w-xs shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-serif text-[var(--text-primary)] mb-1">Enter PIN</h2>
+            <p className="text-[11px] text-[var(--text-primary)]/60 mb-4">
+              A 4-digit PIN is required to change the stop-sale threshold. Set or change it in Admin &gt; Revenue Settings.
+            </p>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={4}
+              autoFocus
+              value={pinInput}
+              onChange={(e) => { setPinInput(e.target.value.replace(/\D/g, "").slice(0, 4)); setPinError(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") submitPin(); }}
+              className="w-full bg-white border border-[var(--text-primary)]/14 px-3 py-2 text-center text-lg tracking-[0.5em] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none mb-2"
+            />
+            {pinError && <p className="text-[11px] text-red-600 mb-2">{pinError}</p>}
+            <div className="flex gap-2 mt-3">
+              <button
+                onClick={submitPin}
+                disabled={pinVerifying || pinInput.length !== 4}
+                className="flex-1 py-2 bg-[var(--text-primary)] text-[var(--paper)] text-[11px] font-bold tracked-caps hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              >
+                {pinVerifying ? "Checking..." : "Unlock"}
+              </button>
+              <button
+                onClick={() => setPinModalOpen(false)}
+                disabled={pinVerifying}
+                className="flex-1 py-2 border border-[var(--text-primary)]/14 text-[11px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

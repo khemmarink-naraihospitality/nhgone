@@ -14,7 +14,7 @@ from app.services.email_service import (
     RR4_TM30_DAILY_TEMPLATE_KEY, ST_COMPARE_TEMPLATE_KEY, RR4_COMPARE_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
-from app.services import compare_mail, ftp_service
+from app.services import compare_mail, ftp_service, revenue_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +88,11 @@ class FtpSettingsUpdate(BaseModel):
     upload_minute: int = 0
     upload_st_files: bool = True
     upload_rv_files: bool = False
+
+class RevenueSettingsUpdate(BaseModel):
+    # Blank preserves the existing PIN (or the "2026" default, if nothing
+    # has ever been saved) - same semantics as FtpSettingsUpdate.password.
+    stop_sale_pin: str = ""
 
 class SmtpSettingsUpdate(BaseModel):
     host: str
@@ -494,6 +499,44 @@ async def save_ftp_settings(request: FtpSettingsUpdate):
             admin_supabase.table("ftp_settings").insert(payload).execute()
 
         return {"status": "success", "message": "FTP settings saved"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/revenue-settings")
+async def get_revenue_settings_route():
+    """Fetch the Stop-Sale PIN's status (Admin > Revenue Settings). The real
+    PIN is never returned - only whether a custom one has been saved, same
+    convention as GET /admin/smtp and /admin/ftp-settings."""
+    try:
+        data = revenue_settings_service.get_revenue_settings()
+        is_custom = data["stop_sale_pin"] != revenue_settings_service.DEFAULT_STOP_SALE_PIN
+        return {"status": "success", "data": {"pin_set": is_custom}}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/revenue-settings")
+async def save_revenue_settings(request: RevenueSettingsUpdate):
+    """Upsert the single global Revenue settings row. Blank leaves whatever
+    PIN is already in place untouched - same convention as
+    POST /admin/ftp-settings' password field."""
+    try:
+        pin = request.stop_sale_pin.strip()
+        if not pin:
+            return {"status": "success", "message": "No PIN entered - left unchanged"}
+        if not pin.isdigit() or len(pin) != 4:
+            raise HTTPException(status_code=400, detail="PIN must be exactly 4 digits")
+
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("revenue_settings").select("id").limit(1).execute()
+        payload = {"stop_sale_pin": encryption_service.encrypt(pin)}
+        if existing.data:
+            admin_supabase.table("revenue_settings").update(payload).eq("id", existing.data[0]["id"]).execute()
+        else:
+            admin_supabase.table("revenue_settings").insert(payload).execute()
+
+        return {"status": "success", "message": "Revenue settings saved"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

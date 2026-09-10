@@ -2,10 +2,16 @@ import calendar
 from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Body, HTTPException, Query
+from pydantic import BaseModel
 
+from app.services import revenue_settings_service
 from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
+
+
+class VerifyStopSalePinRequest(BaseModel):
+    pin: str
 
 # How many whole months forward of the snapshot's own month each capture
 # covers. 12 = through the same month next year (e.g. a 21-Aug-2026 capture
@@ -186,6 +192,17 @@ async def get_list(property_name: str = Query(...)):
         return {"status": "success", "data": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not list snapshots: {str(e)}")
+
+
+@router.post("/verify-stop-sale-pin")
+async def verify_stop_sale_pin(request: VerifyStopSalePinRequest):
+    """Checked before the Occupancy By Type Calendar lets anyone edit the
+    Stop-Sale threshold - see Admin > Revenue Settings for the PIN itself.
+    Verified server-side rather than compared in the browser: the correct
+    value would otherwise sit in the shipped JS bundle for anyone to read,
+    which would defeat the point of gating the field at all."""
+    ok = revenue_settings_service.verify_stop_sale_pin(request.pin)
+    return {"status": "success", "data": {"ok": ok}}
 
 
 @router.post("/sync-manual")
