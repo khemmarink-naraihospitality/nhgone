@@ -12,9 +12,10 @@ from app.services.email_service import (
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, APPROVED_TEMPLATE_KEY,
     RR4_TM30_DAILY_TEMPLATE_KEY, ST_COMPARE_TEMPLATE_KEY, RR4_COMPARE_TEMPLATE_KEY,
+    STOP_SALE_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
-from app.services import compare_mail, ftp_service, revenue_settings_service
+from app.services import compare_mail, ftp_service, revenue_settings_service, stop_sale_alert_service
 
 logger = logging.getLogger(__name__)
 
@@ -1014,3 +1015,32 @@ async def save_rr4_compare_email_template(request: StFilesEmailSettingsUpdate):
 @router.post("/email-template/rr4-compare/send-now")
 async def send_rr4_compare_email_now():
     return await _send_compare_now("rr4")
+
+@router.get("/email-template/stop-sale-alert")
+async def get_stop_sale_alert_email_template():
+    """Daily "what newly stopped or re-opened" alert off the Occupancy By Type
+    Calendar - same GET/POST/send-now trio and the same email_templates row
+    shape as the two verification mails above."""
+    return {"status": "success", "data": email_service.get_stop_sale_settings()}
+
+@router.post("/email-template/stop-sale-alert")
+async def save_stop_sale_alert_email_template(request: StFilesEmailSettingsUpdate):
+    return _save_compare_settings(STOP_SALE_TEMPLATE_KEY, request,
+                                  "Revenue New Stop Sale and Re-open")
+
+@router.post("/email-template/stop-sale-alert/send-now")
+async def send_stop_sale_alert_email_now():
+    """"Send Test Now" - diffs each property's two newest occupancy snapshots
+    and sends immediately, bypassing the schedule. mark_sent=False so a test
+    can never suppress that day's real scheduled send. There is no date to
+    pass: the comparison is always "the newest snapshot against the one before
+    it", which is exactly what the scheduled run does too."""
+    try:
+        outcome = stop_sale_alert_service.send(mark_sent=False, sync_type="manual")
+        if not outcome["sent"]:
+            raise HTTPException(status_code=400, detail=f"Nothing sent - {outcome['reason']}")
+        return {"status": "success", "message": f"Sent to {', '.join(outcome['recipients'])}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

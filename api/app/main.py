@@ -9,6 +9,7 @@ from app.services.encryption import encryption_service
 from app.services.email_service import email_service
 from app.services import ftp_service
 from app.services import compare_mail
+from app.services import stop_sale_alert_service
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from zoneinfo import ZoneInfo
 import asyncio
@@ -1147,6 +1148,46 @@ async def send_rr4_compare_email(match_hour_only: bool = False):
     day (Admin > Email Template > System Email > Test RR4/TM30 File)."""
     await _send_compare_mail_job("rr4", match_hour_only)
 
+async def send_stop_sale_alert_email(match_hour_only: bool = False):
+    """
+    What newly stopped selling (or re-opened) on the Occupancy By Type
+    Calendar since the previous snapshot - once a day, configured at Admin >
+    Email Template > System Email > Notification - Revenue New Stop Sale and
+    Re-open.
+
+    Same due()/enabled/last_sent_date gate as the two verification mails
+    (compare_mail.due is that shared gate), and the same "unticking Enabled
+    stops it, deleting the email_templates row removes it" story - no
+    migration either way. Reads occupancy_sync only, so unlike those two it
+    makes no outbound call of its own and is cheap to leave running.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        settings_row = email_service.get_stop_sale_settings()
+    except Exception as e:
+        print(f"Error in stop-sale alert mail (loading settings): {str(e)}")
+        return
+    if not compare_mail.due(settings_row, now, match_hour_only):
+        return
+
+    try:
+        outcome = stop_sale_alert_service.send()
+        if outcome["sent"]:
+            print(f"[{now.isoformat()}] Stop-sale alert sent: {outcome['summary']}")
+        else:
+            # No property holds two snapshots yet, so nothing can be called
+            # NEW. An all-clear built from that would read exactly like a
+            # genuinely quiet day.
+            print(f"[{now.isoformat()}] Stop-sale alert: not sent - {outcome['reason'][:200]}")
+    except Exception as e:
+        traceback.print_exc()
+        sync_service._log_sync_row(None, None, stop_sale_alert_service.TARGET_TABLE,
+                                   "error", 0, str(e)[:500], "auto")
+        print(f"Error in stop-sale alert mail: {str(e)}")
+
 async def retry_failed_syncs():
     """
     Runs once daily at 09:00 Asia/Bangkok. Finds every (property, table) pair
@@ -1445,6 +1486,9 @@ async def start_scheduler():
     # temporary monitoring, see _send_compare_mail_job's docstring.
     scheduler.add_job(send_st_compare_email, 'cron', second=0)
     scheduler.add_job(send_rr4_compare_email, 'cron', second=0)
+    # Revenue's new-stop-sale/re-open alert - own configurable send time,
+    # defaulted to 09:00 so it lands after the 08:00 occupancy capture it diffs.
+    scheduler.add_job(send_stop_sale_alert_email, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -1495,6 +1539,8 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # for the new system's validation period, see _send_compare_mail_job.
     background_tasks.add_task(send_st_compare_email, match_hour_only=True)
     background_tasks.add_task(send_rr4_compare_email, match_hour_only=True)
+    # Revenue's new-stop-sale/re-open alert - own configurable send time.
+    background_tasks.add_task(send_stop_sale_alert_email, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

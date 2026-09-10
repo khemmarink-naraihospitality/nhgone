@@ -14,6 +14,7 @@ type TemplateType =
   | "approved_email"
   | "st_compare_email"
   | "rr4_compare_email"
+  | "stop_sale_email"
   | "st_files_email"
   | "st_files_email_per_property"
   | "rr4_tm30_email"
@@ -32,7 +33,7 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   rr3: { label: "RR3", children: ["rr3"] },
   system_email: {
     label: "System Email",
-    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "st_compare_email", "rr4_compare_email"],
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "st_compare_email", "rr4_compare_email", "stop_sale_email"],
   },
   statistic_files: {
     label: "Statistic Files",
@@ -231,6 +232,21 @@ const RR4_COMPARE_TOKENS: TokenDoc[] = [
   // literal text "<<SampleTable>>", but there is no reason to offer it here.
 ];
 
+// The stop-sale watch is not a sheet comparison like the two above - it diffs
+// each property's own two newest occupancy snapshots against each other, so
+// its tables are built from what /revenue's Occupancy By Type Calendar already
+// draws rather than from any external source.
+const STOP_SALE_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "The newest snapshot date being reported on (DD/MM/YYYY)" },
+  { name: "Threshold", description: "The stop-sale threshold used, e.g. 90 - a night at or above it counts as stopped for travel agents" },
+  { name: "NewStops", description: "How many nights newly crossed into stop-sale since the previous snapshot" },
+  { name: "Reopens", description: "How many nights came back under the threshold" },
+  { name: "PropertyCount", description: "How many properties had two snapshots to compare" },
+  { name: "Summary", description: "One-line verdict, e.g. \"3 new stop sales, 1 re-open\" - usable in the Subject too" },
+  { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property, which two snapshot dates it was compared across, and its new-stop/re-open counts" },
+  { name: "DetailTable", description: "Table 2 - pre-built HTML: every changed night by name - property, room type, the night itself, the occupancy it moved from and to, and which way it went" },
+];
+
 const TEMPLATE_CONFIG: Record<TemplateType, {
   label: string;
   // Absent for tabs whose editor isn't driven by this generic fetch/save
@@ -382,6 +398,19 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasScheduleFields: true,
     hasCcBcc: true,
     sendNowEndpoint: "/admin/email-template/rr4-compare/send-now",
+  },
+  stop_sale_email: {
+    label: "Notification - Revenue New Stop Sale and Re-open",
+    endpoint: "/admin/email-template/stop-sale-alert",
+    tokens: STOP_SALE_TOKENS,
+    defaultNote: "No Stop Sale notification configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) listing every room type and night that newly crossed into stop-sale, or came back out of it, since the previous day's snapshot - the same New stop sale / Re-open cells the Occupancy By Type Calendar draws on Revenue. A stop that was already there yesterday is deliberately not listed: it isn't news. Occupancy snapshots are captured at 08:00, so a send time before that would compare yesterday's pair again.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
+    hasCcBcc: true,
+    sendNowEndpoint: "/admin/email-template/stop-sale-alert/send-now",
   },
   st_files_email: {
     label: "All Property",
@@ -598,6 +627,37 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     // <<SampleTable>>, and an unknown token is left in the body verbatim.
     SampleTable: "",
   }),
+  // Mirrors stop_sale_alert_service's own two tables - same columns, same
+  // yellow "new stop" / cyan "re-open" the Occupancy By Type Calendar paints
+  // those cells with, so the Preview shows the shape the real mail sends.
+  stop_sale_email: () => ({
+    Date: "10/09/2026",
+    Threshold: "90",
+    NewStops: "4",
+    Reopens: "1",
+    PropertyCount: "8",
+    Summary: "4 new stop sales, 1 re-open",
+    SummaryTable: buildCompareSampleTable(
+      ["Property", "Snapshot", "Compared against", "New stop sales", "Re-opens"],
+      [["Bangkok Chinatown", "2026-09-10", "2026-09-09", newStop("3"), muted("0")],
+       ["Bangkok Siam", "2026-09-10", "2026-09-09", newStop("1"), reopened("1")],
+       ["Phuket Patong", "2026-09-10", "2026-09-09", muted("0"), muted("0")],
+       ["Lub d Siem Reap", "2026-09-10", muted("only one snapshot so far - nothing to compare against"), "", ""]],
+    ),
+    DetailTable: buildCompareSampleTable(
+      ["Property", "Room Type", "Night", "Occupancy", "Change"],
+      [["Bangkok Chinatown", `<b>SLT</b> ${muted("The Duo | Twin")}`, "Sun 27 Sep 2026",
+        "86.36% → <b>90.91%</b>", newStop("New stop sale")],
+       ["Bangkok Chinatown", `<b>SLT</b> ${muted("The Duo | Twin")}`, "Sun 11 Oct 2026",
+        "86.36% → <b>90.91%</b>", newStop("New stop sale")],
+       ["Bangkok Chinatown", `<b>TNK</b> ${muted("The Duo | King")}`, "Sat 07 Nov 2026",
+        "88.64% → <b>95.45%</b>", newStop("New stop sale")],
+       ["Bangkok Siam", `<b>CMP</b> ${muted("The Compact | King")}`, "Wed 09 Sep 2026",
+        "70.00% → <b>90.00%</b>", newStop("New stop sale")],
+       ["Bangkok Siam", `<b>SDK</b> ${muted("The Studio | King")}`, "Tue 08 Sep 2026",
+        "100.00% → <b>80.00%</b>", reopened("Re-open")]],
+    ),
+  }),
   st_files_email: () => ({
     Date: "06/08/2026",
     PropertyCount: "8",
@@ -642,6 +702,9 @@ const ok = (s: string) => `<span style="color:#166534;font-weight:700">${s}</spa
 const bad = (s: string) => `<span style="background:#fee2e2;color:#b91c1c;font-weight:700">${s}</span>`;
 const amber = (s: string) => `<span style="background:#fef3c7;color:#92400e;font-weight:700">${s}</span>`;
 const muted = (s: string) => `<span style="color:#94a3b8">${s}</span>`;
+// The calendar's own two stop-sale colours, mirroring stop_sale_alert_service.
+const newStop = (s: string) => `<span style="background:#fef08a;color:#b91c1c;font-weight:700">${s}</span>`;
+const reopened = (s: string) => `<span style="background:#cffafe;color:#0e7490;font-weight:700">${s}</span>`;
 
 function buildCompareSampleTable(headers: string[], rows: string[][]): string {
   const th = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;";

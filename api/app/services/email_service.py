@@ -179,6 +179,37 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
   </table>
 </div>"""
 
+# Revenue stop-sale watch (Admin > Email Template > System Email >
+# Notification - Revenue New Stop Sale and Re-open). Unlike the two mails
+# above it reads nothing but occupancy_sync, diffing each property's two
+# newest snapshots - see stop_sale_alert_service.
+#
+# 09:00 Asia/Bangkok by default: the snapshots it compares are captured by
+# daily_auto_sync_occupancy at 08:00, so anything earlier would either
+# re-send yesterday's comparison or race the capture that feeds it.
+STOP_SALE_TEMPLATE_KEY = "revenue_stop_sale_alert"
+DEFAULT_STOP_SALE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
+DEFAULT_STOP_SALE_HOUR = 9
+DEFAULT_STOP_SALE_MINUTE = 0
+DEFAULT_STOP_SALE_SUBJECT = "Stop Sale & Re-open <<Date>> — <<Summary>>"
+DEFAULT_STOP_SALE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Revenue &mdash; New Stop Sale &amp; Re-open</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Changes since the previous snapshot, across <b><<PropertyCount>></b> propert(y/ies), as of <b><<Date>></b>. A night at or above <b><<Threshold>>%</b> occupancy is stopped for travel agents.</p>
+        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<NewStops>> new stop sale(s) &middot; <<Reopens>> re-open(s)</p>
+        <h3 style="margin:0 0 8px 0; font-size:15px; color:#152A00;">1. Every Property</h3>
+        <<SummaryTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Changed</h3>
+        <<DetailTable>>
+        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Only nights that crossed the line since the previous snapshot are listed &mdash; a stop that was already there yesterday is not news. Open Revenue &gt; Occupancy By Type Calendar for the full chart.</p>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.
@@ -599,6 +630,18 @@ class EmailService:
             "recipients": DEFAULT_RR4_COMPARE_RECIPIENTS,
             "send_hour": DEFAULT_RR4_COMPARE_HOUR,
             "send_minute": DEFAULT_RR4_COMPARE_MINUTE,
+        })
+
+    def get_stop_sale_settings(self) -> dict:
+        """Daily "what newly stopped or re-opened" alert off the Occupancy By
+        Type Calendar (Admin > Email Template > System Email > Notification -
+        Revenue New Stop Sale and Re-open)."""
+        return self._get_scheduled_settings(STOP_SALE_TEMPLATE_KEY, {
+            "subject": DEFAULT_STOP_SALE_SUBJECT,
+            "html_template": DEFAULT_STOP_SALE_TEMPLATE,
+            "recipients": DEFAULT_STOP_SALE_RECIPIENTS,
+            "send_hour": DEFAULT_STOP_SALE_HOUR,
+            "send_minute": DEFAULT_STOP_SALE_MINUTE,
         })
 
     def mark_template_sent(self, template_key: str, settings_row: dict, marker_date: str):
