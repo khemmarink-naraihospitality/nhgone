@@ -1106,13 +1106,29 @@ export default function RevenuePage() {
           </>
         )}
 
-        <button
-          onClick={() => setCalendarOpen((o) => !o)}
-          className="flex items-center gap-2 mt-10 mb-3 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
-        >
-          <svg className={`w-4 h-4 shrink-0 transition-transform ${calendarOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-          <h2 className="text-xl font-serif">Occupancy By Type Calendar</h2>
-        </button>
+        <div className="flex flex-wrap items-center justify-between gap-3 mt-10 mb-3">
+          <button
+            onClick={() => setCalendarOpen((o) => !o)}
+            className="flex items-center gap-2 text-[var(--text-primary)] hover:opacity-70 transition-opacity"
+          >
+            <svg className={`w-4 h-4 shrink-0 transition-transform ${calendarOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+            <h2 className="text-xl font-serif">Occupancy By Type Calendar</h2>
+          </button>
+          {/* One Export for the whole report, not per month - Room Types and
+              the Stop-Sale threshold stay per month (each genuinely scoped
+              to that month's own view/business rule), but Export/Print
+              always covers every month at once. no-print: a control, not
+              content, so it has no business appearing on a printed page. */}
+          {calendarOpen && report && (
+            <div className="no-print">
+              <ExportMenu
+                disabled={!stopSaleChartData}
+                onExcel={() => stopSaleChartData && downloadStopSaleXlsx(stopSaleChartData)}
+                onPdf={handlePrintStopSaleChart}
+              />
+            </div>
+          )}
+        </div>
 
         {calendarOpen && (
           report ? (
@@ -1122,19 +1138,6 @@ export default function RevenuePage() {
             // what actually prints, same split BCP's Timeline/housekeeping
             // sheet already uses.
             <div className="no-print">
-              {/* One Export for the whole report, not per month - Room
-                  Types and the Stop-Sale threshold stay per month (each
-                  genuinely scoped to that month's own view/business rule),
-                  but Export/Print always covers every month at once, same
-                  as before months got their own filters. */}
-              <div className="flex flex-wrap items-center gap-2 mb-6">
-                <ExportMenu
-                  disabled={!stopSaleChartData}
-                  onExcel={() => stopSaleChartData && downloadStopSaleXlsx(stopSaleChartData)}
-                  onPdf={handlePrintStopSaleChart}
-                />
-              </div>
-
               <div className="space-y-8">
                 {monthBlocks.map((block) => {
                   const rows = categoryRowsForMonth(block.key);
