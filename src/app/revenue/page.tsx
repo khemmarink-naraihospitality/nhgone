@@ -1126,9 +1126,24 @@ export default function RevenuePage() {
                           />
                           <span>% occupancy is stopped for travel agents.</span>
                         </div>
+
+                        {/* Legend - same row, pushed to the far right via
+                            ml-auto so it reads as a key for the threshold
+                            phrase to its left rather than a separate block. */}
+                        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 ml-auto text-[11px] text-[var(--text-primary)]/70">
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-yellow-300/60">X</span> New stop sale
+                          </span>
+                          <span className="flex items-center gap-2">
+                            <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
+                          </span>
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center justify-end gap-3 mb-2">
+                      <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
                         <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
                           {baseline && baselineDate
                             ? `compared against ${baselineDate}${(() => {
@@ -1136,18 +1151,6 @@ export default function RevenuePage() {
                                 return t ? ` · captured ${t}` : "";
                               })()}`
                             : "no earlier snapshot to compare — every stop shown as existing"}
-                        </span>
-                      </div>
-
-                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 mb-3 text-[11px] text-[var(--text-primary)]/70">
-                        <span className="flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold">X</span> Existing stop sale
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-red-600 bg-yellow-300/60">X</span> New stop sale
-                        </span>
-                        <span className="flex items-center gap-2">
-                          <span className="inline-flex items-center justify-center w-6 h-6 border border-[var(--text-primary)]/14 font-bold text-cyan-700 bg-cyan-400/15">o</span> Re-open
                         </span>
                       </div>
 
