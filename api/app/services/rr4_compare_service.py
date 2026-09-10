@@ -467,10 +467,19 @@ async def build_comparison(want_date: str = None) -> dict:
         counts[p["date"]] = counts.get(p["date"], 0) + 1
     date = max(counts, key=lambda d: (counts[d], d))
 
+    # Chinatown is excluded from the Total row (and everything derived from
+    # it - the headline Rr4Rows/Tm30Rows/subject_summary tokens too) by
+    # request: its 12:15 TM30 cutoff drops every guest arriving before noon
+    # BY DESIGN (see _summary_cell's window note), which is a permanent,
+    # already-explained skew rather than something to review - left in, it
+    # would paint the Total row red every single morning regardless of
+    # whether every other property is clean. Chinatown's own row above the
+    # Total is untouched and still shows its real Sheet/NHGOne numbers.
+    totals_rows = [p for p in compared if p["property"] != "Lub d Bangkok Chinatown"]
     totals = {}
     for kind in ("rr4", "tm30"):
         totals[kind] = {
-            f: sum(p[kind][f] for p in compared)
+            f: sum(p[kind][f] for p in totals_rows)
             for f in ("ours", "sheet", "paired", "only_ours", "only_sheet",
                       "clean_rows", "diff_rows", "drift_rows")
         }
@@ -481,6 +490,7 @@ async def build_comparison(want_date: str = None) -> dict:
         "properties": props,
         "compared": len(compared),
         "totals": totals,
+        "totals_compared": len(totals_rows),
     }
 
 
@@ -528,6 +538,7 @@ def render_text(result: dict) -> str:
     out.append("-" * 88)
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
+    out.append(f"Total ({result.get('totals_compared', result['compared'])} properties, Chinatown excluded - see its own row above):")
     out.append(f"RR4  total {tr['sheet']}/{tr['ours']} rows · paired {tr['paired']} · fully matched "
                f"{tr['clean_rows']} · real diff {tr['diff_rows']} · known drift {tr['drift_rows']} · "
                f"only in sheet {tr['only_sheet']} · only in NHGOne {tr['only_ours']}")
@@ -728,7 +739,8 @@ def render_summary_table(result: dict) -> str:
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
     h.append(f'<tr style="background:#f1f5f9"><td style="{_TD}font-weight:700">Total</td>'
-             f'<td style="{_TD}{_MUTED}">{result["compared"]} properties</td>')
+             f'<td style="{_TD}{_MUTED}">{result.get("totals_compared", result["compared"])} properties'
+             f'<span style="font-weight:400;font-size:11px"> (Chinatown excluded - see its own row)</span></td>')
     h.append(_summary_cell(tr))
     h.append(_summary_cell(tt))
     h.append("</tr></table>")
