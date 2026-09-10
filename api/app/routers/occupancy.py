@@ -38,27 +38,33 @@ def snapshot_range(date_str: str) -> tuple:
     return start, end
 
 # Snapshots kept per property, pruned by the daily auto-import - the same
-# newest-N-per-property mechanism BCP uses, sized to a week here. Counting
-# rows rather than measuring dates on purpose: if a morning is ever missed,
-# a date cutoff would leave the property with fewer than a week of history
-# to compare against, where newest-7 still holds seven real snapshots.
+# newest-N-per-property mechanism BCP uses. Two captures a day (08:00 and
+# 13:00 Asia/Bangkok, see main.daily_auto_sync_occupancy) x 6 kept = 3 days
+# of history, down from the old 7 days at one capture a day. Counting rows
+# rather than measuring dates on purpose: if a capture is ever missed, a
+# date cutoff would leave the property with less history to compare
+# against, where newest-6 always holds six real snapshots.
 #
 # Pruning deliberately does NOT happen inside sync_occupancy_day, so the
 # manual "Import To Data Mart" button can pull an older date up for a
 # one-off comparison without it being deleted the moment it lands. The next
-# 08:00 run tidies it away.
-SNAPSHOTS_KEPT = 7
+# scheduled run tidies it away.
+SNAPSHOTS_KEPT = 6
 
 
 def prune_occupancy_snapshots(property_name: str) -> int:
     """Drops everything past the newest SNAPSHOTS_KEPT for one property.
     Returns how many rows went. Never raises - retention tidying must not
-    fail a capture that already succeeded."""
+    fail a capture that already succeeded.
+
+    Ordered by synced_at, not report_date: two captures the same day (08:00
+    and 13:00) share a report_date, and synced_at is the only column that
+    still tells them apart in the right order."""
     try:
         old = sync_service.supabase.table("occupancy_sync") \
             .select("id") \
             .eq("property", property_name) \
-            .order("report_date", desc=True) \
+            .order("synced_at", desc=True) \
             .range(SNAPSHOTS_KEPT, SNAPSHOTS_KEPT + 200) \
             .execute()
         if not old.data:
@@ -72,10 +78,19 @@ def prune_occupancy_snapshots(property_name: str) -> int:
 
 
 async def sync_occupancy_day(property_name: str, date_str: str) -> None:
-    """Fetches + upserts one (property, date) occupancy snapshot into
-    occupancy_sync - shared by the manual Import button and the scheduled
-    daily auto-import in main.py, so the two can't drift apart. Raises on
-    failure; callers log/count it.
+    """Fetches + inserts one occupancy snapshot into occupancy_sync - shared
+    by the manual Import button and the scheduled daily auto-import in
+    main.py, so the two can't drift apart. Raises on failure; callers
+    log/count it.
+
+    Always a plain insert, never an upsert: occupancy_sync now takes TWO
+    captures a day (08:00 and 13:00 Asia/Bangkok), so report_date alone no
+    longer identifies a unique row (see api/sql/occupancy_two_captures_daily.sql,
+    which drops the old UNIQUE(property, report_date) constraint an upsert
+    depended on). Every capture - scheduled or a manual re-import of the
+    same date - is its own row now; pruning by synced_at (see
+    prune_occupancy_snapshots) is what keeps the table from growing
+    unbounded, not a same-day overwrite.
 
     Stored as plain jsonb, not a Fernet blob like st_files_sync: the payload
     is category names and integer counts, with no guest PII in it, and the
@@ -94,12 +109,12 @@ async def sync_occupancy_day(property_name: str, date_str: str) -> None:
     rate_report = await sync_service.get_rate_report(
         property_name, start.isoformat(), end.isoformat())
     combined = {**occupancy_report, "rate": rate_report}
-    sync_service.supabase.table("occupancy_sync").upsert({
+    sync_service.supabase.table("occupancy_sync").insert({
         "property": property_name,
         "report_date": date_str,
         "data": combined,
         "synced_at": datetime.now(timezone.utc).isoformat(),
-    }, on_conflict="property,report_date").execute()
+    }).execute()
 
 
 @router.get("/report")
@@ -144,21 +159,34 @@ async def get_rate(
 @router.get("/managed")
 async def get_managed(
     property_name: str = Query(...),
-    date: str = Query(..., description="Snapshot date, YYYY-MM-DD"),
+    id: int = Query(None, description="Snapshot row id - preferred, addresses one exact capture"),
+    date: str = Query(None, description="Snapshot date, YYYY-MM-DD - legacy, returns that date's newest capture"),
 ):
     """One stored snapshot - the page's NHG mode. Returns the outlook exactly
     as it stood on the morning it was captured, which is the whole point:
     comparing today's pace against last week's is impossible if the only
-    available answer is always the live one."""
+    available answer is always the live one.
+
+    `id` addresses one exact row and is what the frontend's own Snapshot
+    Date dropdown sends (see GET /list, which hands out each row's id) - it
+    has to, now that a date alone doesn't identify a unique snapshot: two
+    captures a day (08:00 and 13:00) share the same report_date. `date`
+    survives as a fallback for anything that only has a calendar date to
+    give (it resolves to that date's newest capture), but is no longer
+    precise enough to pick between two same-day snapshots."""
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
+    if id is None and not date:
+        raise HTTPException(status_code=400, detail="id or date is required")
     try:
-        res = sync_service.supabase.table("occupancy_sync").select("data, synced_at").eq(
-            "property", property_name).eq("report_date", date).limit(1).execute()
+        query = sync_service.supabase.table("occupancy_sync").select("data, synced_at").eq("property", property_name)
+        query = query.eq("id", id) if id is not None else query.eq("report_date", date).order("synced_at", desc=True)
+        res = query.limit(1).execute()
         if not res.data:
+            where = f"id {id}" if id is not None else f"on {date}"
             raise HTTPException(
                 status_code=404,
-                detail=f"No imported snapshot for {property_name} on {date} yet - switch MODE to MEWS, or use \"Import To Data Mart\" first.")
+                detail=f"No imported snapshot for {property_name} {where} yet - switch MODE to MEWS, or use \"Import To Data Mart\" first.")
         payload = dict(res.data[0]["data"] or {})
         payload["_synced_at"] = res.data[0].get("synced_at")
         return {"status": "success", "data": payload}
@@ -170,19 +198,22 @@ async def get_managed(
 
 @router.get("/list")
 async def get_list(property_name: str = Query(...)):
-    """Snapshot history for the property - which mornings are on file, and
-    what each one's total occupancy looked like on its own first night."""
+    """Snapshot history for the property - one row per actual capture (up to
+    two a day now, see main.daily_auto_sync_occupancy), each carrying its own
+    id so GET /managed can address it precisely, and what its total
+    occupancy looked like on its own first night."""
     if not sync_service.supabase:
         raise HTTPException(status_code=503, detail="Supabase not initialized")
     try:
         res = sync_service.supabase.table("occupancy_sync").select(
-            "report_date, data, synced_at").eq("property", property_name).order(
-            "report_date", desc=True).limit(400).execute()
+            "id, report_date, data, synced_at").eq("property", property_name).order(
+            "synced_at", desc=True).limit(400).execute()
         rows = []
         for r in res.data or []:
             d = r.get("data") or {}
             total = (d.get("total") or {}).get("percent") or []
             rows.append({
+                "id": r["id"],
                 "date": r["report_date"],
                 "synced_at": r.get("synced_at"),
                 "nights": len(d.get("dates") or []),

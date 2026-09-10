@@ -10,10 +10,13 @@ capture.
 
 Reads occupancy_sync only - no MEWS calls, so it costs nothing and can never
 disagree with the calendar about a night the calendar hasn't got. The two
-newest snapshots per property ARE the comparison, which means this mail is
-only ever as fresh as the 08:00 occupancy import that feeds it
-(main.daily_auto_sync_occupancy) - hence its own default send time an hour
-after that one.
+newest snapshots per property ARE the comparison, whatever they happen to
+be - occupancy now captures twice a day (08:00 and 13:00 Asia/Bangkok, see
+main.daily_auto_sync_occupancy/daily_auto_sync_occupancy_pm), so depending
+on this mail's own send time that pair can be two different times the same
+day, or the last capture of one day against the last of the one before it.
+Either way it is always "since the last capture," which is the only
+comparison that actually answers "is this new."
 
 Recipients, send time, subject and body live in Admin > Email Template >
 System Email, like every other scheduled mail here - see
@@ -67,10 +70,14 @@ def _properties() -> list:
 def _two_newest(property_name: str) -> list:
     """The property's two newest occupancy snapshots, newest first - the same
     pair /revenue diffs against each other (see its baseline effect: the
-    stored snapshot immediately before the one on screen)."""
+    stored snapshot immediately before the one on screen).
+
+    Ordered by synced_at, not report_date: two captures the same day (08:00
+    and 13:00) share a report_date, and synced_at is what actually orders
+    them correctly."""
     supabase = get_supabase_client()
     res = supabase.table("occupancy_sync").select("report_date, data, synced_at") \
-        .eq("property", property_name).order("report_date", desc=True).limit(2).execute()
+        .eq("property", property_name).order("synced_at", desc=True).limit(2).execute()
     return res.data or []
 
 
@@ -153,8 +160,8 @@ def build_alert(threshold: float = None) -> dict:
 
     for prop in _properties():
         row = {"property": prop, "status": "no_snapshot", "current_date": None,
-               "baseline_date": None, "changes": [], "new_stops": 0, "reopens": 0,
-               "note": ""}
+               "current_synced_at": None, "baseline_date": None, "baseline_synced_at": None,
+               "changes": [], "new_stops": 0, "reopens": 0, "note": ""}
         try:
             snaps = _two_newest(prop)
         except Exception as e:
@@ -170,6 +177,7 @@ def build_alert(threshold: float = None) -> dict:
             continue
 
         row["current_date"] = snaps[0].get("report_date")
+        row["current_synced_at"] = snaps[0].get("synced_at")
         if len(snaps) < 2:
             row["status"] = "no_baseline"
             row["note"] = "only one snapshot so far - nothing to compare against"
@@ -178,6 +186,7 @@ def build_alert(threshold: float = None) -> dict:
 
         row["status"] = "ok"
         row["baseline_date"] = snaps[1].get("report_date")
+        row["baseline_synced_at"] = snaps[1].get("synced_at")
         changes = _changes(snaps[0].get("data") or {}, snaps[1].get("data") or {}, threshold)
         row["changes"] = changes
         row["new_stops"] = sum(1 for c in changes if c["kind"] == _NEW_STOP)
@@ -245,6 +254,27 @@ def _pct(value) -> str:
     return "—" if value is None else f"{value:.2f}%"
 
 
+def _stamp(date_str, synced_at) -> str:
+    """"10 Sep 08:02" - the capture TIME matters now, not just its date:
+    occupancy captures twice a day (08:00 and 13:00), so two properties'
+    rows - or a property's own current vs. baseline - can share the same
+    report_date and only the time tells them apart."""
+    if not date_str:
+        return "—"
+    try:
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        label = f"{d.day} {d.strftime('%b')}"
+    except (ValueError, TypeError):
+        return date_str
+    if not synced_at:
+        return label
+    try:
+        t = datetime.fromisoformat(synced_at.replace("Z", "+00:00")).astimezone(ZoneInfo("Asia/Bangkok"))
+        return f"{label} {t.strftime('%H:%M')}"
+    except (ValueError, TypeError):
+        return label
+
+
 def render_summary_table(result: dict) -> str:
     """One row per property: what it was compared against and how much moved."""
     h = [f'<table style="border-collapse:collapse;width:100%"><tr>'
@@ -254,14 +284,14 @@ def render_summary_table(result: dict) -> str:
     for p in result["properties"]:
         if p["status"] != "ok":
             h.append(f'<tr><td style="{_TD}font-weight:600">{_short(p["property"])}</td>'
-                     f'<td style="{_TD}color:#94a3b8">{p["current_date"] or "—"}</td>'
+                     f'<td style="{_TD}color:#94a3b8">{_stamp(p["current_date"], p["current_synced_at"])}</td>'
                      f'<td style="{_TD}color:#94a3b8" colspan="3">{p["note"]}</td></tr>')
             continue
         new_style = _NEW_STYLE if p["new_stops"] else "color:#94a3b8;"
         re_style = _REOPEN_STYLE if p["reopens"] else "color:#94a3b8;"
         h.append(f'<tr><td style="{_TD}font-weight:600">{_short(p["property"])}</td>'
-                 f'<td style="{_TD}">{p["current_date"]}</td>'
-                 f'<td style="{_TD}">{p["baseline_date"]}</td>'
+                 f'<td style="{_TD}">{_stamp(p["current_date"], p["current_synced_at"])}</td>'
+                 f'<td style="{_TD}">{_stamp(p["baseline_date"], p["baseline_synced_at"])}</td>'
                  f'<td style="{_TD}{new_style}">{p["new_stops"]}</td>'
                  f'<td style="{_TD}{re_style}">{p["reopens"]}</td></tr>')
     h.append("</table>")
@@ -320,7 +350,8 @@ def render_text(result: dict) -> str:
         if p["status"] != "ok":
             out.append(f"{_short(p['property']):<22} - {p['note']}")
             continue
-        out.append(f"{_short(p['property']):<22} {p['current_date']} vs {p['baseline_date']}"
+        out.append(f"{_short(p['property']):<22} {_stamp(p['current_date'], p['current_synced_at'])} vs "
+                   f"{_stamp(p['baseline_date'], p['baseline_synced_at'])}"
                    f"  ->  {p['new_stops']} new, {p['reopens']} re-open")
         for c in p["changes"]:
             # One budget across the whole mail, not per property - the same

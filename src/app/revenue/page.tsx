@@ -269,6 +269,11 @@ interface OccupancyReport {
 }
 
 interface SnapshotRow {
+  // null only for the synthetic "today, not captured yet" placeholder
+  // built client-side (see snapshotOptions) - every real row from
+  // GET /list carries its own id, needed now that occupancy captures twice
+  // a day and a date alone no longer names a unique snapshot.
+  id: number | null;
   date: string;
   synced_at: string | null;
   nights: number;
@@ -438,7 +443,15 @@ export default function RevenuePage() {
 
   const [startDate, setStartDate] = useState(iso(startOfMonth(new Date())));
   const [endDate, setEndDate] = useState(iso(addMonths(startOfMonth(new Date()), 3)));
-  const [snapshotDate, setSnapshotDate] = useState(iso(new Date()));
+  // Fixed for the component's lifetime, same as startDate/endDate above -
+  // "today" for the "Import To Data Mart" target and the synthetic
+  // "not captured yet" placeholder option (see snapshotOptions).
+  const [todayStr] = useState(iso(new Date()));
+  // Which occupancy_sync row is selected for viewing in NHG mode - the
+  // row's own id (as a string), not a date: occupancy now captures twice a
+  // day (08:00 and 13:00), so a date alone can name two different rows.
+  // "" is the synthetic "today, not captured yet" placeholder.
+  const [snapshotId, setSnapshotId] = useState("");
 
   const [report, setReport] = useState<OccupancyReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -491,14 +504,17 @@ export default function RevenuePage() {
       setPinVerifying(false);
     }
   };
-  // The morning-before snapshot the calendar diffs against to tell a NEW stop
-  // sale from one that was already in place. null until loaded, or when there
+  // The prior snapshot the calendar diffs against to tell a NEW stop sale
+  // from one that was already in place. null until loaded, or when there
   // simply isn't an earlier snapshot to compare with yet.
   const [baseline, setBaseline] = useState<OccupancyReport | null>(null);
-  // Which snapshot the baseline came from. Not derivable from `baseline`
-  // itself: its start_date is the 1st of its month, not the morning it was
-  // captured, so labelling the comparison with it named the wrong day.
-  const [baselineDate, setBaselineDate] = useState<string | null>(null);
+  // Which snapshot the baseline came from (the whole row, not just its
+  // date - occupancy captures twice a day now, so two rows can share a
+  // date and only synced_at tells them apart). Not derivable from
+  // `baseline` itself: its start_date is the 1st of its month, not the
+  // moment it was captured, so labelling the comparison with it named the
+  // wrong day.
+  const [baselineSnapshot, setBaselineSnapshot] = useState<SnapshotRow | null>(null);
   // Which room-type rows each month's table shows - one filter PER MONTH
   // rather than one shared across all of them, since a category worth
   // watching in a busy month (say, dorm beds in August) is often just noise
@@ -515,14 +531,21 @@ export default function RevenuePage() {
     });
   }, []);
 
-  const loadSnapshots = useCallback(async () => {
-    if (!selectedProperty) return;
+  // Returns the freshly loaded list (not just setting state) so a caller
+  // like handleImport can find the row it just created without racing
+  // React's own state update - reading `snapshots` from a closure right
+  // after awaiting this wouldn't reliably see the new value yet.
+  const loadSnapshots = useCallback(async (): Promise<SnapshotRow[]> => {
+    if (!selectedProperty) return [];
     try {
       const res = await fetch(`/api/occupancy/list?property_name=${encodeURIComponent(selectedProperty)}`);
       const json = await res.json();
-      setSnapshots(json.status === "success" ? json.data : []);
+      const rows: SnapshotRow[] = json.status === "success" ? json.data : [];
+      setSnapshots(rows);
+      return rows;
     } catch {
       setSnapshots([]);
+      return [];
     }
   }, [selectedProperty]);
 
@@ -546,7 +569,7 @@ export default function RevenuePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedProperty]);
 
-  const fetchReport = useCallback(async (overrideSnapshot?: string) => {
+  const fetchReport = useCallback(async (overrideSnapshotId?: string) => {
     if (!selectedProperty) return;
     setLoading(true);
     setError(null);
@@ -557,8 +580,16 @@ export default function RevenuePage() {
         // tabs. An older snapshot captured before the Rate tab existed
         // just comes back without a "rate" key; the Rate tab's own empty
         // state below handles that.
-        const url = `/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${overrideSnapshot ?? snapshotDate}`;
-        const res = await fetch(url);
+        //
+        // id addresses one exact row - required now that occupancy captures
+        // twice a day, so a date alone can't tell two rows apart. The
+        // synthetic "today, not captured yet" placeholder (snapshotId "")
+        // has no row yet, so it falls back to date=today instead, which
+        // GET /managed resolves to that date's newest capture if one exists.
+        const chosen = overrideSnapshotId ?? snapshotId;
+        const params = new URLSearchParams({ property_name: selectedProperty });
+        if (chosen) params.set("id", chosen); else params.set("date", todayStr);
+        const res = await fetch(`/api/occupancy/managed?${params}`);
         const json = await res.json();
         if (!res.ok || json.status !== "success") {
           throw new Error(json.detail || json.message || "Could not load the occupancy report");
@@ -589,45 +620,63 @@ export default function RevenuePage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedProperty, dataSource, snapshotDate, startDate, endDate]);
+  }, [selectedProperty, dataSource, snapshotId, todayStr, startDate, endDate]);
 
   // Loads the snapshot immediately before whichever report is on screen, to
-  // diff against. In NHG mode that's the stored snapshot before the selected
-  // date; in MEWS mode (a live, unsaved outlook) the newest stored snapshot is
+  // diff against. In NHG mode that's the next-older row after the selected
+  // one in `snapshots` (already newest-first by synced_at) - same-day
+  // (13:00 vs that day's own 08:00) or cross-day, whichever it actually is;
+  // in MEWS mode (a live, unsaved outlook) the newest stored snapshot is
   // the closest thing to "the position as of the last capture". Failures are
   // silent on purpose - no baseline just means the calendar shows every stop
   // as existing rather than breaking the page.
   useEffect(() => {
     if (!report || !selectedProperty || snapshots.length === 0) {
       setBaseline(null);
-      setBaselineDate(null);
+      setBaselineSnapshot(null);
       return;
     }
-    const currentDate = dataSource === "database" ? snapshotDate : null;
-    const prior = currentDate
-      ? snapshots.find((s) => s.date < currentDate && s.synced_at)
-      : snapshots.find((s) => s.synced_at);
+    let prior: SnapshotRow | undefined;
+    if (dataSource === "database") {
+      if (snapshotId) {
+        const idx = snapshots.findIndex((s) => String(s.id) === snapshotId);
+        prior = idx >= 0 ? snapshots[idx + 1] : undefined;
+      } else {
+        // The synthetic "today, not captured yet" placeholder is selected -
+        // compare against the newest REAL capture, whatever day it's from.
+        prior = snapshots.find((s) => s.date < todayStr);
+      }
+    } else {
+      prior = snapshots[0];
+    }
     if (!prior) {
       setBaseline(null);
-      setBaselineDate(null);
+      setBaselineSnapshot(null);
       return;
     }
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&date=${prior.date}`);
+        const res = await fetch(`/api/occupancy/managed?property_name=${encodeURIComponent(selectedProperty)}&id=${prior!.id}`);
         const json = await res.json();
         const ok = res.ok && json.status === "success";
         if (!cancelled) {
           setBaseline(ok ? json.data : null);
-          setBaselineDate(ok ? prior.date : null);
+          setBaselineSnapshot(ok ? prior! : null);
         }
       } catch {
-        if (!cancelled) { setBaseline(null); setBaselineDate(null); }
+        if (!cancelled) { setBaseline(null); setBaselineSnapshot(null); }
       }
     })();
     return () => { cancelled = true; };
-  }, [report, selectedProperty, snapshots, dataSource, snapshotDate]);
+  }, [report, selectedProperty, snapshots, dataSource, snapshotId, todayStr]);
+
+  // The calendar date the "Snapshot Date" dropdown is currently on -
+  // derived from whichever row snapshotId points at, or today for the
+  // synthetic "not captured yet" placeholder. Used for the Import button's
+  // target date and the printed "Report as of" label, both of which only
+  // ever needed a date, never a specific capture instant.
+  const selectedDate = (snapshotId && snapshots.find((s) => String(s.id) === snapshotId)?.date) || todayStr;
 
   const handleImport = async () => {
     if (!selectedProperty) return;
@@ -637,13 +686,18 @@ export default function RevenuePage() {
       const res = await fetch("/api/occupancy/sync-manual", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ property_name: selectedProperty, start_date: snapshotDate, end_date: snapshotDate }),
+        body: JSON.stringify({ property_name: selectedProperty, start_date: selectedDate, end_date: selectedDate }),
       });
       const json = await res.json();
       if (!res.ok || json.status !== "success") throw new Error(json.detail || "Import failed");
       if (json.errors?.length) throw new Error(json.errors[0]);
-      await loadSnapshots();
-      if (dataSource === "database") await fetchReport();
+      // Newest-first (see GET /list), so if this date already held a
+      // capture too, .find grabs the one just inserted - it has the
+      // latest synced_at of the bunch.
+      const freshList = await loadSnapshots();
+      const justImported = freshList.find((s) => s.date === selectedDate);
+      if (justImported) setSnapshotId(String(justImported.id));
+      if (dataSource === "database") await fetchReport(justImported ? String(justImported.id) : undefined);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Import failed");
     } finally {
@@ -762,10 +816,10 @@ export default function RevenuePage() {
   // (whichever stored snapshot is selected in NHG mode, or today in MEWS
   // live mode), not the comparison baseline shown alongside the legend.
   const reportAsOf = useMemo(() => {
-    const d = dataSource === "database" ? snapshotDate : iso(new Date());
+    const d = dataSource === "database" ? selectedDate : iso(new Date());
     const [y, m, day] = d.split("-");
     return `${day}/${m}/${y}`;
-  }, [dataSource, snapshotDate]);
+  }, [dataSource, selectedDate]);
 
   // The full Stop Sale Chart, in export-ready shape - every month, honoring
   // each month's own Room Types selection, built from the same dayState()
@@ -813,13 +867,14 @@ export default function RevenuePage() {
     window.print();
   };
 
-  const snapshotOptions = (() => {
-    const byDate = new Map(snapshots.map((s) => [s.date, s]));
-    if (!byDate.has(snapshotDate)) {
-      byDate.set(snapshotDate, { date: snapshotDate, synced_at: null, nights: 0, categories: 0, first_night_percent: null });
-    }
-    return Array.from(byDate.values()).sort((a, b) => (a.date < b.date ? 1 : -1));
-  })();
+  // `snapshots` already comes back newest-first (see GET /list, ordered by
+  // synced_at) - no re-sort needed. Only addition: a synthetic "today, not
+  // captured yet" placeholder (id null) when today has no real row at all,
+  // so the dropdown still has something to be sitting on and the Import
+  // button has a date to target.
+  const snapshotOptions: SnapshotRow[] = snapshots.some((s) => s.date === todayStr)
+    ? snapshots
+    : [{ id: null, date: todayStr, synced_at: null, nights: 0, categories: 0, first_night_percent: null }, ...snapshots];
 
   return (
     <div className="flex-1 p-4 sm:p-6 md:p-8 bg-[var(--bg-primary)] font-sans h-full overflow-auto">
@@ -887,12 +942,12 @@ export default function RevenuePage() {
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Snapshot Date</label>
               <div className="relative">
                 <select
-                  value={snapshotDate}
-                  onChange={(e) => { setSnapshotDate(e.target.value); fetchReport(e.target.value); }}
+                  value={snapshotId}
+                  onChange={(e) => { setSnapshotId(e.target.value); fetchReport(e.target.value); }}
                   className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
                 >
                   {snapshotOptions.map((s) => (
-                    <option key={s.date} value={s.date}>{snapshotLabel(s)}</option>
+                    <option key={s.id ?? "pending"} value={s.id ?? ""}>{snapshotLabel(s)}</option>
                   ))}
                 </select>
                 <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
@@ -922,7 +977,7 @@ export default function RevenuePage() {
         <p className="mt-3 text-[11px] text-[var(--text-primary)]/45 leading-relaxed max-w-4xl">
           {dataSource === "live"
             ? "MEWS mode asks MEWS for any range you like, right now."
-            : "NHG mode reads the snapshot captured at 08:00 Bangkok that morning, which freezes the outlook for the year ahead - so this morning's booking pace can be compared against an earlier one."}
+            : "NHG mode reads a snapshot captured at 08:00 or 13:00 Bangkok, which freezes the outlook for the year ahead as it stood at that moment - so pick a capture below to compare its booking pace against an earlier one."}
         </p>
         </CollapsibleSection>
 
@@ -1210,9 +1265,9 @@ export default function RevenuePage() {
 
                       <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
                         <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
-                          {baseline && baselineDate
-                            ? `compared against ${baselineDate}${(() => {
-                                const t = fmtTime(snapshots.find((s) => s.date === baselineDate)?.synced_at);
+                          {baseline && baselineSnapshot
+                            ? `compared against ${baselineSnapshot.date}${(() => {
+                                const t = fmtTime(baselineSnapshot.synced_at);
                                 return t ? ` · captured ${t}` : "";
                               })()}`
                             : "no earlier snapshot to compare — every stop shown as existing"}

@@ -184,9 +184,12 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
 # above it reads nothing but occupancy_sync, diffing each property's two
 # newest snapshots - see stop_sale_alert_service.
 #
-# 09:00 Asia/Bangkok by default: the snapshots it compares are captured by
-# daily_auto_sync_occupancy at 08:00, so anything earlier would either
-# re-send yesterday's comparison or race the capture that feeds it.
+# 09:00 Asia/Bangkok by default: occupancy's morning capture
+# (daily_auto_sync_occupancy) lands at 08:00 - a send any earlier would
+# either re-send the previous comparison or race that capture. Occupancy
+# also captures again at 13:00 (daily_auto_sync_occupancy_pm) - this mail
+# still runs once a day and simply diffs whatever two captures are newest
+# at send time, same as always.
 STOP_SALE_TEMPLATE_KEY = "revenue_stop_sale_alert"
 DEFAULT_STOP_SALE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
 DEFAULT_STOP_SALE_HOUR = 9

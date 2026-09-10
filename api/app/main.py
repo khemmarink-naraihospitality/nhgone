@@ -565,18 +565,23 @@ async def daily_auto_sync_st_files(match_hour_only: bool = False):
                 _log_sync(p["property_name"], p["id"], "ST Files", "error", 0,
                           f"Auto ST Files Sync Failed: sync lock still busy for {report_date_str}", "auto")
 
-async def daily_auto_sync_occupancy(match_hour_only: bool = False):
+async def _run_occupancy_capture(match_hour_only: bool, hour_col: str, minute_col: str, last_date_col: str, label: str):
     """
-    Occupancy's own auto-import schedule (occupancy_sync_enabled /
-    occupancy_sync_hour / occupancy_sync_minute on property_api_settings,
-    defaulted to 08:00 Asia/Bangkok for every property) - a fourth
-    independent clock alongside daily_auto_sync, ST Files and RR4/TM30, for
-    the same reason those have their own.
+    Shared body for occupancy's two daily captures (08:00 and 13:00
+    Asia/Bangkok - see daily_auto_sync_occupancy/daily_auto_sync_occupancy_pm
+    below), a fifth and sixth independent clock alongside daily_auto_sync,
+    ST Files and RR4/TM30, for the same reason those have their own.
+
+    Two captures a day need two independent (hour, minute, last_date)
+    triples, not one - a single occupancy_sync_last_date would make the
+    13:00 run refuse to fire because the 08:00 run already "used up" today.
+    hour_col/minute_col/last_date_col pick which triple this call reads and
+    writes, so the two callers can never see each other's marker.
 
     Captures TODAY forward, not yesterday: this is a booking-pace report, so
-    the value of a morning snapshot is the outlook it freezes, and the whole
-    point of keeping them is being able to compare this morning's curve with
-    last week's. That is the opposite of daily_auto_sync_st_files, which
+    the value of a snapshot is the outlook it freezes, and the whole point
+    of keeping several is being able to compare one capture's curve with an
+    earlier one's. That is the opposite of daily_auto_sync_st_files, which
     captures a day only once it has finished happening.
 
     Same match_hour_only split as the others: exact minute match locally
@@ -589,25 +594,25 @@ async def daily_auto_sync_occupancy(match_hour_only: bool = False):
 
     try:
         query = sync_service.supabase.table("property_api_settings") \
-            .select("id, property_name, occupancy_sync_hour, occupancy_sync_minute, occupancy_sync_last_date") \
+            .select(f"id, property_name, {hour_col}, {minute_col}, {last_date_col}") \
             .eq("occupancy_sync_enabled", True)
         if match_hour_only:
-            query = query.eq("occupancy_sync_hour", now.hour).lte("occupancy_sync_minute", now.minute)
+            query = query.eq(hour_col, now.hour).lte(minute_col, now.minute)
         else:
-            query = query.eq("occupancy_sync_hour", now.hour).eq("occupancy_sync_minute", now.minute)
+            query = query.eq(hour_col, now.hour).eq(minute_col, now.minute)
         items = query.execute().data or []
     except Exception as e:
         # Swallows a missing-column error gracefully (migration not run yet)
         # rather than taking down this whole background task.
-        print(f"Error in daily_auto_sync_occupancy (fetching properties): {str(e)}")
+        print(f"Error in {label} occupancy auto-import (fetching properties): {str(e)}")
         return
 
     today_str = now.date().isoformat()
-    items = [p for p in items if p.get("occupancy_sync_last_date") != today_str]
+    items = [p for p in items if p.get(last_date_col) != today_str]
     if not items:
         return
 
-    print(f"[{now.isoformat()}] Occupancy auto-import: {len(items)} propert(y/ies) scheduled...")
+    print(f"[{now.isoformat()}] Occupancy auto-import ({label}): {len(items)} propert(y/ies) scheduled...")
 
     async def import_one(p) -> bool:
         """False only when the lock was unavailable - i.e. worth retrying."""
@@ -632,10 +637,10 @@ async def daily_auto_sync_occupancy(match_hour_only: bool = False):
                 pass
             try:
                 sync_service.supabase.table("property_api_settings").update(
-                    {"occupancy_sync_last_date": today_str}
+                    {last_date_col: today_str}
                 ).eq("id", prop_id).execute()
             except Exception as mark_err:
-                print(f"Failed to record occupancy_sync_last_date for {prop}: {mark_err}")
+                print(f"Failed to record {last_date_col} for {prop}: {mark_err}")
         return True
 
     # Same deferred-retry pass the other auto-imports use: the every-5-minute
@@ -652,6 +657,25 @@ async def daily_auto_sync_occupancy(match_hour_only: bool = False):
             if not await import_one(p):
                 _log_sync(p["property_name"], p["id"], "Occupancy", "error", 0,
                           f"Auto Occupancy Sync Failed: sync lock still busy for {today_str}", "auto")
+
+async def daily_auto_sync_occupancy(match_hour_only: bool = False):
+    """Occupancy's morning capture (occupancy_sync_enabled/_hour/_minute on
+    property_api_settings, defaulted to 08:00 Asia/Bangkok). See
+    _run_occupancy_capture for the shared body and daily_auto_sync_occupancy_pm
+    for the afternoon capture 6 hours behind it."""
+    await _run_occupancy_capture(match_hour_only, "occupancy_sync_hour", "occupancy_sync_minute",
+                                 "occupancy_sync_last_date", "AM")
+
+async def daily_auto_sync_occupancy_pm(match_hour_only: bool = False):
+    """Occupancy's afternoon capture (occupancy_sync_hour_2/_minute_2,
+    defaulted to 13:00 Asia/Bangkok) - a second capture the same day so a
+    revenue manager can see how much moved since the morning, not just
+    since yesterday. Shares occupancy_sync_enabled with the morning capture
+    (one on/off switch for the feature) but its own hour/minute/last_date
+    columns, so the two runs can never block each other - see
+    _run_occupancy_capture's own docstring for why that matters."""
+    await _run_occupancy_capture(match_hour_only, "occupancy_sync_hour_2", "occupancy_sync_minute_2",
+                                 "occupancy_sync_last_date_2", "PM")
 
 async def daily_auto_sync_rr4_tm30(match_hour_only: bool = False):
     """
@@ -1464,9 +1488,11 @@ async def start_scheduler():
     scheduler.add_job(retry_scheduled_syncs, 'cron', second=0)
     # ST Files' own independent schedule (st_files_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_st_files, 'cron', second=0)
-    # Occupancy/Revenue's own independent schedule (occupancy_sync_hour/minute,
-    # 08:00 Asia/Bangkok by default).
+    # Occupancy/Revenue's own independent schedule - two captures a day,
+    # 08:00 and 13:00 Asia/Bangkok by default (occupancy_sync_hour/minute
+    # and _hour_2/_minute_2).
     scheduler.add_job(daily_auto_sync_occupancy, 'cron', second=0)
+    scheduler.add_job(daily_auto_sync_occupancy_pm, 'cron', second=0)
     # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
     scheduler.add_job(daily_auto_sync_rr4_tm30, 'cron', second=0)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
@@ -1519,8 +1545,10 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # can match the MEWS export time behind each property's ST sheet exactly;
     # see daily_auto_sync_st_files' own docstring. Leaving it here as well
     # would let this */5 tick claim the day a few seconds off that time.
-    # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
+    # Occupancy's own two captures a day - 08:00 and 13:00 Asia/Bangkok.
     background_tasks.add_task(daily_auto_sync_occupancy, match_hour_only=True)
+    background_tasks.add_task(daily_auto_sync_occupancy_pm, match_hour_only=True)
+    # RR4/TM30's own independent schedule (rr4_tm30_sync_hour/minute).
     background_tasks.add_task(daily_auto_sync_rr4_tm30, match_hour_only=True)
     # RV Files' own independent schedule (rv_sync_hour/rv_sync_minute).
     background_tasks.add_task(daily_auto_sync_rv, match_hour_only=True)
