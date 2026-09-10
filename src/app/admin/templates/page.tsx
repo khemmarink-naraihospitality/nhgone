@@ -26,14 +26,14 @@ type TemplateType =
 // pill instead of every member getting its own top-level tab, so the row
 // doesn't grow a new pill every time another one is added. Groups with a
 // single child behave exactly like a plain tab (no sub-tab row for them).
-type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files" | "rr4_tm30_files";
+type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files" | "rr4_tm30_files" | "revenue";
 
 const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateType[] }> = {
   billing: { label: "Billing", children: ["billing"] },
   rr3: { label: "RR3", children: ["rr3"] },
   system_email: {
     label: "System Email",
-    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "st_compare_email", "rr4_compare_email", "stop_sale_email"],
+    children: ["email", "internal_welcome_email", "password_reset_email", "google_signin_notice_email", "approved_email", "st_compare_email", "rr4_compare_email"],
   },
   statistic_files: {
     label: "Statistic Files",
@@ -42,6 +42,14 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   rr4_tm30_files: {
     label: "RR4 / TM30 Files",
     children: ["rr4_tm30_email", "rr4_tm30_email_per_property"],
+  },
+  // Its own top-level pill rather than living inside System Email - that
+  // group's sub-tab row was already 7 wide and this one is about a
+  // different page (Revenue) entirely, not an account-lifecycle or
+  // sheet-verification mail like the rest of that group.
+  revenue: {
+    label: "Revenue",
+    children: ["stop_sale_email"],
   },
 };
 
