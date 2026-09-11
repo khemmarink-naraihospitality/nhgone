@@ -22,6 +22,7 @@ compared and are reported as skipped rather than silently dropped.
 import asyncio
 import io
 import os
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -101,9 +102,17 @@ def _hour(ts, parse_utc, tz):
     return t.astimezone(tz).hour if t else None
 
 
+# Was sync_service._ST_WALK_IN_RATE_RE until the walk-in arm of the day-use
+# rule was retired (10-Sep-2026 measurement put walk-in day rooms on the
+# EXCLUDED side, see _ST_DAY_USE_ARRIVAL_END_HOUR). Kept here, inline, so the
+# candidate rules below that still test a walk-in arm can be scored against
+# the new evidence rather than silently dropping out of the sweep.
+_WALK_IN_RATE_RE = re.compile(r"\bwalk[\s-]*in\b", re.IGNORECASE)
+
+
 def _walk_in(res, rates_by_id):
     name = (rates_by_id.get(res.get("RateId"), {}) or {}).get("Name") or ""
-    return bool(ss_mod._ST_WALK_IN_RATE_RE.search(name))
+    return bool(_WALK_IN_RATE_RE.search(name))
 
 
 def make_rules():

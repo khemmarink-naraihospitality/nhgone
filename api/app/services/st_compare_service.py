@@ -305,20 +305,19 @@ async def build_comparison(want_date: str = None) -> dict:
             else:
                 note = f"{short} {ov - sv:+d}"
                 # Arrivals is the one metric with a KNOWN, named source of
-                # drift: the day-use night-tail rule (sync_service's
-                # _ST_DAY_USE_NIGHT_END_HOUR) holds back same-day-checkout
-                # stays that started before its cutoff, and MEWS's own
-                # classification of those isn't purely hour-based - see that
-                # rule's own comment for the contradictory evidence. Surfacing
-                # the count here doesn't claim it explains the whole gap
-                # (the exclusion count and the sheet gap can differ, e.g. a
-                # separate bug on top), just saves whoever reads this mail
-                # from re-deriving "is this the day-use thing again?" by hand
-                # every single day.
+                # drift: the day-use rule (sync_service's
+                # _ST_DAY_USE_ARRIVAL_END_HOUR) holds back same-day-checkout
+                # stays whose real check-in lands after its cutoff - they
+                # never touched the night, so MEWS doesn't call them
+                # arrivals either. Surfacing the count here doesn't claim it
+                # explains the whole gap (the exclusion count and the sheet
+                # gap can differ, e.g. a separate bug on top), just saves
+                # whoever reads this mail from re-deriving "is this the
+                # day-use thing again?" by hand every single day.
                 if key == "arrivals":
                     excluded = ou.get("day_use_arrivals_excluded", 0)
                     if excluded:
-                        note += f" ({excluded} day-use excluded as night-tail)"
+                        note += f" ({excluded} day-use excluded as day room)"
                 # Which space categories the total is short (or long) on. The
                 # sheet publishes Arrivals and Departures per category on their
                 # own tabs; every other metric has only the one total, so this

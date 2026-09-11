@@ -215,53 +215,42 @@ _RR3_PROPERTY_THAI_NAMES = {
     "Marasca Samui": "มาราสก้า สมุย",
 }
 
-# Local hour before which a zero-night ("day use") stay is read as the tail of
-# the PREVIOUS night rather than a daytime day room. See the block in
-# get_st_files_report that uses it for the evidence on both sides.
+# A zero-night ("day use") stay counts as an ARRIVAL only when the guest was
+# ALREADY IN HOUSE as the night rolled over - i.e. their real check-in is
+# before this local hour. Later in the morning they are a day room that never
+# touched the night at all: still a departure (they check out during the day),
+# never an arrival. See the block in get_st_files_report that uses it.
 #
-# Bounded, not derived: a 02:00 start is a night tail (Siem Reap #149736/#149737,
-# 26-Aug-2026) so this must be > 2, and a 04:30 start is a day room (Patong
-# #190439/#190440, 30-Aug-2026 - both counted as arrivals by MEWS's own export)
-# so it must be <= 4. That leaves 3 or 4; 4 is chosen as the wider reading of
-# "still night". The 30-Aug pair is what pulled this down from 6, which had
-# been inferred against a much looser upper bound of 10:00 and was costing
-# Patong two arrivals a day.
-_ST_DAY_USE_NIGHT_END_HOUR = 4
-
-# ...but the hour alone was never the whole rule, and a WALK-IN overrides it.
+# Measured the only way that can be trusted - a CACHED import against the same
+# morning's sheet, all 8 properties, the two frozen 22 minutes apart
+# (10-Sep-2026, our import 19:21Z, the sheets exported 18:59-19:24Z, and
+# nothing was created or cancelled in between). Every day-use stay in the
+# estate that morning, with MEWS's own per-category Arrivals export as the
+# answer:
 #
-# A guest who walks up to the desk at 02:00 and takes a room for the day is an
-# arrival however early it is - MEWS counts them - while a booking that merely
-# ENDS in those hours is the tail of the night before. The rate name is what
-# separates the two, and it separates them better than any hour can: scored
-# against all 14 day-use stays whose true answer is known from MEWS's own
-# per-category Arrivals export (26-Aug, 30-Aug and 04-Sep-2026), the hour rule
-# alone gets 10 and "walk-in rate OR hour >= 4" gets 13 - and the three it adds
-# are strictly extra, its misses being a subset of the hour rule's.
+#   counted by MEWS      Chinatown #97796  actual 00:21   Siam #72034  actual 00:22
+#   NOT counted by MEWS  Siem Reap #151359 actual 01:16   #151361 actual 03:58
+#                        Chinatown #97770  actual 04:02
 #
-# 04-Sep-2026 is what forced this: Siam filed 24 arrivals to our 22 and Siem
-# Reap 117 to our 116, and the sheets' own Arrivals tabs put every unit of both
-# gaps on one category each (Siam UPG 2/0, Siem Reap DKR 21/20). Those were
-# exactly three 'Walk In Room Only' day rooms starting 02:00, 02:00 and 00:36 -
-# while the OTA and Advance Purchase stays alongside them, starting 01:28,
-# 00:10 and 00:18, were correctly left out by BOTH sides.
+# Chinatown #97796 and #97770 are what pin it to the ACTUAL check-in rather
+# than the scheduled one: same StartUtc (00:00), same category, same
+# ChannelManager origin, same rate family, same state - MEWS counts one and
+# not the other, and ActualStartUtc is the only field on the two that differs
+# at all. That also retires the "irreducible pair" noted here previously
+# (Chinatown #96148/#96160, 30-Aug-2026, both 00:00): they were never
+# irreducible, they were being compared on the wrong timestamp.
 #
-# The one case still unexplained is the documented irreducible pair: Chinatown
-# #96148 and #96160, 30-Aug-2026, both 00:00, both "Static Room Only B2B",
-# neither a walk-in, and MEWS counted the first and not the second. No field on
-# the two reservations separates them, so no rule expressible here can.
-#
-# Matched on the rate NAME because that is what the property actually types;
-# the three live variants are "Walk In Room Only", "Walk In Room with
-# Breakfast" and "Walk In with Breakfast", and nothing else in any property's
-# rate list contains the word. Deliberately NOT the business segment: "Direct
-# Host" covers walk-ins but also covers Extend Stay and B2B rows that MEWS
-# leaves out (Siem Reap #149737, Chinatown #96160), and scored worse.
-#
-# Word-bounded so a rate that merely CONTAINS the letters can't trip it - an
-# unanchored search matched "Sidewalk Inn". Nothing like that is in any
-# property's rate list today, but a rate name is free text somebody types.
-_ST_WALK_IN_RATE_RE = re.compile(r"\bwalk[\s-]*in\b", re.IGNORECASE)
+# The boundary itself is only bounded, not derived: it sits somewhere in
+# (00:22, 01:16], and 01:00 is the round hour inside that window. Two older
+# readings disagree with it - Samui #184016 (10:00-17:00, 27-Aug) and Patong
+# #190439/#190440 (04:40, 04:38, 30-Aug) were all recorded as counted - but
+# both were inferred from a total moving by one or two rather than from a
+# named reservation, which is exactly the mistake #97796/#97770 shows that
+# inference to be: a category total that is short by one says nothing about
+# WHICH row is missing. Those sheets have long since rolled over and cannot be
+# re-checked. If this resurfaces, re-measure the same way (cached import, same
+# morning's sheet, name the reservation) and never against live MEWS.
+_ST_DAY_USE_ARRIVAL_END_HOUR = 1
 
 # Offline test seam for the ST arrivals rule - see where it is read in
 # get_st_files_report. Production leaves this None and nothing in the app ever
@@ -3026,27 +3015,28 @@ class SyncService:
         # spreadsheet snapshot. ActualStartUtc lives only on the 2023-06-06
         # endpoint, which cannot embed Customers/Resources - hence the second
         # narrow call by ReservationIds, the same one get_rr3_cards makes.
-        # Fetched ONLY for the offline rule sweep - production reads
-        # StartUtc and never needs this, so the extra round trip is not paid
-        # on the nightly import. scripts/st_arrival_sweep.py sets the seam,
-        # which is what turns this on.
+        # Paid on every import now, not only the offline sweep: the day-use
+        # arrival rule reads the REAL check-in (see
+        # _ST_DAY_USE_ARRIVAL_END_HOUR), which is the only field separating a
+        # day room MEWS counts as an arrival from one it does not. A failure
+        # here degrades to StartUtc rather than failing the report - that is
+        # the reading this had before the rule existed.
         actual_start = {}
-        if _ST_ARRIVAL_RULE is not None:
-            _ids = [r["Id"] for r in reservations if r.get("Id")]
-            for _i in range(0, len(_ids), 1000):
-                _batch = _ids[_i:_i + 1000]
-                try:
-                    _ar = await mews_client.post(
-                        "/api/connector/v1/reservations/getAll/2023-06-06",
-                        {"ReservationIds": _batch, "Limitation": {"Count": len(_batch)}},
-                        property_name=property_name,
-                    )
-                    for _r in _ar.get("Reservations", []):
-                        if _r.get("Id") and _r.get("ActualStartUtc"):
-                            actual_start[_r["Id"]] = _r["ActualStartUtc"]
-                except Exception as e:
-                    logger.warning(
-                        f"ST Files: could not read ActualStartUtc for {property_name}: {e}")
+        _ids = [r["Id"] for r in reservations if r.get("Id")]
+        for _i in range(0, len(_ids), 1000):
+            _batch = _ids[_i:_i + 1000]
+            try:
+                _ar = await mews_client.post(
+                    "/api/connector/v1/reservations/getAll/2023-06-06",
+                    {"ReservationIds": _batch, "Limitation": {"Count": len(_batch)}},
+                    property_name=property_name,
+                )
+                for _r in _ar.get("Reservations", []):
+                    if _r.get("Id") and _r.get("ActualStartUtc"):
+                        actual_start[_r["Id"]] = _r["ActualStartUtc"]
+            except Exception as e:
+                logger.warning(
+                    f"ST Files: could not read ActualStartUtc for {property_name}: {e}")
 
         # 6b. Complimentary count - Rate AND Segment, see _is_complimentary
         # above for the sheet formula both of them come from.
@@ -3289,59 +3279,28 @@ class SyncService:
             # genuinely answer different questions here.
             sched_day_use = sched_arrives and departs
             # A zero-night ("day use") stay ALWAYS counts as a departure; what
-            # varies is whether it also counts as an arrival, and that turns on
-            # the hour it started. Measured across three days:
-            #  - 26-Aug-2026: four stays that began 00:00-02:00 and ended that
-            #    same morning (Chinatown #95528, Siam #71156, Siem Reap #149736
-            #    and #149737) were counted as DEPARTURES only. They are the tail
-            #    of the night before - the guest walked in after midnight and
-            #    left the same morning - so their arrival was already filed
-            #    against the previous day.
-            #  - 27-Aug-2026: Samui #184016, a 10:00-17:00 day room, was counted
-            #    as an ARRIVAL only. Confirmed twice over: that sheet's own MEWS
-            #    "Reservation" tab lists 11 DKR arrivals against the Availability
-            #    tab's 12, and the one it omits is exactly this stay (the tab
-            #    covers in-house guests, and a day room has already left).
-            #  - 30-Aug-2026: Patong #190439 (04:40-07:33) and #190440
-            #    (04:38-11:33) were counted on BOTH sides - that sheet files 63
-            #    arrivals and 80 departures, and no one-side-only rule reaches
-            #    both numbers. This is what retired the previous "exactly one
-            #    side" model and pulled the cutoff down from 6, which had been
-            #    inferred against a much looser upper bound.
-            # Multi-night stays are untouched - a 00:00-02:00 check-in that DOES
-            # stay the night is an ordinary arrival (Siem Reap #149665,
-            # Chinatown #95502).
+            # varies is whether it ALSO counts as an arrival, and that turns on
+            # whether the guest was already in house as the night rolled over -
+            # their REAL check-in, not the scheduled one. See
+            # _ST_DAY_USE_ARRIVAL_END_HOUR for the measurement that fixes both
+            # the field and the boundary.
             #
-            # Two of the nine measured stays still come out wrong, and both are
-            # on the departure side or unexplainable by any hour: Samui #184016
-            # (counted as an arrival but NOT a departure) and Chinatown #96148
-            # below. 16 of 18 arrival/departure decisions is the best any tested
-            # rule managed; the earlier split forms scored 15 and "count on both
-            # sides always" scored 12.
+            # Multi-night stays are untouched - a 00:30 check-in that DOES stay
+            # the night is an ordinary arrival either way.
             #
-            # Known unexplained, and part of that remaining 2 of 18:
-            # Chinatown #96148 and #96160 both started 00:00 on 30-Aug (actual
-            # check-ins 00:12 and 01:43) and MEWS counted the FIRST as an
-            # arrival and the second not. No field on the two reservations
-            # separates them - same state, origin, rate, creator, both walk-ins
-            # created the evening before - so no hour cutoff can express it and
-            # Chinatown reads one arrival short on days like that.
-            night_tail = False
+            # ActualStartUtc is missing on a reservation MEWS never checked in
+            # (it stays None until someone presses the button). Falling back to
+            # StartUtc keeps such a row on the reading it had before this rule
+            # existed rather than silently dropping it: a day-use stay nobody
+            # ever checked in has no real arrival moment to test.
+            day_room = False
             if day_use:
-                started = parse_utc(res.get("StartUtc"))
-                # A walk-in is an arrival at any hour - somebody physically
-                # turned up at the desk and took a room - so it is never the
-                # tail of the night before, however early it starts. See
-                # _ST_WALK_IN_RATE_RE for the 14 measured cases this beats the
-                # bare hour cutoff on.
-                walk_in = bool(_ST_WALK_IN_RATE_RE.search(
-                    (rates_by_id.get(res.get("RateId"), {}) or {}).get("Name") or ""))
-                night_tail = (not walk_in
-                              and started.astimezone(property_tz).hour < _ST_DAY_USE_NIGHT_END_HOUR)
+                started = parse_utc(actual_start.get(res.get("Id")) or res.get("StartUtc"))
+                day_room = started.astimezone(property_tz).hour >= _ST_DAY_USE_ARRIVAL_END_HOUR
             # Test seam. When _ST_ARRIVAL_RULE is set (only ever by the
             # offline rule-sweep in scripts/, never in production - it is None
             # here and nothing in the app assigns it), that callable decides
-            # the arrival outright and the day-use/night-tail pair above is
+            # the arrival outright and the day_use/day_room pair above is
             # bypassed. It exists so a candidate rule can be scored using this
             # function's REAL category and space-unit resolution rather than a
             # re-implementation of it, which is how the previous rules got
@@ -3350,11 +3309,11 @@ class SyncService:
                 arrives = bool(_ST_ARRIVAL_RULE(
                     res, actual_start.get(res.get("Id")), in_window, parse_utc,
                     property_tz, rates_by_id, day_start_utc, day_end_utc))
-                day_use = night_tail = False
-            if arrives and not (day_use and night_tail):
+                day_use = day_room = False
+            if arrives and not (day_use and day_room):
                 arrivals.append({**reservation_row(res), "spaces": units})
                 arrivals_count += units
-            elif arrives and day_use and night_tail:
+            elif arrives and day_use and day_room:
                 day_use_arrivals_excluded += units
             # Departures take EVERY zero-night stay, whichever side of the
             # cutoff it started. The earlier "one side only" split was wrong
