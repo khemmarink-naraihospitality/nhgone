@@ -375,14 +375,14 @@ async def set_user_password(user_id: str, request: SetPasswordRequest):
     forgot-password email flow (POST /auth/forgot-password), or IT wants to
     hand someone a password in person rather than by email.
 
-    Works regardless of the account's own auth_method: Supabase Auth's
-    password exists independently of that column, which only steers which
-    flow THIS APP'S OWN login page points a user through. Setting a password
-    on a "google" account therefore does something real - it opens the
-    Internal Auth email/password form on the login page for that address
-    too, alongside their existing Google sign-in, since that form is a plain
+    Internal Auth accounts only. A "google" account's real credential is
+    Google OAuth; Supabase Auth's password field on it holds a throwaway
+    random value nobody knows (see POST /users), but it still EXISTS, and
+    setting a real one would open the Internal Auth email/password form on
+    the login page for that address too - a second, unintended sign-in path
+    alongside Google, since that form is a plain
     supabase.auth.signInWithPassword with no auth_method check of its own.
-    The frontend surfaces this to the admin before they confirm.
+    Blocking it here is the one place that actually stops that.
 
     require_change (default True) sets must_change_password, the same
     block-until-changed screen (Navigation.tsx's ForcePasswordChangeScreen)
@@ -392,9 +392,13 @@ async def set_user_password(user_id: str, request: SetPasswordRequest):
         raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
     try:
         admin_supabase = get_supabase_client()
-        existing = admin_supabase.table("profiles").select("id").eq("id", user_id).limit(1).execute()
+        existing = admin_supabase.table("profiles").select("id, auth_method").eq("id", user_id).limit(1).execute()
         if not existing.data:
             raise HTTPException(status_code=404, detail="User not found")
+        if existing.data[0].get("auth_method") != "internal":
+            raise HTTPException(
+                status_code=400,
+                detail="This account signs in with Google - only Internal Auth accounts can have a password set.")
 
         admin_supabase.auth.admin.update_user_by_id(user_id, {"password": request.password})
         admin_supabase.table("profiles").update({
