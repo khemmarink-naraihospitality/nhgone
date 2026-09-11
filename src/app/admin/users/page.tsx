@@ -702,7 +702,14 @@ export default function AdminUsersPage() {
                     </span>
                   </th>
                 ))}
-                <th className="sticky top-0 z-10 bg-slate-50 px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
+                {/* Pinned to the right edge (sticky right-0) rather than
+                    scrolling off with the rest of the table - Set Password/
+                    Edit Profile/Delete otherwise sat past the horizontal
+                    scrollbar on a normal-width window, reachable only by
+                    scrolling the whole table first. shadow-[-4px...] stands
+                    in for a left border that would otherwise be clipped by
+                    the sticky positioning. */}
+                <th className="sticky right-0 top-0 z-20 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -772,13 +779,17 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-5 text-xs text-slate-500 font-medium">
                     {user.created_by || <span className="text-slate-300">—</span>}
                   </td>
-                  <td className="px-6 py-5 text-center relative overflow-visible">
+                  {/* Same sticky right-0 pinning as the header th above, plus
+                      a per-row background (the group-hover row tint would
+                      otherwise show through the gap and look like a seam) -
+                      keeps this reachable without scrolling the table right. */}
+                  <td className={`sticky right-0 z-10 px-4 py-5 text-center relative overflow-visible shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)] ${user.status === 'Pending' ? 'bg-amber-50/50' : 'bg-white group-hover:bg-slate-50/50'}`}>
                      <button
                        onClick={(e) => { e.stopPropagation(); setOpenUserMenuId(openUserMenuId === user.id ? null : user.id); }}
-                       className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-100 hover:border-slate-300 transition-all"
+                       title="Actions"
+                       className="inline-flex items-center justify-center w-8 h-8 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-100 hover:border-slate-300 transition-all"
                      >
-                       Action
-                       <svg className="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                       <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4z" /></svg>
                      </button>
 
                      {/* Action Dropdown Menu */}
