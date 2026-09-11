@@ -706,10 +706,12 @@ export default function AdminUsersPage() {
                     scrolling off with the rest of the table - Set Password/
                     Edit Profile/Delete otherwise sat past the horizontal
                     scrollbar on a normal-width window, reachable only by
-                    scrolling the whole table first. shadow-[-4px...] stands
-                    in for a left border that would otherwise be clipped by
-                    the sticky positioning. */}
-                <th className="sticky right-0 top-0 z-20 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)]">Actions</th>
+                    scrolling the whole table first. A fixed width keeps a
+                    w-full table's leftover space from stretching this column
+                    wide open; no shadow/border - stacked across every row it
+                    read as one long seam down the table instead of a subtle
+                    edge. */}
+                <th className="sticky right-0 top-0 z-20 w-16 bg-slate-50 px-0 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -779,15 +781,17 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-5 text-xs text-slate-500 font-medium">
                     {user.created_by || <span className="text-slate-300">—</span>}
                   </td>
-                  {/* Same sticky right-0 pinning as the header th above, plus
-                      a per-row background (the group-hover row tint would
-                      otherwise show through the gap and look like a seam) -
-                      keeps this reachable without scrolling the table right. */}
-                  <td className={`sticky right-0 z-10 px-4 py-5 text-center relative overflow-visible shadow-[-4px_0_6px_-4px_rgba(0,0,0,0.08)] ${user.status === 'Pending' ? 'bg-amber-50/50' : 'bg-white group-hover:bg-slate-50/50'}`}>
+                  {/* Same sticky right-0 pinning + fixed width as the header
+                      th above. Solid (not /50-opacity) background, matching
+                      each row's own state - a translucent one let the
+                      scrolled-away cells underneath show through at the
+                      edges, which was the visible seam. No shadow/border for
+                      the same reason the header th above dropped it. */}
+                  <td className={`sticky right-0 z-10 w-16 px-0 py-5 text-center relative overflow-visible ${user.status === 'Pending' ? 'bg-amber-50' : 'bg-white'}`}>
                      <button
                        onClick={(e) => { e.stopPropagation(); setOpenUserMenuId(openUserMenuId === user.id ? null : user.id); }}
                        title="Actions"
-                       className="inline-flex items-center justify-center w-8 h-8 bg-slate-50 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-100 hover:border-slate-300 transition-all"
+                       className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
                      >
                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4z" /></svg>
                      </button>
