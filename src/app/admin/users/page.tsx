@@ -337,6 +337,11 @@ export default function AdminUsersPage() {
   };
 
   const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [settingPasswordUser, setSettingPasswordUser] = useState<UserProfile | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [requirePasswordChange, setRequirePasswordChange] = useState(true);
+  const [settingPassword, setSettingPassword] = useState(false);
   const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -414,23 +419,63 @@ export default function AdminUsersPage() {
     }
   };
 
+  // Routed through the backend (service role) rather than a direct
+  // supabase.from("profiles").update() - changing email has to touch the
+  // Supabase Auth user too, which the anon-key client this page otherwise
+  // uses cannot do. See PUT /admin/users/{id}'s own docstring.
   const handleSave = async () => {
     if (!editingUser) return;
-
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        full_name: editingUser.full_name,
-        role: editingUser.role,
-        status: editingUser.status
-      })
-      .eq("id", editingUser.id);
-
-    if (error) {
-      alert("Error updating profile: " + error.message);
-    } else {
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: editingUser.full_name,
+          role: editingUser.role,
+          status: editingUser.status,
+          email: editingUser.email,
+        }),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.detail || result.message || "Update failed");
       setUsers(users.map(u => u.id === editingUser.id ? editingUser : u));
       setEditingUser(null);
+    } catch (err) {
+      alert("Error updating profile: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const generatePassword = () => {
+    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+    let out = "";
+    for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+    setNewPassword(out);
+  };
+
+  const handleSetPassword = async () => {
+    if (!settingPasswordUser || newPassword.length < 8) return;
+    setSettingPassword(true);
+    try {
+      const res = await fetch(`/api/admin/users/${settingPasswordUser.id}/set-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: newPassword, require_change: requirePasswordChange }),
+      });
+      const result = await res.json();
+      if (result.status !== "success") throw new Error(result.detail || result.message || "Failed to set password");
+      alert(
+        `Password set for ${settingPasswordUser.email}.` +
+        (requirePasswordChange ? " They will be asked to change it at next login." : "")
+      );
+      setSettingPasswordUser(null);
+      setNewPassword("");
+    } catch (err) {
+      alert("Error setting password: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSettingPassword(false);
     }
   };
 
@@ -759,6 +804,13 @@ export default function AdminUsersPage() {
                             Edit Profile
                           </button>
                           <button
+                            onClick={() => { setSettingPasswordUser(user); setNewPassword(""); setRequirePasswordChange(true); setOpenUserMenuId(null); }}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
+                          >
+                            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                            Set Password
+                          </button>
+                          <button
                             onClick={() => { setDeletingUser(user); setOpenUserMenuId(null); }}
                             className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
                           >
@@ -955,11 +1007,22 @@ export default function AdminUsersPage() {
               <div className="p-6 space-y-6">
                  <div className="space-y-1">
                     <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Full Name</label>
-                    <input 
+                    <input
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
                       value={editingUser.full_name}
                       onChange={(e) => setEditingUser({...editingUser, full_name: e.target.value})}
                     />
+                 </div>
+
+                 <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Email</label>
+                    <input
+                      type="email"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                      value={editingUser.email}
+                      onChange={(e) => setEditingUser({...editingUser, email: e.target.value})}
+                    />
+                    <p className="text-[10px] text-slate-400 px-1 pt-0.5">Changing this also updates their sign-in email.</p>
                  </div>
 
                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1005,14 +1068,84 @@ export default function AdminUsersPage() {
                  </div>
 
                  <div className="pt-4 flex gap-3">
-                    <button 
+                    <button
                       onClick={handleSave}
-                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all"
+                      disabled={savingEdit}
+                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
                     >
-                      Save Changes
+                      {savingEdit ? "Saving..." : "Save Changes"}
                     </button>
-                    <button 
+                    <button
                       onClick={() => setEditingUser(null)}
+                      className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {/* Set Password Modal */}
+      {settingPasswordUser && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-slate-200">
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                 <h2 className="text-xl font-bold text-slate-800">Set Password</h2>
+                 <button onClick={() => setSettingPasswordUser(null)} className="text-slate-400 hover:text-slate-600">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                 </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                 <p className="text-sm text-slate-500">
+                   Setting a new sign-in password for <span className="font-bold text-slate-700">{settingPasswordUser.email}</span>.
+                   {settingPasswordUser.auth_method !== "internal" && (
+                     <> This account is set up for Google sign-in - setting a password additionally lets them sign in with Internal Auth using it.</>
+                   )}
+                 </p>
+
+                 <div className="space-y-1">
+                    <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">New Password</label>
+                    <div className="flex gap-2">
+                       <input
+                         type="text"
+                         className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-mono text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                         value={newPassword}
+                         onChange={(e) => setNewPassword(e.target.value)}
+                         placeholder="At least 8 characters"
+                       />
+                       <button
+                         type="button"
+                         onClick={generatePassword}
+                         className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all whitespace-nowrap"
+                       >
+                         Generate
+                       </button>
+                    </div>
+                 </div>
+
+                 <label className="flex items-center gap-2 text-sm text-slate-600 px-1">
+                    <input
+                      type="checkbox"
+                      checked={requirePasswordChange}
+                      onChange={(e) => setRequirePasswordChange(e.target.checked)}
+                      className="rounded border-slate-300"
+                    />
+                    Require password change at next login
+                 </label>
+
+                 <div className="pt-2 flex gap-3">
+                    <button
+                      onClick={handleSetPassword}
+                      disabled={settingPassword || newPassword.length < 8}
+                      className="flex-1 bg-[#AAA024] text-white rounded-xl py-2.5 text-sm font-bold shadow-lg shadow-[#AAA024]/20 hover:bg-[#8f871e] transition-all disabled:opacity-50"
+                    >
+                      {settingPassword ? "Setting..." : "Set Password"}
+                    </button>
+                    <button
+                      onClick={() => setSettingPasswordUser(null)}
                       className="flex-1 bg-slate-100 text-slate-600 rounded-xl py-2.5 text-sm font-bold hover:bg-slate-200 transition-all"
                     >
                       Cancel

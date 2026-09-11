@@ -48,6 +48,18 @@ class SelfRegisterRequest(BaseModel):
 class ApproveUserRequest(BaseModel):
     role: str
 
+class UserUpdateRequest(BaseModel):
+    full_name: str
+    role: str
+    status: str
+    email: str
+
+class SetPasswordRequest(BaseModel):
+    password: str
+    # Mirrors the internal-invite flow's must_change_password: on by default
+    # since the admin, not the account holder, chose this value.
+    require_change: bool = True
+
 class SyncScheduleUpdate(BaseModel):
     sync_hour: int
     sync_minute: int
@@ -302,6 +314,94 @@ async def approve_user(user_id: str, request: ApproveUserRequest):
             email_error = str(e)
 
         return {"status": "success", "message": "User approved", "email_sent": email_sent, "email_error": email_error}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/users/{user_id}")
+async def update_user(user_id: str, request: UserUpdateRequest):
+    """
+    Edits a profile's core fields (Admin > User Management > Edit Profile).
+    Routed through the backend rather than the Users tab's former
+    direct-to-Supabase update, because changing EMAIL has to touch the
+    Supabase Auth user too - profiles.email alone would drift from the
+    address the person actually signs in with (Google OAuth matches by
+    email; the Internal Auth form authenticates against Auth's copy, not
+    this table's).
+
+    Auth's email is updated FIRST, with email_confirm=True to skip
+    Supabase's normal double opt-in confirmation link (appropriate here
+    since a Super Admin, not the account holder, is making the change) -
+    profiles.email is only written after that succeeds, so a failed
+    Auth-side change can never leave the two disagreeing.
+    """
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("profiles").select("email").eq("id", user_id).limit(1).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        new_email = request.email.strip()
+        if new_email and new_email != existing.data[0]["email"]:
+            try:
+                admin_supabase.auth.admin.update_user_by_id(
+                    user_id, {"email": new_email, "email_confirm": True})
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f"Could not update sign-in email: {e}")
+
+        payload = {
+            "full_name": request.full_name,
+            "role": request.role,
+            "status": request.status,
+        }
+        if new_email:
+            payload["email"] = new_email
+
+        res = admin_supabase.table("profiles").update(payload).eq("id", user_id).execute()
+        if not res.data:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {"status": "success", "data": res.data[0]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/users/{user_id}/set-password")
+async def set_user_password(user_id: str, request: SetPasswordRequest):
+    """
+    Directly sets a Supabase Auth password for this user - a break-glass
+    action for when an Internal Auth user can't complete the normal
+    forgot-password email flow (POST /auth/forgot-password), or IT wants to
+    hand someone a password in person rather than by email.
+
+    Works regardless of the account's own auth_method: Supabase Auth's
+    password exists independently of that column, which only steers which
+    flow THIS APP'S OWN login page points a user through. Setting a password
+    on a "google" account therefore does something real - it opens the
+    Internal Auth email/password form on the login page for that address
+    too, alongside their existing Google sign-in, since that form is a plain
+    supabase.auth.signInWithPassword with no auth_method check of its own.
+    The frontend surfaces this to the admin before they confirm.
+
+    require_change (default True) sets must_change_password, the same
+    block-until-changed screen (Navigation.tsx's ForcePasswordChangeScreen)
+    an emailed internal-invite password already uses.
+    """
+    if len(request.password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters")
+    try:
+        admin_supabase = get_supabase_client()
+        existing = admin_supabase.table("profiles").select("id").eq("id", user_id).limit(1).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        admin_supabase.auth.admin.update_user_by_id(user_id, {"password": request.password})
+        admin_supabase.table("profiles").update({
+            "must_change_password": request.require_change,
+        }).eq("id", user_id).execute()
+
+        return {"status": "success", "message": "Password updated"}
     except HTTPException:
         raise
     except Exception as e:
