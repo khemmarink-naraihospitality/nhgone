@@ -53,6 +53,18 @@ SHEETS = OrderedDict([
     ("Marasca Samui",                 ("Marasca",   "1YZD0CYpaOwxSiHLa7iH_7bK3ED5CAIhdR2GizwKKwuI")),
 ])
 
+# Kept out of table 1 entirely - its own row AND the Total it feeds.
+#
+# Chinatown cuts its TM30 day at 12:15 where everyone else cuts at ~02:00, so
+# its register deliberately files fewer arrivals than its sheet holds: every
+# guest who arrives before noon belongs to the previous day's filing. That is
+# the configuration working, not a difference to review, but it renders as a
+# red "34 / 30" every single morning - which trains a reader to ignore the one
+# table whose job is to say whether anything is wrong. Chinatown is therefore
+# reported only in table 2 ("What Differs"), where a genuine problem on it
+# still surfaces by name, with the window itself in table 3.
+_SUMMARY_EXCLUDED = {"Lub d Bangkok Chinatown"}
+
 # rowNo is excluded from the comparison: both sides renumber their own rows
 # from 1, and the two exports don't emit guests in the same order (the sheet
 # lists a room's unnamed occupant slot first, we don't), so it would report a
@@ -475,7 +487,7 @@ async def build_comparison(want_date: str = None) -> dict:
     # would paint the Total row red every single morning regardless of
     # whether every other property is clean. Chinatown's own row above the
     # Total is untouched and still shows its real Sheet/NHGOne numbers.
-    totals_rows = [p for p in compared if p["property"] != "Lub d Bangkok Chinatown"]
+    totals_rows = [p for p in compared if p["property"] not in _SUMMARY_EXCLUDED]
     totals = {}
     for kind in ("rr4", "tm30"):
         totals[kind] = {
@@ -521,6 +533,8 @@ def render_text(result: dict) -> str:
     out.append(f"{'Property':<12}{'Date':<12}{'RR4 sheet/ours':<17}{'Diff':<7}"
                f"{'TM30 sheet/ours':<17}Diff")
     for p in result["properties"]:
+        if p["property"] in _SUMMARY_EXCLUDED:
+            continue
         if p["status"] != "ok":
             out.append(f"{p['short']:<12}{(p['date'] or '—'):<12}{p['note']}")
             continue
@@ -538,7 +552,9 @@ def render_text(result: dict) -> str:
     out.append("-" * 88)
 
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
-    out.append(f"Total ({result.get('totals_compared', result['compared'])} properties, Chinatown excluded - see its own row above):")
+    out.append(f"Total ({result.get('totals_compared', result['compared'])} properties, Chinatown not shown "
+               f"- its 12:15 window files fewer TM30 arrivals than its sheet holds by design; "
+               f"anything genuinely wrong on it still appears in section 2):")
     out.append(f"RR4  total {tr['sheet']}/{tr['ours']} rows · paired {tr['paired']} · fully matched "
                f"{tr['clean_rows']} · real diff {tr['diff_rows']} · known drift {tr['drift_rows']} · "
                f"only in sheet {tr['only_sheet']} · only in NHGOne {tr['only_ours']}")
@@ -726,6 +742,8 @@ def render_summary_table(result: dict) -> str:
          f'<th style="{_TH}">RR4 &mdash; Google Sheet / NHGOne</th>'
          f'<th style="{_TH}">TM30 &mdash; Google Sheet / NHGOne</th></tr>']
     for p in result["properties"]:
+        if p["property"] in _SUMMARY_EXCLUDED:
+            continue
         h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{p["short"]}</td>')
         if p["status"] != "ok":
             h.append(f'<td style="{_TD}" colspan="3">'
@@ -740,7 +758,8 @@ def render_summary_table(result: dict) -> str:
     tr, tt = result["totals"]["rr4"], result["totals"]["tm30"]
     h.append(f'<tr style="background:#f1f5f9"><td style="{_TD}font-weight:700">Total</td>'
              f'<td style="{_TD}{_MUTED}">{result.get("totals_compared", result["compared"])} properties'
-             f'<span style="font-weight:400;font-size:11px"> (Chinatown excluded - see its own row)</span></td>')
+             f'<span style="font-weight:400;font-size:11px"> (Chinatown not shown - its 12:15 window '
+             f'files fewer TM30 arrivals than its sheet holds by design)</span></td>')
     h.append(_summary_cell(tr))
     h.append(_summary_cell(tt))
     h.append("</tr></table>")
