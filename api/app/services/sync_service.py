@@ -3217,17 +3217,34 @@ class SyncService:
                 return [requested]
             return []
 
-        def requested_is_space_type(res):
-            """True if the guest actually booked a per-space (Room/Bed)
-            product - as opposed to a whole-unit private-hire product like
-            Chinatown's "TRIBE HIDEOUT - ALL YOURS!" (Type=Dorm, its own
-            category, distinct from the per-bed "1 BED IN..." product) that
-            happens to land on the same parent resource. Res#92258 on
-            10-Aug-2026 (7 guests booked into the whole dorm as one MDD-type
-            unit) proved MEWS's own Customers figure excludes these, while a
-            genuine per-bed guest who merely got assigned the parent resource
-            for capacity reasons (the Makati case below) still counts."""
-            return categories.get(res.get("RequestedCategoryId"), {}).get("in_report", False)
+        def customers_category(res):
+            """The category MEWS files this reservation's guests under, or None
+            when it files them nowhere this report can see.
+
+            Customers are counted against the **assigned space's OWN category**
+            - not the requested one, and not the child fallback
+            space_categories() uses for Occupied. A booking sitting on a
+            whole-unit parent (a connecting suite, a whole dorm) therefore adds
+            0, its parent category being Type=Suite/Dorm rather than one of the
+            report's Room/Bed types.
+
+            That asymmetry is real and is what the sheet shows: Siem Reap
+            10-Sep-2026 files DCR with 12 Spaces, 12 OCCUPIED and 0 CUSTOMERS.
+            Occupied spreads a parent booking across its child rooms; Customers
+            does not follow it there. Reading the REQUESTED category instead
+            (as this did until 11-Sep-2026) counted 7 guests into DCR - two
+            bookings that asked for DCR and were put on the "411/413" and
+            "403/405" connecting pairs - and was the whole of that property's
+            +7 against its sheet.
+
+            A reservation with nothing assigned yet has no space to be filed
+            under, so it falls back to what the guest actually booked."""
+            assigned_id = res.get("AssignedResourceId")
+            cat_id = resource_category.get(assigned_id) if assigned_id else None
+            if cat_id is None:
+                cat_id = res.get("RequestedCategoryId")
+            cat = categories.get(cat_id, {})
+            return cat if cat.get("in_report") else None
 
         arrivals, departures = [], []
         arrivals_count = departures_count = customers_count = 0
@@ -3237,6 +3254,7 @@ class SyncService:
         # st_compare_service's use of it) rather than needing this file's
         # own comments re-read every time the mail shows a difference.
         day_use_arrivals_excluded = 0
+        customers_by_category = {}
         night_guest_ids = set()
         for res in reservations:
             if res.get("State") not in active_states:
@@ -3331,8 +3349,17 @@ class SyncService:
             # during the day - they belong to the previous day's file.
             end_utc = parse_utc(res.get("EndUtc"))
             stays_the_night = end_utc is not None and end_utc > day_end_utc
-            if (stays_the_night or sched_day_use) and units and requested_is_space_type(res):
+            customer_cat = customers_category(res)
+            if (stays_the_night or sched_day_use) and units and customer_cat is not None:
                 customers_count += headcount(res)
+                # Same per-category breakdown arrivals/departures already carry
+                # in their row lists. Customers has no row list (it is a guest
+                # roster, not a reservation list), so without this a gap
+                # against the sheet can only ever be seen as one estate-wide
+                # number - and a total that is short by seven says nothing
+                # about WHICH category to look in.
+                _label = customer_cat.get("short_name") or customer_cat.get("name") or "?"
+                customers_by_category[_label] = customers_by_category.get(_label, 0) + headcount(res)
                 for cid in ([res.get("CustomerId")] + (res.get("CompanionIds") or [])):
                     if cid:
                         night_guest_ids.add(cid)
@@ -3404,6 +3431,7 @@ class SyncService:
             # reservation can be several spaces (dorms), and a night's guests
             # outnumber the profiles MEWS actually names.
             "customers_count": customers_count,
+            "customers_by_category": customers_by_category,
             "arrivals_count": arrivals_count,
             "departures_count": departures_count,
             "complimentary": complimentary_count,
