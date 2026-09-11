@@ -67,15 +67,16 @@ interface RolePermissionRow {
 // and both still group sensibly either way.
 type SortKey = "full_name" | "email" | "role" | "property" | "auth_method" | "status" | "last_login" | "created_at" | "created_by";
 
+// Role, Property and User Authentication used to be columns here - moved
+// into the Edit Profile modal instead (Property is read-only there too,
+// same as here: it's implied by role via role_permissions.restricted_
+// properties, never a per-user field). "role"/"property"/"auth_method"
+// stay in SortKey/sortedUsers below even though nothing here can click to
+// sort by them anymore - harmless dead cases, not worth threading a type
+// change through for.
 const USER_COLUMNS: { key: SortKey; label: string }[] = [
   { key: "full_name", label: "Name" },
   { key: "email", label: "Email" },
-  { key: "role", label: "Role" },
-  // profiles has no property column at all - a user's property is only ever
-  // implied by their role, via role_permissions.restricted_properties. Sits
-  // next to Role because that is literally where the value comes from.
-  { key: "property", label: "Property" },
-  { key: "auth_method", label: "User Authentication" },
   { key: "status", label: "Status" },
   { key: "last_login", label: "Last Log-in" },
   { key: "created_at", label: "Create Time" },
@@ -722,49 +723,6 @@ export default function AdminUsersPage() {
                   <td className="px-6 py-5 text-sm font-bold text-slate-700">{user.full_name}</td>
                   <td className="px-6 py-5 text-sm text-[#AAA024] font-medium">{user.email}</td>
                   <td className="px-6 py-5">
-                     <span className={`px-3 py-1 rounded-full text-[11px] font-bold border ${
-                       user.role === 'Super Admin'
-                       ? 'bg-[#AAA024]/10 text-[#AAA024] border-[#AAA024]/20'
-                       : 'bg-slate-100 text-slate-600 border-slate-200'
-                     }`}>
-                       {user.role}
-                     </span>
-                  </td>
-                  <td className="px-6 py-5">
-                     {userProperties(user).length === 0 ? (
-                       <span className="text-[11px] font-bold text-slate-400">{UNRESTRICTED_LABEL}</span>
-                     ) : (
-                       <div className="flex flex-wrap gap-1 max-w-[260px]">
-                         {userProperties(user).map((prop) => (
-                           <span key={prop} className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200 whitespace-nowrap">
-                             {prop}
-                           </span>
-                         ))}
-                       </div>
-                     )}
-                  </td>
-                  <td className="px-6 py-5">
-                     {(user.auth_method || "google") === "internal" ? (
-                       <div className="flex items-center gap-1.5">
-                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                           <svg className="w-3 h-3 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                           Internal
-                         </span>
-                         {user.must_change_password && (
-                           <span
-                             title="Still signing in with the emailed password - hasn't set their own yet"
-                             className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
-                           />
-                         )}
-                       </div>
-                     ) : (
-                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
-                         <svg className="w-3 h-3 shrink-0" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" /><path fill="#34A853" d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957273V13.0418C2.43818 15.9832 5.48182 18 9 18Z" /><path fill="#FBBC05" d="M3.96409 10.71C3.78409 10.1741 3.68182 9.60136 3.68182 9C3.68182 8.39864 3.78409 7.82591 3.96409 7.29V4.95818H0.957273C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957273 13.0418L3.96409 10.71Z" /><path fill="#EA4335" d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957273 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" /></svg>
-                         Google
-                       </span>
-                     )}
-                  </td>
-                  <td className="px-6 py-5">
                      <div className="flex items-center gap-1.5">
                        <div className={`w-1.5 h-1.5 rounded-full ${user.status === 'Active' ? 'bg-emerald-500' : user.status === 'Pending' ? 'bg-amber-500' : 'bg-slate-300'}`}></div>
                        <span className={`${user.status === 'Active' ? 'text-emerald-600' : user.status === 'Pending' ? 'text-amber-600' : 'text-slate-500'} text-[11px] font-bold`}>
@@ -1081,6 +1039,46 @@ export default function AdminUsersPage() {
                           <option value="Inactive">Inactive</option>
                           <option value="Pending">Pending</option>
                        </select>
+                    </div>
+                 </div>
+
+                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Property</label>
+                       <div className="w-full min-h-[38px] bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 flex flex-wrap items-center gap-1">
+                          {(propertiesByRole[editingUser.role] || []).length === 0 ? (
+                            <span className="text-sm text-slate-500">{UNRESTRICTED_LABEL}</span>
+                          ) : (
+                            (propertiesByRole[editingUser.role] || []).map((prop) => (
+                              <span key={prop} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white text-slate-600 border border-slate-200 whitespace-nowrap">
+                                {prop}
+                              </span>
+                            ))
+                          )}
+                       </div>
+                       <p className="text-[10px] text-slate-400 px-1 pt-0.5">Set per role (Role tab), not per user - updates if Role above changes.</p>
+                    </div>
+                    <div className="space-y-1">
+                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">User Authentication</label>
+                       <div className="w-full min-h-[38px] bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 flex items-center gap-1.5">
+                          {(editingUser.auth_method || "google") === "internal" ? (
+                            <>
+                              <svg className="w-3.5 h-3.5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+                              <span className="text-sm text-slate-700 font-medium">Internal</span>
+                              {editingUser.must_change_password && (
+                                <span
+                                  title="Still signing in with the emailed password - hasn't set their own yet"
+                                  className="w-1.5 h-1.5 rounded-full bg-amber-500 shrink-0"
+                                />
+                              )}
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 18 18"><path fill="#4285F4" d="M17.64 9.20455C17.64 8.56636 17.5827 7.95273 17.4764 7.36364H9V10.845H13.8436C13.635 11.97 13.0009 12.9232 12.0477 13.5614V15.8195H14.9564C16.6582 14.2527 17.64 11.9455 17.64 9.20455Z" /><path fill="#34A853" d="M9 18C11.43 18 13.4673 17.1941 14.9564 15.8195L12.0477 13.5614C11.2418 14.1014 10.2109 14.4205 9 14.4205C6.65591 14.4205 4.67182 12.8373 3.96409 10.71H0.957273V13.0418C2.43818 15.9832 5.48182 18 9 18Z" /><path fill="#FBBC05" d="M3.96409 10.71C3.78409 10.1741 3.68182 9.60136 3.68182 9C3.68182 8.39864 3.78409 7.82591 3.96409 7.29V4.95818H0.957273C0.347727 6.17318 0 7.54773 0 9C0 10.4523 0.347727 11.8268 0.957273 13.0418L3.96409 10.71Z" /><path fill="#EA4335" d="M9 3.57955C10.3214 3.57955 11.5077 4.03364 12.4405 4.92545L15.0218 2.34409C13.4632 0.891818 11.4259 0 9 0C5.48182 0 2.43818 2.01682 0.957273 4.95818L3.96409 7.29C4.67182 5.16273 6.65591 3.57955 9 3.57955Z" /></svg>
+                              <span className="text-sm text-slate-700 font-medium">Google</span>
+                            </>
+                          )}
+                       </div>
                     </div>
                  </div>
 
