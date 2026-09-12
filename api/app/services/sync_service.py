@@ -348,7 +348,30 @@ def _rr3_country_name(code: str) -> str:
 # So this WILL look wrong again on a day whose boundary guests fall the other
 # way. Re-measure before moving it, on more than one day if possible, and
 # expect neither value to be right every morning - the sheets' own ~02:0x
-# declared start is what the current setting is tracking.
+# declared start is what the current setting still tracks on the four
+# properties that remain on it (Siam 02:05, Samui 02:03, Koh Tao 01:59,
+# Marasca 02:03).
+#
+# PATONG MOVED TO 00:00, 12-Sep-2026, by explicit instruction after it was
+# reported not matching again. Measured on two days rather than one, and both
+# point the same way: an 02:05 start drops W106185 Moahmmed Muslim A Altiwal
+# (check-in 00:57) on 10-Sep, and Jaden Paul Monson Shihadeh (01.05, room
+# 4411, the sheet's own row 135) on 11-Sep. Both are on their sheet's file.
+# The 11-Sep test was an A/B over a SINGLE sheet fetch, so MEWS drift could
+# not split the two arms: 02:05 paired 84 of 85 with one guest missing and one
+# extra, 00:00 paired all 85 and lost nobody. The other five were left alone -
+# Samui, Koh Tao and Marasca are exact on both registers and Siam is short the
+# same one TM30 guest either way (its sheet needs a >24h window, which no
+# shifted 24h window can express).
+#
+# Patong's one remaining TM30 row is NOT a window problem and will not move by
+# changing this value: reservation 190715 (room 4215, 11-Sep) carries two
+# Saudi guests, and the sheet names only Saeed Mana M Al Dhuwayin (CC59805),
+# leaving the companion an unnamed occupant slot. The sheet's TM30 tab drops
+# nameless rows, so it files 85 where we file 86 - the 86th being Mohammed Salem
+# M Al Dhuwayin (BA96124), a real named foreign arrival we hold a passport for.
+# The same pair is the sheet's one "(no name)" row against our named one on
+# RR4, which is why RR4 reads 228 = 228 with zero differing columns.
 _TM30_DAY_START_FALLBACK = {
     "Lub d Bangkok Chinatown": (12, 15),
 }
