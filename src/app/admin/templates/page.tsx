@@ -15,6 +15,7 @@ type TemplateType =
   | "st_compare_email"
   | "rr4_compare_email"
   | "stop_sale_email"
+  | "rv_compare_email"
   | "st_files_email"
   | "st_files_email_per_property"
   | "rr4_tm30_email"
@@ -26,7 +27,7 @@ type TemplateType =
 // pill instead of every member getting its own top-level tab, so the row
 // doesn't grow a new pill every time another one is added. Groups with a
 // single child behave exactly like a plain tab (no sub-tab row for them).
-type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files" | "rr4_tm30_files" | "revenue";
+type TemplateGroup = "billing" | "rr3" | "system_email" | "statistic_files" | "rr4_tm30_files" | "revenue" | "rv_files";
 
 const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateType[] }> = {
   billing: { label: "Billing", children: ["billing"] },
@@ -50,6 +51,13 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   revenue: {
     label: "Revenue",
     children: ["stop_sale_email"],
+  },
+  // RV Files' own sheet check - its own pill for the same reason Revenue has
+  // one: System Email's sub-tab row is already full, and this mail belongs to
+  // the RV Files page rather than to any account-lifecycle email.
+  rv_files: {
+    label: "RV Files",
+    children: ["rv_compare_email"],
   },
 };
 
@@ -240,6 +248,18 @@ const RR4_COMPARE_TOKENS: TokenDoc[] = [
   // literal text "<<SampleTable>>", but there is no reason to offer it here.
 ];
 
+const RV_COMPARE_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "The date most sheet tabs are holding (DD/MM/YYYY) - each property is still compared at its own tab's date" },
+  { name: "Lines", description: "Total journal lines, Google Sheet / NHGOne" },
+  { name: "NeedsReview", description: "Lines that differ, or exist on only one side, known drift excluded" },
+  { name: "KnownDrift", description: "Lines whose only difference is already explained - MEWS's \"×\" where our ASCII-only file writes \"x\"" },
+  { name: "Summary", description: "One-line verdict, e.g. \"3 lines need review\" - usable in the Subject too" },
+  { name: "PropertyCount", description: "How many properties could be compared (of 8)" },
+  { name: "SheetLink", description: "URL of the RV Google Sheet - use it as a link's href" },
+  { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property's lines, debits and credits as Google Sheet / NHGOne, with a green tick, red cross or amber known-drift count" },
+  { name: "DetailTable", description: "Table 2 - pre-built HTML: every line behind table 1 by account, D/C and amount - which field differs and both values; red needs review, amber is known drift" },
+];
+
 // The stop-sale watch is not a sheet comparison like the two above - it diffs
 // each property's own two newest occupancy snapshots against each other, so
 // its tables are built from what /revenue's Occupancy By Type Calendar already
@@ -419,6 +439,19 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasScheduleFields: true,
     hasCcBcc: true,
     sendNowEndpoint: "/admin/email-template/stop-sale-alert/send-now",
+  },
+  rv_compare_email: {
+    label: "Test RV File",
+    endpoint: "/admin/email-template/rv-compare",
+    tokens: RV_COMPARE_TOKENS,
+    defaultNote: "No Test RV File email configured yet - showing the built-in default. Save to customize it.",
+    tokenNote: "Sent once a day (Time to Send below) comparing our RV Files revenue journal line by line against the RV Google Sheet (one tab per property), with every compared property's RV file attached. Amounts are compared as numbers, and a description that differs only by MEWS's \"×\" against our plain \"x\" is counted as known drift, not a difference. Nothing is sent on a day no property can be compared.",
+    perProperty: false,
+    hasSubject: true,
+    previewable: true,
+    hasScheduleFields: true,
+    hasCcBcc: true,
+    sendNowEndpoint: "/admin/email-template/rv-compare/send-now",
   },
   st_files_email: {
     label: "All Property",
@@ -634,6 +667,36 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     // a template saved before the tables were reorganised still carries
     // <<SampleTable>>, and an unknown token is left in the body verbatim.
     SampleTable: "",
+  }),
+  // Mirrors rv_compare_service's two tables - same columns, same "Google
+  // Sheet / NHGOne" reading direction and the same green / red / amber
+  // treatment as the RR4/TM30 check.
+  rv_compare_email: () => ({
+    Date: "13/09/2026",
+    Lines: "947 / 947",
+    NeedsReview: "2",
+    KnownDrift: "28",
+    Summary: "2 lines need review",
+    PropertyCount: "8",
+    SheetLink: "#",
+    SummaryTable: buildCompareSampleTable(
+      ["Property", "Date", "Lines", "Debit", "Credit", "Result", "NHGOne imported"],
+      [["Chinatown", "2026-09-13", ok("✓ 122"), ok("✓ 142,871.65 THB"), ok("✓ 142,871.65 THB"),
+        `${ok("✓ every line matches")}<br>${amber("5 known drift")}`, muted("14 Sep 02:00")],
+       ["Patong", "2026-09-13", bad("✗ 91 / 90"), bad("✗ 245,960.97 THB / 244,260.97 THB"), ok("✓ 245,960.97 THB"),
+        `${bad("✗ 2 lines need review")}<br>${amber("3 known drift")}`, muted("14 Sep 02:01")],
+       ["Siem Reap", "2026-09-13", muted("No imported RV report for Lub d Siem Reap on 2026-09-13 - import it first"), "", "", "", ""]],
+    ),
+    DetailTable: buildCompareSampleTable(
+      ["Property", "Line (account · D/C · amount)", "What differs", "Google Sheet", "NHGOne", "Why"],
+      [["Patong", "11403 · D · 1700.00<br><small>Card payment (Mastercard ****1740 Virtual, AGODA/#</small>",
+        "Line only in the sheet", "present", "missing", bad("Needs review")],
+       ["Patong", "30805 · C · 2260.10<br><small>Service Charge Nightly</small>",
+        "Department", "111", "000", bad("Needs review")],
+       ["Chinatown", "5 lines<br><small>e.g. -1 × Room Revenue</small>", "Description",
+        "-1 × Room Revenue", "-1 x Room Revenue",
+        muted("Known drift - MEWS writes \"×\" where our file writes \"x\": get_rv_export folds every line to plain ASCII")]],
+    ),
   }),
   // Mirrors stop_sale_alert_service's own two tables - same columns, same
   // yellow "new stop" / cyan "re-open" the Occupancy By Type Calendar paints

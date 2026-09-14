@@ -179,6 +179,34 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
   </table>
 </div>"""
 
+# RV Files verification (Admin > Email Template > RV Files > Test RV File) -
+# the revenue-journal counterpart to the two above, same row-is-the-whole-
+# config shape. The RV import runs ~02:00 Asia/Bangkok, so 08:00 sits after it
+# the same way it does for ST.
+RV_COMPARE_TEMPLATE_KEY = "rv_compare_test"
+DEFAULT_RV_COMPARE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
+DEFAULT_RV_COMPARE_HOUR = 8
+DEFAULT_RV_COMPARE_MINUTE = 0
+DEFAULT_RV_COMPARE_SUBJECT = "Test RV File <<Date>>"
+DEFAULT_RV_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">RV Files &mdash; Sheet Verification</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our revenue journal line by line against the <a href="<<SheetLink>>" style="color:#152A00;">RV Google Sheet</a> for <b><<Date>></b> (<<PropertyCount>> properties)</p>
+        <p style="margin:0 0 4px 0; font-size:20px; font-weight:700; color:#152A00;"><<Summary>></p>
+        <p style="margin:0 0 4px 0; font-size:13px; color:#152A00;">Lines <b><<Lines>></b> &middot; <b><<NeedsReview>></b> need review &middot; <<KnownDrift>> known drift</p>
+        <p style="margin:0 0 24px 0; font-size:11px; color:#94a3b8;">Every pair of numbers in this email reads <b>Google Sheet / NHGOne</b>. Each property's RV file is attached.</p>
+        <h3 style="margin:0 0 8px 0; font-size:15px; color:#152A00;">1. Every Property</h3>
+        <<SummaryTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Differs</h3>
+        <<DetailTable>>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Revenue stop-sale watch (Admin > Email Template > System Email >
 # Notification - Revenue New Stop Sale and Re-open). Unlike the two mails
 # above it reads nothing but occupancy_sync, diffing each property's two
@@ -633,6 +661,17 @@ class EmailService:
             "recipients": DEFAULT_RR4_COMPARE_RECIPIENTS,
             "send_hour": DEFAULT_RR4_COMPARE_HOUR,
             "send_minute": DEFAULT_RR4_COMPARE_MINUTE,
+        })
+
+    def get_rv_compare_settings(self) -> dict:
+        """Daily RV Files vs the RV Google Sheet verification mail (Admin >
+        Email Template > RV Files > Test RV File)."""
+        return self._get_scheduled_settings(RV_COMPARE_TEMPLATE_KEY, {
+            "subject": DEFAULT_RV_COMPARE_SUBJECT,
+            "html_template": DEFAULT_RV_COMPARE_TEMPLATE,
+            "recipients": DEFAULT_RV_COMPARE_RECIPIENTS,
+            "send_hour": DEFAULT_RV_COMPARE_HOUR,
+            "send_minute": DEFAULT_RV_COMPARE_MINUTE,
         })
 
     def get_stop_sale_settings(self) -> dict:

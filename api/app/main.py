@@ -1172,6 +1172,11 @@ async def send_rr4_compare_email(match_hour_only: bool = False):
     day (Admin > Email Template > System Email > Test RR4/TM30 File)."""
     await _send_compare_mail_job("rr4", match_hour_only)
 
+async def send_rv_compare_email(match_hour_only: bool = False):
+    """RV Files vs the RV Google Sheet (one tab per property), once a day
+    (Admin > Email Template > RV Files > Test RV File)."""
+    await _send_compare_mail_job("rv", match_hour_only)
+
 async def send_stop_sale_alert_email(match_hour_only: bool = False):
     """
     What newly stopped selling (or re-opened) on the Occupancy By Type
@@ -1512,6 +1517,7 @@ async def start_scheduler():
     # temporary monitoring, see _send_compare_mail_job's docstring.
     scheduler.add_job(send_st_compare_email, 'cron', second=0)
     scheduler.add_job(send_rr4_compare_email, 'cron', second=0)
+    scheduler.add_job(send_rv_compare_email, 'cron', second=0)
     # Revenue's new-stop-sale/re-open alert - own configurable send time,
     # defaulted to 09:00 so it lands after the 08:00 occupancy capture it diffs.
     scheduler.add_job(send_stop_sale_alert_email, 'cron', second=0)
@@ -1567,6 +1573,7 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     # for the new system's validation period, see _send_compare_mail_job.
     background_tasks.add_task(send_st_compare_email, match_hour_only=True)
     background_tasks.add_task(send_rr4_compare_email, match_hour_only=True)
+    background_tasks.add_task(send_rv_compare_email, match_hour_only=True)
     # Revenue's new-stop-sale/re-open alert - own configurable send time.
     background_tasks.add_task(send_stop_sale_alert_email, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)

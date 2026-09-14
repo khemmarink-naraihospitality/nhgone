@@ -1,11 +1,12 @@
-"""One send path for both sheet-verification mails.
+"""One send path for every sheet-verification mail.
 
-st_compare_service and rr4_compare_service each know how to build their own
-comparison and render it; everything after that - reading the Admin template,
-substituting its tokens, sending, logging, and marking the day as sent - is
-identical, so it lives here once. main.py's scheduled jobs and admin.py's
-"Send Test Now" buttons both go through `send()`, which is what stops a test
-send and the real one from ever disagreeing about what the mail looks like.
+st_compare_service, rr4_compare_service and rv_compare_service each know how to
+build their own comparison and render it; everything after that - reading the
+Admin template, substituting its tokens, sending, logging, and marking the day
+as sent - is identical, so it lives here once. main.py's scheduled jobs and
+admin.py's "Send Test Now" buttons both go through `send()`, which is what
+stops a test send and the real one from ever disagreeing about what the mail
+looks like.
 
 Deliberately a separate module rather than methods on email_service: the
 compare services import sync_service, which imports email_service, so
@@ -16,9 +17,10 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.services import rr4_compare_service, st_compare_service
+from app.services import rr4_compare_service, rv_compare_service, st_compare_service
 from app.services.email_service import (
     RR4_COMPARE_TEMPLATE_KEY,
+    RV_COMPARE_TEMPLATE_KEY,
     ST_COMPARE_TEMPLATE_KEY,
     email_service,
 )
@@ -30,7 +32,7 @@ FEEDS = {
         "module": st_compare_service,
         "template_key": ST_COMPARE_TEMPLATE_KEY,
         "settings": "get_st_compare_settings",
-        # Both mails log to Admin > Activity Log under their own target_table,
+        # Every mail logs to Admin > Activity Log under its own target_table,
         # one row per day. That's the point rather than noise for a monitoring
         # feed - unlike the BCP captures, which log only failures because they
         # run every five minutes.
@@ -44,6 +46,13 @@ FEEDS = {
         "target_table": "RR4 Compare",
         "label": "RR4/TM30",
     },
+    "rv": {
+        "module": rv_compare_service,
+        "template_key": RV_COMPARE_TEMPLATE_KEY,
+        "settings": "get_rv_compare_settings",
+        "target_table": "RV Compare",
+        "label": "RV Files",
+    },
 }
 
 
@@ -52,8 +61,8 @@ def get_settings(kind: str) -> dict:
 
 
 def _summary(kind: str, result: dict) -> str:
-    if kind == "rr4":
-        return rr4_compare_service.subject_summary(result)
+    if kind in ("rr4", "rv"):
+        return FEEDS[kind]["module"].subject_summary(result)
     if result["status"] != "ok":
         return "not comparable yet"
     matched, total = result["matched_cells"], result["total_cells"]
@@ -82,6 +91,24 @@ def _st_attachments(result: dict) -> list:
             out.append((filename, csv_text.encode("utf-8")))
         except Exception as e:
             logger.warning(f"ST compare mail: could not attach {prop}'s export: {e}")
+    return out
+
+
+def _rv_attachments(result: dict) -> list:
+    """The RV journal of every property that was actually compared, at the
+    date its own sheet tab holds - the same file the comparison read, so the
+    attachment and the tables can't describe two different journals."""
+    from app.services.sync_service import sync_service
+
+    out = []
+    for p in result.get("properties") or []:
+        if p["status"] != "ok":
+            continue
+        try:
+            text, filename = sync_service.get_rv_export(p["property"], p["date"])
+            out.append((filename, text.encode("utf-8")))
+        except Exception as e:
+            logger.warning(f"RV compare mail: could not attach {p['property']}'s export: {e}")
     return out
 
 
@@ -126,11 +153,16 @@ async def send(kind: str, mark_sent: bool = True, want_date: str = None,
 
     cc = [e.strip() for e in (settings_row.get("cc") or "").split(",") if e.strip()]
     bcc = [e.strip() for e in (settings_row.get("bcc") or "").split(",") if e.strip()]
-    # Only the ST feed attaches anything for now - the per-property export
-    # file this mail is actually verifying against the sheet. RR4/TM30's own
-    # filed form is two .xlsx per property rather than one CSV, which is a
-    # different enough shape (and wasn't asked for) to leave for its own pass.
-    attachments = _st_attachments(result) if kind == "st" else []
+    # ST and RV attach the per-property export file each mail is verifying
+    # against its sheet. RR4/TM30's own filed form is two .xlsx per property
+    # rather than one text file, which is a different enough shape (and wasn't
+    # asked for) to leave for its own pass.
+    if kind == "st":
+        attachments = _st_attachments(result)
+    elif kind == "rv":
+        attachments = _rv_attachments(result)
+    else:
+        attachments = []
 
     email_service.send_email_with_attachments(
         recipients,

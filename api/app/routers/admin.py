@@ -12,7 +12,7 @@ from app.services.email_service import (
     INTERNAL_WELCOME_TEMPLATE_KEY, PASSWORD_RESET_TEMPLATE_KEY,
     GOOGLE_SIGNIN_NOTICE_TEMPLATE_KEY, APPROVED_TEMPLATE_KEY,
     RR4_TM30_DAILY_TEMPLATE_KEY, ST_COMPARE_TEMPLATE_KEY, RR4_COMPARE_TEMPLATE_KEY,
-    STOP_SALE_TEMPLATE_KEY,
+    RV_COMPARE_TEMPLATE_KEY, STOP_SALE_TEMPLATE_KEY,
 )
 from app.services.sync_service import sync_service
 from app.services import compare_mail, ftp_service, revenue_settings_service, stop_sale_alert_service
@@ -1119,6 +1119,19 @@ async def save_rr4_compare_email_template(request: StFilesEmailSettingsUpdate):
 @router.post("/email-template/rr4-compare/send-now")
 async def send_rr4_compare_email_now():
     return await _send_compare_now("rr4")
+
+@router.get("/email-template/rv-compare")
+async def get_rv_compare_email_template():
+    """Daily RV Files vs the RV Google Sheet verification mail."""
+    return {"status": "success", "data": email_service.get_rv_compare_settings()}
+
+@router.post("/email-template/rv-compare")
+async def save_rv_compare_email_template(request: StFilesEmailSettingsUpdate):
+    return _save_compare_settings(RV_COMPARE_TEMPLATE_KEY, request, "Test RV File")
+
+@router.post("/email-template/rv-compare/send-now")
+async def send_rv_compare_email_now():
+    return await _send_compare_now("rv")
 
 @router.get("/email-template/stop-sale-alert")
 async def get_stop_sale_alert_email_template():
