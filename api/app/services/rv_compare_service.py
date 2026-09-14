@@ -17,17 +17,22 @@ What the sheet is, and the three things about it that shape this module:
    CSV splits on commas (Patong, 13-Sep-2026: "Card payment (Mastercard ****1293
    Virtual" | " AGODA/#|13092026|..."). The cells are joined back with ","
    before anything is compared, which restores the original line exactly.
-3. MEWS and we write the same posting differently in two places, and neither
-   changes what gets posted:
-     - amounts: MEWS writes 1700 and 8594.2 where we write 1700.00 and
-       8594.20. Compared as numbers.
-     - descriptions: MEWS writes "-1 × Room Adjustment" where we write
-       "-1 x Room Adjustment", because get_rv_export folds every line to 7-bit
-       ASCII (one non-ASCII byte makes SunSystems reject the whole day - see
-       sync_service._ascii_fold). Counted as known drift: shown, never flagged.
+3. The sheet and our file write the same posting differently in two places,
+   and neither changes what gets posted. Neither is MEWS's own real export:
+   MEWS's actual PMSRV file is plain ASCII (confirmed against a real one,
+   PT_RV_20260813.csv - see sync_service._ascii_fold) and reads exactly like
+   ours; the sheet differs from BOTH because pasting/typing the export into
+   Google Sheets is a separate step that visibly changed it.
+     - amounts: the sheet holds 1700 and 8594.2 where our file (and MEWS's
+       own) writes 1700.00 and 8594.20. Compared as numbers.
+     - descriptions: the sheet holds "-1 × Room Adjustment" where our file
+       (and MEWS's own) writes "-1 x Room Adjustment" - get_rv_export folds
+       every line to 7-bit ASCII on purpose, because one non-ASCII byte makes
+       SunSystems reject the whole day's journal (sync_service._ascii_fold).
+       Counted as known drift: shown, never flagged.
    Measured 13-Sep-2026 across all 8 properties (947 lines): with those two
    rules every remaining line was identical, down to the field - 28 "×"
-   descriptions and nothing else.
+   descriptions in the sheet and nothing else.
 
 Each tab is compared at the date its own lines carry (field 4), against our
 CACHED import for that date (get_rv_export reads rv_files_sync) - never a live
@@ -82,9 +87,10 @@ _FIELD_NAMES = {
 # the rest. The count beside it is always the full one.
 _MAX_DETAIL_ROWS = 15
 
-_DRIFT_REASON = ('Known drift - MEWS writes "×" where our file writes "x": get_rv_export '
-                 "folds every line to plain ASCII, because one non-ASCII character makes "
-                 "SunSystems reject the whole day's journal")
+_DRIFT_REASON = ('Known drift - the Google Sheet holds "×" where our file (and MEWS\'s own '
+                 'real export) writes "x": get_rv_export folds every line to plain ASCII, '
+                 "because one non-ASCII character makes SunSystems reject the whole day's "
+                 "journal")
 
 
 def sheet_url() -> str:
@@ -416,7 +422,7 @@ def render_summary_table(result: dict) -> str:
     h.append("</table>")
     return _scroll("".join(h),
                    "Every pair reads Google Sheet / NHGOne - ✓ means both sides agree. "
-                   "Amounts are compared as numbers: MEWS writes 1700 where our file writes 1700.00.")
+                   "Amounts are compared as numbers: the sheet holds 1700 where our file writes 1700.00.")
 
 
 def render_detail_table(result: dict) -> str:
