@@ -74,6 +74,14 @@ _SKIP_RR4_COLUMNS = {"row_no"}
 # Differences that have each been chased down and confirmed as the world
 # moving on after the sheet was generated, not a defect on our side. Reported
 # in their own column so the "real differences" number stays meaningful.
+_GEORGIA_DRIFT = (
+    'The sheet\'s own RR4-Nationality tab keys this lookup by "Georgian" (the demonym) '
+    'instead of "Georgia" (what MEWS actually calls it, matching ImportInhouse!K and our own '
+    "rr4_nationality_codes) - the sheet's VLOOKUP fails on that mismatch and returns blank. "
+    "Confirmed a template-wide typo, not one property's mistake: all six sheets' "
+    'RR4-Nationality tabs have "Georgian" and none has "Georgia" (checked 15-Sep-2026). '
+    "Our 226 is Georgia's correct code either way."
+)
 _KNOWN_DRIFT = {
     "time_check_in":
         "MEWS wrote ActualStartUtc at :59 seconds, right after the sheet was generated (sheet is exactly 1 minute behind)",
@@ -83,6 +91,14 @@ _KNOWN_DRIFT = {
         "Guest checked out earlier than scheduled, after the sheet was generated (ours is ahead of the sheet)",
     "birth_date":
         "Sheet prints 30/12/1899 when MEWS has no birth date (Excel's render of an empty value) - ours leaves it blank, which is correct",
+    # Chinatown, 14-Sep-2026: two Georgian guests in room 626 (Natia
+    # Garashvili, Lasha Sulaberidze) came back blank on the sheet for all
+    # four of these columns. See _GEORGIA_DRIFT for why - it isn't a
+    # per-guest coincidence, it is this one nationality, every time.
+    "nationality": _GEORGIA_DRIFT,
+    "issued_by": _GEORGIA_DRIFT,
+    "address_country": _GEORGIA_DRIFT,
+    "come_from_country": _GEORGIA_DRIFT,
 }
 
 
@@ -116,6 +132,9 @@ def _hhmm(s: str):
     return int(m.group(1)) * 60 + int(m.group(2)) if m else None
 
 
+_GEORGIA_RR4_CODE = "226"
+
+
 def _is_known_drift(key: str, ours: str, sheet: str) -> bool:
     if key == "time_check_in":
         a, b = _hhmm(ours), _hhmm(sheet)
@@ -125,6 +144,11 @@ def _is_known_drift(key: str, ours: str, sheet: str) -> bool:
         return a is not None and b is not None and a < b
     if key == "birth_date":
         return ours == "" and sheet == "30/12/1899"
+    if key in ("nationality", "issued_by", "address_country", "come_from_country"):
+        # See _GEORGIA_DRIFT - only this one code, only when the sheet came
+        # back blank, so a real mismatch on a Georgian guest's OWN code (a
+        # typo'd passport entry, say) still reports as a difference.
+        return sheet == "" and ours == _GEORGIA_RR4_CODE
     return False
 
 
