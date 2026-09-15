@@ -5,6 +5,77 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import UserHeader from "./UserHeader";
 import { supabase } from "@/lib/supabase";
+import {
+  ArrowLeft,
+  BookUser,
+  Building2,
+  CalendarClock,
+  ChartColumnBig,
+  Database,
+  FileSpreadsheet,
+  Flag,
+  Globe,
+  History,
+  IdCard,
+  LayoutDashboard,
+  LayoutTemplate,
+  LifeBuoy,
+  Mail,
+  Menu,
+  ReceiptText,
+  Scale,
+  ScrollText,
+  ShieldCheck,
+  SlidersHorizontal,
+  TrendingUp,
+  UserCog,
+  Users,
+  type LucideIcon,
+} from "lucide-react";
+
+// The desktop sidebar's collapsed/expanded choice, remembered per browser.
+const SIDEBAR_COLLAPSED_KEY = "nhgone.sidebarCollapsed";
+
+type NavEntry = { href: string; label: string; icon: LucideIcon; active: boolean };
+
+// One sidebar link: icon + label when expanded, icon alone with a hover/focus
+// tooltip when collapsed. Module-level (not defined inside Navigation) so a
+// re-render of the shell doesn't remount every link and drop keyboard focus.
+function NavItem({ href, label, icon: Icon, active, collapsed }: NavEntry & { collapsed: boolean }) {
+  return (
+    <Link
+      href={href}
+      aria-label={collapsed ? label : undefined}
+      aria-current={active ? "page" : undefined}
+      className={`group relative flex items-center gap-3 border-l-2 rounded-r-md transition-colors duration-150 ${
+        collapsed ? "justify-center py-2.5" : "px-3 py-2.5 lg:py-2"
+      } ${
+        active
+          ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]"
+          : "text-white/50 border-transparent hover:text-white hover:bg-white/5"
+      }`}
+    >
+      <Icon
+        aria-hidden="true"
+        strokeWidth={active ? 2.25 : 1.75}
+        className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+          active ? "text-[#FFEFD2]" : "text-white/45 group-hover:text-white"
+        }`}
+      />
+      {!collapsed && (
+        <span className="truncate whitespace-nowrap text-[13px] lg:text-[12px] tracked-caps">{label}</span>
+      )}
+      {collapsed && (
+        <span
+          role="tooltip"
+          className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 -translate-x-1 whitespace-nowrap rounded-md bg-[#0d1a00] px-2.5 py-1.5 text-[11px] font-bold tracked-caps text-white opacity-0 shadow-lg ring-1 ring-[#FFEFD2]/15 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100"
+        >
+          {label}
+        </span>
+      )}
+    </Link>
+  );
+}
 
 interface MenuPermissions {
   dashboard: boolean;
@@ -201,6 +272,28 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     setMobileNavPathname(pathname);
     setMobileNavOpen(false);
   }
+  // Desktop sidebar collapsed to icons only (the hamburger at its top), the
+  // way MEWS's own left menu does. Read straight from localStorage in the
+  // initializer: the shell itself only renders once the client-side auth
+  // check has resolved (the server render is the spinner below), so there is
+  // no server markup for this to disagree with and no flash of the wrong width.
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = () => {
+    const next = !sidebarCollapsed;
+    setSidebarCollapsed(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, next ? "1" : "0");
+    } catch {
+      // Private mode / blocked storage: the toggle still works for this visit.
+    }
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -555,81 +648,80 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // per-role toggling never actually restricted anything.
   const showBottomDivider = midSection;
 
-  // Shared between the desktop <aside> (always visible at md+) and the
-  // mobile slide-in drawer below - written once so the two never drift out
-  // of sync with each other.
-  const navLinks = (
+  // Shared between the desktop <aside> and the mobile slide-in drawer below -
+  // one list rendered twice, so the two never drift out of sync. Every menu
+  // keeps exactly the role_permissions gate it had before icons were added.
+  const DIVIDER = "divider" as const;
+  const navEntries: (NavEntry | typeof DIVIDER)[] = pathname.startsWith("/admin")
+    ? [
+        ...(!adminNationalityOnly
+          ? [
+              { href: "/admin", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/admin" },
+              { href: "/admin/users", label: "User Management", icon: UserCog, active: pathname === "/admin/users" },
+              { href: "/admin/smtp", label: "Email SMTP", icon: Mail, active: pathname === "/admin/smtp" },
+              { href: "/admin/sync", label: "Sync & Schedule", icon: CalendarClock, active: pathname === "/admin/sync" },
+              { href: "/admin/api-settings", label: "Property & API", icon: Building2, active: pathname === "/admin/api-settings" },
+              { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
+              { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
+            ]
+          : []),
+        { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
+        { href: "/admin/tm30-nationality", label: "TM30-Nationality", icon: Globe, active: pathname === "/admin/tm30-nationality" },
+        ...(!adminNationalityOnly
+          ? [{ href: "/admin/logs", label: "Activity Log", icon: ScrollText, active: pathname === "/admin/logs" }]
+          : []),
+      ]
+    : [
+        ...(perms.dashboard ? [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/dashboard" }] : []),
+        ...(showTopDivider ? [DIVIDER] : []),
+        ...(perms.data_mart ? [{ href: "/data-mart", label: "Data Mart", icon: Database, active: pathname === "/data-mart" }] : []),
+        ...(perms.bills ? [{ href: "/bill-generator", label: "Bills", icon: ReceiptText, active: pathname === "/bill-generator" }] : []),
+        ...(perms.rr3 ? [{ href: "/rr3", label: "RR3", icon: IdCard, active: pathname === "/rr3" }] : []),
+        ...(perms.st_files ? [{ href: "/st-files", label: "Statistic Files", icon: ChartColumnBig, active: pathname === "/st-files" }] : []),
+        ...(perms.rv ? [{ href: "/rv", label: "Revenue Files", icon: FileSpreadsheet, active: pathname === "/rv" }] : []),
+        ...(perms.bcp ? [{ href: "/bcp", label: "BCP", icon: LifeBuoy, active: pathname === "/bcp" }] : []),
+        ...(perms.rr4_tm30 ? [{ href: "/rr4-tm30", label: "RR4/TM30", icon: BookUser, active: pathname.startsWith("/rr4-tm30") }] : []),
+        ...(perms.revenue ? [{ href: "/revenue", label: "Revenue", icon: TrendingUp, active: pathname === "/revenue" }] : []),
+        ...(perms.reconciliation ? [{ href: "/reconciliation", label: "Reconciliation", icon: Scale, active: pathname === "/reconciliation" }] : []),
+        ...(perms.users_report ? [{ href: "/users-report", label: "Users Report", icon: Users, active: pathname === "/users-report" }] : []),
+        ...(showBottomDivider ? [DIVIDER] : []),
+        { href: "/log-import", label: "Log Import", icon: History, active: pathname === "/log-import" },
+      ];
+
+  const renderNav = (collapsed: boolean) => (
     <nav className="flex flex-col gap-1">
-      {pathname.startsWith("/admin") ? (
-        <>
-          {!adminNationalityOnly && (
-            <>
-              <Link href="/admin" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-              <Link href="/admin/users" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/users" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>User Management</Link>
-              <Link href="/admin/smtp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/smtp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email SMTP</Link>
-              <Link href="/admin/sync" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/sync" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Sync & Schedule</Link>
-              <Link href="/admin/api-settings" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/api-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Property &amp; API</Link>
-              <Link href="/admin/templates" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/templates" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Email Template</Link>
-              <Link href="/admin/revenue-settings" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/revenue-settings" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue Settings</Link>
-            </>
-          )}
-          <Link href="/admin/rr4-nationality" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/rr4-nationality" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR4-Nationality</Link>
-          <Link href="/admin/tm30-nationality" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/tm30-nationality" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>TM30-Nationality</Link>
-          {!adminNationalityOnly && (
-            <Link href="/admin/logs" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/admin/logs" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Activity Log</Link>
-          )}
-        </>
-      ) : (
-        <>
-          {perms.dashboard && (
-            <Link href="/dashboard" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/dashboard" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Dashboard</Link>
-          )}
-          {showTopDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
-          {perms.data_mart && (
-            <Link href="/data-mart" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/data-mart" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Data Mart</Link>
-          )}
-          {perms.bills && (
-            <Link href="/bill-generator" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bill-generator" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Bills</Link>
-          )}
-          {perms.rr3 && (
-            <Link href="/rr3" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rr3" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR3</Link>
-          )}
-          {perms.st_files && (
-            <Link href="/st-files" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/st-files" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Statistic Files</Link>
-          )}
-          {perms.rv && (
-            <Link href="/rv" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/rv" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue Files</Link>
-          )}
-          {perms.bcp && (
-            <Link href="/bcp" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/bcp" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>BCP</Link>
-          )}
-          {perms.rr4_tm30 && (
-            <Link href="/rr4-tm30" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname.startsWith("/rr4-tm30") ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>RR4/TM30</Link>
-          )}
-          {perms.revenue && (
-            <Link href="/revenue" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/revenue" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Revenue</Link>
-          )}
-          {perms.reconciliation && (
-            <Link href="/reconciliation" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/reconciliation" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Reconciliation</Link>
-          )}
-          {perms.users_report && (
-            <Link href="/users-report" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/users-report" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Users Report</Link>
-          )}
-          {showBottomDivider && <div className="h-px bg-white/5 my-4 mx-4"></div>}
-          <Link href="/log-import" className={`px-4 py-3 md:py-2 border-l-2 transition-all text-[13px] md:text-[12px] tracked-caps ${pathname === "/log-import" ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]" : "text-white/40 border-transparent hover:text-white"}`}>Log Import</Link>
-        </>
+      {navEntries.map((entry, i) =>
+        entry === DIVIDER ? (
+          <div key={`divider-${i}`} className={`h-px bg-white/5 my-3 ${collapsed ? "mx-2" : "mx-3"}`} />
+        ) : (
+          <NavItem key={entry.href} {...entry} collapsed={collapsed} />
+        )
       )}
     </nav>
   );
 
-  const exitAdminLink = pathname.startsWith("/admin") && (
-    <Link href="/dashboard" className="flex items-center gap-2 px-4 py-3 text-[11px] font-bold tracked-caps text-white/50 hover:text-white hover:bg-white/5 border border-white/10 transition-all group">
-      <svg className="w-4 h-4 text-white/30 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-      </svg>
-      EXIT ADMIN
-    </Link>
-  );
+  const renderExitAdmin = (collapsed: boolean) =>
+    pathname.startsWith("/admin") && (
+      <Link
+        href="/dashboard"
+        aria-label={collapsed ? "Exit Admin" : undefined}
+        className={`group relative flex items-center gap-2 rounded-md border border-white/10 text-[11px] font-bold tracked-caps text-white/50 hover:text-white hover:bg-white/5 transition-all ${
+          collapsed ? "justify-center py-2.5" : "px-4 py-3"
+        }`}
+      >
+        <ArrowLeft aria-hidden="true" className="w-4 h-4 shrink-0 text-white/30 group-hover:text-white transition-colors" />
+        {collapsed ? (
+          <span
+            role="tooltip"
+            className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 -translate-x-1 whitespace-nowrap rounded-md bg-[#0d1a00] px-2.5 py-1.5 text-[11px] font-bold tracked-caps text-white opacity-0 shadow-lg ring-1 ring-[#FFEFD2]/15 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100"
+          >
+            Exit Admin
+          </span>
+        ) : (
+          "EXIT ADMIN"
+        )}
+      </Link>
+    );
 
   return (
     <div className="min-h-full flex flex-col lg:flex-row bg-background text-foreground w-full transition-colors duration-300">
@@ -686,50 +778,90 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            {navLinks}
-            <div className="mt-auto pb-2">{exitAdminLink}</div>
+            {renderNav(false)}
+            <div className="mt-auto pb-2">{renderExitAdmin(false)}</div>
           </div>
         </div>
       )}
 
-      <aside className={`print:hidden ${onAdminPath ? "w-56" : "w-48"} border-r border-[#FFEFD2]/10 p-4 flex flex-col gap-6 hidden lg:flex shrink-0 bg-[#152A00] transition-colors duration-300`}>
-        {onAdminPath ? (
-          // Admin-only badge, replacing the plain NHGOne logo header while
-          // inside /admin/* - visually marks "you're in a different,
-          // higher-privilege area" the way EXIT ADMIN already does at the
-          // bottom of this same sidebar.
-          <div className="flex items-center gap-3 mb-2 px-3 py-3 bg-[#FFEFD2]/10 border border-[#FFEFD2]/20 rounded-sm">
-            <div className="w-8 h-8 rounded-sm bg-[#FFEFD2]/15 flex items-center justify-center shrink-0">
-              <svg className="w-4 h-4 text-[#FFEFD2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <div className="min-w-0">
-              <div className="text-[13px] font-bold font-display text-white tracking-tight leading-none">
-                ADMIN CONSOLE
+      {/* Desktop sidebar. The hamburger at its top collapses it to icons only
+          (each link then shows its name as a tooltip), the way MEWS's own left
+          menu works, and the choice is remembered per browser. Overflow is
+          opened up only while collapsed so those tooltips can escape the 72px
+          rail - expanded, a long menu still scrolls inside the sidebar. */}
+      <aside
+        className={`print:hidden hidden lg:flex lg:h-screen shrink-0 flex-col gap-4 border-r border-[#FFEFD2]/10 bg-[#152A00] py-4 transition-[width] duration-200 ease-out ${
+          sidebarCollapsed
+            ? "w-[72px] px-2 overflow-visible"
+            : `${onAdminPath ? "w-60" : "w-56"} px-3 overflow-y-auto overflow-x-hidden`
+        }`}
+      >
+        <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2.5"}`}>
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            aria-label={sidebarCollapsed ? "Expand menu" : "Collapse menu"}
+            aria-expanded={!sidebarCollapsed}
+            className="w-10 h-10 shrink-0 flex items-center justify-center rounded-md text-white/70 hover:text-white hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFEFD2]/40 transition-colors"
+          >
+            <Menu aria-hidden="true" className="w-5 h-5" strokeWidth={2} />
+          </button>
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="bg-white p-1 rounded-sm shrink-0">
+                <img
+                  src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
+                  alt="NHG Logo"
+                  className="w-7 h-7 object-contain"
+                />
               </div>
-              <div className="text-[9px] font-bold tracked-caps text-[#FFEFD2]/60 mt-1">
-                SUPER ADMIN ACCESS
+              <div className="text-lg font-bold font-display text-white tracking-tight leading-none truncate">
+                NHGOne
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-4 mb-2">
-            <div className="bg-white p-1.5 rounded-sm">
-              <img
-                src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
-                alt="NHG Logo"
-                className="w-8 h-8 object-contain"
-              />
-            </div>
-            <div className="text-xl font-bold font-display text-white tracking-tight leading-none">
-              NHGOne
-            </div>
-          </div>
-        )}
-        {navLinks}
+          )}
+        </div>
 
-        <div className="mt-auto pb-4">{exitAdminLink}</div>
+        {onAdminPath &&
+          (sidebarCollapsed ? (
+            // Collapsed, the Admin Console badge shrinks to its shield, so the
+            // rail still says which area you are in.
+            <div className="group relative flex justify-center">
+              <div
+                aria-label="Admin Console"
+                className="w-10 h-10 rounded-md bg-[#FFEFD2]/10 border border-[#FFEFD2]/20 flex items-center justify-center"
+              >
+                <ShieldCheck aria-hidden="true" className="w-[18px] h-[18px] text-[#FFEFD2]" />
+              </div>
+              <span
+                role="tooltip"
+                className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 -translate-x-1 whitespace-nowrap rounded-md bg-[#0d1a00] px-2.5 py-1.5 text-[11px] font-bold tracked-caps text-white opacity-0 shadow-lg ring-1 ring-[#FFEFD2]/15 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100"
+              >
+                Admin Console
+              </span>
+            </div>
+          ) : (
+            // Admin-only badge - visually marks "you're in a different,
+            // higher-privilege area" the way EXIT ADMIN does at the bottom of
+            // this same sidebar.
+            <div className="flex items-center gap-3 px-3 py-3 bg-[#FFEFD2]/10 border border-[#FFEFD2]/20 rounded-md">
+              <div className="w-8 h-8 rounded-sm bg-[#FFEFD2]/15 flex items-center justify-center shrink-0">
+                <ShieldCheck aria-hidden="true" className="w-4 h-4 text-[#FFEFD2]" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[13px] font-bold font-display text-white tracking-tight leading-none">
+                  ADMIN CONSOLE
+                </div>
+                <div className="text-[9px] font-bold tracked-caps text-[#FFEFD2]/60 mt-1">
+                  SUPER ADMIN ACCESS
+                </div>
+              </div>
+            </div>
+          ))}
+
+        {renderNav(sidebarCollapsed)}
+
+        <div className="mt-auto pb-2">{renderExitAdmin(sidebarCollapsed)}</div>
       </aside>
       <main className="flex-1 flex flex-col lg:h-screen overflow-hidden relative min-h-0">
         <div className="flex-1 overflow-y-auto w-full">
