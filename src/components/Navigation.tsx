@@ -790,7 +790,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         </button>
         <div className="flex items-center gap-2">
           <img src="https://guideline.lubd.com/wp-content/uploads/2026/09/NHG100.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
-          <div className="text-lg font-light font-sans text-white tracking-tight leading-none">NHGOne</div>
+          <div className="text-lg font-normal font-display text-white tracking-tight leading-none">NHGOne</div>
         </div>
         <div className="flex items-center gap-2">
           <PropertySwitcher compact />
@@ -819,7 +819,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               ) : (
                 <div className="flex items-center gap-3">
                   <img src="https://guideline.lubd.com/wp-content/uploads/2026/09/NHG100.png" alt="NHG Logo" className="w-11 h-11 object-contain" />
-                  <div className="text-xl font-light font-sans text-white tracking-tight leading-none">NHGOne</div>
+                  <div className="text-xl font-normal font-display text-white tracking-tight leading-none">NHGOne</div>
                 </div>
               )}
               <button onClick={() => setMobileNavOpen(false)} aria-label="Close menu" className="p-2 text-white/60 hover:text-white">
@@ -859,7 +859,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
                 alt="NHG Logo"
                 className="w-9 h-9 object-contain shrink-0"
               />
-              <div className="text-lg font-light font-sans text-white tracking-tight leading-none truncate">
+              <div className="text-lg font-normal font-display text-white tracking-tight leading-none truncate">
                 NHGOne
               </div>
             </div>
