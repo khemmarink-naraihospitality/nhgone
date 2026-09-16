@@ -18,6 +18,14 @@ alter table public.property_api_settings
 
 -- Public-READ bucket for the two images, 5 MB cap, images only.
 --
+-- OPTIONAL as of the cropper change: the backend creates this bucket itself
+-- with the service role on the first upload if it is missing
+-- (_ensure_property_image_bucket in api/app/routers/admin.py), with exactly
+-- the settings below. It is kept here so the bucket can also be created up
+-- front, and so its settings are reviewable in one place. The two columns
+-- above are NOT optional - PostgREST cannot add them, so this file still has
+-- to be run once.
+--
 -- RLS decision for storage: deliberately NO storage.objects policies. The only
 -- writer is the backend (POST/DELETE /admin/sync/properties/{id}/image), which
 -- uses the service role and bypasses RLS, so nobody - signed in or not - can

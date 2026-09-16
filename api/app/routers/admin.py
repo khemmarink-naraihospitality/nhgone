@@ -717,6 +717,40 @@ def _remove_property_images(storage, property_id: str, kind: str, keep: str = No
         logger.warning(f"Could not clean up old {kind} images for property {property_id}: {e}")
 
 
+def _ensure_property_image_bucket(storage) -> bool:
+    """Create the public property-images bucket if it isn't there yet.
+
+    The service role can do this straight over the Storage API, so nobody has
+    to go and run SQL before the first logo upload works - the old behaviour
+    was to fail the upload with "run property_images.sql first", which is a
+    dead end for whoever is standing in Admin at the time. Same settings the
+    SQL file declares, deliberately including NO storage policies: the only
+    writer is this module with the service role, and reads go through each
+    object's public URL.
+
+    Returns whether the bucket can be considered present.
+    """
+    try:
+        storage.create_bucket(
+            PROPERTY_IMAGE_BUCKET,
+            PROPERTY_IMAGE_BUCKET,
+            {
+                "public": True,
+                "file_size_limit": _PROPERTY_IMAGE_MAX_BYTES,
+                "allowed_mime_types": list(_PROPERTY_IMAGE_TYPES),
+            },
+        )
+        logger.info(f"Created the {PROPERTY_IMAGE_BUCKET} storage bucket")
+        return True
+    except Exception as e:
+        # Someone else created it first (a race, or the SQL was run) - that is
+        # the outcome we wanted, not a failure.
+        if "already exist" in str(e).lower():
+            return True
+        logger.warning(f"Could not create the {PROPERTY_IMAGE_BUCKET} bucket: {e}")
+        return False
+
+
 @router.post("/sync/properties/{property_id}/image")
 async def upload_property_image(property_id: str, kind: str = Form(...), file: UploadFile = File(...)):
     """Upload a property's profile (logo) or background image and point its
@@ -742,16 +776,26 @@ async def upload_property_image(property_id: str, kind: str = Form(...), file: U
     # the old logo until that cache expires. Unique names can be cached hard.
     path = f"{property_id}/{kind}-{int(time.time() * 1000)}.{extension}"
     storage = admin_supabase.storage
-    try:
+    def _put() -> None:
         storage.from_(PROPERTY_IMAGE_BUCKET).upload(
             path, content,
             {"content-type": file.content_type, "cache-control": "31536000", "upsert": "false"})
+
+    try:
+        _put()
     except Exception as e:
-        message = str(e)
-        if "bucket not found" in message.lower():
-            raise HTTPException(status_code=400,
-                                detail=f"The property-images bucket doesn't exist yet - {_PROPERTY_IMAGE_SQL_HINT}")
-        raise HTTPException(status_code=500, detail=f"Upload failed: {message}")
+        if "bucket not found" not in str(e).lower():
+            raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+        # First image on a database where the bucket was never made: create it
+        # and try once more, rather than sending the admin off to run SQL.
+        if not _ensure_property_image_bucket(storage):
+            raise HTTPException(
+                status_code=500,
+                detail="The property-images storage bucket is missing and could not be created automatically.")
+        try:
+            _put()
+        except Exception as retry_error:
+            raise HTTPException(status_code=500, detail=f"Upload failed: {retry_error}")
 
     url = storage.from_(PROPERTY_IMAGE_BUCKET).get_public_url(path)
     try:

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import ImageCropDialog from "@/components/ImageCropDialog";
 
 interface Profile {
   id: string;
@@ -19,6 +20,12 @@ export default function ProfilePage() {
   const [nameInput, setNameInput] = useState("");
   const [savingName, setSavingName] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  // Problems are reported in the page, never through a browser alert().
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  // The photo waiting to be cropped - set by the file picker, cleared when the
+  // cropper is cancelled or its result has been uploaded.
+  const [pendingPhoto, setPendingPhoto] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchProfile = async () => {
@@ -42,30 +49,50 @@ export default function ProfilePage() {
   const handleSaveName = async () => {
     if (!user || !nameInput.trim()) return;
     setSavingName(true);
+    setNameError(null);
     try {
       const { error } = await supabase.from("profiles").update({ full_name: nameInput.trim() }).eq("id", user.id);
       if (error) throw error;
       setProfile((p) => (p ? { ...p, full_name: nameInput.trim() } : p));
       setEditingName(false);
     } catch (err: any) {
-      alert("Error saving name: " + err.message);
+      setNameError(err.message || "Could not save your name.");
     } finally {
       setSavingName(false);
     }
   };
 
-  const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Choosing a file only opens the cropper - nothing is uploaded until the
+  // photo has been framed and saved, the same flow the property images use.
+  const handlePhotoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    // Cleared straight away so re-picking the same file still fires onChange.
+    if (fileInputRef.current) fileInputRef.current.value = "";
     if (!file || !user) return;
+    setPhotoError(null);
     if (!file.type.startsWith("image/")) {
-      alert("Please select an image file");
+      setPhotoError("Please choose an image file.");
       return;
     }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError("Image must be 5 MB or smaller.");
+      return;
+    }
+    setPendingPhoto(file);
+  };
+
+  // Takes the cropped square the dialog produced, so the stored avatar is
+  // exactly what was framed rather than the original photo.
+  const uploadPhoto = async (blob: Blob) => {
+    if (!user) return;
     setUploadingPhoto(true);
+    setPhotoError(null);
     try {
-      const ext = file.name.split(".").pop() || "png";
+      const ext = blob.type === "image/png" ? "png" : "jpg";
       const path = `${user.id}/avatar.${ext}`;
-      const { error: uploadError } = await supabase.storage.from("avatars").upload(path, file, { upsert: true });
+      const { error: uploadError } = await supabase.storage
+        .from("avatars")
+        .upload(path, blob, { upsert: true, contentType: blob.type });
       if (uploadError) throw uploadError;
 
       const { data: urlData } = supabase.storage.from("avatars").getPublicUrl(path);
@@ -76,11 +103,14 @@ export default function ProfilePage() {
 
       const { data: { user: refreshedUser } } = await supabase.auth.getUser();
       setUser(refreshedUser);
+      setPendingPhoto(null);
     } catch (err: any) {
-      alert("Error uploading photo: " + err.message);
+      // Close the cropper and report underneath it: an error stranded behind
+      // a modal is an error nobody reads.
+      setPendingPhoto(null);
+      setPhotoError(err.message || "Could not upload your photo.");
     } finally {
       setUploadingPhoto(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -102,6 +132,19 @@ export default function ProfilePage() {
 
   return (
     <div className="p-8">
+      {/* Square and masked round, matching how the avatar actually renders. */}
+      {pendingPhoto && (
+        <ImageCropDialog
+          file={pendingPhoto}
+          aspect={1}
+          shape="round"
+          title="Adjust your photo"
+          outputWidth={512}
+          busy={uploadingPhoto}
+          onCancel={() => setPendingPhoto(null)}
+          onConfirm={uploadPhoto}
+        />
+      )}
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold text-slate-800 tracking-tight mb-2">
@@ -170,6 +213,12 @@ export default function ProfilePage() {
             <p className="text-slate-500">{profile?.email || user?.email}</p>
           </div>
         </div>
+
+        {(photoError || nameError) && (
+          <p className="mb-6 rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-bold text-red-600">
+            {photoError || nameError}
+          </p>
+        )}
 
         <div className="space-y-6">
           <div>

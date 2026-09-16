@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { ImagePlus, Trash2 } from "lucide-react";
+import ImageCropDialog from "@/components/ImageCropDialog";
 import PageHeader from "@/components/PageHeader";
 import { PropertyAvatar } from "@/components/PropertySwitcher";
 import { useSelectedProperty } from "@/lib/propertyContext";
@@ -41,6 +42,18 @@ export default function ApiSettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PropertySetting | null>(null);
   const [imageBusy, setImageBusy] = useState<ImageKind | null>(null);
+  // Image problems and the delete confirmation are shown in the page, never
+  // through alert()/confirm() - a native browser dialog here reads like the
+  // app broke. Both are scoped to the property + kind they belong to so the
+  // message appears next to the control that produced it.
+  const [imageError, setImageError] = useState<{ id: string; kind: ImageKind; message: string } | null>(null);
+  const [pendingImage, setPendingImage] = useState<{ id: string; kind: ImageKind; file: File } | null>(null);
+  const [confirmRemove, setConfirmRemove] = useState<{ id: string; kind: ImageKind } | null>(null);
+  // Whole-page problems (load/add/save/delete) - same rule as the image
+  // errors above: shown in the page, never as a native browser dialog.
+  const [pageError, setPageError] = useState<string | null>(null);
+  // The property whose Delete is awaiting confirmation, in the row itself.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const { refreshProperties } = useSelectedProperty();
 
   const [isAdding, setIsAdding] = useState(false);
@@ -69,7 +82,7 @@ export default function ApiSettingsPage() {
       setSettings(res.data || []);
     } catch (err: any) {
       console.error("Fetch error:", err);
-      alert("Error loading settings: " + err.message);
+      setPageError("Could not load settings: " + err.message);
     }
     setLoading(false);
   };
@@ -84,8 +97,9 @@ export default function ApiSettingsPage() {
   };
 
   const handleAdd = async () => {
+    setPageError(null);
     if (!newForm.property_name || !newForm.client_token || !newForm.access_token) {
-      alert("Please fill in all fields");
+      setPageError("Please fill in the property name, client token and access token.");
       return;
     }
 
@@ -107,10 +121,10 @@ export default function ApiSettingsPage() {
         setNewForm({ property_name: "", client_name: "XPossible Hotel Connec", client_token: "", access_token: "", st_property_code: "" });
         await refreshProperties();
       } else {
-        alert("Error adding property: " + res.detail);
+        setPageError("Could not add the property: " + res.detail);
       }
     } catch (err) {
-      alert("Error adding property");
+      setPageError("Could not add the property: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -142,15 +156,17 @@ export default function ApiSettingsPage() {
         setEditingId(null);
         await refreshProperties();
       } else {
-        alert("Error saving: " + res.detail);
+        setPageError("Could not save: " + res.detail);
       }
     } catch (err) {
-      alert("Error saving");
+      setPageError("Could not save: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
+  // Confirmed in the row before this is ever called - see confirmDeleteId.
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this property?")) return;
+    setConfirmDeleteId(null);
+    setPageError(null);
     try {
       // Hardcoded same-origin path, deliberately NOT NEXT_PUBLIC_API_URL: that
       // env var points at a stale API deployment lacking newer endpoints/
@@ -165,7 +181,7 @@ export default function ApiSettingsPage() {
         await refreshProperties();
       }
     } catch (err) {
-      alert("Error deleting");
+      setPageError("Could not delete the property: " + (err instanceof Error ? err.message : String(err)));
     }
   };
 
@@ -179,35 +195,51 @@ export default function ApiSettingsPage() {
     setSettings((list) => list.map((s) => (s.id === id ? { ...s, [field]: url } : s)));
   };
 
-  const uploadImage = async (id: string, kind: ImageKind, file: File) => {
+  // Picking a file only opens the cropper - nothing is uploaded until the
+  // user has framed it and pressed Save, the way Google's account photo works.
+  const chooseImage = (id: string, kind: ImageKind, file: File) => {
+    setImageError(null);
     if (!IMAGE_ACCEPT.split(",").includes(file.type)) {
-      alert("Please choose a PNG, JPG, WebP or GIF image.");
+      setImageError({ id, kind, message: "Please choose a PNG, JPG, WebP or GIF image." });
       return;
     }
     if (file.size > IMAGE_MAX_BYTES) {
-      alert("Image must be 5 MB or smaller.");
+      setImageError({ id, kind, message: "Image must be 5 MB or smaller." });
       return;
     }
+    setPendingImage({ id, kind, file });
+  };
+
+  // Takes the cropped Blob the dialog produced, not the file that was picked,
+  // so what is stored is exactly what was framed. FormData needs a filename
+  // for FastAPI to read it as an upload at all.
+  const uploadImage = async (id: string, kind: ImageKind, blob: Blob) => {
     setImageBusy(kind);
+    setImageError(null);
     try {
       const body = new FormData();
       body.append("kind", kind);
-      body.append("file", file);
+      body.append("file", blob, `${kind}.${blob.type === "image/png" ? "png" : "jpg"}`);
       const response = await fetch(`/api/admin/sync/properties/${id}/image`, { method: "POST", body });
       const res = await response.json();
       if (!response.ok || res.status !== "success") throw new Error(res.detail || "Upload failed");
       applyImage(id, kind, res.data.url);
+      setPendingImage(null);
       await refreshProperties();
     } catch (err) {
-      alert("Error uploading image: " + (err instanceof Error ? err.message : String(err)));
+      // Close the cropper and report underneath it: an error stranded behind
+      // a modal is an error nobody reads.
+      setPendingImage(null);
+      setImageError({ id, kind, message: err instanceof Error ? err.message : String(err) });
     } finally {
       setImageBusy(null);
     }
   };
 
   const removeImage = async (id: string, kind: ImageKind) => {
-    if (!confirm(`Remove this property's ${kind === "profile" ? "profile image" : "background image"}?`)) return;
+    setConfirmRemove(null);
     setImageBusy(kind);
+    setImageError(null);
     try {
       const response = await fetch(`/api/admin/sync/properties/${id}/image?kind=${kind}`, { method: "DELETE" });
       const res = await response.json();
@@ -215,7 +247,7 @@ export default function ApiSettingsPage() {
       applyImage(id, kind, null);
       await refreshProperties();
     } catch (err) {
-      alert("Error removing image: " + (err instanceof Error ? err.message : String(err)));
+      setImageError({ id, kind, message: err instanceof Error ? err.message : String(err) });
     } finally {
       setImageBusy(null);
     }
@@ -224,37 +256,68 @@ export default function ApiSettingsPage() {
   const imageButtons = (prop: PropertySetting, kind: ImageKind) => {
     const hasImage = !!prop[IMAGE_FIELD[kind]];
     const busy = imageBusy === kind;
+    const error = imageError && imageError.id === prop.id && imageError.kind === kind ? imageError.message : null;
+    const confirming = confirmRemove?.id === prop.id && confirmRemove.kind === kind;
     return (
-      <div className="flex flex-wrap gap-2">
-        <label
-          className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-all ${
-            busy ? "cursor-wait opacity-60" : "cursor-pointer hover:bg-slate-50"
-          }`}
-        >
-          <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
-          {busy ? "Working…" : hasImage ? "Replace" : "Upload"}
-          <input
-            type="file"
-            accept={IMAGE_ACCEPT}
-            className="sr-only"
-            disabled={busy}
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0];
-              e.currentTarget.value = "";
-              if (file) uploadImage(prop.id, kind, file);
-            }}
-          />
-        </label>
-        {hasImage && (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => removeImage(prop.id, kind)}
-            className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-2">
+          <label
+            className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-all ${
+              busy ? "cursor-wait opacity-60" : "cursor-pointer hover:bg-slate-50"
+            }`}
           >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-            Remove
-          </button>
+            <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
+            {busy ? "Working…" : hasImage ? "Replace" : "Upload"}
+            <input
+              type="file"
+              accept={IMAGE_ACCEPT}
+              className="sr-only"
+              disabled={busy}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = "";
+                if (file) chooseImage(prop.id, kind, file);
+              }}
+            />
+          </label>
+          {hasImage && !confirming && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => { setImageError(null); setConfirmRemove({ id: prop.id, kind }); }}
+              className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              Remove
+            </button>
+          )}
+        </div>
+
+        {confirming && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+            <span className="text-xs font-bold text-red-700">
+              Remove the {kind === "profile" ? "profile image" : "background image"}?
+            </span>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => removeImage(prop.id, kind)}
+              className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white transition-all hover:bg-red-700 disabled:opacity-60"
+            >
+              Remove
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmRemove(null)}
+              className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs font-bold text-red-600 transition-all hover:bg-red-50"
+            >
+              Keep
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>
         )}
       </div>
     );
@@ -268,6 +331,20 @@ export default function ApiSettingsPage() {
 
   return (
     <div className="p-8 bg-white min-h-screen text-slate-900">
+      {/* A logo is square and masked round, the way it renders in the property
+          switcher; a background is the wide banner behind the name there. */}
+      {pendingImage && (
+        <ImageCropDialog
+          file={pendingImage.file}
+          aspect={pendingImage.kind === "background" ? 3 : 1}
+          shape={pendingImage.kind === "background" ? "rect" : "round"}
+          title={pendingImage.kind === "background" ? "Adjust the background" : "Adjust the property logo"}
+          outputWidth={pendingImage.kind === "background" ? 1600 : 512}
+          busy={imageBusy !== null}
+          onCancel={() => setPendingImage(null)}
+          onConfirm={(blob) => uploadImage(pendingImage.id, pendingImage.kind, blob)}
+        />
+      )}
       <PageHeader
         title="API Settings"
         description="Configure MEWS API Credentials for each property"
@@ -279,6 +356,19 @@ export default function ApiSettingsPage() {
           {isAdding ? "Cancel" : "Add New Property"}
         </button>
       </PageHeader>
+
+      {pageError && (
+        <div className="mb-8 flex items-start justify-between gap-4 rounded-2xl border border-red-100 bg-red-50 px-5 py-4">
+          <p className="text-sm font-bold text-red-600">{pageError}</p>
+          <button
+            type="button"
+            onClick={() => setPageError(null)}
+            className="shrink-0 text-xs font-bold text-red-400 transition-colors hover:text-red-600"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {isAdding && (
         <div className="mb-10 bg-slate-50 border border-slate-200 rounded-3xl p-8 animate-in slide-in-from-top-4 duration-300 shadow-sm">
@@ -477,12 +567,32 @@ export default function ApiSettingsPage() {
                     >
                       Edit
                     </button>
-                    <button
-                      onClick={() => handleDelete(prop.id)}
-                      className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-sm font-bold border border-red-100 transition-all shadow-sm"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                    </button>
+                    {confirmDeleteId === prop.id ? (
+                      /* Inline instead of a browser confirm() - and unlike the
+                         native dialog, it names the property being deleted. */
+                      <div className="flex items-center gap-2 rounded-xl border border-red-100 bg-red-50 px-3 py-2">
+                        <span className="text-xs font-bold text-red-700">Delete {prop.property_name}?</span>
+                        <button
+                          onClick={() => handleDelete(prop.id)}
+                          className="rounded-lg bg-red-600 px-3 py-1 text-xs font-bold text-white transition-all hover:bg-red-700"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="rounded-lg border border-red-200 bg-white px-3 py-1 text-xs font-bold text-red-600 transition-all hover:bg-red-50"
+                        >
+                          Keep
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setPageError(null); setConfirmDeleteId(prop.id); }}
+                        className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-sm font-bold border border-red-100 transition-all shadow-sm"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      </button>
+                    )}
                   </div>
                 </div>
               )}
