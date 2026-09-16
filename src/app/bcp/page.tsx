@@ -2,7 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
-import { getAllowedProperties } from "@/lib/allowedProperties";
+import { useSelectedProperty } from "@/lib/propertyContext";
 import PageHeader from "@/components/PageHeader";
 import { renderRr3Template, type Rr3TokenData } from "@/lib/rr3Template";
 import SignaturePad, { cropSignatureDataUrlToInk } from "@/components/SignaturePad";
@@ -728,8 +728,7 @@ export default function BcpPage() {
     supabase.auth.getUser().then(({ data }) => setCurrentUserEmail(data.user?.email || ""));
   }, []);
 
-  const [properties, setProperties] = useState<string[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState("");
+  const { selectedProperty } = useSelectedProperty();
   // Same green/amber/red BCP Auto Capture health check as the Dashboard
   // (GET /bcp/last-capture), scoped to just the property being viewed here
   // rather than every allowed property - front desk staff on this page
@@ -1106,19 +1105,6 @@ export default function BcpPage() {
   const timelineScrollRef = useRef<HTMLDivElement>(null);
   const dayColRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const roomRowRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-
-  useEffect(() => {
-    const fetchProperties = async () => {
-      // Property-restricted roles (Admin > Users > Role, "Property" column)
-      // only ever get their own property back here - not every property.
-      const { properties: names } = await getAllowedProperties();
-      if (names.length > 0) {
-        setProperties(names);
-        setSelectedProperty(names[0]);
-      }
-    };
-    fetchProperties();
-  }, []);
 
   const loadSnapshotList = async (property: string): Promise<SnapshotMeta[]> => {
     try {
@@ -4355,21 +4341,6 @@ export default function BcpPage() {
 
         <CollapsibleSection open={headerOpen}>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-            <div className="flex flex-col gap-2 w-full md:w-80">
-              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-              <div className="relative">
-                <select
-                  value={selectedProperty}
-                  onChange={(e) => setSelectedProperty(e.target.value)}
-                  className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-                >
-                  {properties.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
             <div className="flex flex-col gap-2 w-full md:w-72">
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Snapshot</label>
               <div className="relative">

@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { getAllowedProperties } from "@/lib/allowedProperties";
+import { useMemo, useState } from "react";
+import { useSelectedProperty } from "@/lib/propertyContext";
 import PageHeader from "@/components/PageHeader";
 
 interface Rr3Card {
@@ -38,8 +37,7 @@ const maskId = (v: string) => {
 };
 
 export default function Rr3Page() {
-  const [properties, setProperties] = useState<string[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState("");
+  const { selectedProperty } = useSelectedProperty();
   const [cards, setCards] = useState<Rr3Card[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -62,19 +60,6 @@ export default function Rr3Page() {
   const initialRange = getDefaultRange();
   const [startDate, setStartDate] = useState(initialRange.start);
   const [endDate, setEndDate] = useState(initialRange.end);
-
-  useEffect(() => {
-    const fetchProperties = async () => {
-      // Property-restricted roles (Admin > Users > Role, "Property" column)
-      // only ever get their own property back here - not every property.
-      const { properties: names } = await getAllowedProperties();
-      if (names.length > 0) {
-        setProperties(names);
-        setSelectedProperty(names[0]);
-      }
-    };
-    fetchProperties();
-  }, []);
 
   const fetchCards = async () => {
     if (!selectedProperty) return;
@@ -170,21 +155,6 @@ export default function Rr3Page() {
         <PageHeader title="RR3" description="ร.ร.๓ - Thai Hotel Act lodger registration cards, generated from MEWS check-ins for a date range." />
 
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-8 mb-4">
-          <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-            <div className="relative">
-              <select
-                value={selectedProperty}
-                onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-              >
-                {properties.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </div>
           <div className="flex flex-col gap-2 w-full md:w-48">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Start Date</label>
             <input

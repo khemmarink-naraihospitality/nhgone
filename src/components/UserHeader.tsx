@@ -1,26 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
+import { ChevronsUpDown, LogOut, Moon, ShieldCheck, Sun, UserRound, type LucideIcon } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 // Bump this if the default theme ever needs to be force-reset again.
 const THEME_DEFAULT_RESET_KEY = "theme_default_reset_v1";
 
-export default function UserHeader() {
-  const [isOpen, setIsOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+/** Light / Dark switch. */
+export function ThemeToggle() {
   const [theme, setTheme] = useState("light");
-  const router = useRouter();
-
-  const [profile, setProfile] = useState<any>(null);
-  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
-  // Where the Admin Console link points: "/admin" for full admins, the
-  // nationality table for roles allowed in on their RR4/TM30 permission
-  // alone (that landing dashboard is not one of their two permitted pages).
-  const [adminHref, setAdminHref] = useState("/admin");
 
   useEffect(() => {
     // Initial theme check. Light Mode became the app-wide default here -
@@ -36,7 +28,82 @@ export default function UserHeader() {
     }
     setTheme(savedTheme);
     document.documentElement.setAttribute("data-theme", savedTheme);
-    
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("theme", newTheme);
+    document.documentElement.setAttribute("data-theme", newTheme);
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className={`p-2 rounded-xl border transition-all shadow-sm ${
+        theme === "dark"
+          ? "bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-800"
+          : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+      }`}
+      title={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+      aria-label={`Switch to ${theme === "dark" ? "Light" : "Dark"} Mode`}
+    >
+      {theme === "dark" ? <Sun className="w-5 h-5" aria-hidden="true" /> : <Moon className="w-5 h-5" aria-hidden="true" />}
+    </button>
+  );
+}
+
+interface ProfileRow {
+  role: string | null;
+  full_name: string | null;
+}
+
+function MenuLink({ href, icon: Icon, label, onClick, tone = "default" }: {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  tone?: "default" | "admin";
+}) {
+  return (
+    <Link
+      href={href}
+      role="menuitem"
+      onClick={onClick}
+      className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-colors ${
+        tone === "admin" ? "text-[#E6DC6A] hover:bg-[#AAA024]/10" : "text-white/80 hover:bg-white/5 hover:text-white"
+      }`}
+    >
+      <Icon aria-hidden="true" className="h-4 w-4 shrink-0" />
+      {label}
+    </Link>
+  );
+}
+
+/**
+ * The signed-in user's avatar and account menu (Admin Console, Profile
+ * Settings, Log out).
+ *
+ * variant="sidebar" is the MEWS-style placement at the bottom of the desktop
+ * sidebar: avatar + name + role when expanded, avatar alone (name as a
+ * tooltip) when the sidebar is collapsed, and the menu opens upward / to the
+ * right so it never covers the link that opened it.
+ * variant="topbar" is the plain avatar button the mobile top bar uses.
+ */
+export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar" | "topbar"; collapsed?: boolean }) {
+  const [open, setOpen] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [canAccessAdmin, setCanAccessAdmin] = useState(false);
+  // Where the Admin Console link points: "/admin" for full admins, the
+  // nationality table for roles allowed in on their RR4/TM30 permission
+  // alone (that landing dashboard is not one of their two permitted pages).
+  const [adminHref, setAdminHref] = useState("/admin");
+  const rootRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+
+  useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       setUser(user);
@@ -47,7 +114,7 @@ export default function UserHeader() {
           .select("role, full_name")
           .eq("id", user.id)
           .single();
-        
+
         if (error || !data) {
           console.warn("Unauthorized access detected. No profile found for:", user.email);
           await supabase.auth.signOut();
@@ -86,124 +153,143 @@ export default function UserHeader() {
       setUser(session?.user ?? null);
       if (session?.user) getUser();
     });
+    return () => subscription.unsubscribe();
+  }, [router]);
 
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
     };
-
-    document.addEventListener("mousedown", handleClickOutside);
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-      subscription.unsubscribe();
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
     };
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-    document.documentElement.setAttribute("data-theme", newTheme);
-  };
+  }, [open]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     router.push("/");
   };
 
+  const close = () => setOpen(false);
+  const displayName = profile?.full_name || user?.email || "User";
+  const role = profile?.role || "User";
+  const initials = (
+    profile?.full_name?.split(" ").map((n) => n[0]).join("") || user?.email?.substring(0, 2) || "U"
+  ).slice(0, 2).toUpperCase();
+  const avatarUrl = user?.user_metadata?.avatar_url as string | undefined;
+
+  const avatar = (size: number) =>
+    avatarUrl ? (
+      // eslint-disable-next-line @next/next/no-img-element -- Supabase Storage / Google avatar URLs, not configured for next/image
+      <img src={avatarUrl} alt="" className="shrink-0 rounded-full object-cover" style={{ width: size, height: size }} />
+    ) : (
+      <span
+        aria-hidden="true"
+        className="shrink-0 rounded-full bg-gradient-to-tr from-[#AAA024] to-emerald-600 flex items-center justify-center font-bold text-white"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+      >
+        {initials}
+      </span>
+    );
+
+  const panelPosition =
+    variant === "topbar" ? "right-0 top-full mt-2" : collapsed ? "left-full bottom-0 ml-3" : "left-0 bottom-full mb-2";
+
   return (
-    <div className="z-50 font-sans">
-      <div className="relative" ref={dropdownRef}>
-        <div className="flex items-center gap-3">
-          {/* Theme Toggle Button */}
-          <button 
-            onClick={toggleTheme}
-            className={`p-2 rounded-xl border transition-all shadow-sm ${
-              theme === 'dark' 
-              ? 'bg-slate-900/50 border-white/10 text-slate-400 hover:text-white hover:bg-slate-800' 
-              : 'bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-            title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
-          >
-            {theme === 'dark' ? (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707M16.243 17.657l.707.707M7.757 7.757l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" /></svg>
-            ) : (
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
-            )}
-          </button>
+    <div className="relative" ref={rootRef}>
+      {variant === "topbar" ? (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={`Account: ${displayName}`}
+          className="rounded-full border-2 border-white/10 shadow-lg shadow-black/20 transition-all hover:border-[#AAA024] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#AAA024]/50"
+        >
+          {avatar(36)}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-label={collapsed ? `Account: ${displayName}` : undefined}
+          className={`group relative flex w-full items-center gap-3 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FFEFD2]/40 ${
+            collapsed ? "justify-center py-1.5" : "overflow-hidden px-2 py-2 hover:bg-white/5"
+          } ${open ? "bg-white/10" : ""}`}
+        >
+          {avatar(36)}
+          {!collapsed && (
+            <>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block truncate text-[13px] font-semibold text-white">{displayName}</span>
+                <span className="block truncate text-[11px] text-white/50">{role}</span>
+              </span>
+              <ChevronsUpDown aria-hidden="true" className="h-4 w-4 shrink-0 text-white/40" />
+            </>
+          )}
+          {collapsed && !open && (
+            <span
+              role="tooltip"
+              className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 -translate-x-1 whitespace-nowrap rounded-md bg-[#0d1a00] px-2.5 py-1.5 text-[11px] font-bold tracked-caps text-white opacity-0 shadow-lg ring-1 ring-[#FFEFD2]/15 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100 group-focus-visible:translate-x-0 group-focus-visible:opacity-100"
+            >
+              {displayName}
+            </span>
+          )}
+        </button>
+      )}
 
-          {/* Profile Circle */}
-          <button 
-            onClick={() => setIsOpen(!isOpen)}
-            className="w-10 h-10 rounded-full overflow-hidden border-2 border-white/10 hover:border-blue-400 transition-all font-sans cursor-pointer focus:outline-none shadow-lg shadow-black/20"
-          >
-            {user?.user_metadata?.avatar_url ? (
-              <img src={user.user_metadata.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-               <div className="w-full h-full bg-gradient-to-tr from-blue-500 to-emerald-500 flex items-center justify-center text-sm font-bold text-white uppercase shadow-inner">
-                  {profile?.full_name?.split(' ').map((n: string)=>n[0]).join('') || user?.email?.substring(0, 2) || "U"}
-               </div>
-            )}
-          </button>
-        </div>
-
-        {isOpen && (
-          <div className={`absolute right-0 mt-3 w-80 rounded-2xl shadow-2xl border overflow-hidden z-50 animate-in fade-in zoom-in-95 duration-200 transform origin-top-right font-sans transition-colors duration-300 ${
-            theme === 'dark' ? 'bg-[#0a1400] border-white/10' : 'bg-white border-[#152A00]/10'
-          }`}>
-            <div className={`p-6 border-b ${theme === 'dark' ? 'bg-white/5 border-white/10' : 'bg-[#152A00]/5 border-[#152A00]/10'}`}>
-               <p className={`text-[10px] font-bold uppercase tracking-widest mb-1 ${theme === 'dark' ? 'text-white/40' : 'text-[#152A00]/50'}`}>Signed in as</p>
-               <p className={`text-xs font-bold break-all ${theme === 'dark' ? 'text-white' : 'text-[#152A00]'}`}>{user?.email}</p>
-               <p className={`text-[11px] mt-1 font-bold inline-block px-2 py-0.5 rounded ${theme === 'dark' ? 'bg-[#AAA024]/20 text-[#AAA024]' : 'bg-[#AAA024] text-white'}`}>{profile?.role || "User"}</p>
+      {open && (
+        <div
+          role="menu"
+          className={`absolute z-50 w-72 overflow-hidden rounded-xl border border-white/10 bg-[#0d1a00] font-sans text-white shadow-2xl ${panelPosition}`}
+        >
+          <div className="flex items-center gap-3 border-b border-white/10 p-4">
+            {avatar(40)}
+            <div className="min-w-0">
+              <div className="truncate text-[13px] font-bold">{displayName}</div>
+              <div className="truncate text-[11px] text-white/50">{user?.email}</div>
+              <span className="mt-1.5 inline-block rounded bg-[#AAA024]/20 px-2 py-0.5 text-[10px] font-bold text-[#E6DC6A]">
+                {role}
+              </span>
             </div>
-
-            <div className="p-2">
-                {canAccessAdmin && (
-                  <Link
-                    href={adminHref}
-                    onClick={() => setIsOpen(false)}
-                    className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group ${theme === 'dark' ? 'text-purple-200 hover:bg-white/5' : 'text-purple-700 hover:bg-purple-50'}`}
-                  >
-                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-purple-500/10 text-purple-400 group-hover:bg-purple-500 group-hover:text-white' : 'bg-purple-100 text-purple-600 group-hover:bg-purple-600 group-hover:text-white'}`}>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
-                      </svg>
-                    </div>
-                    Admin Console
-                  </Link>
-                )}
-
-                <Link
-                  href="/profile"
-                  onClick={() => setIsOpen(false)}
-                  className={`flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group ${theme === 'dark' ? 'text-white/80 hover:bg-white/5' : 'text-[#152A00] hover:bg-[#152A00]/5'}`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-white/5 text-white/50 group-hover:bg-white/10 group-hover:text-white' : 'bg-[#152A00]/5 text-[#152A00]/60 group-hover:bg-[#152A00]/10 group-hover:text-[#152A00]'}`}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                    </svg>
-                  </div>
-                  Profile Settings
-                </Link>
-
-                <div className={`h-px my-1 mx-2 ${theme === 'dark' ? 'bg-white/10' : 'bg-[#152A00]/10'}`} />
-
-                <button
-                  onClick={handleLogout}
-                  className={`w-full flex items-center gap-3 px-4 py-3 text-sm font-medium rounded-xl transition-all group text-left ${theme === 'dark' ? 'text-red-400 hover:bg-red-500/10' : 'text-red-600 hover:bg-red-50'}`}
-                >
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${theme === 'dark' ? 'bg-red-500/10 text-red-500 group-hover:bg-red-500 group-hover:text-white' : 'bg-red-100 text-red-600 group-hover:bg-red-600 group-hover:text-white'}`}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-                    </svg>
-                  </div>
-                  Log out
-                </button>
-             </div>
           </div>
-        )}
-      </div>
+          <div className="p-1.5">
+            {canAccessAdmin && (
+              <MenuLink href={adminHref} icon={ShieldCheck} label="Admin Console" onClick={close} tone="admin" />
+            )}
+            <MenuLink href="/profile" icon={UserRound} label="Profile Settings" onClick={close} />
+            <div className="mx-2 my-1 h-px bg-white/10" />
+            <button
+              type="button"
+              role="menuitem"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13px] font-medium text-red-300 transition-colors hover:bg-red-500/10 hover:text-red-200"
+            >
+              <LogOut aria-hidden="true" className="h-4 w-4 shrink-0" />
+              Log out
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Theme toggle + account menu together - the mobile top bar's pair. */
+export default function UserHeader() {
+  return (
+    <div className="z-50 flex items-center gap-3 font-sans">
+      <ThemeToggle />
+      <ProfileMenu variant="topbar" />
     </div>
   );
 }

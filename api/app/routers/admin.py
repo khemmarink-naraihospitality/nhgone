@@ -1,9 +1,10 @@
 import logging
 import secrets
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, HTTPException, Body
+from fastapi import APIRouter, File, Form, HTTPException, Body, UploadFile
 from pydantic import BaseModel
 from app.config import settings, get_supabase_client
 from app.services.encryption import encryption_service
@@ -683,6 +684,109 @@ async def delete_property_settings(property_id: str):
         return {"status": "success", "message": "Property deleted"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Property branding for the MEWS-style property switcher (a logo and a banner
+# photo per property) - see api/sql/property_images.sql for the two columns
+# and the bucket. Written ONLY here, with the service role: the bucket has no
+# storage policies at all, so no browser can write to it.
+PROPERTY_IMAGE_BUCKET = "property-images"
+_PROPERTY_IMAGE_COLUMNS = {"profile": "profile_image_url", "background": "background_image_url"}
+_PROPERTY_IMAGE_TYPES = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
+_PROPERTY_IMAGE_MAX_BYTES = 5 * 1024 * 1024
+_PROPERTY_IMAGE_SQL_HINT = "run api/sql/property_images.sql in the Supabase SQL Editor first"
+
+
+def _property_image_column(kind: str) -> str:
+    column = _PROPERTY_IMAGE_COLUMNS.get(kind)
+    if not column:
+        raise HTTPException(status_code=400, detail="kind must be 'profile' or 'background'")
+    return column
+
+
+def _remove_property_images(storage, property_id: str, kind: str, keep: str = None) -> None:
+    """Best-effort cleanup of this property's stored files for one kind. A
+    failure here only leaves an unused file behind - it must never fail a
+    request whose row update already succeeded."""
+    try:
+        files = storage.from_(PROPERTY_IMAGE_BUCKET).list(property_id) or []
+        stale = [f"{property_id}/{f['name']}" for f in files
+                 if str(f.get("name", "")).startswith(f"{kind}-") and f"{property_id}/{f['name']}" != keep]
+        if stale:
+            storage.from_(PROPERTY_IMAGE_BUCKET).remove(stale)
+    except Exception as e:
+        logger.warning(f"Could not clean up old {kind} images for property {property_id}: {e}")
+
+
+@router.post("/sync/properties/{property_id}/image")
+async def upload_property_image(property_id: str, kind: str = Form(...), file: UploadFile = File(...)):
+    """Upload a property's profile (logo) or background image and point its
+    property_api_settings row at it. Takes effect immediately - it is not part
+    of the Edit form's Save, the same way the profile page's photo isn't."""
+    column = _property_image_column(kind)
+    extension = _PROPERTY_IMAGE_TYPES.get((file.content_type or "").lower())
+    if not extension:
+        raise HTTPException(status_code=400, detail="Please upload a PNG, JPG, WebP or GIF image")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded file is empty")
+    if len(content) > _PROPERTY_IMAGE_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Image must be 5 MB or smaller")
+
+    admin_supabase = get_supabase_client()
+    found = admin_supabase.table("property_api_settings").select("id").eq("id", property_id).limit(1).execute()
+    if not found.data:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    # A new file name per upload rather than overwriting one fixed name: public
+    # objects are served through a CDN, and an overwritten file keeps showing
+    # the old logo until that cache expires. Unique names can be cached hard.
+    path = f"{property_id}/{kind}-{int(time.time() * 1000)}.{extension}"
+    storage = admin_supabase.storage
+    try:
+        storage.from_(PROPERTY_IMAGE_BUCKET).upload(
+            path, content,
+            {"content-type": file.content_type, "cache-control": "31536000", "upsert": "false"})
+    except Exception as e:
+        message = str(e)
+        if "bucket not found" in message.lower():
+            raise HTTPException(status_code=400,
+                                detail=f"The property-images bucket doesn't exist yet - {_PROPERTY_IMAGE_SQL_HINT}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {message}")
+
+    url = storage.from_(PROPERTY_IMAGE_BUCKET).get_public_url(path)
+    try:
+        admin_supabase.table("property_api_settings").update({column: url}).eq("id", property_id).execute()
+    except Exception as e:
+        # Don't leave an orphaned file behind for a row that never pointed at it.
+        try:
+            storage.from_(PROPERTY_IMAGE_BUCKET).remove([path])
+        except Exception:
+            pass
+        if column in str(e):
+            raise HTTPException(status_code=400,
+                                detail=f"property_api_settings has no {column} column yet - {_PROPERTY_IMAGE_SQL_HINT}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    # Only now drop the previous file(s), once the row points at the new one.
+    _remove_property_images(storage, property_id, kind, keep=path)
+    return {"status": "success", "data": {"column": column, "url": url}}
+
+
+@router.delete("/sync/properties/{property_id}/image")
+async def delete_property_image(property_id: str, kind: str):
+    """Clear a property's profile or background image - the switcher falls
+    back to the property's initials / the plain banner."""
+    column = _property_image_column(kind)
+    admin_supabase = get_supabase_client()
+    try:
+        admin_supabase.table("property_api_settings").update({column: None}).eq("id", property_id).execute()
+    except Exception as e:
+        if column in str(e):
+            raise HTTPException(status_code=400,
+                                detail=f"property_api_settings has no {column} column yet - {_PROPERTY_IMAGE_SQL_HINT}")
+        raise HTTPException(status_code=500, detail=str(e))
+    _remove_property_images(admin_supabase.storage, property_id, kind)
+    return {"status": "success"}
 
 @router.get("/sync/logs")
 async def get_sync_logs(

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
-import { getAllowedProperties } from "@/lib/allowedProperties";
+import { useSelectedProperty } from "@/lib/propertyContext";
 import { downloadStopSaleXlsx, type StopSaleChartData, type StopSaleDayCell } from "@/lib/stopSaleChartExport";
 
 // Same collapsible-header pattern as Statistic Files' own page - one
@@ -431,8 +431,7 @@ const buildMonthBlocks = (dates: string[]): MonthBlock[] => {
 };
 
 export default function RevenuePage() {
-  const [properties, setProperties] = useState<string[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState("");
+  const { selectedProperty } = useSelectedProperty();
   const [dataSource, setDataSource] = useState<DataSource>("database");
   const [activeTab, setActiveTab] = useState<TabKey>("occupancy");
   const [headerOpen, setHeaderOpen] = useState(false);
@@ -523,13 +522,6 @@ export default function RevenuePage() {
   // from what's on screen), or undefined/absent for "everything", which is
   // every month's default until that month's own dropdown is touched.
   const [visibleCategoriesByMonth, setVisibleCategoriesByMonth] = useState<Record<string, Set<string>>>({});
-
-  useEffect(() => {
-    getAllowedProperties().then(({ properties: list }) => {
-      setProperties(list);
-      setSelectedProperty((cur) => cur || list[0] || "");
-    });
-  }, []);
 
   // Returns the freshly loaded list (not just setting state) so a caller
   // like handleImport can find the row it just created without racing
@@ -915,22 +907,6 @@ export default function RevenuePage() {
           label={`Details — ${selectedProperty || "no property selected"}${report ? ` · ${report.start_date} — ${report.end_date}` : ""}`}
         >
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-          <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-            <div className="relative">
-              <select
-                value={selectedProperty}
-                onChange={(e) => setSelectedProperty(e.target.value)}
-                className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-              >
-                {properties.map((p) => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </div>
-
           {dataSource === "live" ? (
             <>
               <div className="flex flex-col gap-2 w-full md:w-44">

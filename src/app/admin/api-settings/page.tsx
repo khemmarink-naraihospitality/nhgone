@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ImagePlus, Trash2 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import { PropertyAvatar } from "@/components/PropertySwitcher";
+import { useSelectedProperty } from "@/lib/propertyContext";
 
 interface PropertySetting {
   id: string;
@@ -16,13 +19,29 @@ interface PropertySetting {
   // The property's real registered Thai name for RR4/TM30 filings; null/
   // blank falls back to the hardcoded name table server-side.
   rr4_property_thai_name?: string | null;
+  // Branding shown in the property switcher (api/sql/property_images.sql).
+  // Uploaded and removed through their own endpoint, never through Save.
+  profile_image_url?: string | null;
+  background_image_url?: string | null;
 }
+
+type ImageKind = "profile" | "background";
+
+const IMAGE_FIELD: Record<ImageKind, "profile_image_url" | "background_image_url"> = {
+  profile: "profile_image_url",
+  background: "background_image_url",
+};
+
+const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
+const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
 export default function ApiSettingsPage() {
   const [settings, setSettings] = useState<PropertySetting[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<PropertySetting | null>(null);
+  const [imageBusy, setImageBusy] = useState<ImageKind | null>(null);
+  const { refreshProperties } = useSelectedProperty();
 
   const [isAdding, setIsAdding] = useState(false);
   const [newForm, setNewForm] = useState({
@@ -86,6 +105,7 @@ export default function ApiSettingsPage() {
         setSettings([...settings, res.data].sort((a, b) => a.property_name.localeCompare(b.property_name)));
         setIsAdding(false);
         setNewForm({ property_name: "", client_name: "XPossible Hotel Connec", client_token: "", access_token: "", st_property_code: "" });
+        await refreshProperties();
       } else {
         alert("Error adding property: " + res.detail);
       }
@@ -120,6 +140,7 @@ export default function ApiSettingsPage() {
       if (res.status === "success") {
         setSettings(settings.map(s => s.id === editForm.id ? editForm : s));
         setEditingId(null);
+        await refreshProperties();
       } else {
         alert("Error saving: " + res.detail);
       }
@@ -141,19 +162,117 @@ export default function ApiSettingsPage() {
       const res = await response.json();
       if (res.status === "success") {
         setSettings(settings.filter(s => s.id !== id));
+        await refreshProperties();
       }
     } catch (err) {
       alert("Error deleting");
     }
   };
 
+  // Images take effect immediately - they go straight to the backend (which
+  // writes to Storage with the service role) rather than waiting for Save, the
+  // same way the profile page's photo does. Both copies of the row are updated
+  // so a later Save of the other fields can't write a stale URL back.
+  const applyImage = (id: string, kind: ImageKind, url: string | null) => {
+    const field = IMAGE_FIELD[kind];
+    setEditForm((f) => (f && f.id === id ? { ...f, [field]: url } : f));
+    setSettings((list) => list.map((s) => (s.id === id ? { ...s, [field]: url } : s)));
+  };
+
+  const uploadImage = async (id: string, kind: ImageKind, file: File) => {
+    if (!IMAGE_ACCEPT.split(",").includes(file.type)) {
+      alert("Please choose a PNG, JPG, WebP or GIF image.");
+      return;
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      alert("Image must be 5 MB or smaller.");
+      return;
+    }
+    setImageBusy(kind);
+    try {
+      const body = new FormData();
+      body.append("kind", kind);
+      body.append("file", file);
+      const response = await fetch(`/api/admin/sync/properties/${id}/image`, { method: "POST", body });
+      const res = await response.json();
+      if (!response.ok || res.status !== "success") throw new Error(res.detail || "Upload failed");
+      applyImage(id, kind, res.data.url);
+      await refreshProperties();
+    } catch (err) {
+      alert("Error uploading image: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImageBusy(null);
+    }
+  };
+
+  const removeImage = async (id: string, kind: ImageKind) => {
+    if (!confirm(`Remove this property's ${kind === "profile" ? "profile image" : "background image"}?`)) return;
+    setImageBusy(kind);
+    try {
+      const response = await fetch(`/api/admin/sync/properties/${id}/image?kind=${kind}`, { method: "DELETE" });
+      const res = await response.json();
+      if (!response.ok || res.status !== "success") throw new Error(res.detail || "Remove failed");
+      applyImage(id, kind, null);
+      await refreshProperties();
+    } catch (err) {
+      alert("Error removing image: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImageBusy(null);
+    }
+  };
+
+  const imageButtons = (prop: PropertySetting, kind: ImageKind) => {
+    const hasImage = !!prop[IMAGE_FIELD[kind]];
+    const busy = imageBusy === kind;
+    return (
+      <div className="flex flex-wrap gap-2">
+        <label
+          className={`inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 shadow-sm transition-all ${
+            busy ? "cursor-wait opacity-60" : "cursor-pointer hover:bg-slate-50"
+          }`}
+        >
+          <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />
+          {busy ? "Working…" : hasImage ? "Replace" : "Upload"}
+          <input
+            type="file"
+            accept={IMAGE_ACCEPT}
+            className="sr-only"
+            disabled={busy}
+            onChange={(e) => {
+              const file = e.currentTarget.files?.[0];
+              e.currentTarget.value = "";
+              if (file) uploadImage(prop.id, kind, file);
+            }}
+          />
+        </label>
+        {hasImage && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => removeImage(prop.id, kind)}
+            className="inline-flex items-center gap-2 rounded-lg border border-red-100 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-600 transition-all hover:bg-red-100 disabled:opacity-60"
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            Remove
+          </button>
+        )}
+      </div>
+    );
+  };
+
+  const asPropertyInfo = (prop: PropertySetting) => ({
+    name: prop.property_name,
+    profileImageUrl: prop.profile_image_url || null,
+    backgroundImageUrl: prop.background_image_url || null,
+  });
+
   return (
     <div className="p-8 bg-white min-h-screen text-slate-900">
-      <PageHeader 
-        title="API Settings" 
+      <PageHeader
+        title="API Settings"
         description="Configure MEWS API Credentials for each property"
       >
-        <button 
+        <button
           onClick={() => setIsAdding(!isAdding)}
           className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${isAdding ? "bg-red-50 text-red-600 border border-red-200" : "bg-[#AAA024] text-white shadow-lg shadow-[#AAA024]/20"}`}
         >
@@ -170,7 +289,7 @@ export default function ApiSettingsPage() {
            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Property Name</label>
-                <input 
+                <input
                   placeholder="e.g. Lub d Koh Samui"
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
                   value={newForm.property_name}
@@ -196,7 +315,7 @@ export default function ApiSettingsPage() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Client Token</label>
-                <input 
+                <input
                   placeholder="Paste Client Token here..."
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
                   value={newForm.client_token}
@@ -205,7 +324,7 @@ export default function ApiSettingsPage() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest ml-1">Access Token</label>
-                <input 
+                <input
                   placeholder="Paste Access Token here..."
                   className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20 transition-all text-slate-900"
                   value={newForm.access_token}
@@ -213,7 +332,7 @@ export default function ApiSettingsPage() {
                 />
               </div>
            </div>
-           <button 
+           <button
              onClick={handleAdd}
              className="w-full py-4 bg-[#AAA024] hover:bg-[#8f871e] text-white rounded-2xl font-bold shadow-xl shadow-[#AAA024]/20 transition-all active:scale-[0.98]"
            >
@@ -230,20 +349,54 @@ export default function ApiSettingsPage() {
         <div className="grid grid-cols-1 gap-6">
           {settings.map((prop) => (
             <div key={prop.id} className="bg-slate-50 border border-slate-200 rounded-3xl p-6 transition-all hover:bg-slate-100/50 shadow-sm">
-              {editingId === prop.id ? (
+              {editingId === prop.id && editForm ? (
                 <div className="space-y-4">
                   <div className="flex justify-between items-center mb-4">
-                    <h3 className="text-xl font-bold text-[#AAA024]">{prop.property_name}</h3>
+                    <div className="flex items-center gap-3">
+                      <PropertyAvatar property={asPropertyInfo(editForm)} size={40} />
+                      <h3 className="text-xl font-bold text-[#AAA024]">{prop.property_name}</h3>
+                    </div>
                     <div className="flex gap-2">
                        <button onClick={handleSave} className="px-4 py-1.5 bg-[#AAA024] text-white rounded-lg text-sm font-bold shadow-md shadow-[#AAA024]/20">Save</button>
                        <button onClick={() => setEditingId(null)} className="px-4 py-1.5 bg-white border border-slate-200 text-slate-600 rounded-lg text-sm font-bold">Cancel</button>
                     </div>
                   </div>
-                  
+
+                  {/* Branding - what the property switcher at the top-right of
+                      every page shows for this property. */}
+                  <div className="grid grid-cols-1 md:grid-cols-[240px_1fr] gap-6 rounded-2xl border border-slate-200 bg-white p-5">
+                    <div className="flex flex-col gap-3">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Property Profile</label>
+                      <div className="flex items-center gap-4">
+                        <PropertyAvatar property={asPropertyInfo(editForm)} size={88} className="ring-4 ring-slate-100" />
+                        {imageButtons(editForm, "profile")}
+                      </div>
+                      <span className="text-[10px] text-slate-400 px-1">Square logo, at least 200 × 200. PNG, JPG, WebP or GIF, up to 5 MB.</span>
+                    </div>
+                    <div className="flex flex-col gap-3 min-w-0">
+                      <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Property Background</label>
+                      <div className="relative h-28 overflow-hidden rounded-xl bg-gradient-to-br from-[#152A00] via-[#2f4a0f] to-[#AAA024]">
+                        {editForm.background_image_url && (
+                          // eslint-disable-next-line @next/next/no-img-element -- arbitrary Supabase Storage URLs, not configured for next/image
+                          <img src={editForm.background_image_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent" />
+                        <div className="absolute inset-x-4 bottom-3 flex items-center gap-3">
+                          <PropertyAvatar property={asPropertyInfo(editForm)} size={36} className="ring-2 ring-white/80" />
+                          <span className="truncate text-[15px] font-bold text-white drop-shadow">{editForm.property_name}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        {imageButtons(editForm, "background")}
+                        <span className="text-[10px] text-slate-400 px-1">Wide photo, e.g. 1200 × 400 - shown behind the name when the switcher opens.</span>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] text-slate-400 font-bold uppercase tracking-widest px-1">Property Name</label>
-                      <input 
+                      <input
                         className="bg-white border border-slate-200 rounded-xl px-4 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
                         value={editForm?.property_name}
                         onChange={(e) => setEditForm({...editForm!, property_name: e.target.value})}
@@ -306,22 +459,25 @@ export default function ApiSettingsPage() {
                 </div>
               ) : (
                 <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-xl font-bold mb-1 text-slate-800">{prop.property_name}</h3>
-                    <div className="flex gap-4 text-xs">
-                       <span className="text-slate-500">Property Code: <span className={`font-mono ${prop.st_property_code ? "text-slate-700" : "text-red-500 italic"}`}>{prop.st_property_code || "not set"}</span></span>
-                       <span className="text-slate-500">Client: <span className="text-slate-700">{prop.client_name}</span></span>
-                       <span className="text-slate-500">Access Token: <span className="text-slate-700 font-mono italic">***{prop.access_token.slice(-6)}</span></span>
+                  <div className="flex items-center gap-4 min-w-0">
+                    <PropertyAvatar property={asPropertyInfo(prop)} size={44} />
+                    <div className="min-w-0">
+                      <h3 className="text-xl font-bold mb-1 text-slate-800">{prop.property_name}</h3>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
+                         <span className="text-slate-500">Property Code: <span className={`font-mono ${prop.st_property_code ? "text-slate-700" : "text-red-500 italic"}`}>{prop.st_property_code || "not set"}</span></span>
+                         <span className="text-slate-500">Client: <span className="text-slate-700">{prop.client_name}</span></span>
+                         <span className="text-slate-500">Access Token: <span className="text-slate-700 font-mono italic">***{prop.access_token.slice(-6)}</span></span>
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">
-                    <button 
+                    <button
                       onClick={() => handleEdit(prop)}
                       className="px-6 py-2 bg-white hover:bg-slate-50 text-slate-700 rounded-xl text-sm font-bold border border-slate-200 transition-all shadow-sm"
                     >
                       Edit
                     </button>
-                    <button 
+                    <button
                       onClick={() => handleDelete(prop.id)}
                       className="px-3 py-2 bg-red-50 hover:bg-red-100 text-red-500 rounded-xl text-sm font-bold border border-red-100 transition-all shadow-sm"
                     >

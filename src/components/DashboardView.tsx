@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabase";
+import { useSelectedProperty } from "@/lib/propertyContext";
 import PageHeader from "./PageHeader";
 import * as XLSX from 'xlsx';
 import ImportChart from "./ImportChart";
@@ -93,8 +94,7 @@ export default function DashboardView({
     setSortConfig({ key, direction });
   };
   
-  const [properties, setProperties] = useState<string[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState("");
+  const { selectedProperty } = useSelectedProperty();
   const [data, setData] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState(initialSearch || "");
   const [loading, setLoading] = useState(false);
@@ -135,15 +135,6 @@ export default function DashboardView({
   const initialRange = getDefaultRange();
   const [startDate, setStartDate] = useState(initialRange.start);
   const [endDate, setEndDate] = useState(initialRange.end);
-
-  const fetchProperties = async () => {
-    const { data: props, error } = await supabase.from("property_api_settings").select("property_name").order("property_name");
-    if (props && props.length > 0) {
-      const names = props.map(p => p.property_name);
-      setProperties(names);
-      setSelectedProperty(names[0]);
-    }
-  };
 
   const fetchData = async () => {
     if (!selectedProperty) return;
@@ -438,7 +429,6 @@ export default function DashboardView({
   const chartData = useMemo(() => generateChartData(), [data]);
 
   useEffect(() => {
-    fetchProperties();
     const getUserRole = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -476,15 +466,6 @@ export default function DashboardView({
         </PageHeader>
           
         <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-4 mb-4">
-          <div className="flex flex-col gap-2 w-full md:w-80">
-            <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-            <div className="relative">
-              <select value={selectedProperty} onChange={(e) => setSelectedProperty(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none">
-                {properties.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
-              <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-            </div>
-          </div>
           <div className="flex flex-col gap-2 w-full md:w-56">
             <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Start Date</label>
             <input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 py-1.5 text-[13px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none" />

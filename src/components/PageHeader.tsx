@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import UserHeader from "./UserHeader";
+import PropertySwitcher from "./PropertySwitcher";
+import { ThemeToggle } from "./UserHeader";
 
 interface PageHeaderProps {
   title: React.ReactNode;
@@ -25,11 +26,14 @@ export default function PageHeader({ title, description, children }: PageHeaderP
       <div className="flex items-center gap-3 md:gap-6 pt-2 shrink-0 flex-wrap">
         {children}
         <div className="hidden lg:block h-10 w-px bg-[var(--text-primary)]/10 mx-2"></div>
-        {/* Hidden below lg - Navigation.tsx's own top bar shows its own
-            UserHeader there instead (same breakpoint it switches to the
-            hamburger menu at), on the same row as the logo. */}
-        <div className="hidden lg:block">
-          <UserHeader />
+        {/* Hidden below lg - Navigation.tsx's own top bar shows the same
+            controls there instead (same breakpoint it switches to the
+            hamburger menu at). The property switcher replaced every page's
+            own "Select Property" dropdown; the signed-in user's own account
+            menu lives at the bottom of the sidebar, MEWS-style, not here. */}
+        <div className="hidden lg:flex items-center gap-3">
+          <ThemeToggle />
+          <PropertySwitcher />
         </div>
       </div>
     </div>

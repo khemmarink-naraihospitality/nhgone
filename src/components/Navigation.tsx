@@ -3,8 +3,10 @@
 import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import UserHeader from "./UserHeader";
+import { ProfileMenu, ThemeToggle } from "./UserHeader";
+import PropertySwitcher from "./PropertySwitcher";
 import { supabase } from "@/lib/supabase";
+import { SelectedPropertyProvider } from "@/lib/propertyContext";
 import {
   ArrowLeft,
   BookUser,
@@ -724,6 +726,10 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     );
 
   return (
+    // The one property every page reads (useSelectedProperty) - mounted only
+    // here, inside the signed-in shell, so its list is fetched with a session
+    // and after the role is known.
+    <SelectedPropertyProvider>
     <div className="min-h-full flex flex-col lg:flex-row bg-background text-foreground w-full transition-colors duration-300">
       {/* Mobile top bar - the desktop <aside> below is hidden under lg, so
           this is the only way to reach the hamburger drawer (and therefore
@@ -746,7 +752,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           </div>
           <div className="text-lg font-bold font-display text-white tracking-tight leading-none">NHGOne</div>
         </div>
-        <UserHeader />
+        <div className="flex items-center gap-2">
+          <PropertySwitcher compact />
+          <ThemeToggle />
+          <ProfileMenu variant="topbar" />
+        </div>
       </div>
 
       {mobileNavOpen && (
@@ -790,10 +800,8 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           opened up only while collapsed so those tooltips can escape the 72px
           rail - expanded, a long menu still scrolls inside the sidebar. */}
       <aside
-        className={`print:hidden hidden lg:flex lg:h-screen shrink-0 flex-col gap-4 border-r border-[#FFEFD2]/10 bg-[#152A00] py-4 transition-[width] duration-200 ease-out ${
-          sidebarCollapsed
-            ? "w-[72px] px-2 overflow-visible"
-            : `${onAdminPath ? "w-60" : "w-56"} px-3 overflow-y-auto overflow-x-hidden`
+        className={`print:hidden hidden lg:flex lg:h-screen shrink-0 flex-col gap-4 overflow-visible border-r border-[#FFEFD2]/10 bg-[#152A00] py-4 transition-[width] duration-200 ease-out ${
+          sidebarCollapsed ? "w-[72px] px-2" : `${onAdminPath ? "w-60" : "w-56"} px-3`
         }`}
       >
         <div className={`flex items-center ${sidebarCollapsed ? "justify-center" : "gap-2.5"}`}>
@@ -859,9 +867,22 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
             </div>
           ))}
 
-        {renderNav(sidebarCollapsed)}
+        {/* Only the link list scrolls. The sidebar itself keeps its overflow
+            visible so the collapsed rail's tooltips - and the account menu
+            below - can escape the 72px rail instead of being clipped by it. */}
+        <div className={`flex-1 min-h-0 ${sidebarCollapsed ? "" : "overflow-y-auto overflow-x-hidden"}`}>
+          {renderNav(sidebarCollapsed)}
+        </div>
 
-        <div className="mt-auto pb-2">{renderExitAdmin(sidebarCollapsed)}</div>
+        {/* The signed-in user, at the bottom of the sidebar the way MEWS puts
+            it - not in the page header, which now carries the property
+            switcher instead. */}
+        <div className="flex flex-col gap-3 pb-1">
+          {renderExitAdmin(sidebarCollapsed)}
+          <div className="border-t border-white/10 pt-3">
+            <ProfileMenu variant="sidebar" collapsed={sidebarCollapsed} />
+          </div>
+        </div>
       </aside>
       <main className="flex-1 flex flex-col lg:h-screen overflow-hidden relative min-h-0">
         <div className="flex-1 overflow-y-auto w-full">
@@ -869,5 +890,6 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         </div>
       </main>
     </div>
+    </SelectedPropertyProvider>
   );
 }

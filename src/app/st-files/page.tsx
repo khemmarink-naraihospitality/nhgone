@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
-import { getAllowedProperties } from "@/lib/allowedProperties";
+import { useSelectedProperty } from "@/lib/propertyContext";
 import PageHeader from "@/components/PageHeader";
 
 // Same collapsible-header pattern as BCP's own page (bcp/page.tsx) - one
@@ -169,8 +169,7 @@ const thCls = "p-2 px-3 text-[9px] font-bold text-[var(--text-primary)]/50 upper
 const tdCls = "p-2 px-3 text-[13px] text-[var(--text-primary)] whitespace-nowrap";
 
 export default function StFilesPage() {
-  const [properties, setProperties] = useState<string[]>([]);
-  const [selectedProperty, setSelectedProperty] = useState("");
+  const { selectedProperty } = useSelectedProperty();
   const [report, setReport] = useState<StFilesReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
@@ -201,19 +200,6 @@ export default function StFilesPage() {
     return d.toISOString().split("T")[0];
   };
   const [date, setDate] = useState(getYesterday());
-
-  useEffect(() => {
-    const fetchProperties = async () => {
-      // Property-restricted roles (Admin > Users > Role, "Property" column)
-      // only ever get their own property back here - not every property.
-      const { properties: names } = await getAllowedProperties();
-      if (names.length > 0) {
-        setProperties(names);
-        setSelectedProperty(names[0]);
-      }
-    };
-    fetchProperties();
-  }, []);
 
   // Auto-loads as soon as a property is selected (on open, and again if the
   // property is switched) instead of waiting for a manual Fetch Report
@@ -642,21 +628,6 @@ export default function StFilesPage() {
 
         <CollapsibleSection open={headerOpen}>
           <div className="flex flex-wrap items-end gap-x-6 gap-y-4 mt-4">
-            <div className="flex flex-col gap-2 w-full md:w-80">
-              <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Select Property</label>
-              <div className="relative">
-                <select
-                  value={selectedProperty}
-                  onChange={(e) => setSelectedProperty(e.target.value)}
-                  className="w-full bg-[var(--paper)] border border-[var(--text-primary)]/14 px-4 pr-10 py-2 text-[13px] appearance-none cursor-pointer text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
-                >
-                  {properties.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-                <svg className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-primary)]/40" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
-              </div>
-            </div>
             <div className="flex flex-col gap-2 w-full md:w-48">
               <label className="text-[9px] font-bold text-[var(--text-primary)]/50 tracked-caps ml-1">Date</label>
               <input
