@@ -789,9 +789,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
         </button>
         <div className="flex items-center gap-2">
-          <div className="bg-white p-1 rounded-sm">
-            <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-6 h-6 object-contain" />
-          </div>
+          <img src="https://guideline.lubd.com/wp-content/uploads/2026/09/NHG100.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
           <div className="text-lg font-light font-sans text-white tracking-tight leading-none">NHGOne</div>
         </div>
         <div className="flex items-center gap-2">
@@ -820,9 +818,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
                 </div>
               ) : (
                 <div className="flex items-center gap-3">
-                  <div className="bg-white p-1.5 rounded-sm">
-                    <img src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png" alt="NHG Logo" className="w-8 h-8 object-contain" />
-                  </div>
+                  <img src="https://guideline.lubd.com/wp-content/uploads/2026/09/NHG100.png" alt="NHG Logo" className="w-11 h-11 object-contain" />
                   <div className="text-xl font-light font-sans text-white tracking-tight leading-none">NHGOne</div>
                 </div>
               )}
@@ -858,13 +854,11 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
           </button>
           {!sidebarCollapsed && (
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="bg-white p-1 rounded-sm shrink-0">
-                <img
-                  src="https://guideline.lubd.com/wp-content/uploads/2025/11/NHG128.png"
-                  alt="NHG Logo"
-                  className="w-7 h-7 object-contain"
-                />
-              </div>
+              <img
+                src="https://guideline.lubd.com/wp-content/uploads/2026/09/NHG100.png"
+                alt="NHG Logo"
+                className="w-9 h-9 object-contain shrink-0"
+              />
               <div className="text-lg font-light font-sans text-white tracking-tight leading-none truncate">
                 NHGOne
               </div>
