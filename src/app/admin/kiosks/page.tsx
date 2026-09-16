@@ -503,8 +503,9 @@ export default function AdminKiosksPage() {
               <div className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50 px-5 py-4">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
                 <p className="text-xs font-medium leading-relaxed text-sky-900">
-                  These settings are stored now but not read by the check-in screens yet — those are still the ported
-                  prototype running on sample data. Wiring them up is the next step.
+                  The check-in screens read the name, images, language, search fields, the three guest-facing texts and
+                  the screen saver video from here. Theme, grace periods, hardware and payment are stored but not yet
+                  applied — nothing behind these screens talks to MEWS yet.
                 </p>
               </div>
 
@@ -516,7 +517,7 @@ export default function AdminKiosksPage() {
                   </Field>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <Field label="Theme" required>
+                    <Field label="Theme" required hint="Stored, but not applied yet - the check-in screens are dark only.">
                       <select className={INPUT} value={form.theme} onChange={(e) => set("theme", e.target.value)}>
                         {THEMES.map((t) => <option key={t}>{t}</option>)}
                       </select>

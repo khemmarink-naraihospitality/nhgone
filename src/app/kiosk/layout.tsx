@@ -4,6 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelectedProperty } from "@/lib/propertyContext";
+import { KioskConfigProvider, useKioskConfig } from "./kioskConfig";
+import ScreenSaver from "./ScreenSaver";
 
 /**
  * The kiosk terminal shell - ported from the NHGKiosk prototype
@@ -22,26 +24,40 @@ import { useSelectedProperty } from "@/lib/propertyContext";
  *
  * The prototype's own device-pairing screen (/kiosk/lock, a demo PIN/QR gate
  * over localStorage) was cut after it shipped: it gated only the header's
- * property label, not any real content or route, so every other screen
- * already showed the selected property while the header confusingly still
- * said "Device Secured". Rather than build real pairing on top of a mock
- * flow, the header now just shows the selected property directly, like every
- * other kiosk screen does. If device pairing is wanted for real, it belongs
- * with actual per-terminal identity (e.g. keyed to kiosk_settings, Admin
- * Console > Kiosks), not a localStorage flag.
+ * property label, not any real content or route. If device pairing is wanted
+ * for real it belongs keyed to kiosk_settings, not a browser flag - and the
+ * `?kiosk=<id>` parameter that KioskConfigProvider reads is the seam for it.
  *
  * Navigation.tsx renders /kiosk/* without the app sidebar (the same
  * bypass /reset-password uses), because a check-in terminal is a full-screen
  * device UI, not a back-office page.
  */
-export default function KioskLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function KioskLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <KioskConfigProvider>
+      <KioskShell>{children}</KioskShell>
+    </KioskConfigProvider>
+  );
+}
+
+/**
+ * The language button's label. `default_language` is stored the way the
+ * admin form (and MEWS) writes it - "English (United States)" - so the
+ * two-letter code a terminal header shows is derived rather than stored
+ * separately, which would be one more thing to keep in step.
+ */
+function languageCode(language: string | null | undefined): string {
+  const name = (language || "").toLowerCase();
+  if (name.startsWith("thai")) return "TH";
+  if (name.startsWith("english")) return "EN";
+  return (language || "EN").slice(0, 2).toUpperCase();
+}
+
+function KioskShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { selectedProperty } = useSelectedProperty();
+  const { config } = useKioskConfig();
   const [time, setTime] = useState<Date | null>(null);
   const orgName = "Narai Group";
 
@@ -57,6 +73,9 @@ export default function KioskLayout({
     return () => clearInterval(timer);
   }, []);
 
+  // The property, not the kiosk's own name: the header answers "where am I",
+  // which is what a guest standing in front of it is asking. The kiosk name
+  // ("Lobby Kiosk (Open at 6AM)") is an operations label, not a guest one.
   const propertyName = selectedProperty || "Select a property";
 
   const steps = [
@@ -71,6 +90,8 @@ export default function KioskLayout({
 
   return (
     <div className="kiosk-root flex flex-col h-screen w-full relative overflow-hidden bg-[var(--color-background)]">
+      <ScreenSaver videoUrl={config?.screen_saver_video_url} />
+
       {/* Top Navigation Bar */}
       <header className="h-24 w-full glass z-50 flex items-center justify-between px-8 absolute top-0 left-0 border-b border-white/10">
         <div className="flex items-center gap-4">
@@ -110,7 +131,7 @@ export default function KioskLayout({
               {time ? time.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "--:--"}
             </div>
             <button className="px-5 py-2 border border-white/20 rounded-full text-white hover:bg-white/10 transition uppercase font-semibold tracking-wider">
-              EN
+              {languageCode(config?.default_language)}
             </button>
           </div>
         </div>

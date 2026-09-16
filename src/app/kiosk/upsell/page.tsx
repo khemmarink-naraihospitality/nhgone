@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, Coffee, Clock, Sparkles, Check, Plus, Minus } from "lucide-react";
+import { useSelectedProperty } from "@/lib/propertyContext";
 
 const UPSELL_ITEMS = [
   {
@@ -37,6 +38,8 @@ const UPSELL_ITEMS = [
 
 export default function UpsellPage() {
   const router = useRouter();
+  const { selectedProperty } = useSelectedProperty();
+  const propertyName = selectedProperty || "our hotel";
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const toggleItem = (id: string) => {
@@ -60,7 +63,7 @@ export default function UpsellPage() {
       <div className="mb-10 text-center px-4">
         <h1 className="text-4xl font-black text-white mb-3 tracking-tight">Enhance Your Stay</h1>
         <p className="text-gray-400 text-lg font-medium max-w-2xl mx-auto">
-          Tailor your experience at Lub d Chinatown with these exclusive additions.
+          Tailor your experience at {propertyName} with these exclusive additions.
         </p>
       </div>
 

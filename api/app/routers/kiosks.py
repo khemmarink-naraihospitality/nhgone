@@ -86,6 +86,44 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+# Everything the terminal is allowed to know about itself. pin_code is the
+# one field deliberately left out: it unlocks the settings screen on a device
+# standing in a public lobby, and this endpoint answers that very device.
+_GUEST_SAFE_FIELDS = (
+    "id", "property_name", "name", "theme", "default_language",
+    "payment_method", "options_enabled",
+    "checkin_grace_hours", "checkin_grace_minutes",
+    "checkout_grace_hours", "checkout_grace_minutes",
+    "early_checkin_fee", "reservation_lookup",
+    "take_key_instructions", "cut_key_instructions", "thank_you_message",
+    "contact_instructions", "checkout_instructions",
+    "cut_key_video_url", "screen_saver_video_url", "images",
+)
+
+
+@router.get("/config")
+async def kiosk_config(property_name: str = Query(...), kiosk_id: Optional[str] = Query(None)):
+    """The configuration a check-in terminal actually runs on.
+
+    Declared before any /{kiosk_id} route so "config" is never mistaken for
+    an id. Returns `data: null` rather than a 404 when the property has no
+    kiosk configured - the screens then fall back to their built-in defaults,
+    which is the right outcome for a terminal nobody has set up yet.
+
+    A property can have several kiosks. Without device pairing (removed - see
+    the kiosk layout's own note) a terminal picks the property's first kiosk
+    by name; `?kiosk=<id>` in the URL points a specific terminal at a
+    specific one.
+    """
+    try:
+        query = get_supabase_client().table("kiosk_settings").select(",".join(_GUEST_SAFE_FIELDS))
+        query = query.eq("id", kiosk_id) if kiosk_id else query.eq("property_name", property_name)
+        result = query.order("name").limit(1).execute()
+        return {"status": "success", "data": (result.data or [None])[0]}
+    except Exception as e:
+        raise _guard(e)
+
+
 @router.get("")
 async def list_kiosks(property_name: Optional[str] = Query(None)):
     """Every kiosk, or just one property's. Ordered by name so the list on

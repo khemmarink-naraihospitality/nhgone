@@ -2,22 +2,33 @@
 
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { HelpCircle, ChevronDown } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
+import { useKioskConfig } from "./kioskConfig";
 
 /**
  * The kiosk welcome screen - ported from the NHGKiosk prototype's own root
- * page. The property name was hardcoded to "Lub d Chinatown" there; here it
- * follows NHGOne's property switcher.
+ * page. Two things it used to hardcode now follow configuration: the
+ * property name (the prototype said "Lub d Chinatown" for every property),
+ * and the hero photo, which comes from the kiosk's own Images at
+ * Admin Console > Kiosks and falls back to the bundled entrance shot.
+ *
+ * The prototype's vertical "LUB D" brand label was removed rather than made
+ * dynamic: it is one brand's wordmark, and this kiosk also runs at Marasca
+ * Samui, where it would simply have been wrong.
  *
  * Still a prototype: "Check out" does nothing yet, and the language and
  * currency pickers are deliberately inert, exactly as they arrived.
  */
+
+const FALLBACK_IMAGE = "/images/lub_d_chinatown_entrance.png";
+
 export default function KioskWelcomePage() {
   const router = useRouter();
   const { selectedProperty } = useSelectedProperty();
+  const { config } = useKioskConfig();
   const propertyName = selectedProperty || "NHG";
+  const heroImage = config?.images?.[0]?.url || FALLBACK_IMAGE;
 
   return (
     <div className="relative w-full h-full flex flex-col overflow-hidden text-white">
@@ -29,7 +40,7 @@ export default function KioskWelcomePage() {
              <div className="absolute top-0 left-0 w-full h-1/2 bg-red-600" />
              <div className="absolute top-0 left-0 w-1/3 h-full bg-blue-800" />
           </div>
-          <span className="text-sm font-medium">English (United States)</span>
+          <span className="text-sm font-medium">{config?.default_language || "English (United States)"}</span>
           <ChevronDown className="w-4 h-4 text-gray-400" />
         </div>
 
@@ -93,20 +104,13 @@ export default function KioskWelcomePage() {
         {/* Right Section (40%) */}
         <div className="w-[40%] relative">
           <div className="absolute inset-0 overflow-hidden rounded-l-[40px] m-4">
-            <Image
-              src="/images/lub_d_chinatown_entrance.png"
-              alt=""
-              fill
-              className="object-cover"
-              priority
-            />
-            {/* Gradient Overlay for the branding label */}
+            {/* Plain <img>: the configured photo is a remote Supabase Storage
+                URL, and next/image would need that host whitelisted in
+                next.config for no benefit on a fixed-size kiosk panel. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            {/* Gradient Overlay */}
             <div className="absolute inset-0 bg-gradient-to-l from-black/20 to-transparent" />
-
-            {/* Vertical Branding Label */}
-            <div className="absolute right-12 top-1/2 -translate-y-1/2 flex flex-col items-center gap-4 py-8 px-4 bg-black/40 backdrop-blur-md rounded-full border border-white/10">
-               <span className="[writing-mode:vertical-rl] rotate-180 text-4xl font-black tracking-widest text-[#98cc3c]">LUB D</span>
-            </div>
           </div>
         </div>
       </main>
