@@ -24,6 +24,7 @@ import {
   LifeBuoy,
   Mail,
   Menu,
+  MonitorCog,
   MonitorSmartphone,
   ReceiptText,
   Scale,
@@ -704,6 +705,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               { href: "/admin/api-settings", label: "Property & API", icon: Building2, active: pathname === "/admin/api-settings" },
               { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
               { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
+              { href: "/admin/kiosks", label: "Kiosks", icon: MonitorCog, active: pathname === "/admin/kiosks" },
             ]
           : []),
         { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
