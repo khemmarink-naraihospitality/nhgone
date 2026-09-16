@@ -136,6 +136,38 @@ h1, h2, h3, .h-display {
   color: white;
 }
 
+/* ---------------------------------------------------------------
+   KIOSK — self-service check-in screens (/kiosk/*)
+   Ported from the NHGKiosk prototype. Scoped to .kiosk-root on purpose:
+   the original declared these on <body>, which here would repaint the
+   whole app dark and disable text selection on every page. Only the
+   kiosk subtree opts in — see src/app/kiosk/layout.tsx.
+   --------------------------------------------------------------- */
+.kiosk-root {
+  --color-brand: #d4af37;        /* the prototype's hospitality gold */
+  --color-brand-hover: #b8962c;
+  --color-background: #0f1115;
+  --color-card: rgba(255, 255, 255, 0.05);
+  --color-card-border: rgba(255, 255, 255, 0.1);
+  --color-foreground: #f8fafc;
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  /* A kiosk is a touch screen - dragging a finger must not select text. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The glassmorphism panel every kiosk screen is built from. Falls back to
+   its own literals so the class still renders if it is ever used outside
+   .kiosk-root. */
+@utility glass {
+  background: var(--color-card, rgba(255, 255, 255, 0.05));
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-card-border, rgba(255, 255, 255, 0.1));
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
 @media print {
   /* Page bodies deep inside the app (e.g. bcp/page.tsx's own root wrapper)
      paint their own bg-[var(--bg-primary)]/bg-[var(--paper)] rather than

@@ -24,6 +24,7 @@ import {
   LifeBuoy,
   Mail,
   Menu,
+  MonitorSmartphone,
   ReceiptText,
   Scale,
   ScrollText,
@@ -91,6 +92,7 @@ interface MenuPermissions {
   rr4_tm30: boolean;
   reconciliation: boolean;
   users_report: boolean;
+  kiosk: boolean;
   admin: boolean;
 }
 
@@ -499,6 +501,17 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     if (!menuPermissions?.users_report) router.push("/dashboard");
   }, [onUsersReportPath, permissionsLoaded, menuPermissions, router]);
 
+  // Kiosk is route-guarded rather than merely link-hidden, for the same
+  // reason /users-report and /admin are: it renders full-screen with no
+  // sidebar, so hiding the link would leave a typed URL as a way into a
+  // screen that looks like the property's own front desk. Super Admin is not
+  // special-cased - kiosk_menu.sql switches the column on for it explicitly.
+  const onKioskPath = pathname === "/kiosk" || pathname.startsWith("/kiosk/");
+  useEffect(() => {
+    if (!onKioskPath || !permissionsLoaded) return;
+    if (!menuPermissions?.kiosk) router.push("/dashboard");
+  }, [onKioskPath, permissionsLoaded, menuPermissions, router]);
+
   // Admin section access guard: redirects away once the role_permissions
   // fetch has actually settled (permissionsLoaded) and the role isn't
   // allowed - waiting for that explicit signal (rather than just checking
@@ -609,6 +622,28 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     return <>{children}</>;
   }
 
+  // The kiosk is a check-in terminal, not a back-office page: it renders
+  // full-screen with no sidebar, no top bar and no property switcher, the
+  // way /reset-password stands alone - but *inside* the auth guard above,
+  // never outside it. The provider still wraps it, since the kiosk screens
+  // read the selected property through useSelectedProperty(). While
+  // permissions are still resolving, show the same spinner the admin path
+  // uses rather than flashing the terminal at a role that can't have it.
+  if (onKioskPath) {
+    if (!permissionsLoaded || !menuPermissions?.kiosk) {
+      return (
+        <div className="h-screen w-full flex items-center justify-center bg-background">
+          <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#AAA024]"></div>
+        </div>
+      );
+    }
+    return (
+      <SelectedPropertyProvider>
+        {children}
+      </SelectedPropertyProvider>
+    );
+  }
+
   // Block rendering admin content for a non-Super-Admin: either permissions
   // are still resolving (show the spinner, matching the isAuthorized===null
   // state above) or they've resolved and access is denied (render nothing -
@@ -640,9 +675,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     // See the same field in src/lib/menuPermissions.ts for why this one
     // stays off in the fallback where its neighbours don't.
     users_report: false,
+    // Off for the same reason: the fallback exists so a missing row can't
+    // strand someone with an empty sidebar, and a full-screen guest check-in
+    // terminal is not part of that floor.
+    kiosk: false,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report || perms.kiosk;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -686,6 +725,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         ...(perms.revenue ? [{ href: "/revenue", label: "Revenue", icon: TrendingUp, active: pathname === "/revenue" }] : []),
         ...(perms.reconciliation ? [{ href: "/reconciliation", label: "Reconciliation", icon: Scale, active: pathname === "/reconciliation" }] : []),
         ...(perms.users_report ? [{ href: "/users-report", label: "Users Report", icon: Users, active: pathname === "/users-report" }] : []),
+        ...(perms.kiosk ? [{ href: "/kiosk", label: "Kiosk", icon: MonitorSmartphone, active: pathname.startsWith("/kiosk") }] : []),
         ...(showBottomDivider ? [DIVIDER] : []),
         { href: "/log-import", label: "Log Import", icon: History, active: pathname === "/log-import" },
       ];

@@ -12,6 +12,7 @@ export interface MenuPermissions {
   rr4_tm30: boolean;
   reconciliation: boolean;
   users_report: boolean;
+  kiosk: boolean;
   admin: boolean;
 }
 
@@ -40,6 +41,9 @@ export async function getMenuPermissions(): Promise<MenuPermissions> {
     // is not what anyone needs to be un-stranded. It appears only when the
     // role's real row says so.
     users_report: false,
+    // Same reasoning: guest-facing terminal screens are not what an
+    // otherwise-unconfigured role needs to be un-stranded with.
+    kiosk: false,
     admin: false,
   });
 
