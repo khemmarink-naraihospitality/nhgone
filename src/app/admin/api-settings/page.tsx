@@ -36,6 +36,49 @@ const IMAGE_FIELD: Record<ImageKind, "profile_image_url" | "background_image_url
 const IMAGE_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 const IMAGE_MAX_BYTES = 5 * 1024 * 1024;
 
+// The one part of this feature the app genuinely cannot do for itself: adding
+// a column is DDL, PostgREST has no DDL, and the backend has no direct
+// Postgres connection. (The bucket it *can* create - see
+// _ensure_property_image_bucket.) So rather than naming a file in the repo
+// that whoever is standing here would have to go and find, the error hands
+// over the exact statement to paste.
+const IMAGE_COLUMNS_SQL = `alter table public.property_api_settings
+  add column if not exists profile_image_url text,
+  add column if not exists background_image_url text;`;
+
+function MissingColumnsHelp() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="space-y-2">
+      <pre className="overflow-x-auto rounded-lg border border-red-200 bg-white px-3 py-2 text-[11px] leading-relaxed text-slate-700">
+        {IMAGE_COLUMNS_SQL}
+      </pre>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await navigator.clipboard.writeText(IMAGE_COLUMNS_SQL);
+              setCopied(true);
+              setTimeout(() => setCopied(false), 2000);
+            } catch {
+              // Clipboard blocked (insecure context, or denied) - the SQL is
+              // on screen above and can still be selected by hand.
+              setCopied(false);
+            }
+          }}
+          className="rounded-lg border border-red-200 bg-white px-3 py-1 text-[11px] font-bold text-red-600 transition-all hover:bg-red-50"
+        >
+          {copied ? "Copied" : "Copy SQL"}
+        </button>
+        <span className="text-[11px] font-medium text-red-500">
+          Run it once in Supabase &gt; SQL Editor, then upload again.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 export default function ApiSettingsPage() {
   const [settings, setSettings] = useState<PropertySetting[]>([]);
   const [loading, setLoading] = useState(true);
@@ -317,7 +360,10 @@ export default function ApiSettingsPage() {
         )}
 
         {error && (
-          <p className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-xs font-bold text-red-600">{error}</p>
+          <div className="space-y-2 rounded-lg border border-red-100 bg-red-50 px-3 py-2">
+            <p className="text-xs font-bold text-red-600">{error}</p>
+            {error.includes("property_images.sql") && <MissingColumnsHelp />}
+          </div>
         )}
       </div>
     );
