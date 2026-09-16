@@ -24,6 +24,7 @@ import {
   LifeBuoy,
   Mail,
   Menu,
+  ClipboardList,
   MonitorCog,
   MonitorSmartphone,
   ReceiptText,
@@ -40,19 +41,27 @@ import {
 // The desktop sidebar's collapsed/expanded choice, remembered per browser.
 const SIDEBAR_COLLAPSED_KEY = "nhgone.sidebarCollapsed";
 
-type NavEntry = { href: string; label: string; icon: LucideIcon; active: boolean };
+type NavEntry = { href: string; label: string; icon: LucideIcon; active: boolean; sub?: boolean };
 
 // One sidebar link: icon + label when expanded, icon alone with a hover/focus
 // tooltip when collapsed. Module-level (not defined inside Navigation) so a
 // re-render of the shell doesn't remount every link and drop keyboard focus.
-function NavItem({ href, label, icon: Icon, active, collapsed }: NavEntry & { collapsed: boolean }) {
+//
+// `sub` marks an item as visually nested under the one before it (e.g. Check
+// In Form under Kiosks) - extra left indent and a smaller icon, expanded
+// only; there is no separate group/expand-collapse mechanism, since one
+// relationship in an otherwise-flat list doesn't earn its own subsystem.
+// Collapsed to the icon rail, a sub-item renders identically to a normal one
+// - the rail is icon-only for everything already, so hierarchy nuance is
+// lost there regardless.
+function NavItem({ href, label, icon: Icon, active, collapsed, sub }: NavEntry & { collapsed: boolean }) {
   return (
     <Link
       href={href}
       aria-label={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={`group relative flex items-center gap-3 border-l-2 rounded-r-md transition-colors duration-150 ${
-        collapsed ? "justify-center py-2.5" : "px-3 py-2.5 lg:py-2"
+        collapsed ? "justify-center py-2.5" : `py-2.5 lg:py-2 ${sub ? "pl-8 pr-3" : "px-3"}`
       } ${
         active
           ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]"
@@ -62,7 +71,7 @@ function NavItem({ href, label, icon: Icon, active, collapsed }: NavEntry & { co
       <Icon
         aria-hidden="true"
         strokeWidth={active ? 2.25 : 1.75}
-        className={`w-[18px] h-[18px] shrink-0 transition-colors ${
+        className={`shrink-0 transition-colors ${sub && !collapsed ? "w-[15px] h-[15px]" : "w-[18px] h-[18px]"} ${
           active ? "text-[#FFEFD2]" : "text-white/45 group-hover:text-white"
         }`}
       />
@@ -706,6 +715,7 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
               { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
               { href: "/admin/kiosks", label: "Kiosks", icon: MonitorCog, active: pathname === "/admin/kiosks" },
+              { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form", sub: true },
             ]
           : []),
         { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
