@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronRight, ImagePlus, Info, MonitorCog, Plus, Trash2 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import ImageCropDialog from "@/components/ImageCropDialog";
@@ -191,6 +191,7 @@ export default function AdminKiosksPage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
 
@@ -244,9 +245,20 @@ export default function AdminKiosksPage() {
     setSavedAt(null);
   };
 
+  // Deliberately NOT gated behind a disabled button. A greyed-out primary
+  // action with no explanation reads as "this page is broken" - it says
+  // what's missing and puts the cursor where the fix goes.
   const handleCreate = async () => {
     const name = newName.trim();
-    if (!name || !selectedProperty) return;
+    if (!name) {
+      setPageError("Give the kiosk a name first, then press Add Kiosk.");
+      nameInputRef.current?.focus();
+      return;
+    }
+    if (!selectedProperty) {
+      setPageError("Pick a property from the switcher above first.");
+      return;
+    }
     setCreating(true);
     setPageError(null);
     try {
@@ -407,6 +419,7 @@ export default function AdminKiosksPage() {
               </h2>
               <div className="flex items-center gap-2">
                 <input
+                  ref={nameInputRef}
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === "Enter") void handleCreate(); }}
@@ -416,7 +429,7 @@ export default function AdminKiosksPage() {
                 <button
                   type="button"
                   onClick={handleCreate}
-                  disabled={creating || !newName.trim()}
+                  disabled={creating}
                   className="inline-flex items-center gap-2 rounded-xl bg-[#AAA024] px-5 py-2 text-sm font-bold text-white shadow-lg shadow-[#AAA024]/20 transition-all hover:bg-[#8f871e] disabled:opacity-50"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -431,7 +444,7 @@ export default function AdminKiosksPage() {
               </div>
             ) : kiosks.length === 0 ? (
               <p className="py-6 text-center text-sm font-medium text-slate-400">
-                No kiosks configured for this property yet.
+                No kiosks configured for this property yet — type a name above and press Add Kiosk.
               </p>
             ) : (
               <div className="space-y-2">
