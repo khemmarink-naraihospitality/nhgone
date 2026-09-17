@@ -66,6 +66,7 @@ export interface KioskCopy {
   confirmSubtitle: string;
   yourBooking: string;
   checkOutLabel: string;
+  included: string;
   confirmButton: string;
   reservationOwner: string;
   progress: string;
@@ -98,6 +99,7 @@ const en: KioskCopy = {
   confirmSubtitle: "Let's confirm your details.",
   yourBooking: "Your booking",
   checkOutLabel: "Check-out",
+  included: "Included",
   confirmButton: "Confirm",
   reservationOwner: "Reservation owner",
   progress: "Progress",
@@ -134,6 +136,7 @@ const th: KioskCopy = {
   confirmSubtitle: "กรุณายืนยันข้อมูลของท่าน",
   yourBooking: "การจองของท่าน",
   checkOutLabel: "เช็คเอาต์",
+  included: "รวมอยู่ในราคา",
   confirmButton: "ยืนยัน",
   reservationOwner: "ผู้จอง",
   progress: "ความคืบหน้า",
@@ -170,6 +173,7 @@ const fil: KioskCopy = {
   confirmSubtitle: "Kumpirmahin natin ang iyong mga detalye.",
   yourBooking: "Ang iyong booking",
   checkOutLabel: "Check-out",
+  included: "Kasama na",
   confirmButton: "Kumpirmahin",
   reservationOwner: "May-ari ng reserbasyon",
   progress: "Pag-unlad",
@@ -206,6 +210,7 @@ const km: KioskCopy = {
   confirmSubtitle: "តោះបញ្ជាក់ព័ត៌មានលម្អិតរបស់អ្នក។",
   yourBooking: "ការកក់របស់អ្នក",
   checkOutLabel: "ចាកចេញ",
+  included: "រួមបញ្ចូល",
   confirmButton: "បញ្ជាក់",
   reservationOwner: "ម្ចាស់ការកក់",
   progress: "វឌ្ឍនភាព",
@@ -242,6 +247,7 @@ const ja: KioskCopy = {
   confirmSubtitle: "内容をご確認ください。",
   yourBooking: "ご予約内容",
   checkOutLabel: "チェックアウト",
+  included: "含まれるもの",
   confirmButton: "確認する",
   reservationOwner: "予約者",
   progress: "進捗状況",

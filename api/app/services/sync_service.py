@@ -1815,6 +1815,54 @@ class SyncService:
             "reservations": rows,
         }
 
+    async def get_kiosk_included_items(self, property_name: str, reservation_id: str) -> list:
+        """The kiosk confirm screen's "Included" list: which per-night
+        products the reservation's own rate bundles in (breakfast, nightly
+        service charge), as opposed to a one-off extra the guest separately
+        ordered (a class, a bottle of wine). One live orderItems/getAll call
+        per reservation, on demand - not part of the per-minute arrivals
+        mirror, since this is only needed once a guest has picked their own
+        booking, not for the whole lobby list.
+
+        orderItems/getAll has no "this product is included in the rate"
+        flag, so this infers it from shape: a ProductOrder billing name
+        repeated across more than one order-item row is one the rate
+        produces automatically per night; a name appearing exactly once is a
+        standalone purchase. Checked live against Marasca Samui, 17-Sep-2026:
+        a 5-night reservation's "Service Charge Nightly"/"Breakfast Service
+        Charge"/"Breakfast Include in room (Adults)" each appeared exactly 5
+        times (once per night) and were correctly separated from that same
+        reservation's one-off "Mixology Masterclass"/"Bottle of sparkling
+        wine" (each exactly once, both timestamped to the guest's actual
+        check-in moment rather than spread across the stay).
+
+        A genuine 1-night stay's included breakfast can't be told apart from
+        a 1-off purchase by this rule - MEWS exposes no rate-inclusion flag
+        on the order item itself - so it won't show here. That is a real
+        limitation of the data available, not a bug to chase.
+        """
+        res = await mews_client.post(
+            "/api/connector/v1/orderItems/getAll",
+            {"ServiceOrderIds": [reservation_id], "Limitation": {"Count": 1000}},
+            property_name=property_name,
+        )
+        groups: dict = {}
+        for item in res.get("OrderItems", []):
+            if item.get("Type") != "ProductOrder" or item.get("AccountingState") == "Canceled":
+                continue
+            label = item.get("BillingName") or item.get("Name") or "Product"
+            start = item.get("StartUtc") or ""
+            entry = groups.setdefault(label, {"label": label, "count": 0, "_first": start})
+            entry["count"] += 1
+            if start and (not entry["_first"] or start < entry["_first"]):
+                entry["_first"] = start
+
+        included = [g for g in groups.values() if g["count"] > 1]
+        included.sort(key=lambda g: g["_first"])
+        for g in included:
+            del g["_first"]
+        return included
+
     # Fallback when a property has no st_space_types configured. Each
     # property's MEWS export schedule carries its OWN "Space types" filter, so
     # there is no single correct list: Chinatown/Siam/Samui/Makati/Patong/Siem

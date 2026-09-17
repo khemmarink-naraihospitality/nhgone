@@ -278,9 +278,16 @@ async def sync_kiosk_arrivals_now(property_name: str = Query(...)):
 @router.get("/arrivals/{reservation_id}")
 async def kiosk_arrival(reservation_id: str, property_name: str = Query(...)):
     """One reservation for the confirm/registration screens, including the
-    guest's email. Returned in whatever state it's now in - the screen tells
-    a guest their booking can't be checked in here rather than pretending it
-    doesn't exist."""
+    guest's email and its "Included" list. Returned in whatever state it's
+    now in - the screen tells a guest their booking can't be checked in here
+    rather than pretending it doesn't exist.
+
+    The base fields come from the per-minute mirror; "included" is one live
+    MEWS call on top (get_kiosk_included_items) - a single reservation looked
+    up on demand, not the whole lobby polling every 30s, so a live call here
+    doesn't scale the way it would in GET /arrivals. Best-effort: a MEWS
+    hiccup drops the list to empty rather than failing the whole screen.
+    """
     try:
         res = get_supabase_client().table(ARRIVALS_TABLE).select("*").eq(
             "mews_id", reservation_id).eq("property_name", property_name).limit(1).execute()
@@ -288,7 +295,14 @@ async def kiosk_arrival(reservation_id: str, property_name: str = Query(...)):
         raise _arrivals_guard(e)
     if not res.data:
         raise HTTPException(status_code=404, detail="That reservation isn't in today's arrivals.")
-    return {"status": "success", "data": _arrival_fields(res.data[0], include_contact=True)}
+
+    fields = _arrival_fields(res.data[0], include_contact=True)
+    try:
+        fields["included"] = await sync_service.get_kiosk_included_items(property_name, reservation_id)
+    except Exception as e:
+        logger.warning(f"Kiosk included-items fetch failed for {reservation_id}: {e}")
+        fields["included"] = []
+    return {"status": "success", "data": fields}
 
 
 @router.get("")

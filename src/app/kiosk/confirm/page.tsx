@@ -70,6 +70,19 @@ function ConfirmContent() {
                 {formatCheckout(arrival.scheduled_end_utc, arrival.time_zone, language)}
               </p>
             </div>
+
+            {arrival.included && arrival.included.length > 0 && (
+              <div>
+                <p className="text-base text-[var(--kiosk-text-muted)]">{t.included}</p>
+                <ul className="mt-1 space-y-0.5">
+                  {arrival.included.map((item) => (
+                    <li key={item.label} className="text-lg font-semibold">
+                      {item.count}x {item.label}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
 
           <button

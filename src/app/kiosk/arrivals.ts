@@ -9,6 +9,11 @@ import type { KioskLanguageCode } from "./i18n";
  * registration screens use includes it.
  */
 
+export interface KioskIncludedItem {
+  label: string;
+  count: number;
+}
+
 export interface KioskArrival {
   id: string;
   number: string;
@@ -20,6 +25,9 @@ export interface KioskArrival {
   time_zone: string | null;
   room_category: string;
   guest_email?: string;
+  /** Only present on the single-reservation read (GET /arrivals/{id}), not
+   * the lobby list - see kiosks.kiosk_arrival for why. */
+  included?: KioskIncludedItem[];
 }
 
 // The mirror refreshes once a minute; polling at half that keeps a check-in
