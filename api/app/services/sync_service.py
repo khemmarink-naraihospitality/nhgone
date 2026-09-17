@@ -1711,6 +1711,110 @@ class SyncService:
             logger.error(f"Error building RR3 cards for {property_name}: {str(e)}")
             raise e
 
+    async def get_kiosk_arrivals(self, property_name: str) -> dict:
+        """Today's scheduled arrivals for the /kiosk check-in list, one live
+        MEWS fetch - kiosks.sync_kiosk_arrivals mirrors it into
+        kiosk_reservations_sync every minute.
+
+        Every reservation whose booked ScheduledStartUtc falls on the
+        property's local today is returned in whatever State MEWS holds; the
+        kiosk itself only offers State == "Confirmed". That pair of rules was
+        checked against MEWS's own kiosk on Marasca Samui, 17-Sep-2026: its
+        screenshot (taken 14:46 Bangkok - the iPad's clock is on US Pacific)
+        listed exactly the six reservations that were Confirmed at that
+        minute, and every one of the other fifteen was either checked in
+        before it (Nizan 14:42, Riccardo 14:31, Noam 11:12, Claire 07:28),
+        created after it (#50885, 16:47) or canceled. Scheduled, not the
+        un-versioned StartUtc, because MEWS moves StartUtc to the real
+        check-in for an early arrival (see CLAUDE.md's MEWS gotchas).
+
+        Restricted to the accommodation service (_resolve_stay_service): a
+        property can sell other bookable services - Siam's co-working space -
+        and those are not rooms anyone checks into.
+        """
+        tz = await self._resolve_property_timezone(property_name)
+        today = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+
+        def utc(dt):
+            return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        services_res = await mews_client.post(
+            "/api/connector/v1/services/getAll", {"Limitation": {"Count": 100}}, property_name=property_name)
+        stay = self._resolve_stay_service(services_res.get("Services", []))
+        if not stay:
+            raise ValueError(f"No active bookable service found for {property_name}")
+        service_id = stay["Id"]
+
+        page_size = 1000
+        reservations, cursor = [], None
+        while True:
+            limitation = {"Count": page_size}
+            if cursor:
+                limitation["Cursor"] = cursor
+            page = await mews_client.post(
+                "/api/connector/v1/reservations/getAll/2023-06-06",
+                {
+                    "ServiceIds": [service_id],
+                    "ScheduledStartUtc": {"StartUtc": utc(today), "EndUtc": utc(today + timedelta(days=1))},
+                    "Limitation": limitation,
+                },
+                property_name=property_name,
+            )
+            batch = page.get("Reservations", [])
+            reservations.extend(batch)
+            cursor = page.get("Cursor")
+            # MEWS hands back a cursor even on the last page, so a short page
+            # is the only reliable end marker.
+            if not cursor or len(batch) < page_size:
+                break
+
+        customer_ids = list({r["AccountId"] for r in reservations if r.get("AccountId")})
+        customers = {}
+        for i in range(0, len(customer_ids), 1000):
+            chunk = customer_ids[i:i + 1000]
+            res = await mews_client.post(
+                "/api/connector/v1/customers/getAll",
+                {"CustomerIds": chunk, "Limitation": {"Count": len(chunk)}},
+                property_name=property_name,
+            )
+            customers.update({c["Id"]: c for c in res.get("Customers", []) if c.get("Id")})
+
+        category_names = {}
+        if reservations:
+            res = await mews_client.post(
+                "/api/connector/v1/resourceCategories/getAll",
+                {"ServiceIds": [service_id], "Limitation": {"Count": 1000}},
+                property_name=property_name,
+            )
+            for c in res.get("ResourceCategories", []):
+                names = c.get("Names") or {}
+                category_names[c["Id"]] = names.get("en-US") or names.get("en-GB") or next(iter(names.values()), "")
+
+        rows = []
+        for r in reservations:
+            # A company-owned reservation has no Customers row; the kiosk then
+            # shows its confirmation number instead of a name.
+            customer = customers.get(r.get("AccountId")) or {}
+            rows.append({
+                "id": r["Id"],
+                "number": r.get("Number") or "",
+                "state": r.get("State") or "",
+                "scheduled_start_utc": r.get("ScheduledStartUtc"),
+                "scheduled_end_utc": r.get("ScheduledEndUtc"),
+                "person_count": sum(pc.get("Count", 0) for pc in (r.get("PersonCounts") or [])),
+                "room_category": category_names.get(r.get("RequestedResourceCategoryId"), ""),
+                "guest_name": f"{customer.get('FirstName') or ''} {customer.get('LastName') or ''}".strip(),
+                "guest_email": customer.get("Email") or "",
+                "mews_updated_utc": r.get("UpdatedUtc"),
+            })
+
+        return {
+            "property_name": property_name,
+            "arrival_date": today.date().isoformat(),
+            "time_zone": str(tz),
+            "reservations": rows,
+        }
+
     # Fallback when a property has no st_space_types configured. Each
     # property's MEWS export schedule carries its OWN "Space types" filter, so
     # there is no single correct list: Chinatown/Siam/Samui/Makati/Patong/Siem

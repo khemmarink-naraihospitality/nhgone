@@ -5,17 +5,17 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Hand, PenLine } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import KioskTopBar from "../KioskTopBar";
-import { findMockGuest } from "../mockGuests";
 import { useKioskLanguage } from "../kioskLanguage";
+import { guestLabel, useKioskArrival, type KioskArrival } from "../arrivals";
 
 /**
- * Rebuilt 17-Sep-2026 against a real reference screenshot: this replaces the
- * old dark "Review & Signing" design (PDPA consent block + hardcoded "John
- * Smith") with a two-panel layout - a left guest/progress card and a right
- * "Enter your details" form - matching the terminal in the field. Still mock
- * data: the guest comes from mockGuests.ts via the same ?guest=<id> pattern
- * confirm/page.tsx uses, and there's no real signature capture or submission
- * behind either button yet.
+ * Rebuilt 17-Sep-2026 against a real reference screenshot: a two-panel
+ * layout - a left guest/progress card and a right "Enter your details" form -
+ * matching the terminal in the field. The reservation (name, and the email
+ * the form starts from) comes from GET /api/kiosks/arrivals/{id}, the
+ * per-minute MEWS mirror, via the same ?guest=<id> confirm/page.tsx passes.
+ * Nothing is written back yet: there's no real signature capture or MEWS
+ * check-in behind either button.
  *
  * "Tap to return skipped guest" and the progress bar are reproduced as
  * static UI - the reference shows them but doesn't demonstrate what they do,
@@ -24,29 +24,44 @@ import { useKioskLanguage } from "../kioskLanguage";
  *
  * The Terms checkbox keeps the old page's gating behavior (Next is disabled
  * until it's checked) since that's a real consent requirement, not styling.
+ *
+ * The form lives in its own component, mounted only once the reservation has
+ * loaded, so the email field can start from the guest's real address.
  */
 
 function RegistrationContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const { selectedProperty } = useSelectedProperty();
   const { t } = useKioskLanguage();
-  const guest = findMockGuest(searchParams.get("guest"));
-  const [email, setEmail] = useState(guest?.email || "");
-  const [agreedTerms, setAgreedTerms] = useState(false);
-  const [marketingOptIn, setMarketingOptIn] = useState(true);
-  const propertyName = selectedProperty || "this property";
+  const { status, arrival } = useKioskArrival(searchParams.get("guest"));
 
-  if (!guest) {
+  let message: string | null = null;
+  if (status === "loading") message = t.loading;
+  else if (status === "missing") message = t.guestNotFound;
+  else if (status === "error") message = t.loadError;
+  else if (arrival && arrival.state !== "Confirmed") message = t.unavailable;
+
+  if (message || !arrival) {
     return (
       <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
         <KioskTopBar />
-        <main className="flex flex-1 items-center justify-center">
-          <p className="text-lg font-medium text-[var(--kiosk-text-muted)]">{t.guestNotFound}</p>
+        <main className="flex flex-1 items-center justify-center px-8">
+          <p className="text-center text-lg font-medium text-[var(--kiosk-text-muted)]">{message}</p>
         </main>
       </div>
     );
   }
+
+  return <RegistrationForm arrival={arrival} />;
+}
+
+function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
+  const router = useRouter();
+  const { selectedProperty } = useSelectedProperty();
+  const { t } = useKioskLanguage();
+  const [email, setEmail] = useState(arrival.guest_email || "");
+  const [agreedTerms, setAgreedTerms] = useState(false);
+  const [marketingOptIn, setMarketingOptIn] = useState(true);
+  const propertyName = selectedProperty || "this property";
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
@@ -56,7 +71,7 @@ function RegistrationContent() {
         {/* Left: guest + progress card */}
         <div className="flex w-[30%] min-w-[300px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-10">
           <div>
-            <p className="text-2xl font-semibold">{guest.name}</p>
+            <p className="text-2xl font-semibold">{guestLabel(arrival)}</p>
             <p className="mt-1 text-base text-[var(--kiosk-text-muted)]">{t.reservationOwner}</p>
           </div>
 

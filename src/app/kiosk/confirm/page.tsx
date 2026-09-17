@@ -4,15 +4,19 @@ import { Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import KioskTopBar from "../KioskTopBar";
-import { findMockGuest } from "../mockGuests";
 import { useKioskLanguage } from "../kioskLanguage";
+import { formatCheckout, guestLabel, useKioskArrival } from "../arrivals";
 
 /**
- * New 17-Sep-2026, against a real reference screenshot: after picking a
- * guest on /kiosk/search, this confirms who they are and what they're
- * checking into/out of before the registration form. Still mock data - the
- * guest's booking summary comes from mockGuests.ts, looked up by the
- * ?guest=<id> query param search set on the way here.
+ * After picking a guest on /kiosk/search, confirms who they are and what
+ * they're checking into before the registration form - matched to a real
+ * reference screenshot of MEWS's kiosk. The reservation comes from
+ * GET /api/kiosks/arrivals/{id} (the per-minute MEWS mirror): "Your booking"
+ * is its requested space category, "Check-out" its scheduled departure in
+ * the property's own timezone.
+ *
+ * A booking that's no longer Confirmed (checked in at the front desk, or
+ * canceled, since the guest tapped it) says so instead of carrying on.
  *
  * useSearchParams needs a Suspense boundary in the App Router, which is why
  * this file is a thin wrapper around the real page component.
@@ -23,15 +27,21 @@ const FALLBACK_IMAGE = "/images/lub_d_chinatown_entrance.png";
 function ConfirmContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { t } = useKioskLanguage();
-  const guest = findMockGuest(searchParams.get("guest"));
+  const { t, language } = useKioskLanguage();
+  const { status, arrival } = useKioskArrival(searchParams.get("guest"));
 
-  if (!guest) {
+  let message: string | null = null;
+  if (status === "loading") message = t.loading;
+  else if (status === "missing") message = t.guestNotFound;
+  else if (status === "error") message = t.loadError;
+  else if (arrival && arrival.state !== "Confirmed") message = t.unavailable;
+
+  if (message || !arrival) {
     return (
       <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
         <KioskTopBar />
-        <main className="flex flex-1 items-center justify-center">
-          <p className="text-lg font-medium text-[var(--kiosk-text-muted)]">{t.guestNotFound}</p>
+        <main className="flex flex-1 items-center justify-center px-8">
+          <p className="text-center text-lg font-medium text-[var(--kiosk-text-muted)]">{message}</p>
         </main>
       </div>
     );
@@ -45,24 +55,26 @@ function ConfirmContent() {
         {/* Left: content card */}
         <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
-            {t.helloGreeting(guest.name)}
+            {t.helloGreeting(guestLabel(arrival))}
           </h1>
           <p className="mt-2 text-lg text-[var(--kiosk-text-muted)]">{t.confirmSubtitle}</p>
 
           <div className="mt-10 space-y-8">
             <div>
               <p className="text-base text-[var(--kiosk-text-muted)]">{t.yourBooking}</p>
-              <p className="text-2xl font-semibold">{guest.room}</p>
+              <p className="text-2xl font-semibold">{arrival.room_category}</p>
             </div>
             <div>
               <p className="text-base text-[var(--kiosk-text-muted)]">{t.checkOutLabel}</p>
-              <p className="text-2xl font-semibold">{guest.checkoutFull}</p>
+              <p className="text-2xl font-semibold">
+                {formatCheckout(arrival.scheduled_end_utc, arrival.time_zone, language)}
+              </p>
             </div>
           </div>
 
           <button
             type="button"
-            onClick={() => router.push(`/kiosk/registration?guest=${guest.id}`)}
+            onClick={() => router.push(`/kiosk/registration?guest=${encodeURIComponent(arrival.id)}`)}
             className="mt-auto flex w-full items-center justify-between rounded-full bg-[var(--kiosk-inverse-bg)] px-8 py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
           >
             {t.confirmButton}

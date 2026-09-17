@@ -79,6 +79,11 @@ export interface KioskCopy {
   signature: string;
   tapToSign: string;
   privacyFooter: KioskLinkText;
+  loading: string;
+  loadError: string;
+  notEnabled: string;
+  noArrivals: string;
+  unavailable: string;
 }
 
 const en: KioskCopy = {
@@ -110,6 +115,11 @@ const en: KioskCopy = {
     link: "Property Privacy Policy",
     post: ".",
   },
+  loading: "Loading…",
+  loadError: "We couldn't load reservations right now. Please ask the front desk for help.",
+  notEnabled: "Self check-in isn't available at this property yet. Please visit the front desk.",
+  noArrivals: "There are no more arrivals to check in today.",
+  unavailable: "This booking can't be checked in here. Please visit the front desk.",
 };
 
 const th: KioskCopy = {
@@ -141,6 +151,11 @@ const th: KioskCopy = {
     link: "นโยบายความเป็นส่วนตัวของโรงแรม",
     post: "",
   },
+  loading: "กำลังโหลด…",
+  loadError: "ไม่สามารถโหลดข้อมูลการจองได้ในขณะนี้ กรุณาติดต่อแผนกต้อนรับ",
+  notEnabled: "โรงแรมนี้ยังไม่เปิดให้เช็คอินด้วยตนเอง กรุณาติดต่อแผนกต้อนรับ",
+  noArrivals: "ไม่มีผู้เข้าพักที่รอเช็คอินสำหรับวันนี้แล้ว",
+  unavailable: "การจองนี้ไม่สามารถเช็คอินที่เครื่องนี้ได้ กรุณาติดต่อแผนกต้อนรับ",
 };
 
 const fil: KioskCopy = {
@@ -172,6 +187,11 @@ const fil: KioskCopy = {
     link: "Patakaran sa Privacy ng Ari-arian",
     post: ".",
   },
+  loading: "Naglo-load…",
+  loadError: "Hindi namin ma-load ang mga reserbasyon ngayon. Mangyaring magtanong sa front desk.",
+  notEnabled: "Ang self check-in ay hindi pa available sa property na ito. Mangyaring magtungo sa front desk.",
+  noArrivals: "Wala nang bisitang kailangang mag-check in ngayong araw.",
+  unavailable: "Hindi ma-check in dito ang booking na ito. Mangyaring magtungo sa front desk.",
 };
 
 const km: KioskCopy = {
@@ -203,6 +223,11 @@ const km: KioskCopy = {
     link: "គោលការណ៍ឯកជនភាពរបស់អចលនទ្រព្យ",
     post: "។",
   },
+  loading: "កំពុងផ្ទុក…",
+  loadError: "មិនអាចផ្ទុកការកក់បានទេនៅពេលនេះ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវ។",
+  notEnabled: "ការចូលស្នាក់នៅដោយខ្លួនឯងមិនទាន់មាននៅទីនេះនៅឡើយទេ។ សូមទៅកាន់ផ្នែកទទួលភ្ញៀវ។",
+  noArrivals: "មិនមានភ្ញៀវដែលត្រូវចូលស្នាក់នៅថ្ងៃនេះទៀតទេ។",
+  unavailable: "ការកក់នេះមិនអាចចូលស្នាក់នៅនៅទីនេះបានទេ។ សូមទៅកាន់ផ្នែកទទួលភ្ញៀវ។",
 };
 
 const ja: KioskCopy = {
@@ -234,6 +259,11 @@ const ja: KioskCopy = {
     link: "施設のプライバシーポリシー",
     post: "をご覧ください。",
   },
+  loading: "読み込み中…",
+  loadError: "現在、予約情報を読み込めません。フロントデスクにお声がけください。",
+  notEnabled: "この施設ではセルフチェックインをまだご利用いただけません。フロントデスクへお越しください。",
+  noArrivals: "本日チェックイン予定のお客様は以上です。",
+  unavailable: "このご予約はこちらではチェックインできません。フロントデスクへお越しください。",
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

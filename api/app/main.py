@@ -1467,6 +1467,37 @@ async def retry_scheduled_syncs():
                 pass
 
 @app.on_event("startup")
+async def auto_sync_kiosk_arrivals():
+    """Every minute: mirror today's MEWS arrivals into kiosk_reservations_sync
+    for each property with property_api_settings.kiosk_arrivals_sync_enabled
+    (Marasca Samui only, to start - api/sql/kiosk_reservations_sync.sql).
+
+    No `*_last_date` gate and no match_hour_only, unlike every daily report:
+    this is meant to run on every tick, because the kiosk's check-in list has
+    to catch a front-desk check-in or a cancellation within a minute.
+
+    Deliberately NOT under acquire_sync_lock. That lock is per property and
+    shared with daily_auto_sync, which skips a property whose lock is held -
+    a job taking it every minute would sooner or later make the day's real
+    Data Mart import skip this property. Two overlapping runs of this job are
+    handled inside kiosks.sync_kiosk_arrivals instead.
+
+    Logs to sync_logs only on failure, for the same reason BCP does: a success
+    row per property per minute would bury the Activity Log.
+    """
+    try:
+        res = sync_service.supabase.table("property_api_settings").select(
+            "id, property_name").eq("kiosk_arrivals_sync_enabled", True).execute()
+    except Exception as e:
+        print(f"Kiosk arrivals sync skipped (has api/sql/kiosk_reservations_sync.sql been run?): {e}")
+        return
+    for prop in res.data or []:
+        try:
+            await kiosks.sync_kiosk_arrivals(prop["property_name"])
+        except Exception as e:
+            _log_sync(prop["property_name"], prop.get("id"), "Kiosk Arrivals", "error", 0,
+                      f"Kiosk arrivals sync failed: {str(e)[:300]}")
+
 async def start_scheduler():
     # Vercel sets this env var in every serverless invocation - previously
     # this check was missing, so this "local dev only" per-minute scheduler
@@ -1528,6 +1559,8 @@ async def start_scheduler():
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
+    # Kiosk check-in list mirror, every minute (production: /sync/kiosk-arrivals-auto).
+    scheduler.add_job(auto_sync_kiosk_arrivals, 'cron', second=0)
     scheduler.start()
     print("Scheduler initialized (Local environment only).")
 
@@ -1615,6 +1648,17 @@ async def trigger_st_files_auto(background_tasks: BackgroundTasks = None):
     of the day.
     """
     background_tasks.add_task(daily_auto_sync_st_files, match_hour_only=True)
+    return {"status": "accepted"}
+
+@app.get("/sync/kiosk-arrivals-auto")
+async def trigger_kiosk_arrivals_auto(background_tasks: BackgroundTasks = None):
+    """
+    Dedicated per-minute Vercel Cron entry (vercel.json) for
+    auto_sync_kiosk_arrivals - its own entry rather than riding
+    /sync/st-files-auto's, which only happens to share the cadence today. See
+    auto_sync_kiosk_arrivals' docstring.
+    """
+    background_tasks.add_task(auto_sync_kiosk_arrivals)
     return {"status": "accepted"}
 
 @app.post("/sync/property")

@@ -21,6 +21,10 @@
     {
       "path": "/api/sync/st-files-auto",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/sync/kiosk-arrivals-auto",
+      "schedule": "* * * * *"
     }
   ],
   "functions": {
