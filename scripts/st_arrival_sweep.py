@@ -104,9 +104,10 @@ def _hour(ts, parse_utc, tz):
 
 # Was sync_service._ST_WALK_IN_RATE_RE until the walk-in arm of the day-use
 # rule was retired (10-Sep-2026 measurement put walk-in day rooms on the
-# EXCLUDED side, see _ST_DAY_USE_ARRIVAL_END_HOUR). Kept here, inline, so the
-# candidate rules below that still test a walk-in arm can be scored against
-# the new evidence rather than silently dropping out of the sweep.
+# EXCLUDED side, under the rule then in production - see the retired block
+# above sync_service._ST_DAY_USE_ARRIVAL_START_HOUR). Kept here, inline, so
+# the candidate rules below that still test a walk-in arm can be scored
+# rather than silently dropping out of the sweep.
 _WALK_IN_RATE_RE = re.compile(r"\bwalk[\s-]*in\b", re.IGNORECASE)
 
 
@@ -132,8 +133,20 @@ def make_rules():
         lambda res, actual, in_window, pu, tz, rates, ds, de:
             in_window(res.get("StartUtc")) or in_window(actual))
 
+    # --- the rule actually running in production, so every sweep scores the
+    # incumbent on the same per-category ruler as the challengers. Without it
+    # a "winner" can look like an improvement while quietly being worse on a
+    # property the incumbent got right. Note it drops the OPPOSITE side of
+    # the clock from the candidates below: it keeps a day-use stay that
+    # started before 01:00 and drops one that started later.
+    add("PRODUCTION: sched, drop day-use from 01:00 (actual-pref clock)",
+        lambda res, actual, in_window, pu, tz, rates, ds, de:
+            in_window(res.get("StartUtc"))
+            and not (in_window(res.get("EndUtc"))
+                     and (_hour(actual or res.get("StartUtc"), pu, tz) or 0) >= 1))
+
     # --- scheduled instant + a night-tail cutoff on zero-night stays
-    for h in (2, 3, 4, 6):
+    for h in (1, 2, 3, 4, 6):
         add(f"sched, drop day-use before {h:02d}:00",
             lambda res, actual, in_window, pu, tz, rates, ds, de, h=h:
                 in_window(res.get("StartUtc"))
@@ -147,7 +160,7 @@ def make_rules():
                          and (_hour(res.get("StartUtc"), pu, tz) or 0) < h))
 
     # --- actual-preferred instant + the same cutoffs
-    for h in (2, 3, 4, 6):
+    for h in (1, 2, 3, 4, 6):
         add(f"actual-pref, drop day-use before {h:02d}:00",
             lambda res, actual, in_window, pu, tz, rates, ds, de, h=h:
                 in_window(actual or res.get("StartUtc"))

@@ -306,8 +306,8 @@ async def build_comparison(want_date: str = None) -> dict:
                 note = f"{short} {ov - sv:+d}"
                 # Arrivals is the one metric with a KNOWN, named source of
                 # drift: the day-use rule (sync_service's
-                # _ST_DAY_USE_ARRIVAL_END_HOUR) holds back same-day-checkout
-                # stays whose real check-in lands after its cutoff - they
+                # _ST_DAY_USE_ARRIVAL_START_HOUR) holds back same-day-checkout
+                # stays whose SCHEDULED start lands before its cutoff - they
                 # never touched the night, so MEWS doesn't call them
                 # arrivals either. Surfacing the count here doesn't claim it
                 # explains the whole gap (the exclusion count and the sheet
