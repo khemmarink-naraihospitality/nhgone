@@ -82,7 +82,7 @@ export default function KioskWelcomePage() {
             {/* Action Buttons */}
             <div className="flex flex-col gap-6 pt-8 w-full max-w-md">
               <motion.button
-                onClick={() => router.push("/kiosk/search")}
+                onClick={() => router.push("/kiosk/registration")}
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className="w-full py-6 bg-white text-[#0a0f18] rounded-2xl text-2xl font-bold transition-all shadow-2xl shadow-white/5 hover:bg-gray-100"

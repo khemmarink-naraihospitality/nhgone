@@ -78,8 +78,13 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   // ("Lobby Kiosk (Open at 6AM)") is an operations label, not a guest one.
   const propertyName = selectedProperty || "Select a property";
 
+  // Search isn't one of these: Check In on the welcome screen now skips
+  // straight to Registration, so counting Search here would show it as
+  // "already done" on every step that follows even though the guest never
+  // saw it. /kiosk/search itself still exists and still works if reached
+  // directly (e.g. a QR/express-checkin path added later) - it's just not
+  // part of this progress bar's steps.
   const steps = [
-    { path: "/kiosk/search", label: "Search" },
     { path: "/kiosk/registration", label: "Registration" },
     { path: "/kiosk/ekyc", label: "Identity Verification" },
     { path: "/kiosk/upsell", label: "Customize" },
