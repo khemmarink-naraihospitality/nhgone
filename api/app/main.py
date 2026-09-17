@@ -239,7 +239,9 @@ async def _sync_st_files_for_property(prop, prop_id, date_str, sync_type="auto")
     retry_failed_syncs/retry_scheduled_syncs's per-table loops."""
     label = {"retry": "Retry", "manual": "Manual"}.get(sync_type, "Auto")
     try:
-        await st_files.sync_st_files_day(prop, date_str)
+        # scheduled=True: the daily run and its retries are the date's SWEEP,
+        # which the ST verification mail compares - see sync_st_files_day.
+        await st_files.sync_st_files_day(prop, date_str, scheduled=sync_type in ("auto", "retry"))
         _log_sync(prop, prop_id, "ST Files", "success", 1, f"{label} ST Files Sync: {date_str}", sync_type)
         return True
     except Exception as e:

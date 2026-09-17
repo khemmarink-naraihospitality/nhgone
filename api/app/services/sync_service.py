@@ -3892,7 +3892,21 @@ class SyncService:
             "categories": rows,
         }
 
-    async def get_st_files_list(self, property_name: str) -> list:
+    @staticmethod
+    def st_sweep_of(data: dict, synced_at: str) -> tuple:
+        """(blob, synced_at, recorded) for a st_files_sync row's SWEEP - the
+        scheduled import taken at the time its sheet exports (see
+        routers/st_files.sync_st_files_day for the row shapes). `recorded` is
+        False for a row with no sweep on record, which falls back to its
+        latest import so it can still be compared - callers say so."""
+        data = data or {}
+        if data.get("sweep_blob"):
+            return data["sweep_blob"], data.get("sweep_synced_at"), True
+        if data.get("sweep_synced_at"):
+            return data.get("blob", ""), data["sweep_synced_at"], True
+        return data.get("blob", ""), synced_at, False
+
+    async def get_st_files_list(self, property_name: str, source: str = "latest") -> list:
         """
         ST Files List's per-day summary rows - reads exclusively from
         st_files_sync (Database-sourced, per request), not live MEWS -
@@ -3900,6 +3914,10 @@ class SyncService:
         row for what could be months of history. Each row's totals are
         summed from that day's already-stored report blob (the same
         numbers the single-day tabs above show), not recomputed here.
+
+        source="latest" (the ST Files page) reads the most recent import;
+        source="sweep" (the verification mail) reads the scheduled sweep - see
+        st_sweep_of - so a manual re-import can't change what the mail compares.
         """
         if not self.supabase:
             return []
@@ -3910,7 +3928,10 @@ class SyncService:
             .execute()
         rows = []
         for row in res.data or []:
-            blob = (row.get("data") or {}).get("blob", "")
+            if source == "sweep":
+                blob, synced_at, recorded = self.st_sweep_of(row.get("data"), row.get("synced_at"))
+            else:
+                blob, synced_at, recorded = (row.get("data") or {}).get("blob", ""), row.get("synced_at"), False
             if not blob:
                 continue
             try:
@@ -3932,7 +3953,8 @@ class SyncService:
                 # Same fallback reasoning: a report imported before this
                 # field existed shows 0 rather than an error.
                 "day_use_arrivals_excluded": report.get("day_use_arrivals_excluded", 0),
-                "synced_at": row.get("synced_at"),
+                "synced_at": synced_at,
+                "sweep_recorded": recorded,
             })
         return rows
 

@@ -11,17 +11,46 @@ from app.services.encryption import encryption_service
 router = APIRouter(prefix="/st-files", tags=["ST Files"])
 
 
-async def sync_st_files_day(property_name: str, date_str: str) -> None:
+async def sync_st_files_day(property_name: str, date_str: str, scheduled: bool = False) -> None:
     """Fetches + upserts one (property, date) ST Files report into
     st_files_sync - shared by the manual Import To Data Mart button below
     and the scheduled daily auto-import in main.py, so the two can't drift
-    out of sync with each other. Raises on failure; callers log/count it."""
+    out of sync with each other. Raises on failure; callers log/count it.
+
+    `scheduled` marks this import as that date's SWEEP - the one taken at the
+    time the property's own sheet exports from MEWS. The ST verification mail
+    compares the sweep, never merely the latest import, so moving its send
+    time can never change what it compares: a manual re-import at 11:00 still
+    refreshes `blob` (what the ST Files page, the export file and FTP read),
+    but the scheduled sweep is carried aside as `sweep_blob` rather than lost.
+
+    Row shape in `data`:
+      {"blob", "sweep_synced_at"}                 - blob IS the sweep
+      {"blob", "sweep_blob", "sweep_synced_at"}   - blob is a later manual
+                                                    re-import; sweep kept aside
+      {"blob"}                                    - no sweep recorded (imported
+                                                    before sweeps existed, or
+                                                    only ever imported by hand)
+    """
     report = await sync_service.get_st_files_report(property_name, date_str)
+    now = datetime.now(timezone.utc).isoformat()
+    data = {"blob": encryption_service.encrypt(json.dumps(report))}
+    if scheduled:
+        # A newer scheduled run (a retry) IS the sweep now - drop any old one.
+        data["sweep_synced_at"] = now
+    else:
+        existing = sync_service.supabase.table("st_files_sync").select("data").eq(
+            "property", property_name).eq("report_date", date_str).limit(1).execute()
+        old = (existing.data[0].get("data") if existing.data else None) or {}
+        if old.get("sweep_blob"):
+            data["sweep_blob"], data["sweep_synced_at"] = old["sweep_blob"], old.get("sweep_synced_at")
+        elif old.get("sweep_synced_at") and old.get("blob"):
+            data["sweep_blob"], data["sweep_synced_at"] = old["blob"], old["sweep_synced_at"]
     sync_service.supabase.table("st_files_sync").upsert({
         "property": property_name,
         "report_date": date_str,
-        "data": {"blob": encryption_service.encrypt(json.dumps(report))},
-        "synced_at": datetime.now(timezone.utc).isoformat(),
+        "data": data,
+        "synced_at": now,
     }, on_conflict="property,report_date").execute()
 
 

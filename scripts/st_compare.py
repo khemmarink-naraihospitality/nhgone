@@ -5,6 +5,7 @@
     .venv/bin/python scripts/st_compare.py             # whatever date the sheets hold
     .venv/bin/python scripts/st_compare.py 2026-08-25  # a specific date
     .venv/bin/python scripts/st_compare.py --email     # also send the monitoring mail
+    .venv/bin/python scripts/st_compare.py --latest    # compare the latest import, not the sweep
 
 A thin CLI over app.services.st_compare_service, and --email goes through the
 same compare_mail.send the 08:00 job and the Admin "Send Test Now" button use -
@@ -29,10 +30,14 @@ from app.services import st_compare_service as svc  # noqa: E402
 async def main():
     args = sys.argv[1:]
     send = "--email" in args
+    # --latest compares our most recent import instead of the scheduled sweep
+    # - for checking a fix right after re-importing a day by hand. The mail
+    # itself always compares the sweep.
+    source = "latest" if "--latest" in args else "sweep"
     want = next((a for a in args if not a.startswith("-")), None)
 
     print("กำลังโหลดชีตทั้ง 8 ...", flush=True)
-    result = await svc.build_comparison(want)
+    result = await svc.build_comparison(want, source=source)
     print()
     print(svc.render_text(result))
 

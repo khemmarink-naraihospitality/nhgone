@@ -247,7 +247,7 @@ def _sheet_dt(value, prop: str):
     return value.replace(tzinfo=timezone(timedelta(hours=TZ_OFFSET.get(prop, 7))))
 
 
-def _our_categories(property_name: str, date: str) -> dict:
+def _our_categories(property_name: str, date: str, source: str = "sweep") -> dict:
     """Our stored Arrivals/Departures for one day, per space category, as
     {"arrivals": {cat: units}, "departures": {...}}.
 
@@ -262,11 +262,17 @@ def _our_categories(property_name: str, date: str) -> dict:
 
     out = {"arrivals": {}, "departures": {}}
     try:
-        res = sync_service.supabase.table("st_files_sync").select("data").eq(
+        res = sync_service.supabase.table("st_files_sync").select("data, synced_at").eq(
             "property", property_name).eq("report_date", date).limit(1).execute()
         if not res.data:
             return out
-        report = json.loads(encryption_service.decrypt(res.data[0]["data"]["blob"]))
+        data = res.data[0].get("data") or {}
+        # Same snapshot the totals come from (get_st_files_list's `source`),
+        # or a total and its own category breakdown could describe two
+        # different imports.
+        blob = (sync_service.st_sweep_of(data, res.data[0].get("synced_at"))[0]
+                if source == "sweep" else data.get("blob", ""))
+        report = json.loads(encryption_service.decrypt(blob))
     except Exception as e:
         logger.warning(f"ST compare: could not read {property_name}'s stored report: {e}")
         return out
@@ -290,11 +296,18 @@ def _category_note(ours: dict, sheet: dict) -> str:
     return ", ".join(bits)
 
 
-async def build_comparison(want_date: str = None) -> dict:
+async def build_comparison(want_date: str = None, source: str = "sweep") -> dict:
     """The whole check, as data. `status` is one of:
       ok             - comparable, see columns/grid
       no_sheet_date  - the sheets disagree with each other about the date
       not_held       - a date was asked for that the sheets no longer hold
+
+    `source` is which of our imports is compared. "sweep" (the default, and
+    what the mail always uses) is the scheduled import taken at the time each
+    sheet exports - so the mail compares the same pair of pulls whatever time
+    it is sent at, and a manual re-import later in the day can't move it.
+    "latest" is for checking a fix right after re-importing by hand
+    (scripts/st_compare.py --latest).
     """
     from app.services.sync_service import sync_service
 
@@ -317,7 +330,7 @@ async def build_comparison(want_date: str = None) -> dict:
     ours_by_category = {}
     for prop in SHEETS:
         try:
-            rows = await sync_service.get_st_files_list(prop)
+            rows = await sync_service.get_st_files_list(prop, source=source)
             ours[prop] = next((r for r in rows if r.get("date") == date), None)
         except Exception as e:
             logger.warning(f"ST compare: could not read st_files_sync for {prop}: {e}")
@@ -326,7 +339,7 @@ async def build_comparison(want_date: str = None) -> dict:
         # blob, so a total that disagrees can name the categories responsible.
         # Read separately from get_st_files_list because that one returns the
         # ten totals only.
-        ours_by_category[prop] = _our_categories(prop, date)
+        ours_by_category[prop] = _our_categories(prop, date, source)
 
     columns, grid, detail = [], {}, {}
     for label, key in METRICS:
@@ -389,10 +402,14 @@ async def build_comparison(want_date: str = None) -> dict:
         sweep.append({"property": prop, "short": short, "sheet_id": sheet_id,
                       "sheet_availability": sheet_avail, "sheet_reservation": sheet_resv,
                       "ours": ours_at, "gap_minutes": gap,
+                      # False = no scheduled sweep on record for this date, so
+                      # "ours" is simply the latest import - the table says so.
+                      "sweep_recorded": bool((ours.get(prop) or {}).get("sweep_recorded")),
                       "sheet_readable": bool(sheets[prop]["data"])})
 
     return {
         "status": "ok",
+        "source": source,
         "date": date,
         "columns": columns,
         "grid": grid,
@@ -571,7 +588,7 @@ def render_sweep_table(result: dict) -> str:
          f'<th style="{_TH}">Property</th>'
          f'<th style="{_TH}">Google Sheet &mdash; Availability export</th>'
          f'<th style="{_TH}">Google Sheet &mdash; Reservation export</th>'
-         f'<th style="{_TH}">NHGOne import</th>'
+         f'<th style="{_TH}">NHGOne sweep</th>'
          f'<th style="{_TH}">Gap</th></tr>']
     for row in result.get("sweep") or []:
         if not row["sheet_readable"]:
@@ -582,8 +599,15 @@ def render_sweep_table(result: dict) -> str:
             sheet_avail = f'<span style="{muted}">not recorded in the sheet</span>'
         sheet_resv = (_fmt_pull(row["sheet_reservation"]) if row["sheet_reservation"]
                       else f'<span style="{muted}">&mdash;</span>')
-        ours = (_fmt_pull(row["ours"]) if row["ours"]
-                else f'<span style="color:#b91c1c;font-weight:700">not imported</span>')
+        if not row["ours"]:
+            ours = f'<span style="color:#b91c1c;font-weight:700">not imported</span>'
+        elif row["sweep_recorded"] or result.get("source") == "latest":
+            ours = _fmt_pull(row["ours"])
+        else:
+            # Imported before sweeps were recorded, or only ever by hand: the
+            # time shown is just the latest import, not a scheduled sweep.
+            ours = (f'{_fmt_pull(row["ours"])} '
+                    f'<span style="{muted}font-size:11px">(latest import - no scheduled sweep recorded)</span>')
 
         gap = row["gap_minutes"]
         if gap is None:
@@ -604,7 +628,9 @@ def render_sweep_table(result: dict) -> str:
     h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
              "When each side pulled its numbers from MEWS, in each property's own time. "
              "Google Sheet = the Created time MEWS stamped on the exports pasted into it; "
-             "NHGOne = when our import ran. Gap = NHGOne minus the sheet's Availability export - "
+             "NHGOne = our scheduled sweep for that date, which this mail always compares - "
+             "the same pair of pulls whatever time the mail is sent, even if the date was "
+             "re-imported by hand later. Gap = NHGOne minus the sheet's Availability export - "
              f"over {SWEEP_GAP_WARN_MINUTES} minutes is flagged, because Occupied, Availability and "
              "Customers are read live and a booking made in between shows up as a difference "
              "neither side got wrong.</p>")
@@ -612,12 +638,15 @@ def render_sweep_table(result: dict) -> str:
 
 
 def _sweep_text(result: dict) -> list:
-    out = ["", "Sweep time — เวลาที่แต่ละฝั่งดึงข้อมูลจาก MEWS (Google Sheet / NHGOne):"]
+    which = "import ล่าสุด (--latest)" if result.get("source") == "latest" else "sweep ตามตาราง"
+    out = ["", f"Sweep time — เวลาที่แต่ละฝั่งดึงข้อมูลจาก MEWS (Google Sheet / NHGOne {which}):"]
     for row in result.get("sweep") or []:
         sheet = _fmt_pull(row["sheet_availability"]) or ("อ่านชีตไม่ได้" if not row["sheet_readable"] else "ชีตไม่ได้บันทึกเวลา")
         if row["sheet_reservation"]:
             sheet += f" (resv {row['sheet_reservation'].strftime('%H:%M')})"
         ours = _fmt_pull(row["ours"]) or "ยังไม่ import"
+        if row["ours"] and not row["sweep_recorded"] and result.get("source") != "latest":
+            ours += " (import ล่าสุด)"
         gap = row["gap_minutes"]
         flag = "  ⚠️" if gap is not None and abs(gap) > SWEEP_GAP_WARN_MINUTES else ""
         out.append(f"  {row['short']:<12} sheet {sheet:<28} ours {ours:<14} {_fmt_gap(gap) or '—'}{flag}")
