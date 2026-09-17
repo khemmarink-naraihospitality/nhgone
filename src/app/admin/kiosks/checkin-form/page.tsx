@@ -23,7 +23,9 @@ import { supabase } from "@/lib/supabase";
  * are locked (`locked`, rendered as fixed text) AND what MEWS's own default
  * state is for the rest (`default`, still an editable dropdown, just not
  * starting from the generic "Default" placeholder for a property that has
- * never saved its own choice). Address / Documents / Verification below are
+ * never saved its own choice). "Documents" is also verified against a real
+ * screenshot, but is a different shape entirely - see the DocumentType note
+ * below, not a fields x guest-type table. Address / Verification below are
  * NOT verified against a real MEWS screen - nobody here has seen those tabs -
  * and are a reasonable placeholder field list to be corrected once someone
  * has. They are deliberately kept in one place (FIELD_CATEGORIES) so
@@ -38,6 +40,36 @@ type FieldState = "Default" | "Required" | "Optional" | "Hidden";
 type GuestType = "owner" | "other_adults" | "children";
 
 const FIELD_STATES: FieldState[] = ["Default", "Required", "Optional", "Hidden"];
+
+// The Documents tab isn't a fields x guest-type table like the others - MEWS's
+// own screen for it is a single Type + Visibility choice, not per-field or
+// per-guest-type. "Type" is which document(s) satisfy check-in: either the
+// guest picks any one from a set ("Guest choose a document type") or a
+// specific single document is required ("Guest fills one of these
+// documents"). Copied field-for-field, including the grouping, from a real
+// MEWS screenshot.
+type DocumentType = "passport_id_license" | "passport_id" | "passport" | "id_card" | "driver_license";
+
+const DOCUMENT_TYPE_GROUPS: { label: string; options: { value: DocumentType; label: string }[] }[] = [
+  {
+    label: "Guest choose a document type",
+    options: [
+      { value: "passport_id_license", label: "Passport / ID card / Driver's license" },
+      { value: "passport_id", label: "Passport / ID card" },
+    ],
+  },
+  {
+    label: "Guest fills one of these documents",
+    options: [
+      { value: "passport", label: "Passport" },
+      { value: "id_card", label: "ID card" },
+      { value: "driver_license", label: "Driver's license" },
+    ],
+  },
+];
+
+const DEFAULT_DOCUMENT_TYPE: DocumentType = "passport_id_license";
+const DEFAULT_DOCUMENT_VISIBILITY: FieldState = "Hidden";
 
 interface FieldDef {
   key: string;
@@ -110,17 +142,12 @@ const FIELD_CATEGORIES: Category[] = [
     ],
   },
   {
+    // No `fields` here on purpose - see the DocumentType note above and
+    // "Documents" rendering below, which is a Type + Visibility pair rather
+    // than this shared fields-table layout.
     key: "documents",
     label: "Documents",
-    fields: [
-      { key: "document_type", label: "Document type" },
-      { key: "document_number", label: "Document number" },
-      { key: "document_issuing_country", label: "Issuing country" },
-      { key: "document_issue_date", label: "Issue date" },
-      { key: "document_expiry_date", label: "Expiry date" },
-      { key: "document_photo_front", label: "Document photo (front)" },
-      { key: "document_photo_back", label: "Document photo (back)" },
-    ],
+    fields: [],
   },
   {
     key: "verification",
@@ -139,7 +166,10 @@ const GUEST_TYPES: { key: GuestType; label: string; toggleable: boolean }[] = [
   { key: "children", label: "Children", toggleable: true },
 ];
 
-type FieldsValue = Record<string, Record<string, FieldState>>;
+// string, not FieldState: most categories only ever store a FieldState per
+// cell, but Documents stores a DocumentType under its "type" key alongside a
+// FieldState under "visibility" - see setDocumentField.
+type FieldsValue = Record<string, Record<string, string>>;
 
 interface CheckinFormSettings {
   id: string | null;
@@ -160,7 +190,11 @@ function defaultStateFor(field: FieldDef, guestType: GuestType): FieldState {
 function valueFor(settings: CheckinFormSettings, categoryKey: string, field: FieldDef, guestType: GuestType): FieldState {
   const locked = field.locked?.[guestType];
   if (locked) return locked;
-  return settings.fields[categoryKey]?.[`${field.key}.${guestType}`] ?? defaultStateFor(field, guestType);
+  // Cast: this cell only ever holds a FieldState (fields x guest-type cells
+  // never store a DocumentType) - the type is widened to string at the
+  // FieldsValue level only because Documents' own two keys need to.
+  return (settings.fields[categoryKey]?.[`${field.key}.${guestType}`] as FieldState | undefined)
+    ?? defaultStateFor(field, guestType);
 }
 
 function stamp(at: string | null, by: string | null) {
@@ -228,6 +262,21 @@ export default function CheckInFormPage() {
       const category = { ...(s.fields[categoryKey] || {}) };
       category[`${field.key}.${guestType}`] = value;
       return { ...s, fields: { ...s.fields, [categoryKey]: category } };
+    });
+  };
+
+  // Documents' Type/Visibility pair bypasses the field-x-guest-type storage
+  // shape (`${key}.${guestType}`) other categories use - there is no guest
+  // type here, so these two live under fields.documents as plain keys.
+  const documentType = ((settings?.fields.documents?.type as DocumentType | undefined) || DEFAULT_DOCUMENT_TYPE);
+  const documentVisibility = ((settings?.fields.documents?.visibility as FieldState | undefined) || DEFAULT_DOCUMENT_VISIBILITY);
+
+  const setDocumentField = (key: "type" | "visibility", value: string) => {
+    setSettings((s) => {
+      if (!s) return s;
+      const category = { ...(s.fields.documents || {}) };
+      category[key] = value;
+      return { ...s, fields: { ...s.fields, documents: category } };
     });
   };
 
@@ -332,7 +381,50 @@ export default function CheckInFormPage() {
             ))}
           </div>
 
-          {/* Table */}
+          {/* Documents: Type + Visibility, not the fields x guest-type table
+              every other tab uses - see the DocumentType note up top. */}
+          {category.key === "documents" ? (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full min-w-[480px] border-separate border-spacing-0 text-left">
+                <thead>
+                  <tr className="bg-slate-50">
+                    <th className="px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Type</th>
+                    <th className="px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Visibility</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  <tr>
+                    <td className="px-5 py-3">
+                      <select
+                        value={documentType}
+                        onChange={(e) => setDocumentField("type", e.target.value)}
+                        className="w-full max-w-[320px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                      >
+                        {DOCUMENT_TYPE_GROUPS.map((group) => (
+                          <optgroup key={group.label} label={group.label}>
+                            {group.options.map((opt) => (
+                              <option key={opt.value} value={opt.value}>{opt.label}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-5 py-3">
+                      <select
+                        value={documentVisibility}
+                        onChange={(e) => setDocumentField("visibility", e.target.value)}
+                        className="w-full max-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                      >
+                        {FIELD_STATES.map((state) => (
+                          <option key={state} value={state}>{state}</option>
+                        ))}
+                      </select>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200">
             <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
               <thead>
@@ -405,6 +497,7 @@ export default function CheckInFormPage() {
               </tbody>
             </table>
           </div>
+          )}
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-6">
             <p className="text-xs font-medium text-slate-400">Last saved: {stamp(settings.updated_at, settings.updated_by)}</p>
