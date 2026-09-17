@@ -25,11 +25,13 @@ import { supabase } from "@/lib/supabase";
  * starting from the generic "Default" placeholder for a property that has
  * never saved its own choice). "Documents" is also verified against a real
  * screenshot, but is a different shape entirely - see the DocumentType note
- * below, not a fields x guest-type table. Address / Verification below are
- * NOT verified against a real MEWS screen - nobody here has seen those tabs -
- * and are a reasonable placeholder field list to be corrected once someone
- * has. They are deliberately kept in one place (FIELD_CATEGORIES) so
- * correcting them is an edit to a list, not a rewrite of the page.
+ * below, not a fields x guest-type table. "Verification" is verified too -
+ * three fields (Verification photo / ID photos / ID verification), each
+ * defaulting to Hidden. Only "Address" below is NOT verified against a real
+ * MEWS screen - nobody here has seen that tab - and is a reasonable
+ * placeholder field list to be corrected once someone has. Kept in one place
+ * (FIELD_CATEGORIES) so correcting it is an edit to a list, not a rewrite of
+ * the page.
  *
  * Nothing reads this configuration yet: /kiosk/registration still uses its
  * own fixed field set. This is the configuration surface going in first,
@@ -153,9 +155,9 @@ const FIELD_CATEGORIES: Category[] = [
     key: "verification",
     label: "Verification",
     fields: [
-      { key: "selfie_photo", label: "Selfie photo" },
-      { key: "liveness_check", label: "Liveness check" },
-      { key: "face_match_result", label: "Face match result" },
+      { key: "verification_photo", label: "Verification photo", default: "Hidden" },
+      { key: "id_photos", label: "ID photos", default: "Hidden" },
+      { key: "id_verification", label: "ID verification", default: "Hidden" },
     ],
   },
 ];
