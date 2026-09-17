@@ -376,6 +376,20 @@ def _rr3_country_name(code: str) -> str:
 # properties that remain on it (Siam 02:05, Samui 02:03, Koh Tao 01:59,
 # Marasca 02:03).
 #
+# PATONG BACK ON 02:05, 17-Sep-2026 - and the root cause of this whole
+# back-and-forth found. Every "window" flip-flop recorded below was the wrong
+# CLOCK, not the wrong time: get_tm30_report filed by the un-versioned
+# StartUtc, which MEWS moves to the real check-in when a guest arrives early,
+# while the sheets file by the booked ScheduledStartUtc. W106185 below - the
+# guest whose drop moved Patong to 00:00 - reads StartUtc 10-Sep 00:57 but
+# ScheduledStartUtc 10-Sep 14:00: an 02:05 start only lost him because it was
+# reading the moved time. On 16-Sep the 00:00 start then lost ten guests
+# BOOKED for 17-Sep 00:15-02:00, which the sheet files on the 16th. With
+# ScheduledStartUtc (see get_tm30_report) each sheet's own declared start
+# matched Patong 81/81, Samui 126/126, Koh Tao, Siam and Marasca - so the
+# DB values now simply mirror each sheet's Master!B2. Re-measure with
+# scripts/tm30_window_sweep.py before moving any of them again.
+#
 # PATONG MOVED TO 00:00, 12-Sep-2026, by explicit instruction after it was
 # reported not matching again. Measured on two days rather than one, and both
 # point the same way: an 02:05 start drops W106185 Moahmmed Muslim A Altiwal
@@ -2679,6 +2693,43 @@ class SyncService:
         tm30_start_hour, tm30_start_minute = await self._resolve_tm30_day_start(property_name)
         nationality_codes = await self._resolve_tm30_nationality_codes()
 
+        # The arrival instant TM30 is filed by: ScheduledStartUtc, from the
+        # 2023-06-06 endpoint - NOT the un-versioned StartUtc the fetch above
+        # returns. MEWS MOVES StartUtc to the real check-in when a guest
+        # arrives EARLY (a 14:00 booking checked in at 00:57 reads 00:57
+        # there), while ScheduledStartUtc keeps the booked 14:00, and the
+        # sheets file by the booked time. Measured 17-Sep-2026 against all
+        # five comparable sheets for 16-Sep, by passport
+        # (scripts/tm30_window_sweep.py): ScheduledStartUtc with each sheet's
+        # own declared start matched Samui, Koh Tao, Patong and Marasca
+        # exactly and lost nobody anywhere, where StartUtc under the same
+        # windows could not match Patong or Samui at any start time. Named:
+        #   Patong, 16-Sep sheet - 10 guests booked for 17-Sep 00:15-02:00
+        #     (on the sheet) vs Kyaw Zin, Soe Soe Aye F and Alwaleed Vmeshal
+        #     M Alharbi, booked 17-Sep 14:00 but checked in 00:40/01:23 (NOT
+        #     on it) - the same moment of arrival, split only by the booking.
+        #   Patong W106185 (res 191808) - the guest whose "drop" moved Patong
+        #     to a 00:00 start on 12-Sep: StartUtc 10-Sep 00:57, but
+        #     ScheduledStartUtc 10-Sep 14:00. He was only ever lost to the
+        #     wrong clock, never to the 02:05 window.
+        # A failure here falls back to StartUtc per reservation rather than
+        # failing the register: that is the reading this had before.
+        scheduled_starts = {}
+        reservation_ids = [r["Id"] for r in reservations if r.get("Id")]
+        for i in range(0, len(reservation_ids), 1000):
+            id_batch = reservation_ids[i:i + 1000]
+            try:
+                sched_res = await mews_client.post(
+                    "/api/connector/v1/reservations/getAll/2023-06-06",
+                    {"ReservationIds": id_batch, "Limitation": {"Count": len(id_batch)}},
+                    property_name=property_name,
+                )
+                for r in sched_res.get("Reservations", []):
+                    if r.get("Id") and r.get("ScheduledStartUtc"):
+                        scheduled_starts[r["Id"]] = r["ScheduledStartUtc"]
+            except Exception as e:
+                logger.warning(f"TM30: failed to fetch ScheduledStartUtc for {property_name}: {e}")
+
         def parse_utc(ts):
             if not ts:
                 return None
@@ -2768,7 +2819,8 @@ class SyncService:
 
         rows = []
         for res in reservations:
-            if not in_window(res.get("StartUtc")):
+            # Booked arrival, not StartUtc - see scheduled_starts above.
+            if not in_window(scheduled_starts.get(res.get("Id")) or res.get("StartUtc")):
                 continue
             for guest_id in self._rr4_tm30_guest_ids(res):
                 c = customers_map.get(guest_id)

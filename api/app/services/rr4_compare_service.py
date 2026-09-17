@@ -134,6 +134,17 @@ def _hhmm(s: str):
 
 _GEORGIA_RR4_CODE = "226"
 
+# Koh Tao, 16-Sep-2026: Dimitra Sofia Trantaki (Greek passport) filed GRL on
+# the sheet, GRC by us. Not a mismatch to chase: the sheet's own
+# TM30-Nationality tab has Greenland's data in its "Greece" row, and
+# rr4_tm30_reference.TM30_NATIONALITY_CODE carries GR -> GRC as a deliberate,
+# documented correction of it. Filing a Greek national as Greenland to
+# Immigration would be the actual error.
+_GREECE_DRIFT = (
+    'The sheet\'s own TM30-Nationality tab has Greenland\'s code (GRL) in its "Greece" row. '
+    "Ours files Greece as GRC on purpose (rr4_tm30_reference.py) - GRL would tell Immigration "
+    "a Greek passport holder is from Greenland.")
+
 
 def _is_known_drift(key: str, ours: str, sheet: str) -> bool:
     if key == "time_check_in":
@@ -144,12 +155,26 @@ def _is_known_drift(key: str, ours: str, sheet: str) -> bool:
         return a is not None and b is not None and a < b
     if key == "birth_date":
         return ours == "" and sheet == "30/12/1899"
+    if key == "nationality" and ours == "GRC" and sheet == "GRL":
+        # See _GREECE_DRIFT - this exact pair only, so any other nationality
+        # disagreement on a TM30 row still reports as a real difference.
+        return True
     if key in ("nationality", "issued_by", "address_country", "come_from_country"):
         # See _GEORGIA_DRIFT - only this one code, only when the sheet came
         # back blank, so a real mismatch on a Georgian guest's OWN code (a
         # typo'd passport entry, say) still reports as a difference.
         return sheet == "" and ours == _GEORGIA_RR4_CODE
     return False
+
+
+def _drift_why(key: str, examples: list) -> str:
+    """The reason line for a column of known drift. Chosen from the drift's
+    own values, not the column alone: "nationality" carries two unrelated
+    sheet defects (Georgia on RR4, Greece on TM30), and naming the wrong one
+    would send whoever reads the mail looking in the wrong place."""
+    if key == "nationality" and any(o == "GRC" and s == "GRL" for _w, o, s in examples):
+        return _GREECE_DRIFT
+    return _KNOWN_DRIFT.get(key, "Known drift")
 
 
 def _pair_key(row: dict, kind: str) -> tuple:
@@ -851,7 +876,7 @@ def _diff_groups(result: dict) -> list:
                 groups.append({
                     "short": p["short"], "reg": label, "what": key, "n": n,
                     "ex": b["drift_col_examples"].get(key, []),
-                    "why": _KNOWN_DRIFT.get(key, "Known drift"), "tone": "drift",
+                    "why": _drift_why(key, b["drift_col_examples"].get(key, [])), "tone": "drift",
                 })
     rank = {"real": 0, "expected": 1, "drift": 2}
     # Stable, so within a tone the properties keep SHEETS' own order.
