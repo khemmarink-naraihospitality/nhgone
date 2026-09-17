@@ -18,13 +18,16 @@ import { supabase } from "@/lib/supabase";
  * terminal they use, so it follows the property switcher rather than a
  * kiosk picker.
  *
- * FIELD-LIST FIDELITY: "General" is copied field-for-field (including which
- * two cells are locked) from the reference MEWS screenshot this page was
- * built against. Address / Documents / Verification below are NOT verified
- * against a real MEWS screen - nobody here has seen those tabs - and are a
- * reasonable placeholder field list to be corrected once someone has. They
- * are deliberately kept in one place (FIELD_CATEGORIES) so correcting them
- * is an edit to a list, not a rewrite of the page.
+ * FIELD-LIST FIDELITY: "General" is copied field-for-field from the
+ * reference MEWS screenshot this page was built against - which two cells
+ * are locked (`locked`, rendered as fixed text) AND what MEWS's own default
+ * state is for the rest (`default`, still an editable dropdown, just not
+ * starting from the generic "Default" placeholder for a property that has
+ * never saved its own choice). Address / Documents / Verification below are
+ * NOT verified against a real MEWS screen - nobody here has seen those tabs -
+ * and are a reasonable placeholder field list to be corrected once someone
+ * has. They are deliberately kept in one place (FIELD_CATEGORIES) so
+ * correcting them is an edit to a list, not a rewrite of the page.
  *
  * Nothing reads this configuration yet: /kiosk/registration still uses its
  * own fixed field set. This is the configuration surface going in first,
@@ -45,6 +48,12 @@ interface FieldDef {
    * for the reservation owner and is always Hidden there). */
   locked?: Partial<Record<GuestType, FieldState>>;
   lockedHint?: string;
+  /** The state shown (and used, until a property saves its own choice) for
+   * every non-locked guest type before anyone has configured this property -
+   * MEWS's own real default for that field, not the generic placeholder
+   * "Default" every other field falls back to. Unset means MEWS itself has
+   * no particular default for this field. */
+  default?: FieldState;
 }
 
 interface Category {
@@ -70,22 +79,22 @@ const FIELD_CATEGORIES: Category[] = [
       { key: "second_last_name", label: "Second last name" },
       { key: "email", label: "Email" },
       { key: "signature", label: "Signature" },
-      { key: "sex", label: "Sex" },
-      { key: "nationality", label: "Nationality" },
-      { key: "telephone", label: "Telephone" },
-      { key: "date_of_birth", label: "Date of birth" },
-      { key: "place_of_birth", label: "Place of birth" },
-      { key: "occupation", label: "Occupation" },
-      { key: "purpose_of_stay", label: "Purpose of stay" },
-      { key: "dietary_requirements", label: "Dietary requirements" },
-      { key: "car_registration_number", label: "Car registration number" },
+      { key: "sex", label: "Sex", default: "Required" },
+      { key: "nationality", label: "Nationality", default: "Required" },
+      { key: "telephone", label: "Telephone", default: "Optional" },
+      { key: "date_of_birth", label: "Date of birth", default: "Required" },
+      { key: "place_of_birth", label: "Place of birth", default: "Hidden" },
+      { key: "occupation", label: "Occupation", default: "Hidden" },
+      { key: "purpose_of_stay", label: "Purpose of stay", default: "Optional" },
+      { key: "dietary_requirements", label: "Dietary requirements", default: "Hidden" },
+      { key: "car_registration_number", label: "Car registration number", default: "Hidden" },
       {
         key: "relation_to_other_guests",
         label: "Relation to other guests",
         locked: { owner: "Hidden" },
         lockedHint: "The reservation owner has no one to be \"related to\" on their own card.",
       },
-      { key: "country_of_birth", label: "Country of birth" },
+      { key: "country_of_birth", label: "Country of birth", default: "Hidden" },
     ],
   },
   {
@@ -145,7 +154,7 @@ interface CheckinFormSettings {
 }
 
 function defaultStateFor(field: FieldDef, guestType: GuestType): FieldState {
-  return field.locked?.[guestType] ?? "Default";
+  return field.locked?.[guestType] ?? field.default ?? "Default";
 }
 
 function valueFor(settings: CheckinFormSettings, categoryKey: string, field: FieldDef, guestType: GuestType): FieldState {
