@@ -14,7 +14,7 @@ email_service reaching back for them would be circular. Nothing imports this
 one, so it can import everything it needs.
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from app.services import rr4_compare_service, rv_compare_service, st_compare_service
@@ -67,6 +67,35 @@ def _summary(kind: str, result: dict) -> str:
         return "not comparable yet"
     matched, total = result["matched_cells"], result["total_cells"]
     return "matches sheet completely" if matched == total else f"{matched}/{total} cells match"
+
+
+def _st_not_ready(result: dict, now: datetime) -> str:
+    """Why a SCHEDULED ST mail should wait for the next tick, or "" to send.
+
+    Needed since the send moved from 08:00 to 02:30, right behind the last
+    sheet exports (02:21) and the imports that mirror them. Two ways to go out
+    too early, both worse than going out five minutes later:
+
+    - Our own import of the day hasn't landed for some property. The mail
+      would show "ไม่มีข้อมูล" cells and count them as mismatches.
+    - No sheet has been pasted yet, so every sheet still holds the day
+      BEFORE yesterday. They all agree, the comparison is "ok", and without
+      this the mail would re-send yesterday's report and mark today as sent -
+      so today's real report would never go out at all.
+
+    Returning a reason sends nothing and does not mark the day sent, so the
+    next cron tick in the same hour tries again. Only applies to the
+    scheduled send: Send Test Now and the CLI still go out as-is.
+    """
+    expected = (now.date() - timedelta(days=1)).isoformat()
+    if result.get("date") != expected:
+        return (f"ST compare waiting: the sheets still hold {result.get('date')}, "
+                f"not {expected} - today's exports aren't pasted yet")
+    missing = result.get("missing_imports") or []
+    if missing:
+        return (f"ST compare waiting: NHGOne hasn't imported {expected} yet for "
+                f"{', '.join(missing)}")
+    return ""
 
 
 def _st_attachments(result: dict) -> list:
@@ -143,6 +172,13 @@ async def send(kind: str, mark_sent: bool = True, want_date: str = None,
         reason = module.render_text(result)[:500]
         sync_service._log_sync_row(None, None, feed["target_table"], "error", 0, reason, sync_type)
         return {"sent": False, "reason": reason, "recipients": recipients, "summary": summary}
+
+    # Scheduled ST send only - see _st_not_ready.
+    if kind == "st" and mark_sent and not want_date:
+        reason = _st_not_ready(result, datetime.now(ZoneInfo("Asia/Bangkok")))
+        if reason:
+            sync_service._log_sync_row(None, None, feed["target_table"], "error", 0, reason, sync_type)
+            return {"sent": False, "reason": reason, "recipients": recipients, "summary": summary}
 
     tokens = {**module.render_tokens(result), "Summary": summary}
 

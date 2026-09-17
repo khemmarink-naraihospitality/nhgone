@@ -228,6 +228,7 @@ const ST_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Window", description: "When our own snapshots were captured, earliest to latest" },
   { name: "SummaryTable", description: "Pre-built HTML: per-metric \"ตรง X/8\" summary with a Notes column naming which properties differ and a Remark column explaining why that kind of gap can happen at all (e.g. read straight from MEWS vs calculated here)" },
   { name: "GridTable", description: "Pre-built HTML: every property x every metric, ours / sheet, mismatches highlighted - each property name links to that property's own sheet" },
+  { name: "SweepTable", description: "Pre-built HTML: when each side pulled its numbers from MEWS - the sheet's Availability and Reservation export times (the Created stamp on its Parameters tabs) against NHGOne's import time, with the gap between them; over 30 minutes is flagged, since live numbers can move in between" },
   { name: "SheetLinks", description: "Pre-built HTML: a bulleted list of all 8 properties, each linking to its own \"<Name>-ST\" Google Sheet" },
 ];
 
@@ -621,6 +622,12 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
       ["Property", "Spaces", "Occupied", "Arrivals", "Departures"],
       [["<a href=\"#\">Chinatown</a>", "✓ 176", "✓ 150", "✓ 30", "✓ 28"],
        ["<a href=\"#\">Samui</a>", "✓ 60", "✓ 55", "87 / 84", "✓ 9"]],
+    ),
+    SweepTable: buildCompareSampleTable(
+      ["Property", "Google Sheet — Availability export", "Google Sheet — Reservation export", "NHGOne import", "Gap"],
+      [["<a href=\"#\">Chinatown</a>", "17 Sep 02:21", "17 Sep 02:08", "17 Sep 02:25", "+4 min"],
+       ["<a href=\"#\">Siam</a>", "not recorded in the sheet", "—", "17 Sep 02:26", "—"],
+       ["<a href=\"#\">Patong</a>", "17 Sep 01:52", "—", "17 Sep 11:01", "⚠ +549 min"]],
     ),
     SheetLinks: '<ul style="margin:4px 0;padding-left:18px;font-size:13px">'
       + ["Chinatown", "Siam", "Samui", "Koh Tao", "Makati", "Patong", "Siem Reap", "Marasca"]

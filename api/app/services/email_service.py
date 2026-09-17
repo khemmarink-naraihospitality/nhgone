@@ -132,8 +132,12 @@ DEFAULT_RR4_TM30_DAILY_PER_PROPERTY_TEMPLATE = """<div style="background-color:#
 # shared date (see rr4_compare_service.build_comparison).
 ST_COMPARE_TEMPLATE_KEY = "st_compare_test"
 DEFAULT_ST_COMPARE_RECIPIENTS = "khemmarin.k@naraihospitality.com"
-DEFAULT_ST_COMPARE_HOUR = 8
-DEFAULT_ST_COMPARE_MINUTE = 0
+# 02:30, right behind the last sheet exports (Chinatown/Siam at ~02:21) and
+# the imports that mirror them, so the mail lands while that morning's sheets
+# and imports are still minutes apart. compare_mail._st_not_ready holds a
+# scheduled send back until both are actually in, and the next tick retries.
+DEFAULT_ST_COMPARE_HOUR = 2
+DEFAULT_ST_COMPARE_MINUTE = 30
 DEFAULT_ST_COMPARE_SUBJECT = "Test ST File <<Date>>"
 DEFAULT_ST_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
@@ -146,6 +150,8 @@ DEFAULT_ST_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:4
         <<SummaryTable>>
         <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Full Table &mdash; Ours / Sheet</h3>
         <<GridTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Sweep Time &mdash; Google Sheet / NHGOne</h3>
+        <<SweepTable>>
         <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Our snapshot was captured <<Window>> &middot; <<PropertyCount>> properties</p>
         <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Sheet Links</h3>
         <<SheetLinks>>

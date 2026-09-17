@@ -63,6 +63,14 @@ METRICS = [
 # Manila is UTC+8; every other property is UTC+7.
 TZ_OFFSET = {"Lub d Philippines Makati": 8}
 
+# How far apart the sheet's MEWS export and our own import can be before the
+# Sweep Time table flags the row. Occupied, Availability and Customers are
+# read live from MEWS, so two pulls that far apart are no longer a picture of
+# the same moment - a booking made in between shows up as a "difference" that
+# neither side got wrong. On a normal morning the two land within minutes of
+# each other (our import schedule mirrors each sheet's export time).
+SWEEP_GAP_WARN_MINUTES = 30
+
 # One general reason PER METRIC for why it can differ from the sheet at all -
 # the <<SummaryTable>>'s Remark column. Distinct from the per-property Notes
 # cell (which already says WHICH property and by how much): this says WHY
@@ -143,6 +151,18 @@ def _parse_master(content: bytes) -> dict:
             if str(params.cell(row, 1).value or "").strip() == "Created":
                 created = params.cell(row, 2).value
 
+    # The Reservation report's own Created time, for the Sweep Time table.
+    # Only some sheets paste that second export (Chinatown and Makati on
+    # 16-Sep-2026); the rest leave this None, which the table shows as such
+    # rather than guessing it equals the Availability export's time.
+    created_reservation = None
+    resv = next((wb[n] for n in wb.sheetnames
+                 if n.startswith("Parameters") and "eservation" in n), None)
+    if resv is not None:
+        for row in range(1, 21):
+            if str(resv.cell(row, 1).value or "").strip() == "Created":
+                created_reservation = resv.cell(row, 2).value
+
     # The Arrivals/Departures tabs hold the SAME export broken down per space
     # category - the detail the Master tab's single total hides. Reading them
     # is what turns a morning's "Chinatown -2" into "CTS -1, TNK -1", which is
@@ -171,7 +191,7 @@ def _parse_master(content: bytes) -> dict:
     if isinstance(report_date, datetime):
         report_date = report_date.strftime("%Y-%m-%d")
     return {"master": master, "date": report_date, "created": created,
-            "per_category": per_category}
+            "created_reservation": created_reservation, "per_category": per_category}
 
 
 async def _fetch_sheets() -> dict:
@@ -200,12 +220,31 @@ def _as_int(v):
     return int(v) if isinstance(v, (int, float)) else v
 
 
-def _local(ts: str, prop: str) -> str:
+def _local_dt(ts: str, prop: str):
+    """An ISO timestamp as a datetime in the property's own timezone, or None.
+    Fractional seconds are normalised to six digits first: Supabase writes
+    anything from 1 to 6, and Python 3.10's fromisoformat only accepts 3 or 6."""
     if not ts:
-        return ""
+        return None
     ts = re.sub(r"\.(\d+)", lambda m: "." + m.group(1)[:6].ljust(6, "0"), ts)
     off = TZ_OFFSET.get(prop, 7)
-    return datetime.fromisoformat(ts).astimezone(timezone(timedelta(hours=off))).strftime("%d %b %H:%M")
+    return datetime.fromisoformat(ts).astimezone(timezone(timedelta(hours=off)))
+
+
+def _local(ts: str, prop: str) -> str:
+    dt = _local_dt(ts, prop)
+    return dt.strftime("%d %b %H:%M") if dt else ""
+
+
+def _sheet_dt(value, prop: str):
+    """A sheet's Created cell as a timezone-aware datetime. MEWS stamps its
+    exports in the enterprise's own local time and the cell carries no zone,
+    so it is read in the property's zone - which is what keeps Makati's
+    01:18 export (Manila) lined up with our 00:19 Bangkok import instead of an
+    hour apart."""
+    if not isinstance(value, datetime):
+        return None
+    return value.replace(tzinfo=timezone(timedelta(hours=TZ_OFFSET.get(prop, 7))))
 
 
 def _our_categories(property_name: str, date: str) -> dict:
@@ -335,6 +374,23 @@ async def build_comparison(want_date: str = None) -> dict:
     stamps = sorted(s for s in (_local((v or {}).get("synced_at", ""), p) for p, v in ours.items()) if s)
     total = len(METRICS) * len(SHEETS)
     mismatched = sum(len(v) for v in detail.values())
+
+    # When each side pulled its numbers from MEWS - the <<SweepTable>>. The
+    # sheet's side is the Created time MEWS stamped on the exports pasted into
+    # it; ours is when our import ran. Gap is ours minus the sheet's
+    # Availability export (the one Occupied/Availability/Customers come from).
+    sweep = []
+    for prop, (short, sheet_id) in SHEETS.items():
+        sh = sheets[prop]["data"] or {}
+        sheet_avail = _sheet_dt(sh.get("created"), prop)
+        sheet_resv = _sheet_dt(sh.get("created_reservation"), prop)
+        ours_at = _local_dt((ours.get(prop) or {}).get("synced_at"), prop)
+        gap = round((ours_at - sheet_avail).total_seconds() / 60) if ours_at and sheet_avail else None
+        sweep.append({"property": prop, "short": short, "sheet_id": sheet_id,
+                      "sheet_availability": sheet_avail, "sheet_reservation": sheet_resv,
+                      "ours": ours_at, "gap_minutes": gap,
+                      "sheet_readable": bool(sheets[prop]["data"])})
+
     return {
         "status": "ok",
         "date": date,
@@ -344,6 +400,12 @@ async def build_comparison(want_date: str = None) -> dict:
         "total_cells": total,
         "matched_cells": total - mismatched,
         "window": (stamps[0], stamps[-1]) if stamps else None,
+        "sweep": sweep,
+        # Properties whose own import of this date isn't in st_files_sync yet.
+        # compare_mail holds a SCHEDULED send back while this is non-empty:
+        # at 02:30 the last imports have only just run, and a mail full of
+        # "ไม่มีข้อมูล" cells would be reporting a clock, not a mismatch.
+        "missing_imports": [SHEETS[p][0] for p in SHEETS if ours.get(p) is None],
         "sheet_errors": {p: v["error"] for p, v in sheets.items() if v["error"]},
     }
 
@@ -397,6 +459,7 @@ def render_text(result: dict) -> str:
             out.append(f"  {SHEETS[prop][0]:<12} " + ",  ".join(f"{l} {o}/{s}" for l, o, s in items))
     for prop, err in (result.get("sheet_errors") or {}).items():
         out.append(f"  !! {SHEETS[prop][0]}: อ่านชีตไม่ได้ - {err}")
+    out += _sweep_text(result)
     out += ["", "ลิงก์ชีตแต่ละ Property:"]
     for prop, (short, sheet_id) in SHEETS.items():
         out.append(f"  {short:<12} {_sheet_url(sheet_id)}")
@@ -480,6 +543,87 @@ def render_grid_table(result: dict) -> str:
     return "".join(h)
 
 
+def _fmt_pull(dt) -> str:
+    return dt.strftime("%d %b %H:%M") if dt else ""
+
+
+def _fmt_gap(minutes) -> str:
+    if minutes is None:
+        return ""
+    return f"{minutes:+d} min" if minutes else "0 min"
+
+
+def render_sweep_table(result: dict) -> str:
+    """When each side pulled its numbers from MEWS - the <<SweepTable>> token.
+
+    Google Sheet: the Created time MEWS stamped on the exports pasted into the
+    sheet (its hidden Parameters tabs). NHGOne: when our import ran. Gap is
+    ours minus the sheet's Availability export, flagged past
+    SWEEP_GAP_WARN_MINUTES, because Occupied/Availability/Customers are read
+    live and two pulls that far apart are no longer the same moment.
+    """
+    if result["status"] != "ok":
+        return ""
+
+    muted = "color:#94a3b8;"
+    h = ['<div style="overflow-x:auto">'
+         f'<table style="border-collapse:collapse;width:100%"><tr>'
+         f'<th style="{_TH}">Property</th>'
+         f'<th style="{_TH}">Google Sheet &mdash; Availability export</th>'
+         f'<th style="{_TH}">Google Sheet &mdash; Reservation export</th>'
+         f'<th style="{_TH}">NHGOne import</th>'
+         f'<th style="{_TH}">Gap</th></tr>']
+    for row in result.get("sweep") or []:
+        if not row["sheet_readable"]:
+            sheet_avail = f'<span style="{muted}">sheet unreadable</span>'
+        elif row["sheet_availability"]:
+            sheet_avail = _fmt_pull(row["sheet_availability"])
+        else:
+            sheet_avail = f'<span style="{muted}">not recorded in the sheet</span>'
+        sheet_resv = (_fmt_pull(row["sheet_reservation"]) if row["sheet_reservation"]
+                      else f'<span style="{muted}">&mdash;</span>')
+        ours = (_fmt_pull(row["ours"]) if row["ours"]
+                else f'<span style="color:#b91c1c;font-weight:700">not imported</span>')
+
+        gap = row["gap_minutes"]
+        if gap is None:
+            gap_cell, gap_style = "&mdash;", muted
+        elif abs(gap) > SWEEP_GAP_WARN_MINUTES:
+            gap_cell, gap_style = f"&#9888; {_fmt_gap(gap)}", "background:#fef3c7;color:#92400e;font-weight:700;"
+        else:
+            gap_cell, gap_style = _fmt_gap(gap), "color:#166534;"
+
+        h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">'
+                 f'<a href="{_sheet_url(row["sheet_id"])}" style="color:#152A00;text-decoration:underline">'
+                 f'{row["short"]}</a></td>'
+                 f'<td style="{_TD}white-space:nowrap">{sheet_avail}</td>'
+                 f'<td style="{_TD}white-space:nowrap">{sheet_resv}</td>'
+                 f'<td style="{_TD}white-space:nowrap">{ours}</td>'
+                 f'<td style="{_TD}white-space:nowrap;{gap_style}">{gap_cell}</td></tr>')
+    h.append("</table></div>")
+    h.append('<p style="font-size:11px;color:#94a3b8;margin:6px 0 0">'
+             "When each side pulled its numbers from MEWS, in each property's own time. "
+             "Google Sheet = the Created time MEWS stamped on the exports pasted into it; "
+             "NHGOne = when our import ran. Gap = NHGOne minus the sheet's Availability export - "
+             f"over {SWEEP_GAP_WARN_MINUTES} minutes is flagged, because Occupied, Availability and "
+             "Customers are read live and a booking made in between shows up as a difference "
+             "neither side got wrong.</p>")
+    return "".join(h)
+
+
+def _sweep_text(result: dict) -> list:
+    out = ["", "Sweep time — เวลาที่แต่ละฝั่งดึงข้อมูลจาก MEWS (Google Sheet / NHGOne):"]
+    for row in result.get("sweep") or []:
+        sheet = _fmt_pull(row["sheet_availability"]) or ("อ่านชีตไม่ได้" if not row["sheet_readable"] else "ชีตไม่ได้บันทึกเวลา")
+        if row["sheet_reservation"]:
+            sheet += f" (resv {row['sheet_reservation'].strftime('%H:%M')})"
+        ours = _fmt_pull(row["ours"]) or "ยังไม่ import"
+        gap = row["gap_minutes"]
+        flag = "  ⚠️" if gap is not None and abs(gap) > SWEEP_GAP_WARN_MINUTES else ""
+        out.append(f"  {row['short']:<12} sheet {sheet:<28} ours {ours:<14} {_fmt_gap(gap) or '—'}{flag}")
+    return out
+
+
 def render_sheet_links(result: dict) -> str:
     """All 8 sheets as a standalone list - the <<SheetLinks>> token, for a
     template that wants the links called out on their own rather than only
@@ -504,6 +648,7 @@ def render_tokens(result: dict) -> dict:
         "Window": f"{window[0]} \u2013 {window[1]}" if window else "\u2014",
         "SummaryTable": render_summary_table(result),
         "GridTable": render_grid_table(result),
+        "SweepTable": render_sweep_table(result),
         "SheetLinks": render_sheet_links(result),
     }
 
@@ -529,5 +674,7 @@ def render_html(result: dict) -> str:
     h.append(render_summary_table(result))
     h.append('<h3 style="margin:22px 0 8px;font-size:15px">\u0e15\u0e32\u0e23\u0e32\u0e07\u0e40\u0e15\u0e47\u0e21 \u2014 \u0e23\u0e30\u0e1a\u0e1a\u0e40\u0e23\u0e32 / \u0e0a\u0e35\u0e15</h3>')
     h.append(render_grid_table(result))
+    h.append('<h3 style="margin:22px 0 8px;font-size:15px">Sweep Time — Google Sheet / NHGOne</h3>')
+    h.append(render_sweep_table(result))
     h.append("</div>")
     return "".join(h)
