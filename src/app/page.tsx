@@ -91,13 +91,30 @@ function LoginContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#FFEFD2] p-4 font-sans text-[#152A00]">
-      {/* Background Architectural Elements */}
-      <div className="absolute inset-0 opacity-[0.03] pointer-events-none overflow-hidden">
-        <div className="absolute top-0 right-0 w-1/2 h-1/2 border-l border-b border-[#152A00]" />
-        <div className="absolute bottom-0 left-0 w-1/4 h-1/4 border-r border-t border-[#152A00]" />
-      </div>
-      
+    <div className="relative min-h-screen flex items-center justify-center p-4 font-sans text-[#152A00] overflow-hidden">
+      {/* Background video, straight from Narai Hospitality Group's own site
+          (naraihospitalitygroup.com) - the same footage as its homepage
+          hero, not a copy stored in this repo. webm first: it's the site's
+          own "compressed" build (~4.5MB) and modern browsers all support it;
+          the mp4 is a same-source fallback (~57MB) for the rare browser that
+          needs it - <source> only fetches the one the browser actually
+          picks, never both. bg-[#FFEFD2] behind it is the fallback if the
+          video can't load at all (blocked, offline, a dead link on their
+          end) - the page still has to render, not go blank. */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="absolute inset-0 w-full h-full object-cover -z-20 bg-[#FFEFD2]"
+      >
+        <source src="https://naraihospitalitygroup.com/wp-content/uploads/2024/10/narai-video-banner-compressed.webm" type="video/webm" />
+        <source src="https://naraihospitalitygroup.com/wp-content/uploads/2024/11/Narai_Header-2.mp4" type="video/mp4" />
+      </video>
+      {/* Brand-tinted scrim so the white card and dark-green text stay
+          readable over whatever the footage is doing underneath. */}
+      <div className="absolute inset-0 -z-10 bg-[#152A00]/55" />
+
       <div className="relative w-full max-w-sm bg-white border border-[#152A00]/10 rounded-sm shadow-[20px_20px_60px_rgba(21,42,0,0.05)] p-8 md:p-10 transition-all">
         <div className="flex flex-col items-center">
           {/* Logo */}
@@ -109,7 +126,7 @@ function LoginContent() {
              />
           </div>
 
-          <h1 className="text-4xl font-black font-display mb-2 tracking-tight text-[#152A00]">NHGOne</h1>
+          <h1 className="text-4xl font-normal font-display mb-2 tracking-tight text-[#152A00]">NHGOne</h1>
           <p className="text-[#152A00] text-[9px] mb-8 text-center font-bold tracked-caps opacity-60">Enterprise Narai Hospitality Group Data Assets</p>
 
           {/* Google Button */}
