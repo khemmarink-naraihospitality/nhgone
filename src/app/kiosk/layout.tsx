@@ -61,13 +61,14 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   const [time, setTime] = useState<Date | null>(null);
   const orgName = "Narai Group";
 
-  // The welcome screen (exactly "/kiosk") is not part of the check-in flow -
-  // there's nothing to go back to and no progress to show - and its own
-  // reference screenshot uses a completely different top bar (Staff/Guest
-  // mode, language/currency/settings) with no shared chrome at all. It
-  // renders its own header and background full-screen; everything below
-  // stays for search onward, where the shared flow header still applies.
-  const isWelcome = pathname === "/kiosk";
+  // Screens redesigned against a real reference screenshot render their own
+  // full-screen light UI (KioskTopBar - Staff/Guest mode, language/currency/
+  // settings) and must bypass this shell's dark header/footer/progress-bar
+  // chrome entirely, rather than being wrapped in it. ekyc/upsell/payment/
+  // success have no reference screenshot yet and deliberately keep the old
+  // dark shell below - their white-on-dark classes would break on light.
+  const LIGHT_THEME_ROUTES = ["/kiosk", "/kiosk/search", "/kiosk/confirm", "/kiosk/registration"];
+  const isLightTheme = LIGHT_THEME_ROUTES.includes(pathname);
 
   useEffect(() => {
     // The first value has to be produced on the client and nowhere else:
@@ -86,12 +87,11 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   // ("Lobby Kiosk (Open at 6AM)") is an operations label, not a guest one.
   const propertyName = selectedProperty || "Select a property";
 
-  // Search isn't one of these: Check In on the welcome screen now skips
-  // straight to Registration, so counting Search here would show it as
-  // "already done" on every step that follows even though the guest never
-  // saw it. /kiosk/search itself still exists and still works if reached
-  // directly (e.g. a QR/express-checkin path added later) - it's just not
-  // part of this progress bar's steps.
+  // Search/Confirm/Registration all render under isLightTheme above, so this
+  // progress bar (part of the dark shell) never actually appears for them -
+  // it only ever renders for ekyc/upsell/payment, which have no reference
+  // screenshot yet. Registration stays listed so an ekyc/upsell/payment bar
+  // correctly shows it as already-done.
   const steps = [
     { path: "/kiosk/registration", label: "Registration" },
     { path: "/kiosk/ekyc", label: "Identity Verification" },
@@ -101,7 +101,7 @@ function KioskShell({ children }: { children: React.ReactNode }) {
 
   const currentStepIndex = steps.findIndex((step) => pathname.includes(step.path));
 
-  if (isWelcome) {
+  if (isLightTheme) {
     return (
       <div className="kiosk-root h-screen w-full relative overflow-hidden">
         <ScreenSaver videoUrl={config?.screen_saver_video_url} />
