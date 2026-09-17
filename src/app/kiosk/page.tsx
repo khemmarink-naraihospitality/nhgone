@@ -1,27 +1,50 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { HelpCircle, ChevronDown } from "lucide-react";
+import { Coins, Settings, Users } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { useKioskConfig } from "./kioskConfig";
 
 /**
- * The kiosk welcome screen - ported from the NHGKiosk prototype's own root
- * page. Two things it used to hardcode now follow configuration: the
- * property name (the prototype said "Lub d Chinatown" for every property),
- * and the hero photo, which comes from the kiosk's own Images at
- * Admin Console > Kiosks and falls back to the bundled entrance shot.
+ * The kiosk welcome screen. Rewritten 17-Sep-2026 to a light theme matching a
+ * real reference screenshot of the terminal in the field - this is now the
+ * ONE screen in the flow that does not share KioskLayout's dark header/
+ * footer chrome (see the `isWelcome` branch there): the reference shows an
+ * entirely different top bar (Staff/Guest mode, language/currency/settings,
+ * no back button or progress dots, since there's nowhere to go back to and
+ * nothing has started yet).
  *
- * The prototype's vertical "LUB D" brand label was removed rather than made
- * dynamic: it is one brand's wordmark, and this kiosk also runs at Marasca
- * Samui, where it would simply have been wrong.
+ * Font: set explicitly to font-sans (IBM Plex Sans, already loaded site-wide)
+ * rather than left to inherit. That is the closest honest match available -
+ * there is no way to read an exact font name off a screenshot, and if the
+ * real terminal is specifically SF Pro (likely, since it's a native iPad
+ * app) that would need a named font to load, not a guess.
  *
- * Still a prototype: "Check out" does nothing yet, and the language and
- * currency pickers are deliberately inert, exactly as they arrived.
+ * "Staff Mode" / "Switch to guest mode" and the language/currency/settings
+ * controls are decorative, same "screens first" scope as everything else
+ * here - the toggle swaps which pill is highlighted and nothing else.
+ *
+ * The bottom-left caption deliberately does NOT reproduce the reference's
+ * "v4.53.0 (25001955)" - that is MEWS's own real build number, and copying
+ * it would misrepresent this prototype as running MEWS's software. It shows
+ * this kiosk's own configured name instead (Admin Console > Kiosks), which
+ * is the concrete answer to "config must always relate to the front end."
  */
 
 const FALLBACK_IMAGE = "/images/lub_d_chinatown_entrance.png";
+
+// Same hand-drawn flag mock the prototype arrived with (a generic red/blue
+// stripe block, not a real national flag) - decorative, not tied to
+// `default_language`, which the text next to it already states in full.
+function FlagMock() {
+  return (
+    <div className="relative h-4 w-6 shrink-0 overflow-hidden rounded-sm bg-blue-900">
+      <div className="absolute left-0 top-0 h-1/2 w-full bg-red-600" />
+      <div className="absolute left-0 top-0 h-full w-1/3 bg-blue-800" />
+    </div>
+  );
+}
 
 export default function KioskWelcomePage() {
   const router = useRouter();
@@ -29,91 +52,95 @@ export default function KioskWelcomePage() {
   const { config } = useKioskConfig();
   const propertyName = selectedProperty || "NHG";
   const heroImage = config?.images?.[0]?.url || FALLBACK_IMAGE;
+  const [staffMode, setStaffMode] = useState(true);
 
   return (
-    <div className="relative w-full h-full flex flex-col overflow-hidden text-white">
-      {/* Header */}
-      <header className="absolute top-0 left-0 right-0 z-50 flex items-center justify-end p-8 gap-4">
-        {/* Language Selector */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl cursor-not-allowed">
-          <div className="w-6 h-4 bg-blue-900 flex items-center justify-center text-[10px] text-white font-bold rounded-sm relative overflow-hidden">
-             <div className="absolute top-0 left-0 w-full h-1/2 bg-red-600" />
-             <div className="absolute top-0 left-0 w-1/3 h-full bg-blue-800" />
+    <div className="flex h-full w-full flex-col bg-[#F4F4F5] font-sans text-[#0B0B0F]">
+      {/* Top bar */}
+      <header className="flex items-center justify-between gap-4 px-8 py-6">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setStaffMode(true)}
+            className={`rounded-full px-6 py-3 text-base font-bold transition-colors ${
+              staffMode ? "bg-[#4F46E5] text-white" : "bg-white text-[#0B0B0F]/70 hover:bg-[#0B0B0F]/5"
+            }`}
+          >
+            Staff Mode
+          </button>
+          <button
+            type="button"
+            onClick={() => setStaffMode(false)}
+            className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 text-base font-bold transition-colors ${
+              staffMode
+                ? "border-[#0B0B0F]/10 bg-white text-[#0B0B0F] hover:bg-[#0B0B0F]/5"
+                : "border-transparent bg-[#4F46E5] text-white"
+            }`}
+          >
+            <Users size={20} aria-hidden="true" />
+            Switch to guest mode
+          </button>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 rounded-full border border-[#0B0B0F]/10 bg-white px-5 py-3">
+            <FlagMock />
+            <span className="text-base font-medium">{config?.default_language || "English (United States)"}</span>
           </div>
-          <span className="text-sm font-medium">{config?.default_language || "English (United States)"}</span>
-          <ChevronDown className="w-4 h-4 text-gray-400" />
-        </div>
-
-        {/* Currency Selector */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl cursor-not-allowed">
-          <span className="text-sm font-medium">THB</span>
-          <ChevronDown className="w-4 h-4 text-gray-400" />
-        </div>
-
-        {/* Help Icon */}
-        <div className="p-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-xl cursor-not-allowed">
-          <HelpCircle className="w-6 h-6 text-gray-400" />
+          <div className="flex items-center gap-2 rounded-full border border-[#0B0B0F]/10 bg-white px-5 py-3">
+            <Coins size={20} className="text-[#0B0B0F]/60" aria-hidden="true" />
+            <span className="text-base font-medium">THB</span>
+          </div>
+          <button
+            type="button"
+            className="rounded-full border border-[#0B0B0F]/10 bg-white p-3.5 text-[#0B0B0F]/60 transition-colors hover:bg-[#0B0B0F]/5"
+            aria-label="Settings"
+          >
+            <Settings size={22} aria-hidden="true" />
+          </button>
         </div>
       </header>
 
-      {/* Main Content (Split Screen) */}
-      <main className="flex-1 flex w-full">
-        {/* Left Section (60%) */}
-        <div className="w-[60%] flex flex-col justify-center px-16 relative">
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.8 }}
-            className="space-y-12 max-w-2xl"
-          >
-            {/* Logo Branding */}
-            <div className="inline-block px-4 py-2 bg-white/5 border border-white/10 rounded-xl">
-              <span className="text-sm font-semibold tracking-wider uppercase text-gray-400">{propertyName}</span>
-            </div>
+      {/* Two floating cards */}
+      <main className="flex flex-1 gap-6 px-8 pb-4">
+        {/* Left: content card */}
+        <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-white p-12 shadow-sm">
+          <h1 className="text-5xl font-bold leading-tight tracking-tight">
+            Welcome to {propertyName}
+          </h1>
 
-            {/* Welcome Text */}
-            <div className="space-y-4">
-              <h1 className="text-6xl font-bold leading-tight tracking-tight">
-                Welcome to <br />
-                <span className="text-white">{propertyName}</span>
-              </h1>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex flex-col gap-6 pt-8 w-full max-w-md">
-              <motion.button
-                onClick={() => router.push("/kiosk/registration")}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full py-6 bg-white text-[#0a0f18] rounded-2xl text-2xl font-bold transition-all shadow-2xl shadow-white/5 hover:bg-gray-100"
-              >
-                Check in
-              </motion.button>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                className="w-full py-6 bg-transparent border-2 border-white/20 text-white rounded-2xl text-2xl font-bold transition-all hover:bg-white/5"
-              >
-                Check out
-              </motion.button>
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Right Section (40%) */}
-        <div className="w-[40%] relative">
-          <div className="absolute inset-0 overflow-hidden rounded-l-[40px] m-4">
-            {/* Plain <img>: the configured photo is a remote Supabase Storage
-                URL, and next/image would need that host whitelisted in
-                next.config for no benefit on a fixed-size kiosk panel. */}
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
-            {/* Gradient Overlay */}
-            <div className="absolute inset-0 bg-gradient-to-l from-black/20 to-transparent" />
+          <div className="mt-auto flex flex-col gap-4 pt-12">
+            <button
+              type="button"
+              onClick={() => router.push("/kiosk/registration")}
+              className="w-full rounded-full bg-[#0B0B0F] py-5 text-xl font-semibold text-white transition-colors hover:bg-[#0B0B0F]/90"
+            >
+              Check in
+            </button>
+            <button
+              type="button"
+              className="w-full rounded-full border-2 border-[#0B0B0F] py-5 text-xl font-semibold text-[#0B0B0F] transition-colors hover:bg-[#0B0B0F]/5"
+            >
+              Check out
+            </button>
           </div>
         </div>
+
+        {/* Right: image card */}
+        <div className="relative flex-1 overflow-hidden rounded-[32px]">
+          {/* Plain <img>: the configured photo is a remote Supabase Storage
+              URL, and next/image would need that host whitelisted in
+              next.config for no benefit on a fixed-size kiosk panel. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={heroImage} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        </div>
       </main>
+
+      {/* This kiosk's own configured name (Admin Console > Kiosks) - see the
+          file-level note on why this isn't a fake MEWS version string. */}
+      <p className="px-8 pb-4 text-sm text-[#0B0B0F]/40">
+        {config?.name || `${propertyName} Kiosk`}
+      </p>
     </div>
   );
 }

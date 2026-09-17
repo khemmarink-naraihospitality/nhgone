@@ -61,6 +61,14 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   const [time, setTime] = useState<Date | null>(null);
   const orgName = "Narai Group";
 
+  // The welcome screen (exactly "/kiosk") is not part of the check-in flow -
+  // there's nothing to go back to and no progress to show - and its own
+  // reference screenshot uses a completely different top bar (Staff/Guest
+  // mode, language/currency/settings) with no shared chrome at all. It
+  // renders its own header and background full-screen; everything below
+  // stays for search onward, where the shared flow header still applies.
+  const isWelcome = pathname === "/kiosk";
+
   useEffect(() => {
     // The first value has to be produced on the client and nowhere else:
     // rendering `new Date()` during the server pass and again on hydration
@@ -92,6 +100,15 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   ];
 
   const currentStepIndex = steps.findIndex((step) => pathname.includes(step.path));
+
+  if (isWelcome) {
+    return (
+      <div className="kiosk-root h-screen w-full relative overflow-hidden">
+        <ScreenSaver videoUrl={config?.screen_saver_video_url} />
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="kiosk-root flex flex-col h-screen w-full relative overflow-hidden bg-[var(--color-background)]">
