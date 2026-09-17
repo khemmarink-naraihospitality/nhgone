@@ -5,6 +5,7 @@ import { ArrowLeft, Check, ChevronDown, Coins, Languages, Settings } from "lucid
 import { useState } from "react";
 import { KIOSK_LANGUAGES } from "./i18n";
 import { useKioskLanguage } from "./kioskLanguage";
+import { KIOSK_CURRENCIES, useKioskCurrency } from "./kioskCurrency";
 
 /**
  * The light-theme top bar every kiosk screen from the welcome page onward
@@ -21,15 +22,20 @@ import { useKioskLanguage } from "./kioskLanguage";
  * guest-mode view to switch to.
  *
  * The language pill is real, not decorative: it's a working switcher over
- * the four languages in i18n.ts (KioskLanguageProvider, mounted in
+ * the five languages in i18n.ts (KioskLanguageProvider, mounted in
  * layout.tsx), and changes what the four light-theme screens actually say -
- * see kioskLanguage.tsx for why the choice is per-session, not saved.
+ * see kioskLanguage.tsx for why the choice is per-session, not saved. The
+ * currency pill is the same pattern over kioskCurrency.tsx's three
+ * currencies, added at the same time - it only changes the displayed code,
+ * since nothing behind these screens prices anything yet to convert.
  */
 
 export default function KioskTopBar({ showBack = true }: { showBack?: boolean }) {
   const router = useRouter();
   const { language, setLanguage } = useKioskLanguage();
+  const { currency, setCurrency } = useKioskCurrency();
   const [langOpen, setLangOpen] = useState(false);
+  const [currencyOpen, setCurrencyOpen] = useState(false);
   const current = KIOSK_LANGUAGES.find((l) => l.code === language) || KIOSK_LANGUAGES[0];
 
   return (
@@ -100,9 +106,50 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
           )}
         </div>
 
-        <div className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3">
-          <Coins size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
-          <span className="text-base font-medium text-[var(--kiosk-text)]">THB</span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setCurrencyOpen((v) => !v)}
+            className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+          >
+            <Coins size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+            <span className="text-base font-medium">{currency}</span>
+            <ChevronDown size={16} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+          </button>
+
+          {currencyOpen && (
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-40 cursor-default"
+                aria-label="Close currency menu"
+                onClick={() => setCurrencyOpen(false)}
+              />
+              <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] py-2 shadow-xl">
+                {KIOSK_CURRENCIES.map((c) => (
+                  <button
+                    key={c.code}
+                    type="button"
+                    onClick={() => {
+                      setCurrency(c.code);
+                      setCurrencyOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-[var(--kiosk-hover)]"
+                  >
+                    <span>
+                      <span className="block text-base font-semibold text-[var(--kiosk-text)]">
+                        {c.code}
+                      </span>
+                      <span className="block text-sm text-[var(--kiosk-text-faint)]">{c.label}</span>
+                    </span>
+                    {c.code === currency && (
+                      <Check size={18} className="text-[var(--kiosk-accent)]" aria-hidden="true" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
         <button
           type="button"

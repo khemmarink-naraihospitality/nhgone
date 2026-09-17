@@ -52,7 +52,7 @@ export default function KioskWelcomePage() {
         {/* Left: content card */}
         <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12 shadow-sm">
           <h1 className="text-5xl font-bold leading-tight tracking-tight">
-            {t.welcomeTitle} {propertyName}
+            {t.welcomeTitle(propertyName)}
           </h1>
 
           <div className="mt-auto flex flex-col gap-4 pt-12">

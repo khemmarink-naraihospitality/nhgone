@@ -1,22 +1,30 @@
 /**
  * Guest-facing text for the light-theme flow (welcome/search/confirm/
- * registration), in the four languages a guest can pick from the top bar's
- * language selector: English, Thai, Filipino, Khmer.
+ * registration), in the five languages a guest can pick from the top bar's
+ * language selector: English, Thai, Filipino, Khmer, Japanese.
  *
  * These are prototype translations - phrased for clarity, not reviewed by a
- * native speaker of each language. Thai is reasonably solid; Khmer in
- * particular should be checked before this is used with real guests. Treat
- * this file as a first draft to correct, not a finished localization.
+ * native speaker of each language. Thai is reasonably solid; Khmer and
+ * Japanese in particular should be checked before this is used with real
+ * guests. Treat this file as a first draft to correct, not a finished
+ * localization.
+ *
+ * `welcomeTitle`/`helloGreeting`/`noGuestsMatch` are functions rather than
+ * plain strings specifically because Japanese: "Welcome to X" is "Xへようこそ"
+ * (the name comes first, not last) - a fixed prefix-then-name concatenation
+ * that works for English/Thai/Filipino/Khmer can't represent that word
+ * order, so those three fields return the whole sentence instead of a
+ * fragment for the caller to glue a name onto.
  *
  * `label` mirrors the exact strings Admin Console > Kiosks' Default language
  * dropdown stores (`property_api_settings`/`kiosk_settings.default_language`
  * via `LANGUAGES` in admin/kiosks/page.tsx), so `resolveDefaultLanguage` can
- * map a kiosk's configured default onto one of these four. `nativeLabel` is
+ * map a kiosk's configured default onto one of these five. `nativeLabel` is
  * what the picker itself shows - a guest looks for their own language's
  * name, not its English gloss.
  */
 
-export type KioskLanguageCode = "en" | "th" | "fil" | "km";
+export type KioskLanguageCode = "en" | "th" | "fil" | "km" | "ja";
 
 export interface KioskLanguageOption {
   code: KioskLanguageCode;
@@ -29,6 +37,7 @@ export const KIOSK_LANGUAGES: KioskLanguageOption[] = [
   { code: "th", label: "Thai (Thailand)", nativeLabel: "ไทย" },
   { code: "fil", label: "Filipino (Philippines)", nativeLabel: "Filipino" },
   { code: "km", label: "Khmer (Cambodia)", nativeLabel: "ខ្មែរ" },
+  { code: "ja", label: "Japanese (Japan)", nativeLabel: "日本語" },
 ];
 
 export function resolveDefaultLanguage(
@@ -46,14 +55,14 @@ export interface KioskLinkText {
 }
 
 export interface KioskCopy {
-  welcomeTitle: string;
+  welcomeTitle: (propertyName: string) => string;
   checkIn: string;
   checkOut: string;
   searchPlaceholder: string;
   stay: string;
-  noGuestsMatch: string;
+  noGuestsMatch: (query: string) => string;
   guestNotFound: string;
-  helloPrefix: string;
+  helloGreeting: (guestName: string) => string;
   confirmSubtitle: string;
   yourBooking: string;
   checkOutLabel: string;
@@ -73,14 +82,14 @@ export interface KioskCopy {
 }
 
 const en: KioskCopy = {
-  welcomeTitle: "Welcome to",
+  welcomeTitle: (name) => `Welcome to ${name}`,
   checkIn: "Check in",
   checkOut: "Check out",
   searchPlaceholder: "Search by name",
   stay: "Stay",
-  noGuestsMatch: "No guests match",
+  noGuestsMatch: (query) => `No guests match "${query}".`,
   guestNotFound: "That guest wasn't found. Go back and pick one from the list.",
-  helloPrefix: "Hello",
+  helloGreeting: (name) => `Hello ${name},`,
   confirmSubtitle: "Let's confirm your details.",
   yourBooking: "Your booking",
   checkOutLabel: "Check-out",
@@ -92,7 +101,7 @@ const en: KioskCopy = {
   enterYourDetails: "Enter your details",
   email: "Email",
   agreeTerms: { pre: "I agree with ", link: "Property Terms and Conditions", post: ". *" },
-  marketingOptInPrefix: "I'd like to occasionally receive marketing emails from",
+  marketingOptInPrefix: "I'd like to occasionally receive marketing emails from ",
   marketingOptInSuffix: ".",
   signature: "Signature *",
   tapToSign: "Tap to sign",
@@ -104,14 +113,14 @@ const en: KioskCopy = {
 };
 
 const th: KioskCopy = {
-  welcomeTitle: "ยินดีต้อนรับสู่",
+  welcomeTitle: (name) => `ยินดีต้อนรับสู่ ${name}`,
   checkIn: "เช็คอิน",
   checkOut: "เช็คเอาต์",
   searchPlaceholder: "ค้นหาด้วยชื่อ",
   stay: "การเข้าพัก",
-  noGuestsMatch: "ไม่พบผู้เข้าพักที่ตรงกับ",
+  noGuestsMatch: (query) => `ไม่พบผู้เข้าพักที่ตรงกับ "${query}"`,
   guestNotFound: "ไม่พบผู้เข้าพักรายนี้ กรุณากลับไปเลือกจากรายชื่อ",
-  helloPrefix: "สวัสดีคุณ",
+  helloGreeting: (name) => `สวัสดีคุณ ${name},`,
   confirmSubtitle: "กรุณายืนยันข้อมูลของท่าน",
   yourBooking: "การจองของท่าน",
   checkOutLabel: "เช็คเอาต์",
@@ -123,7 +132,7 @@ const th: KioskCopy = {
   enterYourDetails: "กรอกข้อมูลของท่าน",
   email: "อีเมล",
   agreeTerms: { pre: "ฉันยอมรับ", link: "ข้อกำหนดและเงื่อนไขของโรงแรม", post: " *" },
-  marketingOptInPrefix: "ฉันต้องการรับอีเมลการตลาดเป็นครั้งคราวจาก",
+  marketingOptInPrefix: "ฉันต้องการรับอีเมลการตลาดเป็นครั้งคราวจาก ",
   marketingOptInSuffix: "",
   signature: "ลายเซ็น *",
   tapToSign: "แตะเพื่อเซ็นชื่อ",
@@ -135,14 +144,14 @@ const th: KioskCopy = {
 };
 
 const fil: KioskCopy = {
-  welcomeTitle: "Maligayang pagdating sa",
+  welcomeTitle: (name) => `Maligayang pagdating sa ${name}`,
   checkIn: "Mag-check in",
   checkOut: "Mag-check out",
   searchPlaceholder: "Maghanap gamit ang pangalan",
   stay: "Pananatili",
-  noGuestsMatch: "Walang bisitang tumutugma sa",
+  noGuestsMatch: (query) => `Walang bisitang tumutugma sa "${query}".`,
   guestNotFound: "Hindi nahanap ang bisitang iyon. Bumalik at pumili mula sa listahan.",
-  helloPrefix: "Kamusta",
+  helloGreeting: (name) => `Kamusta ${name},`,
   confirmSubtitle: "Kumpirmahin natin ang iyong mga detalye.",
   yourBooking: "Ang iyong booking",
   checkOutLabel: "Check-out",
@@ -154,7 +163,7 @@ const fil: KioskCopy = {
   enterYourDetails: "Ilagay ang iyong mga detalye",
   email: "Email",
   agreeTerms: { pre: "Sumasang-ayon ako sa ", link: "Mga Tuntunin at Kundisyon ng Ari-arian", post: ". *" },
-  marketingOptInPrefix: "Gusto kong paminsan-minsang tumanggap ng marketing email mula sa",
+  marketingOptInPrefix: "Gusto kong paminsan-minsang tumanggap ng marketing email mula sa ",
   marketingOptInSuffix: ".",
   signature: "Lagda *",
   tapToSign: "Pindutin para pumirma",
@@ -166,14 +175,14 @@ const fil: KioskCopy = {
 };
 
 const km: KioskCopy = {
-  welcomeTitle: "សូមស្វាគមន៍មកកាន់",
+  welcomeTitle: (name) => `សូមស្វាគមន៍មកកាន់ ${name}`,
   checkIn: "ចូលស្នាក់នៅ",
   checkOut: "ចាកចេញ",
   searchPlaceholder: "ស្វែងរកតាមឈ្មោះ",
   stay: "ការស្នាក់នៅ",
-  noGuestsMatch: "រកមិនឃើញភ្ញៀវដែលត្រូវនឹង",
+  noGuestsMatch: (query) => `រកមិនឃើញភ្ញៀវដែលត្រូវនឹង "${query}"។`,
   guestNotFound: "រកមិនឃើញភ្ញៀវនោះទេ។ សូមត្រឡប់ក្រោយ ហើយជ្រើសរើសម្នាក់ពីបញ្ជី។",
-  helloPrefix: "សួស្តី",
+  helloGreeting: (name) => `សួស្តី ${name},`,
   confirmSubtitle: "តោះបញ្ជាក់ព័ត៌មានលម្អិតរបស់អ្នក។",
   yourBooking: "ការកក់របស់អ្នក",
   checkOutLabel: "ចាកចេញ",
@@ -185,7 +194,7 @@ const km: KioskCopy = {
   enterYourDetails: "បញ្ចូលព័ត៌មានលម្អិតរបស់អ្នក",
   email: "អ៊ីមែល",
   agreeTerms: { pre: "ខ្ញុំយល់ព្រមតាម ", link: "លក្ខខណ្ឌរបស់អចលនទ្រព្យ", post: "។ *" },
-  marketingOptInPrefix: "ខ្ញុំចង់ទទួលអ៊ីមែលទីផ្សារម្តងម្កាលពី",
+  marketingOptInPrefix: "ខ្ញុំចង់ទទួលអ៊ីមែលទីផ្សារម្តងម្កាលពី ",
   marketingOptInSuffix: "។",
   signature: "ហត្ថលេខា *",
   tapToSign: "ចុចដើម្បីចុះហត្ថលេខា",
@@ -196,4 +205,35 @@ const km: KioskCopy = {
   },
 };
 
-export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km };
+const ja: KioskCopy = {
+  welcomeTitle: (name) => `${name}へようこそ`,
+  checkIn: "チェックイン",
+  checkOut: "チェックアウト",
+  searchPlaceholder: "名前で検索",
+  stay: "宿泊",
+  noGuestsMatch: (query) => `「${query}」に一致するゲストが見つかりません。`,
+  guestNotFound: "そのゲストが見つかりませんでした。戻ってリストから選び直してください。",
+  helloGreeting: (name) => `${name}様、こんにちは。`,
+  confirmSubtitle: "内容をご確認ください。",
+  yourBooking: "ご予約内容",
+  checkOutLabel: "チェックアウト",
+  confirmButton: "確認する",
+  reservationOwner: "予約者",
+  progress: "進捗状況",
+  tapToReturnSkipped: "スキップしたゲストに戻る場合はタップしてください",
+  next: "次へ",
+  enterYourDetails: "お客様情報を入力してください",
+  email: "メールアドレス",
+  agreeTerms: { pre: "", link: "施設の利用規約", post: "に同意します。*" },
+  marketingOptInPrefix: "",
+  marketingOptInSuffix: "からのマーケティングメールを時々受け取りたいです。",
+  signature: "署名 *",
+  tapToSign: "タップして署名",
+  privacyFooter: {
+    pre: "個人情報の取り扱いについて詳しくは",
+    link: "施設のプライバシーポリシー",
+    post: "をご覧ください。",
+  },
+};
+
+export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

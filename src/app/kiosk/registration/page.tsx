@@ -127,7 +127,8 @@ function RegistrationContent() {
                   className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--kiosk-border-strong)] accent-[var(--kiosk-accent)]"
                 />
                 <span className="text-base text-[var(--kiosk-text-secondary)]">
-                  {t.marketingOptInPrefix} <span className="font-semibold">{propertyName}</span>
+                  {t.marketingOptInPrefix}
+                  <span className="font-semibold">{propertyName}</span>
                   {t.marketingOptInSuffix}
                 </span>
               </label>

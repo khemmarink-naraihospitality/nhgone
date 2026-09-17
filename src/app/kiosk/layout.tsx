@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { KioskConfigProvider, useKioskConfig } from "./kioskConfig";
 import { KioskLanguageProvider } from "./kioskLanguage";
+import { KioskCurrencyProvider } from "./kioskCurrency";
 import ScreenSaver from "./ScreenSaver";
 
 /**
@@ -37,7 +38,9 @@ export default function KioskLayout({ children }: { children: React.ReactNode })
   return (
     <KioskConfigProvider>
       <KioskLanguageProvider>
-        <KioskShell>{children}</KioskShell>
+        <KioskCurrencyProvider>
+          <KioskShell>{children}</KioskShell>
+        </KioskCurrencyProvider>
       </KioskLanguageProvider>
     </KioskConfigProvider>
   );

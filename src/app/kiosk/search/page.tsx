@@ -61,7 +61,7 @@ export default function SearchGuestsPage() {
 
           {results.length === 0 ? (
             <p className="py-10 text-center text-base font-medium text-[var(--kiosk-text-faint)]">
-              {t.noGuestsMatch} &quot;{query}&quot;.
+              {t.noGuestsMatch(query)}
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-5">

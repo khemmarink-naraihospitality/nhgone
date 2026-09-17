@@ -45,7 +45,7 @@ function ConfirmContent() {
         {/* Left: content card */}
         <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
-            {t.helloPrefix} {guest.name},
+            {t.helloGreeting(guest.name)}
           </h1>
           <p className="mt-2 text-lg text-[var(--kiosk-text-muted)]">{t.confirmSubtitle}</p>
 

@@ -63,7 +63,7 @@ interface Kiosk {
 }
 
 const THEMES = ["Light", "Dark"];
-// Matches the four languages the kiosk's own front-end selector offers
+// Matches the five languages the kiosk's own front-end selector offers
 // (src/app/kiosk/i18n.ts) - keep the two lists in step, since this is what
 // resolveDefaultLanguage() maps a kiosk's starting language from.
 const LANGUAGES = [
@@ -71,6 +71,7 @@ const LANGUAGES = [
   "Thai (Thailand)",
   "Filipino (Philippines)",
   "Khmer (Cambodia)",
+  "Japanese (Japan)",
 ];
 const PAYMENT_METHODS = ["-", "Guest device", "Payment terminal", "No payment at check-in"];
 const EARLY_CHECKIN_FEES = ["-", "Charge the property's early check-in rate", "Free"];
