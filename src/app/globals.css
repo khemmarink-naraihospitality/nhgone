@@ -157,6 +157,50 @@ h1, h2, h3, .h-display {
   -webkit-user-select: none;
 }
 
+/* Light-flow theme tokens (welcome/search/confirm/registration only - see
+   kiosk/layout.tsx's `isLightTheme` branch). These four screens read
+   Admin Console > Kiosks' Theme field through `data-kiosk-theme` instead of
+   hardcoded hex classes, so Light/Dark actually changes what a guest sees.
+   eKYC/upsell/payment/success have no reference screenshot yet and keep
+   their own hardcoded dark classes untouched - they don't use these tokens. */
+.kiosk-scheme {
+  --kiosk-bg: #f4f4f5;
+  --kiosk-surface: #ffffff;
+  --kiosk-surface-alt: #f4f4f5;
+  --kiosk-text: #0b0b0f;
+  --kiosk-text-secondary: rgba(11, 11, 15, 0.7);
+  --kiosk-text-muted: rgba(11, 11, 15, 0.55);
+  --kiosk-text-faint: rgba(11, 11, 15, 0.38);
+  --kiosk-border: rgba(11, 11, 15, 0.12);
+  --kiosk-border-strong: rgba(11, 11, 15, 0.22);
+  --kiosk-hover: rgba(11, 11, 15, 0.05);
+  --kiosk-accent: #4f46e5;
+  --kiosk-accent-soft: rgba(79, 70, 229, 0.12);
+  --kiosk-inverse-bg: #0b0b0f;
+  --kiosk-inverse-bg-hover: rgba(11, 11, 15, 0.9);
+  --kiosk-inverse-bg-disabled: rgba(11, 11, 15, 0.2);
+  --kiosk-inverse-text: #ffffff;
+}
+
+.kiosk-scheme[data-kiosk-theme="dark"] {
+  --kiosk-bg: #0b0b0f;
+  --kiosk-surface: #1a1a20;
+  --kiosk-surface-alt: #232329;
+  --kiosk-text: #f4f4f5;
+  --kiosk-text-secondary: rgba(244, 244, 245, 0.75);
+  --kiosk-text-muted: rgba(244, 244, 245, 0.58);
+  --kiosk-text-faint: rgba(244, 244, 245, 0.4);
+  --kiosk-border: rgba(244, 244, 245, 0.14);
+  --kiosk-border-strong: rgba(244, 244, 245, 0.26);
+  --kiosk-hover: rgba(244, 244, 245, 0.08);
+  --kiosk-accent: #818cf8;
+  --kiosk-accent-soft: rgba(129, 140, 248, 0.16);
+  --kiosk-inverse-bg: #f4f4f5;
+  --kiosk-inverse-bg-hover: rgba(244, 244, 245, 0.85);
+  --kiosk-inverse-bg-disabled: rgba(244, 244, 245, 0.2);
+  --kiosk-inverse-text: #0b0b0f;
+}
+
 /* The glassmorphism panel every kiosk screen is built from. Falls back to
    its own literals so the class still renders if it is ever used outside
    .kiosk-root. */

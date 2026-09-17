@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Search, Users } from "lucide-react";
 import KioskTopBar from "../KioskTopBar";
 import { MOCK_GUESTS } from "../mockGuests";
+import { useKioskLanguage } from "../kioskLanguage";
 
 /**
  * Rebuilt 17-Sep-2026 against a real reference screenshot: this used to be a
@@ -20,6 +21,7 @@ import { MOCK_GUESTS } from "../mockGuests";
  */
 export default function SearchGuestsPage() {
   const router = useRouter();
+  const { t } = useKioskLanguage();
   const [query, setQuery] = useState("");
 
   const results = useMemo(() => {
@@ -29,37 +31,37 @@ export default function SearchGuestsPage() {
   }, [query]);
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#F4F4F5] font-sans text-[#0B0B0F]">
+    <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar />
 
-      <main className="flex flex-1 flex-col gap-8 rounded-[32px] bg-white mx-8 mb-8 p-10">
+      <main className="flex flex-1 flex-col gap-8 rounded-[32px] bg-[var(--kiosk-surface)] mx-8 mb-8 p-10">
         <div className="relative">
           <Search
             size={22}
-            className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-[#0B0B0F]/30"
+            className="pointer-events-none absolute left-6 top-1/2 -translate-y-1/2 text-[var(--kiosk-text-faint)]"
             aria-hidden="true"
           />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name"
-            className="w-full rounded-2xl border border-[#0B0B0F]/15 bg-white py-5 pl-16 pr-6 text-lg text-[#0B0B0F] outline-none placeholder:text-[#0B0B0F]/35 focus:border-[#4F46E5]/40"
+            placeholder={t.searchPlaceholder}
+            className="w-full rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] py-5 pl-16 pr-6 text-lg text-[var(--kiosk-text)] outline-none placeholder:text-[var(--kiosk-text-faint)] focus:border-[var(--kiosk-accent)]"
           />
         </div>
 
         <div>
           <div className="mb-5 flex items-center justify-between">
-            <h2 className="text-xl font-medium text-[#0B0B0F]/60">Stay</h2>
-            <div className="flex items-center gap-2 text-[#0B0B0F]/60">
+            <h2 className="text-xl font-medium text-[var(--kiosk-text-muted)]">{t.stay}</h2>
+            <div className="flex items-center gap-2 text-[var(--kiosk-text-muted)]">
               <span className="text-lg font-medium">{results.length}</span>
               <ChevronDown size={20} aria-hidden="true" />
             </div>
           </div>
 
           {results.length === 0 ? (
-            <p className="py-10 text-center text-base font-medium text-[#0B0B0F]/40">
-              No guests match &quot;{query}&quot;.
+            <p className="py-10 text-center text-base font-medium text-[var(--kiosk-text-faint)]">
+              {t.noGuestsMatch} &quot;{query}&quot;.
             </p>
           ) : (
             <div className="grid grid-cols-3 gap-5">
@@ -68,18 +70,18 @@ export default function SearchGuestsPage() {
                   key={guest.id}
                   type="button"
                   onClick={() => router.push(`/kiosk/confirm?guest=${guest.id}`)}
-                  className="flex flex-col gap-8 rounded-2xl bg-[#F4F4F5] p-6 text-left transition-colors hover:bg-[#0B0B0F]/[0.06]"
+                  className="flex flex-col gap-8 rounded-2xl bg-[var(--kiosk-surface-alt)] p-6 text-left transition-colors hover:bg-[var(--kiosk-hover)]"
                 >
                   <div>
                     <p className="text-lg font-semibold">{guest.name}</p>
-                    <div className="mt-2 flex items-center gap-1.5 text-[#0B0B0F]/50">
+                    <div className="mt-2 flex items-center gap-1.5 text-[var(--kiosk-text-muted)]">
                       <Users size={16} aria-hidden="true" />
                       <span className="text-sm font-medium">{guest.guestCount}</span>
                     </div>
                   </div>
-                  <div className="flex items-center justify-between text-sm font-medium text-[#0B0B0F]/70">
+                  <div className="flex items-center justify-between text-sm font-medium text-[var(--kiosk-text-secondary)]">
                     <span>{guest.arrivalShort}</span>
-                    <span className="mx-2 flex-1 border-t border-dotted border-[#0B0B0F]/25" />
+                    <span className="mx-2 flex-1 border-t border-dotted border-[var(--kiosk-border-strong)]" />
                     <span>{guest.departureShort}</span>
                   </div>
                 </button>

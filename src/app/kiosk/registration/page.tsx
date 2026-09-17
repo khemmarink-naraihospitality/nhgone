@@ -6,6 +6,7 @@ import { Hand, PenLine } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import KioskTopBar from "../KioskTopBar";
 import { findMockGuest } from "../mockGuests";
+import { useKioskLanguage } from "../kioskLanguage";
 
 /**
  * Rebuilt 17-Sep-2026 against a real reference screenshot: this replaces the
@@ -29,6 +30,7 @@ function RegistrationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { selectedProperty } = useSelectedProperty();
+  const { t } = useKioskLanguage();
   const guest = findMockGuest(searchParams.get("guest"));
   const [email, setEmail] = useState(guest?.email || "");
   const [agreedTerms, setAgreedTerms] = useState(false);
@@ -37,42 +39,40 @@ function RegistrationContent() {
 
   if (!guest) {
     return (
-      <div className="flex h-full w-full flex-col bg-[#F4F4F5] font-sans text-[#0B0B0F]">
+      <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
         <KioskTopBar />
         <main className="flex flex-1 items-center justify-center">
-          <p className="text-lg font-medium text-[#0B0B0F]/50">
-            That guest wasn&apos;t found. Go back and pick one from the list.
-          </p>
+          <p className="text-lg font-medium text-[var(--kiosk-text-muted)]">{t.guestNotFound}</p>
         </main>
       </div>
     );
   }
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#F4F4F5] font-sans text-[#0B0B0F]">
+    <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar />
 
       <main className="flex flex-1 gap-6 px-8 pb-4">
         {/* Left: guest + progress card */}
-        <div className="flex w-[30%] min-w-[300px] flex-col rounded-[32px] bg-white p-10">
+        <div className="flex w-[30%] min-w-[300px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-10">
           <div>
             <p className="text-2xl font-semibold">{guest.name}</p>
-            <p className="mt-1 text-base text-[#0B0B0F]/50">Reservation owner</p>
+            <p className="mt-1 text-base text-[var(--kiosk-text-muted)]">{t.reservationOwner}</p>
           </div>
 
-          <div className="my-8 border-t border-dotted border-[#0B0B0F]/20" />
+          <div className="my-8 border-t border-dotted border-[var(--kiosk-border-strong)]" />
 
           <div>
-            <p className="text-base font-medium text-[#0B0B0F]/50">Progress</p>
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[#0B0B0F]/10">
-              <div className="h-full w-[8%] rounded-full bg-[#4F46E5]" />
+            <p className="text-base font-medium text-[var(--kiosk-text-muted)]">{t.progress}</p>
+            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--kiosk-border)]">
+              <div className="h-full w-[8%] rounded-full bg-[var(--kiosk-accent)]" />
             </div>
           </div>
 
-          <div className="mt-8 flex items-center gap-4 rounded-2xl bg-[#F4F4F5] p-5">
-            <Hand size={22} className="shrink-0 text-[#0B0B0F]/50" aria-hidden="true" />
-            <p className="text-base font-medium text-[#0B0B0F]/60">
-              Tap to return skipped guest
+          <div className="mt-8 flex items-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] p-5">
+            <Hand size={22} className="shrink-0 text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+            <p className="text-base font-medium text-[var(--kiosk-text-muted)]">
+              {t.tapToReturnSkipped}
             </p>
           </div>
 
@@ -80,26 +80,26 @@ function RegistrationContent() {
             type="button"
             disabled={!agreedTerms}
             onClick={() => router.push("/kiosk/ekyc")}
-            className="mt-auto w-full rounded-full bg-[#0B0B0F] py-5 text-xl font-semibold text-white transition-colors hover:bg-[#0B0B0F]/90 disabled:cursor-not-allowed disabled:bg-[#0B0B0F]/20"
+            className="mt-auto w-full rounded-full bg-[var(--kiosk-inverse-bg)] py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
           >
-            Next
+            {t.next}
           </button>
         </div>
 
         {/* Right: details form card */}
-        <div className="flex flex-1 flex-col rounded-[32px] bg-white p-12">
-          <h1 className="text-center text-4xl font-bold tracking-tight">Enter your details</h1>
+        <div className="flex flex-1 flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
+          <h1 className="text-center text-4xl font-bold tracking-tight">{t.enterYourDetails}</h1>
 
           <div className="mx-auto mt-10 flex w-full max-w-xl flex-1 flex-col">
-            <label className="text-base font-medium text-[#0B0B0F]/60" htmlFor="guest-email">
-              Email
+            <label className="text-base font-medium text-[var(--kiosk-text-muted)]" htmlFor="guest-email">
+              {t.email}
             </label>
             <input
               id="guest-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 w-full rounded-2xl border border-[#0B0B0F]/15 px-5 py-4 text-lg outline-none focus:border-[#4F46E5]/40"
+              className="mt-2 w-full rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-4 text-lg text-[var(--kiosk-text)] outline-none focus:border-[var(--kiosk-accent)]"
             />
 
             <div className="mt-6 flex flex-col gap-4">
@@ -108,10 +108,14 @@ function RegistrationContent() {
                   type="checkbox"
                   checked={agreedTerms}
                   onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[#0B0B0F]/25 accent-[#0B0B0F]"
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--kiosk-border-strong)] accent-[var(--kiosk-accent)]"
                 />
-                <span className="text-base text-[#0B0B0F]/70">
-                  I agree with <span className="font-semibold text-[#4F46E5] underline">Property Terms and Conditions</span>. *
+                <span className="text-base text-[var(--kiosk-text-secondary)]">
+                  {t.agreeTerms.pre}
+                  <span className="font-semibold text-[var(--kiosk-accent)] underline">
+                    {t.agreeTerms.link}
+                  </span>
+                  {t.agreeTerms.post}
                 </span>
               </label>
 
@@ -120,27 +124,30 @@ function RegistrationContent() {
                   type="checkbox"
                   checked={marketingOptIn}
                   onChange={(e) => setMarketingOptIn(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[#0B0B0F]/25 accent-[#0B0B0F]"
+                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--kiosk-border-strong)] accent-[var(--kiosk-accent)]"
                 />
-                <span className="text-base text-[#0B0B0F]/70">
-                  I&apos;d like to occasionally receive marketing emails from{" "}
-                  <span className="font-semibold">{propertyName}</span>.
+                <span className="text-base text-[var(--kiosk-text-secondary)]">
+                  {t.marketingOptInPrefix} <span className="font-semibold">{propertyName}</span>
+                  {t.marketingOptInSuffix}
                 </span>
               </label>
             </div>
 
-            <p className="mt-8 text-base font-medium text-[#0B0B0F]/60">Signature *</p>
+            <p className="mt-8 text-base font-medium text-[var(--kiosk-text-muted)]">{t.signature}</p>
             <button
               type="button"
-              className="mt-2 flex flex-1 min-h-[140px] w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[#0B0B0F]/20 text-[#0B0B0F]/40 transition-colors hover:border-[#4F46E5]/40 hover:text-[#4F46E5]/70"
+              className="mt-2 flex flex-1 min-h-[140px] w-full flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-[var(--kiosk-border-strong)] text-[var(--kiosk-text-faint)] transition-colors hover:border-[var(--kiosk-accent)] hover:text-[var(--kiosk-accent)]"
             >
               <PenLine size={28} aria-hidden="true" />
-              <span className="text-base font-medium">Tap to sign</span>
+              <span className="text-base font-medium">{t.tapToSign}</span>
             </button>
 
-            <p className="mt-6 text-center text-sm text-[#0B0B0F]/45">
-              Read more about personal data processing in{" "}
-              <span className="font-semibold text-[#4F46E5] underline">Property Privacy Policy</span>.
+            <p className="mt-6 text-center text-sm text-[var(--kiosk-text-faint)]">
+              {t.privacyFooter.pre}
+              <span className="font-semibold text-[var(--kiosk-accent)] underline">
+                {t.privacyFooter.link}
+              </span>
+              {t.privacyFooter.post}
             </p>
           </div>
         </div>

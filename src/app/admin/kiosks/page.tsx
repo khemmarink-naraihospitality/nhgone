@@ -63,7 +63,15 @@ interface Kiosk {
 }
 
 const THEMES = ["Light", "Dark"];
-const LANGUAGES = ["English (United States)", "Thai (Thailand)"];
+// Matches the four languages the kiosk's own front-end selector offers
+// (src/app/kiosk/i18n.ts) - keep the two lists in step, since this is what
+// resolveDefaultLanguage() maps a kiosk's starting language from.
+const LANGUAGES = [
+  "English (United States)",
+  "Thai (Thailand)",
+  "Filipino (Philippines)",
+  "Khmer (Cambodia)",
+];
 const PAYMENT_METHODS = ["-", "Guest device", "Payment terminal", "No payment at check-in"];
 const EARLY_CHECKIN_FEES = ["-", "Charge the property's early check-in rate", "Free"];
 const RESERVATION_LOOKUPS = [
@@ -516,9 +524,12 @@ export default function AdminKiosksPage() {
               <div className="flex items-start gap-3 rounded-2xl border border-sky-100 bg-sky-50 px-5 py-4">
                 <Info className="mt-0.5 h-4 w-4 shrink-0 text-sky-500" aria-hidden="true" />
                 <p className="text-xs font-medium leading-relaxed text-sky-900">
-                  The check-in screens read the name, images, language, search fields, the three guest-facing texts and
-                  the screen saver video from here. Theme, grace periods, hardware and payment are stored but not yet
-                  applied — nothing behind these screens talks to MEWS yet.
+                  The check-in screens read the name, images, theme, default language, search fields, the three
+                  guest-facing texts and the screen saver video from here. Theme and default language apply to
+                  Welcome/Search/Confirm/Registration only — a guest can still switch languages themselves from
+                  those screens&apos; own selector; eKYC onward stay dark and English until they get a reference
+                  screenshot too. Grace periods, hardware and payment are stored but not yet applied — nothing
+                  behind these screens talks to MEWS yet.
                 </p>
               </div>
 
@@ -530,7 +541,7 @@ export default function AdminKiosksPage() {
                   </Field>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <Field label="Theme" required hint="Stored, but not applied yet - the check-in screens are dark only.">
+                    <Field label="Theme" required hint="Applies to Welcome/Search/Confirm/Registration; eKYC onward is still dark-only.">
                       <select className={INPUT} value={form.theme} onChange={(e) => set("theme", e.target.value)}>
                         {THEMES.map((t) => <option key={t}>{t}</option>)}
                       </select>
@@ -540,7 +551,11 @@ export default function AdminKiosksPage() {
                     </Field>
                   </div>
 
-                  <Field label="Default language" required hint="The language the instruction texts below are written in.">
+                  <Field
+                    label="Default language"
+                    required
+                    hint="The language the instruction texts below are written in, and what the terminal starts on - a guest can still switch it themselves."
+                  >
                     <select
                       className={INPUT}
                       value={form.default_language}

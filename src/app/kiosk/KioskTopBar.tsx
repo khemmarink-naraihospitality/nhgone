@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Coins, Settings, Users } from "lucide-react";
+import { ArrowLeft, Check, ChevronDown, Coins, Languages, Settings } from "lucide-react";
 import { useState } from "react";
-import { useKioskConfig } from "./kioskConfig";
+import { KIOSK_LANGUAGES } from "./i18n";
+import { useKioskLanguage } from "./kioskLanguage";
 
 /**
  * The light-theme top bar every kiosk screen from the welcome page onward
@@ -13,76 +14,99 @@ import { useKioskConfig } from "./kioskConfig";
  * header. `showBack` is false only on the welcome screen: everywhere else
  * there is somewhere to actually go back to.
  *
- * Staff Mode/Switch to guest mode and the language/currency/settings pills
- * are decorative - same "screens first" scope as the rest of this prototype,
- * just a highlighted-pill toggle with no different behavior wired yet.
+ * The "Switch to guest mode" toggle from the first cut of this bar was
+ * removed 17-Sep-2026 at the user's request - it had no real behavior wired
+ * to it yet (Staff Mode was the only mode anything actually rendered), so it
+ * stays as a plain non-interactive "Staff Mode" badge until there's a real
+ * guest-mode view to switch to.
+ *
+ * The language pill is real, not decorative: it's a working switcher over
+ * the four languages in i18n.ts (KioskLanguageProvider, mounted in
+ * layout.tsx), and changes what the four light-theme screens actually say -
+ * see kioskLanguage.tsx for why the choice is per-session, not saved.
  */
-
-// The prototype's own hand-drawn flag mock (a generic red/blue stripe block,
-// not a real national flag) - decorative, not tied to `default_language`,
-// which the text next to it already states in full.
-function FlagMock() {
-  return (
-    <div className="relative h-4 w-6 shrink-0 overflow-hidden rounded-sm bg-blue-900">
-      <div className="absolute left-0 top-0 h-1/2 w-full bg-red-600" />
-      <div className="absolute left-0 top-0 h-full w-1/3 bg-blue-800" />
-    </div>
-  );
-}
 
 export default function KioskTopBar({ showBack = true }: { showBack?: boolean }) {
   const router = useRouter();
-  const { config } = useKioskConfig();
-  const [staffMode, setStaffMode] = useState(true);
+  const { language, setLanguage } = useKioskLanguage();
+  const [langOpen, setLangOpen] = useState(false);
+  const current = KIOSK_LANGUAGES.find((l) => l.code === language) || KIOSK_LANGUAGES[0];
 
   return (
-    <header className="flex items-center justify-between gap-4 px-8 py-6">
+    <header className="relative flex items-center justify-between gap-4 px-8 py-6">
       <div className="flex items-center gap-3">
         {showBack && (
           <button
             type="button"
             onClick={() => router.back()}
             aria-label="Go back"
-            className="rounded-full border border-[#0B0B0F]/10 bg-white p-3.5 text-[#0B0B0F] transition-colors hover:bg-[#0B0B0F]/5"
+            className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-3.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
           >
             <ArrowLeft size={22} aria-hidden="true" />
           </button>
         )}
-        <button
-          type="button"
-          onClick={() => setStaffMode(true)}
-          className={`rounded-full px-6 py-3 text-base font-bold transition-colors ${
-            staffMode ? "bg-[#4F46E5] text-white" : "bg-white text-[#0B0B0F]/70 hover:bg-[#0B0B0F]/5"
-          }`}
-        >
+        <div className="rounded-full bg-[var(--kiosk-accent)] px-6 py-3 text-base font-bold text-white">
           Staff Mode
-        </button>
-        <button
-          type="button"
-          onClick={() => setStaffMode(false)}
-          className={`inline-flex items-center gap-2 rounded-full border px-6 py-3 text-base font-bold transition-colors ${
-            staffMode
-              ? "border-[#0B0B0F]/10 bg-white text-[#0B0B0F] hover:bg-[#0B0B0F]/5"
-              : "border-transparent bg-[#4F46E5] text-white"
-          }`}
-        >
-          <Users size={20} aria-hidden="true" />
-          Switch to guest mode
-        </button>
+        </div>
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-3 rounded-full border border-[#0B0B0F]/10 bg-white px-5 py-3">
-          <FlagMock />
-          <span className="text-base font-medium">{config?.default_language || "English (United States)"}</span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setLangOpen((v) => !v)}
+            className="flex items-center gap-3 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+          >
+            <Languages size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+            <span className="text-base font-medium">{current.nativeLabel}</span>
+            <ChevronDown size={16} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+          </button>
+
+          {langOpen && (
+            <>
+              {/* Click-outside catcher - a plain full-screen button is the
+                  simplest way to close a touch-kiosk popover without a
+                  separate outside-click hook. */}
+              <button
+                type="button"
+                className="fixed inset-0 z-40 cursor-default"
+                aria-label="Close language menu"
+                onClick={() => setLangOpen(false)}
+              />
+              <div className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] py-2 shadow-xl">
+                {KIOSK_LANGUAGES.map((l) => (
+                  <button
+                    key={l.code}
+                    type="button"
+                    onClick={() => {
+                      setLanguage(l.code);
+                      setLangOpen(false);
+                    }}
+                    className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-[var(--kiosk-hover)]"
+                  >
+                    <span>
+                      <span className="block text-base font-semibold text-[var(--kiosk-text)]">
+                        {l.nativeLabel}
+                      </span>
+                      <span className="block text-sm text-[var(--kiosk-text-faint)]">{l.label}</span>
+                    </span>
+                    {l.code === language && (
+                      <Check size={18} className="text-[var(--kiosk-accent)]" aria-hidden="true" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
-        <div className="flex items-center gap-2 rounded-full border border-[#0B0B0F]/10 bg-white px-5 py-3">
-          <Coins size={20} className="text-[#0B0B0F]/60" aria-hidden="true" />
-          <span className="text-base font-medium">THB</span>
+
+        <div className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3">
+          <Coins size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+          <span className="text-base font-medium text-[var(--kiosk-text)]">THB</span>
         </div>
         <button
           type="button"
-          className="rounded-full border border-[#0B0B0F]/10 bg-white p-3.5 text-[#0B0B0F]/60 transition-colors hover:bg-[#0B0B0F]/5"
+          className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-3.5 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
           aria-label="Settings"
         >
           <Settings size={22} aria-hidden="true" />

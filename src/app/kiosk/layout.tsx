@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { KioskConfigProvider, useKioskConfig } from "./kioskConfig";
+import { KioskLanguageProvider } from "./kioskLanguage";
 import ScreenSaver from "./ScreenSaver";
 
 /**
@@ -35,7 +36,9 @@ import ScreenSaver from "./ScreenSaver";
 export default function KioskLayout({ children }: { children: React.ReactNode }) {
   return (
     <KioskConfigProvider>
-      <KioskShell>{children}</KioskShell>
+      <KioskLanguageProvider>
+        <KioskShell>{children}</KioskShell>
+      </KioskLanguageProvider>
     </KioskConfigProvider>
   );
 }
@@ -102,8 +105,17 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   const currentStepIndex = steps.findIndex((step) => pathname.includes(step.path));
 
   if (isLightTheme) {
+    // `kiosk-scheme` + `data-kiosk-theme` (globals.css) is what actually
+    // makes Admin Console > Kiosks' Theme field (Light/Dark) do something -
+    // it was previously stored and read nowhere. Scoped to these four
+    // screens only: ekyc/upsell/payment/success hardcode their own dark
+    // palette directly in Tailwind classes and don't read these tokens.
+    const themeAttr = config?.theme === "Dark" ? "dark" : "light";
     return (
-      <div className="kiosk-root h-screen w-full relative overflow-hidden">
+      <div
+        className="kiosk-root kiosk-scheme h-screen w-full relative overflow-hidden"
+        data-kiosk-theme={themeAttr}
+      >
         <ScreenSaver videoUrl={config?.screen_saver_video_url} />
         {children}
       </div>

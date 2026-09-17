@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { useKioskConfig } from "./kioskConfig";
+import { useKioskLanguage } from "./kioskLanguage";
 import KioskTopBar from "./KioskTopBar";
 
 /**
@@ -38,34 +39,35 @@ export default function KioskWelcomePage() {
   const router = useRouter();
   const { selectedProperty } = useSelectedProperty();
   const { config } = useKioskConfig();
+  const { t } = useKioskLanguage();
   const propertyName = selectedProperty || "NHG";
   const heroImage = config?.images?.[0]?.url || FALLBACK_IMAGE;
 
   return (
-    <div className="flex h-full w-full flex-col bg-[#F4F4F5] font-sans text-[#0B0B0F]">
+    <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar showBack={false} />
 
       {/* Two floating cards */}
       <main className="flex flex-1 gap-6 px-8 pb-4">
         {/* Left: content card */}
-        <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-white p-12 shadow-sm">
+        <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12 shadow-sm">
           <h1 className="text-5xl font-bold leading-tight tracking-tight">
-            Welcome to {propertyName}
+            {t.welcomeTitle} {propertyName}
           </h1>
 
           <div className="mt-auto flex flex-col gap-4 pt-12">
             <button
               type="button"
               onClick={() => router.push("/kiosk/search")}
-              className="w-full rounded-full bg-[#0B0B0F] py-5 text-xl font-semibold text-white transition-colors hover:bg-[#0B0B0F]/90"
+              className="w-full rounded-full bg-[var(--kiosk-inverse-bg)] py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
             >
-              Check in
+              {t.checkIn}
             </button>
             <button
               type="button"
-              className="w-full rounded-full border-2 border-[#0B0B0F] py-5 text-xl font-semibold text-[#0B0B0F] transition-colors hover:bg-[#0B0B0F]/5"
+              className="w-full rounded-full border-2 border-[var(--kiosk-text)] py-5 text-xl font-semibold text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
             >
-              Check out
+              {t.checkOut}
             </button>
           </div>
         </div>
@@ -82,7 +84,7 @@ export default function KioskWelcomePage() {
 
       {/* This kiosk's own configured name (Admin Console > Kiosks) - see the
           file-level note on why this isn't a fake MEWS version string. */}
-      <p className="px-8 pb-4 text-sm text-[#0B0B0F]/40">
+      <p className="px-8 pb-4 text-sm text-[var(--kiosk-text-faint)]">
         {config?.name || `${propertyName} Kiosk`}
       </p>
     </div>
