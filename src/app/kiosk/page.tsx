@@ -72,8 +72,12 @@ export default function KioskWelcomePage() {
           </div>
         </div>
 
-        {/* Right: image card */}
-        <div className="relative flex-1 overflow-hidden rounded-[32px]">
+        {/* Right: image card - narrower than a full-bleed panel, matching
+            confirm/page.tsx's layout (same reasoning: a reference
+            screenshot's boxed proportion, sitting right after the left card
+            on the row's normal gap rather than pushed to the far edge, so
+            the leftover width reads as trailing margin past the image). */}
+        <div className="relative w-[30%] min-w-[280px] overflow-hidden rounded-[32px]">
           {/* Plain <img>: the configured photo is a remote Supabase Storage
               URL, and next/image would need that host whitelisted in
               next.config for no benefit on a fixed-size kiosk panel. */}

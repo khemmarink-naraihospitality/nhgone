@@ -51,7 +51,7 @@ function ConfirmContent() {
     <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar />
 
-      <main className="flex flex-1 justify-between gap-6 px-8 pb-4">
+      <main className="flex flex-1 gap-6 px-8 pb-4">
         {/* Left: content card */}
         <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
@@ -95,10 +95,12 @@ function ConfirmContent() {
           </button>
         </div>
 
-        {/* Right: image card - narrower than a full-bleed panel and anchored
-            to the right edge (matched to a reference screenshot), not
-            flex-1: `justify-between` on <main> leaves the gap between the
-            two cards showing the page background instead of more photo. */}
+        {/* Right: image card - narrower than a full-bleed panel (matched to
+            a reference screenshot), not flex-1, and NOT pushed to the right
+            edge via justify-between: it sits right after the left card on
+            its own normal gap, so the leftover space reads as a trailing
+            margin past the image rather than a gap floating between the
+            two cards. */}
         <div className="relative w-[30%] min-w-[280px] overflow-hidden rounded-[32px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={FALLBACK_IMAGE} alt="" className="absolute inset-0 h-full w-full object-cover" />
