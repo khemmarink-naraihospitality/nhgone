@@ -11,14 +11,16 @@ in `kiosk_reservations_sync`, kept current by main.auto_sync_kiosk_arrivals -
 see sync_kiosk_arrivals below.
 """
 
+import json
 import logging
 import secrets
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel
 
 from app.config import get_supabase_client
@@ -311,6 +313,246 @@ async def kiosk_arrival(reservation_id: str, property_name: str = Query(...)):
         logger.warning(f"Kiosk included-items fetch failed for {reservation_id}: {e}")
         fields["included"] = []
     return {"status": "success", "data": fields}
+
+
+REG_CARDS_TABLE = "kiosk_reg_cards"
+EXTRA_GUESTS_TABLE = "kiosk_extra_guests"
+_REGISTRATION_HINT = "run api/sql/kiosk_registration.sql in the Supabase SQL Editor first"
+
+
+def _registration_guard(error: Exception) -> HTTPException:
+    if isinstance(error, HTTPException):
+        return error
+    message = str(error).lower()
+    if ("kiosk_reg_cards" in message or "kiosk_extra_guests" in message) and (
+        "does not exist" in message or "not find the table" in message
+    ):
+        return HTTPException(status_code=400, detail=f"Registration storage isn't set up yet - {_REGISTRATION_HINT}")
+    return HTTPException(status_code=500, detail=str(error))
+
+
+def _blob(record: dict) -> dict:
+    return {"blob": encryption_service.encrypt(json.dumps(record))}
+
+
+def _unblob(row: dict) -> dict:
+    try:
+        return json.loads(encryption_service.decrypt((row.get("data") or {}).get("blob", "")))
+    except Exception:
+        return {}
+
+
+async def _reservation_guests(property_name: str, reservation_id: str) -> tuple:
+    """(reservation number, [guests]) for one reservation, straight from MEWS.
+
+    The owner first, then every companion MEWS lists - the same
+    CustomerId/CompanionIds pair get_rr3_cards reads, so the kiosk's guest
+    list and the ร.ร.๓ cards can never disagree about who is on the booking.
+    """
+    from app.services.mews_client import mews_client
+
+    res = await mews_client.post(
+        "/api/connector/v1/reservations/getAll",
+        {"ReservationIds": [reservation_id], "Extent": {"Reservations": True, "Customers": True}},
+        property_name=property_name,
+    )
+    reservations = res.get("Reservations", [])
+    if not reservations:
+        return None, []
+    reservation = reservations[0]
+    customers = {c["Id"]: c for c in res.get("Customers", []) if c.get("Id")}
+
+    owner_id = reservation.get("CustomerId") or reservation.get("OwnerId")
+    ordered = [owner_id] if owner_id else []
+    for cid in reservation.get("CompanionIds") or []:
+        if cid and cid not in ordered:
+            ordered.append(cid)
+
+    guests = []
+    for cid in ordered:
+        c = customers.get(cid) or {}
+        guests.append({
+            "guest_key": cid,
+            "first_name": c.get("FirstName") or "",
+            "last_name": c.get("LastName") or "",
+            "email": c.get("Email") or "",
+            "is_owner": cid == owner_id,
+            "source": "mews",
+        })
+    return reservation.get("Number"), guests
+
+
+@router.get("/registration")
+async def kiosk_registration(property_name: str = Query(...), reservation_id: str = Query(...)):
+    """Everyone on a reservation, and which of them has already signed.
+
+    MEWS's own occupants first (owner + companions), then anyone added at the
+    terminal. A kiosk-added guest exists only here: `customers/add` and
+    `reservations/addCompanion` both answer 401 for our Connector token, so
+    there is nowhere in MEWS to put them until that scope is enabled - see
+    api/sql/kiosk_registration.sql for the measurement.
+    """
+    try:
+        number, guests = await _reservation_guests(property_name, reservation_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Could not read the reservation from MEWS: {e}")
+    if number is None:
+        raise HTTPException(status_code=404, detail="That reservation isn't in MEWS any more.")
+
+    supabase = get_supabase_client()
+    try:
+        extra = supabase.table(EXTRA_GUESTS_TABLE).select("*").eq(
+            "property", property_name).eq("reservation_number", number).order("created_at").execute().data or []
+        signed = supabase.table(REG_CARDS_TABLE).select("guest_key, created_at").eq(
+            "property", property_name).eq("reservation_number", number).execute().data or []
+    except Exception as e:
+        raise _registration_guard(e)
+
+    for row in extra:
+        record = _unblob(row)
+        guests.append({
+            "guest_key": row.get("guest_key"),
+            "first_name": record.get("first_name") or "",
+            "last_name": record.get("last_name") or "",
+            "email": record.get("email") or "",
+            "is_owner": False,
+            "source": "kiosk",
+        })
+
+    signed_at = {}
+    for row in signed:
+        key = row.get("guest_key")
+        if key and row.get("created_at", "") > signed_at.get(key, ""):
+            signed_at[key] = row["created_at"]
+    for g in guests:
+        g["signed_at"] = signed_at.get(g["guest_key"])
+
+    return {"status": "success", "reservation_number": number, "data": guests}
+
+
+@router.post("/registration/guests")
+async def add_kiosk_guest(payload: dict = Body(...)):
+    """Add a guest at the terminal. Stored here, not in MEWS - see
+    kiosk_registration's docstring for why that is a permission wall rather
+    than a choice."""
+    property_name = (payload.get("property_name") or "").strip()
+    reservation_number = (payload.get("reservation_number") or "").strip()
+    first = (payload.get("first_name") or "").strip()
+    last = (payload.get("last_name") or "").strip()
+    if not property_name or not reservation_number:
+        raise HTTPException(status_code=400, detail="property_name and reservation_number are required.")
+    if not first and not last:
+        raise HTTPException(status_code=400, detail="A guest needs at least a first or last name.")
+
+    guest_key = f"kiosk:{uuid.uuid4()}"
+    try:
+        get_supabase_client().table(EXTRA_GUESTS_TABLE).insert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "guest_key": guest_key,
+            "data": _blob({"first_name": first, "last_name": last,
+                           "email": (payload.get("email") or "").strip()}),
+        }).execute()
+    except Exception as e:
+        raise _registration_guard(e)
+    return {"status": "success", "guest_key": guest_key}
+
+
+@router.delete("/registration/guests")
+async def delete_kiosk_guest(property_name: str = Query(...), reservation_number: str = Query(...),
+                             guest_key: str = Query(...)):
+    """Remove a guest added at the terminal, and the card they signed.
+
+    Only ever a kiosk-added guest: MEWS's own occupants can't be deleted from
+    here (deleteCompanion is 401), and the reservation owner is not removable
+    at all - they are who the booking belongs to.
+    """
+    if not guest_key.startswith("kiosk:"):
+        raise HTTPException(
+            status_code=400,
+            detail="Only a guest added at this terminal can be removed here. "
+                   "A guest on the MEWS booking has to be changed in MEWS.")
+    supabase = get_supabase_client()
+    try:
+        supabase.table(EXTRA_GUESTS_TABLE).delete().eq("property", property_name).eq(
+            "reservation_number", reservation_number).eq("guest_key", guest_key).execute()
+        supabase.table(REG_CARDS_TABLE).delete().eq("property", property_name).eq(
+            "reservation_number", reservation_number).eq("guest_key", guest_key).execute()
+    except Exception as e:
+        raise _registration_guard(e)
+    return {"status": "success"}
+
+
+@router.post("/registration/sign")
+async def sign_kiosk_registration(payload: dict = Body(...)):
+    """Store one guest's signed registration card.
+
+    The signature is a PNG data URL from the same SignaturePad the BCP Reg
+    Card uses, and `sync_service.get_rr3_cards` merges it onto that guest's
+    ร.ร.๓ card - so signing here is what puts the signature on the statutory
+    form, exactly as a signature captured at the front desk does.
+
+    Best-effort, after the row is safely stored: a short note goes back onto
+    the MEWS reservation (serviceOrderNotes/add - the one write our token is
+    allowed; the Connector API has no attachment endpoint at all), so someone
+    looking at the booking in MEWS can see a card was signed and where it
+    lives. A MEWS failure here never loses the signature.
+    """
+    property_name = (payload.get("property_name") or "").strip()
+    reservation_number = (payload.get("reservation_number") or "").strip()
+    guest_key = (payload.get("guest_key") or "").strip()
+    signature = payload.get("signature_data_url") or ""
+    if not property_name or not reservation_number or not guest_key:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number and guest_key are required.")
+    if not signature.startswith("data:image/"):
+        raise HTTPException(status_code=400, detail="A signature is required.")
+
+    record = {
+        "first_name": (payload.get("first_name") or "").strip(),
+        "last_name": (payload.get("last_name") or "").strip(),
+        "email": (payload.get("email") or "").strip(),
+        "marketing_consent": bool(payload.get("marketing_consent", False)),
+        "terms_accepted": bool(payload.get("terms_accepted", False)),
+        "signature_data_url": signature,
+        "signed_via": "kiosk",
+    }
+    try:
+        get_supabase_client().table(REG_CARDS_TABLE).insert({
+            "property": property_name,
+            "reservation_number": reservation_number,
+            "guest_key": guest_key,
+            "data": _blob(record),
+        }).execute()
+    except Exception as e:
+        raise _registration_guard(e)
+
+    note = None
+    reservation_id = (payload.get("reservation_id") or "").strip()
+    if reservation_id:
+        from app.services.mews_client import mews_client
+        guest_name = f"{record['first_name']} {record['last_name']}".strip() or "Guest"
+        try:
+            await mews_client.post(
+                "/api/connector/v1/serviceOrderNotes/add",
+                {"ServiceOrderNotes": [{
+                    "ServiceOrderId": reservation_id,
+                    "Type": "General",
+                    "Value": f"Registration card signed at the self check-in kiosk by {guest_name} "
+                             f"({datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')} UTC). "
+                             f"The signed ร.ร.๓ card is held in NHGOne.",
+                }]},
+                property_name=property_name,
+            )
+            note = "written"
+        except Exception as e:
+            # The card is already stored; MEWS not taking the note is not a
+            # reason to tell the guest their check-in failed.
+            logger.warning(f"Kiosk registration note not written to MEWS for {reservation_number}: {e}")
+            note = "failed"
+
+    return {"status": "success", "mews_note": note}
 
 
 @router.get("")

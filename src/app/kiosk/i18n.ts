@@ -89,6 +89,16 @@ export interface KioskCopy {
   /** Badge per MEWS reservation State, shown only while "Show all" is on
    * and only on the cards that aren't Confirmed. */
   stateLabel: Record<string, string>;
+  guests: string;
+  addGuest: string;
+  firstName: string;
+  lastName: string;
+  save: string;
+  cancel: string;
+  remove: string;
+  signed: string;
+  clearSignature: string;
+  saveFailed: string;
 }
 
 const en: KioskCopy = {
@@ -135,6 +145,16 @@ const en: KioskCopy = {
     Optional: "Optional",
     Inquired: "Inquiry",
   },
+  guests: "Guests",
+  addGuest: "Add guest",
+  firstName: "First name",
+  lastName: "Last name",
+  save: "Save",
+  cancel: "Cancel",
+  remove: "Remove",
+  signed: "Signed",
+  clearSignature: "Clear",
+  saveFailed: "We couldn't save that. Please ask the front desk for help.",
 };
 
 const th: KioskCopy = {
@@ -181,6 +201,16 @@ const th: KioskCopy = {
     Optional: "จองชั่วคราว",
     Inquired: "สอบถาม",
   },
+  guests: "ผู้เข้าพัก",
+  addGuest: "เพิ่มผู้เข้าพัก",
+  firstName: "ชื่อ",
+  lastName: "นามสกุล",
+  save: "บันทึก",
+  cancel: "ยกเลิก",
+  remove: "ลบออก",
+  signed: "เซ็นแล้ว",
+  clearSignature: "ล้าง",
+  saveFailed: "บันทึกไม่สำเร็จ กรุณาติดต่อแผนกต้อนรับ",
 };
 
 const fil: KioskCopy = {
@@ -227,6 +257,16 @@ const fil: KioskCopy = {
     Optional: "Pansamantala",
     Inquired: "Pagtatanong",
   },
+  guests: "Mga bisita",
+  addGuest: "Magdagdag ng bisita",
+  firstName: "Pangalan",
+  lastName: "Apelyido",
+  save: "I-save",
+  cancel: "Kanselahin",
+  remove: "Alisin",
+  signed: "Nakapirma na",
+  clearSignature: "Burahin",
+  saveFailed: "Hindi ma-save iyon. Mangyaring magtanong sa front desk.",
 };
 
 const km: KioskCopy = {
@@ -273,6 +313,16 @@ const km: KioskCopy = {
     Optional: "បណ្ដោះអាសន្ន",
     Inquired: "ការសាកសួរ",
   },
+  guests: "ភ្ញៀវ",
+  addGuest: "បន្ថែមភ្ញៀវ",
+  firstName: "នាមខ្លួន",
+  lastName: "នាមត្រកូល",
+  save: "រក្សាទុក",
+  cancel: "បោះបង់",
+  remove: "លុបចេញ",
+  signed: "បានចុះហត្ថលេខា",
+  clearSignature: "សម្អាត",
+  saveFailed: "មិនអាចរក្សាទុកបានទេ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវ។",
 };
 
 const ja: KioskCopy = {
@@ -319,6 +369,16 @@ const ja: KioskCopy = {
     Optional: "仮予約",
     Inquired: "問い合わせ",
   },
+  guests: "ご宿泊者",
+  addGuest: "宿泊者を追加",
+  firstName: "名",
+  lastName: "姓",
+  save: "保存",
+  cancel: "キャンセル",
+  remove: "削除",
+  signed: "署名済み",
+  clearSignature: "消去",
+  saveFailed: "保存できませんでした。フロントデスクにお声がけください。",
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

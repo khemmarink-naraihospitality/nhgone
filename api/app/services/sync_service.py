@@ -1677,6 +1677,11 @@ class SyncService:
 
                     cards.append({
                         "CardId": f"{reservation.get('Number', '')}::{guest_id}",
+                        # The guest this card belongs to, so a signature
+                        # captured at the kiosk can be matched back onto it
+                        # (_attach_kiosk_signatures) rather than onto whoever
+                        # happens to be first on the reservation.
+                        "CustomerId": guest_id,
                         "ReservationsNumber": reservation.get("Number", ""),
                         "HotelName": hotel_name,
                         "FirstName": first_name,
@@ -1700,10 +1705,57 @@ class SyncService:
                         "Destination": "",
                     })
 
+            self._attach_kiosk_signatures(property_name, cards)
             return cards
         except Exception as e:
             logger.error(f"Error building RR3 cards for {property_name}: {str(e)}")
             raise e
+
+    def _attach_kiosk_signatures(self, property_name: str, cards: list) -> None:
+        """Put each guest's kiosk signature onto their own ร.ร.๓ card.
+
+        A card carries `GuestSignatureDataUrl` once that guest has signed at
+        the self check-in terminal (kiosk_reg_cards, written by
+        routers/kiosks.sign_kiosk_registration); `src/lib/rr3Template.ts`
+        renders it as an image in the <<GuestSign>> slot instead of the typed
+        name, which is what makes the signed form a real signed form.
+
+        Best-effort by design: a card with no signature on record, or a
+        lookup that fails because the table hasn't been created yet, still
+        prints exactly as it did before - blank, for signing by hand.
+        Matched on (reservation number, customer id), the same pair the card
+        itself is built from.
+        """
+        if not self.supabase or not cards:
+            return
+        numbers = sorted({c.get("ReservationsNumber") for c in cards if c.get("ReservationsNumber")})
+        if not numbers:
+            return
+        try:
+            rows = self.supabase.table("kiosk_reg_cards").select(
+                "reservation_number, guest_key, data, created_at").eq(
+                "property", property_name).in_("reservation_number", numbers).order(
+                "created_at", desc=True).execute().data or []
+        except Exception as e:
+            logger.warning(f"RR3: kiosk signatures unavailable for {property_name}: {e}")
+            return
+
+        newest = {}
+        for row in rows:
+            key = (row.get("reservation_number"), row.get("guest_key"))
+            newest.setdefault(key, row)  # rows arrive newest-first
+
+        for card in cards:
+            row = newest.get((card.get("ReservationsNumber"), card.get("CustomerId")))
+            if not row:
+                continue
+            try:
+                record = json.loads(encryption_service.decrypt((row.get("data") or {}).get("blob", "")))
+            except Exception:
+                continue
+            signature = record.get("signature_data_url") or ""
+            if signature.startswith("data:image/"):
+                card["GuestSignatureDataUrl"] = signature
 
     async def get_kiosk_arrivals(self, property_name: str) -> dict:
         """Today's scheduled arrivals for the /kiosk check-in list, one live
