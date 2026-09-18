@@ -52,8 +52,8 @@ function ConfirmContent() {
       <KioskTopBar />
 
       <main className="flex flex-1 gap-6 px-8 pb-4">
-        {/* Left: content card */}
-        <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
+        {/* Left: content card - flex-1, so it runs right up to the image */}
+        <div className="flex min-w-[360px] flex-1 flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
             {t.helloGreeting(guestLabel(arrival))}
           </h1>
@@ -95,13 +95,10 @@ function ConfirmContent() {
           </button>
         </div>
 
-        {/* Right: image card - narrower than a full-bleed panel (matched to
-            a reference screenshot), not flex-1, and NOT pushed to the right
-            edge via justify-between: it sits right after the left card on
-            its own normal gap, so the leftover space reads as a trailing
-            margin past the image rather than a gap floating between the
-            two cards. */}
-        <div className="relative w-[30%] min-w-[280px] overflow-hidden rounded-[32px]">
+        {/* Right: image card - a fixed narrow width at the right edge
+            (matched to a reference screenshot); the white card beside it
+            takes all the remaining width, so there is no empty gap. */}
+        <div className="relative w-[30%] min-w-[280px] shrink-0 overflow-hidden rounded-[32px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={FALLBACK_IMAGE} alt="" className="absolute inset-0 h-full w-full object-cover" />
         </div>

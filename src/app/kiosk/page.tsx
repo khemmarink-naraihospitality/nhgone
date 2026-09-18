@@ -49,8 +49,8 @@ export default function KioskWelcomePage() {
 
       {/* Two floating cards */}
       <main className="flex flex-1 gap-6 px-8 pb-4">
-        {/* Left: content card */}
-        <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12 shadow-sm">
+        {/* Left: content card - flex-1, so it runs right up to the image */}
+        <div className="flex min-w-[360px] flex-1 flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12 shadow-sm">
           <h1 className="text-5xl font-bold leading-tight tracking-tight">
             {t.welcomeTitle(propertyName)}
           </h1>
@@ -72,12 +72,10 @@ export default function KioskWelcomePage() {
           </div>
         </div>
 
-        {/* Right: image card - narrower than a full-bleed panel, matching
-            confirm/page.tsx's layout (same reasoning: a reference
-            screenshot's boxed proportion, sitting right after the left card
-            on the row's normal gap rather than pushed to the far edge, so
-            the leftover width reads as trailing margin past the image). */}
-        <div className="relative w-[30%] min-w-[280px] overflow-hidden rounded-[32px]">
+        {/* Right: image card - same layout as confirm/page.tsx: a fixed
+            narrow width at the right edge, with the white card beside it
+            taking all the remaining width. */}
+        <div className="relative w-[30%] min-w-[280px] shrink-0 overflow-hidden rounded-[32px]">
           {/* Plain <img>: the configured photo is a remote Supabase Storage
               URL, and next/image would need that host whitelisted in
               next.config for no benefit on a fixed-size kiosk panel. */}
