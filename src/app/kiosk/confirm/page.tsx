@@ -51,7 +51,7 @@ function ConfirmContent() {
     <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar />
 
-      <main className="flex flex-1 gap-6 px-8 pb-4">
+      <main className="flex flex-1 justify-between gap-6 px-8 pb-4">
         {/* Left: content card */}
         <div className="flex w-[42%] min-w-[360px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
@@ -88,15 +88,18 @@ function ConfirmContent() {
           <button
             type="button"
             onClick={() => router.push(`/kiosk/registration?guest=${encodeURIComponent(arrival.id)}`)}
-            className="mt-auto flex w-full items-center justify-between rounded-full bg-[var(--kiosk-inverse-bg)] px-8 py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
+            className="relative mt-auto flex w-full items-center justify-center rounded-full bg-[var(--kiosk-inverse-bg)] px-8 py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
           >
             {t.confirmButton}
-            <ArrowRight size={24} aria-hidden="true" />
+            <ArrowRight size={24} className="absolute right-8" aria-hidden="true" />
           </button>
         </div>
 
-        {/* Right: image card */}
-        <div className="relative flex-1 overflow-hidden rounded-[32px]">
+        {/* Right: image card - narrower than a full-bleed panel and anchored
+            to the right edge (matched to a reference screenshot), not
+            flex-1: `justify-between` on <main> leaves the gap between the
+            two cards showing the page background instead of more photo. */}
+        <div className="relative w-[30%] min-w-[280px] overflow-hidden rounded-[32px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={FALLBACK_IMAGE} alt="" className="absolute inset-0 h-full w-full object-cover" />
         </div>
