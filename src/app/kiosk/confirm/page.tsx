@@ -51,7 +51,7 @@ function ConfirmContent() {
     <div className="flex h-full w-full flex-col bg-[var(--kiosk-bg)] font-sans text-[var(--kiosk-text)]">
       <KioskTopBar />
 
-      <main className="flex flex-1 gap-3 px-8 pb-4">
+      <main className="flex flex-1 gap-[5px] px-8 pb-4">
         {/* Left: content card - flex-1, so it runs right up to the image */}
         <div className="flex min-w-[360px] flex-1 flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12">
           <h1 className="text-4xl font-bold leading-tight tracking-tight">
