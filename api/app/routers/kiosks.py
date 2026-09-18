@@ -230,9 +230,14 @@ def _number_key(number: Optional[str]) -> int:
 
 
 @router.get("/arrivals")
-async def kiosk_arrivals(property_name: str = Query(...)):
+async def kiosk_arrivals(property_name: str = Query(...), include_all: bool = Query(False)):
     """The check-in list a terminal shows: today's Confirmed arrivals, newest
     reservation number first - the order MEWS's own kiosk lists them in.
+
+    `include_all` is the search screen's "Show all reservations" switch
+    (off by default): every one of today's arrivals in whatever state MEWS
+    holds - checked in, canceled and so on - each carrying its `state` so
+    the screen can label it and keep it from being picked for check-in.
 
     Reads the per-minute mirror, never MEWS: a lobby full of guests tapping
     the screen must not turn into a MEWS request per tap. "Today" is taken in
@@ -253,7 +258,10 @@ async def kiosk_arrivals(property_name: str = Query(...)):
 
     if rows:
         today = datetime.now(ZoneInfo(rows[0].get("time_zone") or "Asia/Bangkok")).date().isoformat()
-        rows = [r for r in rows if r.get("arrival_date") == today and r.get("state") == "Confirmed"]
+        rows = [
+            r for r in rows
+            if r.get("arrival_date") == today and (include_all or r.get("state") == "Confirmed")
+        ]
     rows.sort(key=lambda r: _number_key(r.get("number")), reverse=True)
     return {"status": "success", "enabled": True, "data": [_arrival_fields(r) for r in rows]}
 

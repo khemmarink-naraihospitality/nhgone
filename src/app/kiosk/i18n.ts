@@ -85,6 +85,10 @@ export interface KioskCopy {
   notEnabled: string;
   noArrivals: string;
   unavailable: string;
+  showAll: string;
+  /** Badge per MEWS reservation State, shown only while "Show all" is on
+   * and only on the cards that aren't Confirmed. */
+  stateLabel: Record<string, string>;
 }
 
 const en: KioskCopy = {
@@ -122,6 +126,15 @@ const en: KioskCopy = {
   notEnabled: "Self check-in isn't available at this property yet. Please visit the front desk.",
   noArrivals: "There are no more arrivals to check in today.",
   unavailable: "This booking can't be checked in here. Please visit the front desk.",
+  showAll: "Show all reservations",
+  stateLabel: {
+    Confirmed: "Awaiting check-in",
+    Started: "Checked in",
+    Processed: "Checked out",
+    Canceled: "Canceled",
+    Optional: "Optional",
+    Inquired: "Inquiry",
+  },
 };
 
 const th: KioskCopy = {
@@ -159,6 +172,15 @@ const th: KioskCopy = {
   notEnabled: "โรงแรมนี้ยังไม่เปิดให้เช็คอินด้วยตนเอง กรุณาติดต่อแผนกต้อนรับ",
   noArrivals: "ไม่มีผู้เข้าพักที่รอเช็คอินสำหรับวันนี้แล้ว",
   unavailable: "การจองนี้ไม่สามารถเช็คอินที่เครื่องนี้ได้ กรุณาติดต่อแผนกต้อนรับ",
+  showAll: "แสดงการจองทั้งหมด",
+  stateLabel: {
+    Confirmed: "รอเช็คอิน",
+    Started: "เช็คอินแล้ว",
+    Processed: "เช็คเอาต์แล้ว",
+    Canceled: "ยกเลิก",
+    Optional: "จองชั่วคราว",
+    Inquired: "สอบถาม",
+  },
 };
 
 const fil: KioskCopy = {
@@ -196,6 +218,15 @@ const fil: KioskCopy = {
   notEnabled: "Ang self check-in ay hindi pa available sa property na ito. Mangyaring magtungo sa front desk.",
   noArrivals: "Wala nang bisitang kailangang mag-check in ngayong araw.",
   unavailable: "Hindi ma-check in dito ang booking na ito. Mangyaring magtungo sa front desk.",
+  showAll: "Ipakita lahat ng reserbasyon",
+  stateLabel: {
+    Confirmed: "Naghihintay ng check-in",
+    Started: "Naka-check in na",
+    Processed: "Naka-check out na",
+    Canceled: "Kinansela",
+    Optional: "Pansamantala",
+    Inquired: "Pagtatanong",
+  },
 };
 
 const km: KioskCopy = {
@@ -233,6 +264,15 @@ const km: KioskCopy = {
   notEnabled: "ការចូលស្នាក់នៅដោយខ្លួនឯងមិនទាន់មាននៅទីនេះនៅឡើយទេ។ សូមទៅកាន់ផ្នែកទទួលភ្ញៀវ។",
   noArrivals: "មិនមានភ្ញៀវដែលត្រូវចូលស្នាក់នៅថ្ងៃនេះទៀតទេ។",
   unavailable: "ការកក់នេះមិនអាចចូលស្នាក់នៅនៅទីនេះបានទេ។ សូមទៅកាន់ផ្នែកទទួលភ្ញៀវ។",
+  showAll: "បង្ហាញការកក់ទាំងអស់",
+  stateLabel: {
+    Confirmed: "កំពុងរង់ចាំចូលស្នាក់នៅ",
+    Started: "បានចូលស្នាក់នៅ",
+    Processed: "បានចាកចេញ",
+    Canceled: "បានលុបចោល",
+    Optional: "បណ្ដោះអាសន្ន",
+    Inquired: "ការសាកសួរ",
+  },
 };
 
 const ja: KioskCopy = {
@@ -270,6 +310,15 @@ const ja: KioskCopy = {
   notEnabled: "この施設ではセルフチェックインをまだご利用いただけません。フロントデスクへお越しください。",
   noArrivals: "本日チェックイン予定のお客様は以上です。",
   unavailable: "このご予約はこちらではチェックインできません。フロントデスクへお越しください。",
+  showAll: "すべての予約を表示",
+  stateLabel: {
+    Confirmed: "チェックイン待ち",
+    Started: "チェックイン済み",
+    Processed: "チェックアウト済み",
+    Canceled: "キャンセル",
+    Optional: "仮予約",
+    Inquired: "問い合わせ",
+  },
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

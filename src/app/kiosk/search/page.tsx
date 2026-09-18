@@ -21,12 +21,19 @@ import { ARRIVALS_POLL_MS, formatShortDate, guestLabel, type KioskArrival } from
  *
  * Picking a card carries only the reservation id forward (?guest=<id>);
  * confirm and registration read the rest themselves.
+ *
+ * "Show all reservations" (off by default, beside the count) widens the list
+ * to every one of today's arrivals - checked in, canceled and so on - for
+ * staff looking over the day. Those cards carry a status badge and can't be
+ * picked, since only a Confirmed booking can be checked in. The switch lives
+ * in this page's own state rather than a context, so leaving the screen
+ * always brings a lobby terminal back to the check-in-only default.
  */
 
 type ListStatus = "ready" | "disabled" | "error";
 
 interface ListState {
-  property: string;
+  key: string;
   status: ListStatus;
   arrivals: KioskArrival[];
 }
@@ -36,29 +43,33 @@ export default function SearchGuestsPage() {
   const { selectedProperty, loaded: propertyLoaded } = useSelectedProperty();
   const { t, language } = useKioskLanguage();
   const [query, setQuery] = useState("");
+  const [showAll, setShowAll] = useState(false);
   const [list, setList] = useState<ListState | null>(null);
+  const listKey = `${selectedProperty}|${showAll}`;
 
   useEffect(() => {
     if (!selectedProperty) return;
     const property = selectedProperty;
+    const key = `${property}|${showAll}`;
     let cancelled = false;
 
     const load = async () => {
       try {
         const params = new URLSearchParams({ property_name: property });
+        if (showAll) params.set("include_all", "true");
         const response = await fetch(`/api/kiosks/arrivals?${params}`);
         const res = await response.json();
         if (cancelled) return;
         if (!response.ok || res.status !== "success") throw new Error(res.detail || "load failed");
-        setList({ property, status: res.enabled ? "ready" : "disabled", arrivals: res.data || [] });
+        setList({ key, status: res.enabled ? "ready" : "disabled", arrivals: res.data || [] });
       } catch {
         if (cancelled) return;
         // A failed refresh keeps the list already on screen - it is at most
         // one poll old, and blanking a guest's name mid-tap is worse.
         setList((prev) =>
-          prev && prev.property === property && prev.status === "ready"
+          prev && prev.key === key && prev.status === "ready"
             ? prev
-            : { property, status: "error", arrivals: [] }
+            : { key, status: "error", arrivals: [] }
         );
       }
     };
@@ -69,9 +80,9 @@ export default function SearchGuestsPage() {
       cancelled = true;
       clearInterval(timer);
     };
-  }, [selectedProperty]);
+  }, [selectedProperty, showAll]);
 
-  const current = list && list.property === selectedProperty ? list : null;
+  const current = list && list.key === listKey ? list : null;
   const arrivals = useMemo(() => current?.arrivals ?? [], [current]);
 
   const results = useMemo(() => {
@@ -111,9 +122,31 @@ export default function SearchGuestsPage() {
         <div>
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-xl font-medium text-[var(--kiosk-text-muted)]">{t.stay}</h2>
-            <div className="flex items-center gap-2 text-[var(--kiosk-text-muted)]">
-              <span className="text-lg font-medium">{results.length}</span>
-              <ChevronDown size={20} aria-hidden="true" />
+            <div className="flex items-center gap-6 text-[var(--kiosk-text-muted)]">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={showAll}
+                onClick={() => setShowAll((v) => !v)}
+                className="flex items-center gap-3"
+              >
+                <span className="text-base font-medium">{t.showAll}</span>
+                <span
+                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors ${
+                    showAll ? "bg-[var(--kiosk-accent)]" : "bg-[var(--kiosk-border-strong)]"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      showAll ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </span>
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-medium">{results.length}</span>
+                <ChevronDown size={20} aria-hidden="true" />
+              </div>
             </div>
           </div>
 
@@ -121,27 +154,38 @@ export default function SearchGuestsPage() {
             <p className="py-10 text-center text-base font-medium text-[var(--kiosk-text-faint)]">{message}</p>
           ) : (
             <div className="grid grid-cols-3 gap-5">
-              {results.map((arrival) => (
-                <button
-                  key={arrival.id}
-                  type="button"
-                  onClick={() => router.push(`/kiosk/confirm?guest=${encodeURIComponent(arrival.id)}`)}
-                  className="flex flex-col gap-8 rounded-2xl bg-[var(--kiosk-surface-alt)] p-6 text-left transition-colors hover:bg-[var(--kiosk-hover)]"
-                >
-                  <div>
-                    <p className="text-lg font-semibold">{guestLabel(arrival)}</p>
-                    <div className="mt-2 flex items-center gap-1.5 text-[var(--kiosk-text-muted)]">
-                      <Users size={16} aria-hidden="true" />
-                      <span className="text-sm font-medium">{arrival.person_count}</span>
+              {results.map((arrival) => {
+                const checkInable = arrival.state === "Confirmed";
+                return (
+                  <button
+                    key={arrival.id}
+                    type="button"
+                    disabled={!checkInable}
+                    onClick={() => router.push(`/kiosk/confirm?guest=${encodeURIComponent(arrival.id)}`)}
+                    className="flex flex-col gap-8 rounded-2xl bg-[var(--kiosk-surface-alt)] p-6 text-left transition-colors enabled:hover:bg-[var(--kiosk-hover)] disabled:cursor-default disabled:opacity-55"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-lg font-semibold">{guestLabel(arrival)}</p>
+                        {!checkInable && (
+                          <span className="shrink-0 rounded-full border border-[var(--kiosk-border-strong)] px-3 py-1 text-xs font-semibold text-[var(--kiosk-text-muted)]">
+                            {t.stateLabel[arrival.state] || arrival.state}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5 text-[var(--kiosk-text-muted)]">
+                        <Users size={16} aria-hidden="true" />
+                        <span className="text-sm font-medium">{arrival.person_count}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center justify-between text-sm font-medium text-[var(--kiosk-text-secondary)]">
-                    <span>{formatShortDate(arrival.scheduled_start_utc, arrival.time_zone, language)}</span>
-                    <span className="mx-2 flex-1 border-t border-dotted border-[var(--kiosk-border-strong)]" />
-                    <span>{formatShortDate(arrival.scheduled_end_utc, arrival.time_zone, language)}</span>
-                  </div>
-                </button>
-              ))}
+                    <div className="flex items-center justify-between text-sm font-medium text-[var(--kiosk-text-secondary)]">
+                      <span>{formatShortDate(arrival.scheduled_start_utc, arrival.time_zone, language)}</span>
+                      <span className="mx-2 flex-1 border-t border-dotted border-[var(--kiosk-border-strong)]" />
+                      <span>{formatShortDate(arrival.scheduled_end_utc, arrival.time_zone, language)}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
