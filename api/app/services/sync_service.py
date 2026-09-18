@@ -215,66 +215,60 @@ _RR3_PROPERTY_THAI_NAMES = {
     "Marasca Samui": "มาราสก้า สมุย",
 }
 
-# A zero-night ("day use") stay counts as an ARRIVAL only if its SCHEDULED
-# start (StartUtc, not the real check-in) is at or after this local hour.
-# Earlier than that and it is the tail of the PREVIOUS night's business,
-# mislabeled with today's date - still a departure (it checks out during the
-# day), never an arrival. See the block in get_st_files_report that uses it.
+# A zero-night ("day use") stay counts as an ARRIVAL unless its ROOM is
+# handed to another stay later the same day. If the room turns over, that
+# next stay is the room's arrival for the day and this one is the tail of the
+# PREVIOUS night's business wearing today's date - still a departure (it
+# checks out during the day), never an arrival. Read where
+# space_turns_over_today is defined in get_st_files_report.
 #
-# REVERSED 17-Sep-2026 from a same-day-clock, ActualStartUtc-based rule (see
-# the retired investigation below) once it started missing on every single
-# property it touched. Measured against a live import and the same morning's
-# sheet for 16-Sep-2026 - not cached-vs-cached like the retired rule below,
-# because by the time the conflict was noticed the cached import was already
-# hours stale, so this is scored against whatever each side held at
-# measurement time, all four cases named individually rather than inferred
-# from a moving total:
+# Established 18-Sep-2026, after THREE clock-based rules had each been
+# shipped and then contradicted within days. It is the first rule that fits
+# every reservation on record, and it is not a clock at all - which is why no
+# cutoff ever held:
 #
-#   sheet counts, old rule wrongly excluded:
-#     Chinatown #98851  sched 02:00  actual 02:26
-#     Siem Reap #151871 sched 02:00  actual 06:38
-#   sheet excludes, old rule wrongly counted:
-#     Siam  #72062      sched 00:37  actual 00:37
-#     Samui #186238     sched 00:45  actual 00:46
+#   sheet COUNTS (room not re-let that day)
+#     17-Sep Siam      #72477  out 10:48   room 3081  nothing follows
+#     17-Sep Patong    #193065 out 11:17   room 2305  nothing follows
+#     17-Sep Patong    #193051 out 12:00   room 4212  next stay 18-Sep
+#     16-Sep Chinatown #98851  out 10:51   room 514   nothing follows
+#     16-Sep Siem Reap #151871 out 10:39   room 314   nothing follows
+#     10-Sep Chinatown #97796  out 10:21   room 301   nothing follows
+#   sheet EXCLUDES (room re-let the same day)
+#     17-Sep Siam      #72432  out 12:00   room 3083  #72520  in 13:02
+#     17-Sep Siam      #71555  out 12:00   room 302   #71766  in 14:00
+#     17-Sep Patong    #193061 out 06:36   room 2505  #193083 in 06:36
+#     17-Sep Patong    #193052 out 12:00   room 4208  #192081 in 14:00
+#     17-Sep Patong    #193054 out 12:00   room 4211  #192677 in 14:00
+#     17-Sep Patong    #193053 out 12:00   room 4206  #192051 in 14:00
+#     17-Sep Siem Reap #152050 out 09:15   room 314   #152098 in 14:00
+#     17-Sep Siem Reap #152051 out 09:27   room 316   #152097 in 14:00
+#     16-Sep Siam      #72062  out 11:47   room 3062  #71593  in 13:37
+#     16-Sep Samui     #186238 out 12:00   room 2109  #186341 in 14:00
+#     10-Sep Chinatown #97770  out 11:35   room 405   #96879  in 14:00
 #
-# All four flip to the sheet's own answer under "scheduled start, cutoff
-# 02:00" and under no other cutoff/clock combination tried (26 candidates
-# scored per space category by scripts/st_arrival_sweep.py) - see that run's
-# own table for the full field. scripts/st_arrival_named.py is what pulled
-# the four rows above; keep using it to name reservations instead of reading
-# a category total, for the same reason the retired investigation gives below.
+# This RESOLVES what the retired comment called an unresolved conflict.
+# Chinatown #97796 vs #97770 (10-Sep-2026) share a scheduled StartUtc of
+# 00:00, so no scheduled-clock rule could ever separate them, and their real
+# check-ins (00:21 vs 04:02) were the only other difference anyone had found
+# - which is why the rule kept being re-pinned to the actual check-in and
+# kept breaking elsewhere. The room tells them apart cleanly: 405 was re-let
+# at 14:00 that afternoon, 301 was not.
 #
-# UNRESOLVED CONFLICT, kept deliberately rather than quietly dropped: the
-# retired rule below was itself pinned by an equally clean named pair -
-# Chinatown #97796 (counted) vs #97770 (excluded), 10-Sep-2026, SAME
-# scheduled StartUtc (00:00) on both. A scheduled-only rule cannot distinguish
-# two reservations that share their scheduled start, so if that pair's
-# reading was accurate, no rule tested here can be right for both mornings at
-# once. That sheet has rolled over and cannot be re-pulled, so the conflict
-# is unresolvable with what's left of it. If a same-scheduled-time pair with
-# different real check-ins resurfaces, name both reservations, check them
-# against a same-morning sheet immediately (not a later cached import), and
-# reopen this rather than assuming either investigation was wrong.
+# Why the clock rules looked right and then weren't: a room that is turning
+# over usually holds a stay booked to the standard noon checkout, so "ends at
+# 12:00" and "started before 02:00" both correlate with turnover without
+# causing it. Every counter-example on record is a room that checked out
+# early and was NOT re-let (counted) or one that checked out early and WAS
+# (excluded) - 17-Sep Siem Reap #152050/#152051 out at 09:15/09:27 are the
+# pair that finally ruled out every end-time cutoff.
 #
-# ------------------------------- retired 17-Sep-2026, kept for the conflict
-# note above ------------------------------------------------------------
-# Was pinned to the ACTUAL check-in hour, cutoff 01:00, exclude >= cutoff.
-# Measured the only way that had seemed trustworthy - a CACHED import against
-# the same morning's sheet, all 8 properties, the two frozen 22 minutes apart
-# (10-Sep-2026, our import 19:21Z, the sheets exported 18:59-19:24Z, and
-# nothing was created or cancelled in between):
-#
-#   counted by MEWS      Chinatown #97796  actual 00:21   Siam #72034  actual 00:22
-#   NOT counted by MEWS  Siem Reap #151359 actual 01:16   #151361 actual 03:58
-#                        Chinatown #97770  actual 04:02
-#
-# Chinatown #97796 and #97770 were what pinned it to the ACTUAL check-in
-# rather than the scheduled one: same StartUtc (00:00), same category, same
-# ChannelManager origin, same rate family, same state - MEWS counted one and
-# not the other, and ActualStartUtc was the only field on the two that
-# differed at all. See the UNRESOLVED CONFLICT note above for why this pair
-# is not simply explained away by the rule above it.
-_ST_DAY_USE_ARRIVAL_START_HOUR = 2
+# Measure this with scripts/st_arrival_named.py (names the day-use stays) and
+# scripts/st_arrival_sweep.py (scores candidate rules per space category
+# against all 8 sheets at once). Never score a candidate against a category
+# total alone, and never against live MEWS for a day whose sheet has already
+# rolled over - both mistakes are what shipped the three retired rules.
+_ST_DAY_USE_ROOM_TURNOVER = True
 
 # Offline test seam for the ST arrivals rule - see where it is read in
 # get_st_files_report. Production leaves this None and nothing in the app ever
@@ -3267,8 +3261,8 @@ class SyncService:
         # endpoint, which cannot embed Customers/Resources - hence the second
         # narrow call by ReservationIds, the same one get_rr3_cards makes.
         # Paid on every import now, not only the offline sweep, even though
-        # the day-use arrival rule itself now reads SCHEDULED StartUtc (see
-        # _ST_DAY_USE_ARRIVAL_START_HOUR) rather than this: the test seam
+        # the day-use arrival rule itself reads no clock at all any more (see
+        # _ST_DAY_USE_ROOM_TURNOVER) rather than this: the test seam
         # (_ST_ARRIVAL_RULE, used only by scripts/st_arrival_sweep.py) still
         # scores actual-check-in-based candidates too, and needs this fetched
         # either way. A failure here degrades to StartUtc rather than failing
@@ -3498,6 +3492,35 @@ class SyncService:
             cat = categories.get(cat_id, {})
             return cat if cat.get("in_report") else None
 
+        # When each space is handed to its NEXT stay, for the day-use arrival
+        # rule below: {resource id: [start times of other stays starting today]}.
+        next_stay_in_space = {}
+        for res in reservations:
+            if res.get("State") not in active_states:
+                continue
+            space_id = res.get("AssignedResourceId") or res.get("AssignedSpaceId")
+            start = parse_utc(res.get("StartUtc"))
+            if space_id and start and day_start_utc <= start < day_end_utc:
+                next_stay_in_space.setdefault(space_id, []).append((start, res.get("Id")))
+
+        def space_turns_over_today(res):
+            """Does another stay take this reservation's space later today?
+
+            A zero-night stay whose room is handed straight to the next guest
+            is the tail of the PREVIOUS night, and the room's arrival for this
+            day is the stay that follows it - see the block above
+            _ST_DAY_USE_ROOM_TURNOVER for the seventeen reservations this was
+            measured against.
+            """
+            space_id = res.get("AssignedResourceId") or res.get("AssignedSpaceId")
+            end = parse_utc(res.get("EndUtc"))
+            if not space_id or end is None:
+                return False
+            return any(
+                start >= end and rid != res.get("Id")
+                for start, rid in next_stay_in_space.get(space_id, [])
+            )
+
         arrivals, departures = [], []
         arrivals_count = departures_count = customers_count = 0
         # Units excluded from arrivals by the night-tail half of the day-use
@@ -3550,17 +3573,12 @@ class SyncService:
             sched_day_use = sched_arrives and departs
             # A zero-night ("day use") stay ALWAYS counts as a departure; what
             # varies is whether it ALSO counts as an arrival, and that turns on
-            # its SCHEDULED start hour - see _ST_DAY_USE_ARRIVAL_START_HOUR for
-            # the measurement that fixes both the field and the boundary, and
-            # for why this reads StartUtc rather than the real check-in despite
-            # that having looked settled once already.
+            # whether its ROOM is handed to another stay the same day - see
+            # _ST_DAY_USE_ROOM_TURNOVER for the seventeen measured cases.
             #
             # Multi-night stays are untouched - a 00:30 check-in that DOES stay
             # the night is an ordinary arrival either way.
-            day_room = False
-            if day_use:
-                started = parse_utc(res.get("StartUtc"))
-                day_room = started.astimezone(property_tz).hour < _ST_DAY_USE_ARRIVAL_START_HOUR
+            day_room = day_use and space_turns_over_today(res)
             # Test seam. When _ST_ARRIVAL_RULE is set (only ever by the
             # offline rule-sweep in scripts/, never in production - it is None
             # here and nothing in the app assigns it), that callable decides

@@ -139,7 +139,7 @@ def make_rules():
     # property the incumbent got right. Note it drops the OPPOSITE side of
     # the clock from the candidates below: it keeps a day-use stay that
     # started before 01:00 and drops one that started later.
-    add("PRODUCTION: sched, drop day-use from 01:00 (actual-pref clock)",
+    add("RETIRED: sched, drop day-use from 01:00 (actual-pref clock)",
         lambda res, actual, in_window, pu, tz, rates, ds, de:
             in_window(res.get("StartUtc"))
             and not (in_window(res.get("EndUtc"))
@@ -172,6 +172,34 @@ def make_rules():
                 and not (in_window(res.get("EndUtc"))
                          and not _walk_in(res, rates)
                          and (_hour(actual or res.get("StartUtc"), pu, tz) or 0) < h))
+
+    # --- CHECKOUT-based night-tail test (added 18-Sep-2026). Every rule above
+    # asks when the stay STARTED; these ask when it ENDS. The 17-Sep-2026
+    # mismatch is the case that motivated them: Siam #72477 and #72432 share a
+    # scheduled start (02:00) AND a category, so no start-clock rule can
+    # separate them, yet the sheet counts exactly one - and the only fields
+    # they differ on are the real check-in and the CHECKOUT (10:48 vs 12:00).
+    # A stay running to the standard noon checkout is the previous night's
+    # tail wearing today's date; one that checks out earlier is a real day
+    # room booked for the day itself.
+    for h in (10, 11, 12, 13):
+        add(f"sched, drop day-use ending {h:02d}:00 or later",
+            lambda res, actual, in_window, pu, tz, rates, ds, de, h=h:
+                in_window(res.get("StartUtc"))
+                and not (in_window(res.get("EndUtc"))
+                         and (_hour(res.get("EndUtc"), pu, tz) or 0) >= h))
+
+    # Same test, but only for stays that also started in the small hours -
+    # keeps an afternoon-to-evening day room (start 14:00, end 18:00) counted
+    # no matter where the checkout cutoff lands.
+    for h in (10, 11, 12, 13):
+        for start_h in (2, 6):
+            add(f"sched, drop day-use starting before {start_h:02d}:00 and ending {h:02d}:00+",
+                lambda res, actual, in_window, pu, tz, rates, ds, de, h=h, start_h=start_h:
+                    in_window(res.get("StartUtc"))
+                    and not (in_window(res.get("EndUtc"))
+                             and (_hour(res.get("StartUtc"), pu, tz) or 0) < start_h
+                             and (_hour(res.get("EndUtc"), pu, tz) or 0) >= h))
 
     # --- zero-night stays never count as arrivals / always count
     add("sched, drop ALL day-use",
