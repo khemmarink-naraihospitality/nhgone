@@ -48,7 +48,7 @@ export default function KioskWelcomePage() {
       <KioskTopBar showBack={false} />
 
       {/* Two floating cards */}
-      <main className="flex flex-1 gap-[5px] px-8 pb-4">
+      <main className="flex flex-1 gap-[7px] px-8 pb-4">
         {/* Left: content card - flex-1, so it runs right up to the image */}
         <div className="flex min-w-[360px] flex-1 flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-12 shadow-sm">
           <h1 className="text-5xl font-bold leading-tight tracking-tight">
