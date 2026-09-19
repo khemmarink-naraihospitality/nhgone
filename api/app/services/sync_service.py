@@ -4747,6 +4747,20 @@ class SyncService:
         "Corporate FIT":        "104",
         "Government":           "104",
         "Social Chats":         "105",
+        # Siem Reap carries BOTH "Social Chats" and "Social Media" as separate
+        # MEWS segments and books them to the same 105 bucket. Measured on its
+        # own 18-Sep-2026 file: reservation #151991 (Night 30.30 + 3.09 VAT)
+        # sat in our blank bucket where the file has it in 105. Its blank
+        # bucket read 74.87 against our 105.17 and its 105 read 504.42/51.55
+        # against our 474.12/48.46 - exactly that 30.30 and its VAT, on both
+        # sides. Adding the mapping reproduced the file's blank bucket to the
+        # cent. What remained on that day was NOT a mapping gap: reservation
+        # #150864 is a 16:45 check-in whose night MEWS re-posted after
+        # midnight (it cancelled the 14:00 Night and issued a 23:45 one at
+        # 19-Sep 04:33 local), and its 4.46 + 0.46 + 0.09 is the whole of the
+        # residual. The sheet's export did not catch that swap; the posting is
+        # real, so dropping it to match would discard revenue.
+        "Social Media":         "105",
         "Group Leisure Series": "106",
         "Group Business Series": "106",
         "Group Business Ad-Hoc": "106",
