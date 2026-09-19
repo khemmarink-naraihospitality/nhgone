@@ -13,6 +13,7 @@ import {
   Building2,
   CalendarClock,
   ChartColumnBig,
+  ChevronDown,
   Database,
   FileSpreadsheet,
   Flag,
@@ -40,28 +41,50 @@ import {
 
 // The desktop sidebar's collapsed/expanded choice, remembered per browser.
 const SIDEBAR_COLLAPSED_KEY = "nhgone.sidebarCollapsed";
+// Which sub-menu groups the user has pinned open (clicked, not just
+// hovered), remembered per browser the same way the rail's own
+// collapsed/expanded choice is - keyed by the parent's href.
+const SIDEBAR_OPEN_GROUPS_KEY = "nhgone.sidebarOpenGroups";
 
-type NavEntry = { href: string; label: string; icon: LucideIcon; active: boolean; sub?: boolean };
+type NavEntry = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  active: boolean;
+  sub?: boolean;
+  // A parent entry with children renders as a collapsible group: collapsed
+  // by default, expandable by click (pinned - see SIDEBAR_OPEN_GROUPS_KEY)
+  // or by hover (transient), and auto-expanded whenever one of its children
+  // is the active page.
+  children?: NavEntry[];
+};
 
 // One sidebar link: icon + label when expanded, icon alone with a hover/focus
 // tooltip when collapsed. Module-level (not defined inside Navigation) so a
 // re-render of the shell doesn't remount every link and drop keyboard focus.
 //
 // `sub` marks an item as visually nested under the one before it (e.g. Check
-// In Form under Kiosks) - extra left indent and a smaller icon, expanded
-// only; there is no separate group/expand-collapse mechanism, since one
-// relationship in an otherwise-flat list doesn't earn its own subsystem.
-// Collapsed to the icon rail, a sub-item renders identically to a normal one
-// - the rail is icon-only for everything already, so hierarchy nuance is
-// lost there regardless.
-function NavItem({ href, label, icon: Icon, active, collapsed, sub }: NavEntry & { collapsed: boolean }) {
+// In Form under Kiosks) - extra left indent and a smaller icon. Nesting
+// itself is rendered by NavGroup below, which shows/hides the sub-items;
+// `sub` here only controls this one item's own indent/icon size.
+// `hasChildren` reserves right-side padding for NavGroup's chevron button so
+// the label never runs under it - a plain leaf item doesn't need the room.
+function NavItem({
+  href,
+  label,
+  icon: Icon,
+  active,
+  collapsed,
+  sub,
+  hasChildren,
+}: NavEntry & { collapsed: boolean; hasChildren?: boolean }) {
   return (
     <Link
       href={href}
       aria-label={collapsed ? label : undefined}
       aria-current={active ? "page" : undefined}
       className={`group relative flex items-center gap-3 border-l-2 rounded-r-md transition-colors duration-150 ${
-        collapsed ? "justify-center py-2.5" : `py-2.5 lg:py-2 ${sub ? "pl-8 pr-3" : "px-3"}`
+        collapsed ? "justify-center py-2.5" : `py-2.5 lg:py-2 ${sub ? "pl-8 pr-3" : hasChildren ? "pl-3 pr-9" : "px-3"}`
       } ${
         active
           ? "text-white font-bold bg-[#FFEFD2]/10 border-[#FFEFD2]"
@@ -87,6 +110,85 @@ function NavItem({ href, label, icon: Icon, active, collapsed, sub }: NavEntry &
         </span>
       )}
     </Link>
+  );
+}
+
+// A parent item with `children` (e.g. Kiosks > Check In Form): collapsed by
+// default, expandable three ways - clicking the chevron pins it open
+// (remembered per browser, same pattern as the rail's own collapsed state),
+// hovering the row opens it transiently without pinning anything, and
+// landing on a child page opens it automatically so the active link is
+// always visible. The chevron is a sibling of the parent's own <Link>, not
+// nested inside it, so toggling never triggers navigation.
+//
+// Icon-rail mode (collapsed=true) has no room for a chevron or an indented
+// list, so children just render inline exactly like the rail's other icons
+// whenever the group would be open anyway (active child, or already pinned) -
+// there's no separate flyout mechanism for the rail today.
+function NavGroup({
+  entry,
+  collapsed,
+  isPinned,
+  isHovered,
+  onTogglePin,
+  onHoverChange,
+}: {
+  entry: NavEntry;
+  collapsed: boolean;
+  isPinned: boolean;
+  isHovered: boolean;
+  onTogglePin: () => void;
+  onHoverChange: (hovered: boolean) => void;
+}) {
+  const children = entry.children ?? [];
+  const hasActiveChild = children.some((c) => c.active);
+  const open = isPinned || isHovered || hasActiveChild;
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col gap-1">
+        <NavItem {...entry} collapsed={collapsed} />
+        {open && children.map((child) => <NavItem key={child.href} {...child} collapsed={collapsed} />)}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-col"
+      onMouseEnter={() => onHoverChange(true)}
+      onMouseLeave={() => onHoverChange(false)}
+    >
+      <div className="relative">
+        <NavItem {...entry} collapsed={collapsed} hasChildren />
+        <button
+          type="button"
+          onClick={onTogglePin}
+          aria-label={open ? `Collapse ${entry.label}` : `Expand ${entry.label}`}
+          aria-expanded={open}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded text-white/35 hover:text-white hover:bg-white/10 transition-colors"
+        >
+          <ChevronDown
+            aria-hidden="true"
+            strokeWidth={2}
+            className={`w-3.5 h-3.5 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+      </div>
+      <div
+        className={`grid transition-[grid-template-rows] duration-200 ease-out ${
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
+        }`}
+      >
+        <div className="overflow-hidden">
+          <div className="flex flex-col gap-1 pt-1">
+            {children.map((child) => (
+              <NavItem key={child.href} {...child} collapsed={collapsed} sub />
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -308,6 +410,36 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       // Private mode / blocked storage: the toggle still works for this visit.
     }
   };
+
+  // Which sub-menu groups (by parent href) the user has clicked open -
+  // "pinned" as opposed to the transient hover-open below. Same
+  // read-in-initializer pattern as sidebarCollapsed, for the same reason
+  // (no server markup to disagree with).
+  const [pinnedGroups, setPinnedGroups] = useState<Set<string>>(() => {
+    if (typeof window === "undefined") return new Set();
+    try {
+      const raw = window.localStorage.getItem(SIDEBAR_OPEN_GROUPS_KEY);
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+  const toggleGroupPin = (href: string) => {
+    setPinnedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(href)) next.delete(href);
+      else next.add(href);
+      try {
+        window.localStorage.setItem(SIDEBAR_OPEN_GROUPS_KEY, JSON.stringify([...next]));
+      } catch {
+        // Private mode / blocked storage: the toggle still works for this visit.
+      }
+      return next;
+    });
+  };
+  // Which group is transiently open from a mouse hover (not persisted, and
+  // cleared as soon as the pointer leaves) - null means none.
+  const [hoveredGroup, setHoveredGroup] = useState<string | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -714,8 +846,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
               { href: "/admin/api-settings", label: "Property & API", icon: Building2, active: pathname === "/admin/api-settings" },
               { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
               { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
-              { href: "/admin/kiosks", label: "Kiosks", icon: MonitorCog, active: pathname === "/admin/kiosks" },
-              { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form", sub: true },
+              {
+                href: "/admin/kiosks",
+                label: "Kiosks",
+                icon: MonitorCog,
+                active: pathname === "/admin/kiosks",
+                children: [
+                  { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form" },
+                ],
+              },
             ]
           : []),
         { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
@@ -747,6 +886,16 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       {navEntries.map((entry, i) =>
         entry === DIVIDER ? (
           <div key={`divider-${i}`} className={`h-px bg-white/5 my-3 ${collapsed ? "mx-2" : "mx-3"}`} />
+        ) : entry.children?.length ? (
+          <NavGroup
+            key={entry.href}
+            entry={entry}
+            collapsed={collapsed}
+            isPinned={pinnedGroups.has(entry.href)}
+            isHovered={hoveredGroup === entry.href}
+            onTogglePin={() => toggleGroupPin(entry.href)}
+            onHoverChange={(hovered) => setHoveredGroup(hovered ? entry.href : null)}
+          />
         ) : (
           <NavItem key={entry.href} {...entry} collapsed={collapsed} />
         )
