@@ -242,7 +242,8 @@ const RR4_COMPARE_TOKENS: TokenDoc[] = [
   { name: "PropertyCount", description: "How many properties could be compared (of the 6 Thai ones)" },
   { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property, RR4 and TM30 as Google Sheet / NHGOne, green tick when they agree and red cross when they don't" },
   { name: "ColumnTable", description: "Table 2 - pre-built HTML: every difference behind table 1, naming the guests; red needs review, amber is already-explained known drift or a configured-window shortfall" },
-  { name: "WindowTable", description: "Table 3 - pre-built HTML: the time each side started sweeping its day (sheet vs ours, RR4 and TM30 separately) and when our own import ran" },
+  { name: "UnmappedTable", description: "Table 3 - pre-built HTML: every guest we filed with a BLANK nationality, split into the ones MEWS has a nationality for that our code table has no number for (fix in Admin > RR4/TM30-Nationality) and the ones whose MEWS profile has no nationality at all (fix in MEWS). Not a sheet comparison - both sides read the same code table, so these usually leave table 1 green" },
+  { name: "WindowTable", description: "Table 4 - pre-built HTML: the time each side started sweeping its day (sheet vs ours, RR4 and TM30 separately) and when our own import ran" },
   // SampleTable is deliberately absent: its example rows are part of
   // ColumnTable now. The backend still substitutes it as an empty string so a
   // template saved before that change renders nothing there rather than the
@@ -664,6 +665,15 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
        ["Samui", "RR4", "time_check_in<br><small>3 rows</small>", "Anna Weber · C01X45678",
         "14.31", "14.30",
         muted("MEWS wrote ActualStartUtc at :59 seconds, right after the sheet was generated")]],
+    ),
+    UnmappedTable: buildCompareSampleTable(
+      ["Property", "File", "Guest", "What is missing", "How to fix it"],
+      [["Patong", "RR4", "Hsaneen Kathem<br><small>room 3514 · RA015829</small>",
+        bad("Dominica") + "<br><small>has no RR4 code</small>",
+        muted('Admin > RR4-Nationality — the row for "Dominica" is already there, type its number in')],
+       ["Marasca", "TM30", "Lahav Avraham<br><small>· P4471102</small>",
+        amber("no nationality at all") + "<br><small>MEWS profile is empty</small>",
+        muted("Fill the nationality in on the guest's MEWS profile")]],
     ),
     WindowTable: buildCompareSampleTable(
       ["Property", "RR4 — Google Sheet", "RR4 — NHGOne", "TM30 — Google Sheet", "TM30 — NHGOne", "NHGOne built the file"],

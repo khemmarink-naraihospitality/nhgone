@@ -338,6 +338,71 @@ def _compare_rows(ours: list, sheet: list, kind: str, columns: list) -> dict:
     }
 
 
+def _unmapped_nationalities(payload: dict) -> dict:
+    """Rows in OUR OWN generated file whose nationality column came out blank.
+
+    Not a sheet comparison at all - this one reads only what we filed, because
+    a blank nationality is wrong on a government form whether or not the sheet
+    happens to be blank in the same place too (it usually is: both sides look
+    the code up in the same table).
+
+    Two different faults produce the same blank cell, and they need different
+    people to fix them, so they are counted apart:
+
+      "no_code"    MEWS DOES have a nationality for this guest and we have no
+                   Thai Hotel Act number / TM30 alpha-3 for it. Fixed in Admin
+                   > RR4-Nationality or TM30-Nationality by typing the code in
+                   - the country name is already sitting there in a row.
+      "no_country" MEWS has no nationality on the guest profile at all. No
+                   code table can help; somebody has to fill it in on the
+                   MEWS profile.
+
+    RR4 tells the two apart on its own: `address` carries MEWS's own country
+    name and is blank only in the second case. TM30 has no country column - it
+    writes the literal "Not found" for both - so it is joined back to the RR4
+    row for the same guest by _key, which both registers build the same way
+    (<ReservationId>:<CustomerId>).
+    """
+    rr4_rows = (payload.get("rr4") or {}).get("rows") or []
+    tm30_rows = (payload.get("tm30") or {}).get("rows") or []
+    country_by_key = {r.get("_key"): (r.get("address") or "").strip()
+                      for r in rr4_rows if r.get("_key")}
+
+    out = {"rr4": [], "tm30": []}
+    for r in rr4_rows:
+        name = " ".join(x for x in (r.get("name_en"), r.get("surname_en")) if x).strip()
+        # A nameless row is MEWS's own unbooked occupant slot - it is dropped
+        # from the filed .xlsx entirely, so a blank nationality on it is not a
+        # missing code, just an empty row.
+        if not name or (r.get("nationality") or "").strip():
+            continue
+        country = (r.get("address") or "").strip()
+        out["rr4"].append({
+            "name": name,
+            "room": r.get("room_no") or "",
+            "document": (r.get("passport") or r.get("pid") or "").strip(),
+            "country": country,
+            "kind": "no_code" if country else "no_country",
+        })
+
+    for r in tm30_rows:
+        code = (r.get("nationality") or "").strip()
+        if code and code != "Not found":
+            continue
+        name = " ".join(x for x in (r.get("first_name"), r.get("last_name")) if x).strip()
+        if not name:
+            continue
+        country = country_by_key.get(r.get("_key"), "")
+        out["tm30"].append({
+            "name": name,
+            "room": "",
+            "document": (r.get("passport_no") or "").strip(),
+            "country": country,
+            "kind": "no_code" if country else "no_country",
+        })
+    return out
+
+
 def _parse_sheet(content: bytes) -> dict:
     """One workbook's RR4 and TM30 tabs, plus the window each was exported
     over. The Master tab is the only place every sheet agrees on: A2 is the
@@ -471,6 +536,7 @@ async def build_comparison(want_date: str = None) -> dict:
     for prop, (short, _sid) in SHEETS.items():
         row = {"property": prop, "short": short, "date": None, "status": "error",
                "note": "", "rr4": None, "tm30": None, "synced_at": "",
+               "unmapped": {"rr4": [], "tm30": []},
                "sheet_rr4_window": "", "sheet_tm30_window": "",
                "our_window": windows.get(prop, ""),
                "our_tm30_window": tm30_windows.get(prop, "")}
@@ -514,6 +580,7 @@ async def build_comparison(want_date: str = None) -> dict:
                                    sh["rr4_rows"], "rr4", rr4_cols)
         row["tm30"] = _compare_rows((payload.get("tm30") or {}).get("rows", []),
                                     sh["tm30_rows"], "tm30", tm30_cols)
+        row["unmapped"] = _unmapped_nationalities(payload)
         props.append(row)
 
     compared = [p for p in props if p["status"] == "ok"]
@@ -627,7 +694,25 @@ def render_text(result: dict) -> str:
         out.append("   (!! needs review today · .. expected from a configured window · "
                    "blank = known drift, already explained)")
 
-    out += ["", "3. WHEN EACH SIDE PULLED ITS DATA", "-" * 88]
+    out += ["", "3. FILED WITH NO NATIONALITY CODE", "-" * 88]
+    any_unmapped = False
+    for p in result["properties"]:
+        unmapped = p.get("unmapped") or {}
+        for kind in ("rr4", "tm30"):
+            for e in unmapped.get(kind, []):
+                any_unmapped = True
+                where = "RR4 " if kind == "rr4" else "TM30"
+                who = f'{e["name"]}{" · room " + e["room"] if e["room"] else ""}'
+                why = (f'{e["country"]} has no {where.strip()} code'
+                       if e["kind"] == "no_code" else "no nationality on the MEWS profile")
+                out.append(f'  {p["short"]:<12} {where}  {who[:46]:<46} {why}')
+    if not any_unmapped:
+        out.append("  Every guest we filed has a nationality code.")
+    else:
+        out.append('   A missing code is fixed in Admin > RR4-Nationality / TM30-Nationality; '
+                   'an empty MEWS profile has to be fixed in MEWS.')
+
+    out += ["", "4. WHEN EACH SIDE PULLED ITS DATA", "-" * 88]
     for p in result["properties"]:
         bad = (p["sheet_rr4_window"] != p["our_window"]
                or p["sheet_tm30_window"] != p["our_tm30_window"])
@@ -953,8 +1038,67 @@ def render_sample_table(result: dict) -> str:
     return ""
 
 
+def render_unmapped_table(result: dict) -> str:
+    """TABLE 3 - the <<UnmappedTable>> token: every guest we filed with a
+    BLANK nationality, and which of the two fixes each one needs.
+
+    Nothing here is a disagreement with the sheet; it is a gap in the file we
+    generated. Both sides read the same code tables, so an unmapped
+    nationality is usually blank on the sheet too and table 1 stays green
+    while a government form goes out with an empty cell.
+    """
+    rows, totals = [], {"no_code": 0, "no_country": 0}
+    for p in result["properties"]:
+        unmapped = p.get("unmapped") or {}
+        for kind in ("rr4", "tm30"):
+            for e in unmapped.get(kind, []):
+                totals[e["kind"]] += 1
+                where = "RR4" if kind == "rr4" else "TM30"
+                room = f' &middot; room {_esc(e["room"])}' if e["room"] else ""
+                if e["kind"] == "no_code":
+                    what = (f'<span style="{_BAD}">{_esc(e["country"])}</span>'
+                            f'<br><small style="color:#64748b">has no {where} code</small>')
+                    fix = (f'Admin &gt; {"RR4" if kind == "rr4" else "TM30"}-Nationality &mdash; '
+                           f'the row for "{_esc(e["country"])}" is already there, '
+                           f'type its number in')
+                else:
+                    what = (f'<span style="{_EXPECTED}">no nationality at all</span>'
+                            f'<br><small style="color:#64748b">MEWS profile is empty</small>')
+                    fix = "Fill the nationality in on the guest's MEWS profile"
+                rows.append(
+                    f'<tr><td style="{_TD}white-space:nowrap">{p["short"]}</td>'
+                    f'<td style="{_TD}white-space:nowrap">{where}</td>'
+                    f'<td style="{_TD}">{_esc(e["name"])}'
+                    f'<small style="color:#94a3b8">{room}'
+                    f'{" &middot; " + _esc(e["document"]) if e["document"] else ""}</small></td>'
+                    f'<td style="{_TD}">{what}</td>'
+                    f'<td style="{_TD}{_MUTED}">{fix}</td></tr>')
+
+    if not rows:
+        return ('<p style="margin:0;font-size:13px;color:#166534;font-weight:700">'
+                'Every guest we filed has a nationality code.</p>')
+
+    h = [f'{_TABLE_OPEN}<tr>'
+         f'<th style="{_TH}">Property</th><th style="{_TH}">File</th>'
+         f'<th style="{_TH}">Guest</th><th style="{_TH}">What is missing</th>'
+         f'<th style="{_TH}">How to fix it</th></tr>'] + rows + ["</table>"]
+    parts = []
+    if totals["no_code"]:
+        parts.append(f'<b>{totals["no_code"]}</b> have a nationality in MEWS that our code '
+                     f'table has no number for &mdash; add it in Admin and the next import '
+                     f'fills it in')
+    if totals["no_country"]:
+        parts.append(f'<b>{totals["no_country"]}</b> have no nationality on the MEWS profile '
+                     f'at all, which no code table can fix')
+    return _scroll(
+        h,
+        'These rows went out with an EMPTY nationality cell. This is not a disagreement with '
+        'the sheet &mdash; both sides look the code up in the same table, so a missing code is '
+        'usually blank on the sheet too and table 1 still shows a tick. ' + '; '.join(parts) + '.')
+
+
 def render_window_table(result: dict) -> str:
-    """TABLE 3 - when each side pulled its data, the <<WindowTable>> token.
+    """TABLE 4 - when each side pulled its data, the <<WindowTable>> token.
 
     Both sides sweep a 24-hour day that STARTS at the time in these columns,
     so a pair that disagrees means the two registers are counting different
@@ -1004,6 +1148,7 @@ def render_tokens(result: dict) -> dict:
         "SummaryTable": render_summary_table(result),
         "ColumnTable": render_column_table(result),
         "SampleTable": render_sample_table(result),
+        "UnmappedTable": render_unmapped_table(result),
         "WindowTable": render_window_table(result),
     }
 

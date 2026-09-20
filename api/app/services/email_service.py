@@ -178,7 +178,9 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
         <<SummaryTable>>
         <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Differs</h3>
         <<ColumnTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">3. When Each Side Pulled Its Data</h3>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">3. Filed With No Nationality Code</h3>
+        <<UnmappedTable>>
+        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">4. When Each Side Pulled Its Data</h3>
         <<WindowTable>>
       </td>
     </tr>
