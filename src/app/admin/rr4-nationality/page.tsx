@@ -18,7 +18,7 @@ interface NationalityRow {
   rr4_code: string;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 export default function Rr4NationalityPage() {
   const [rows, setRows] = useState<NationalityRow[]>([]);
