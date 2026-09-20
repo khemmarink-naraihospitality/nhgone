@@ -2165,33 +2165,46 @@ class SyncService:
     def _rr4_tm30_guest_ids(res: dict) -> list:
         """Who actually SLEEPS in this space, deduped and order-preserved.
 
-        CompanionIds, whenever it's populated, is MEWS's definitive occupant
-        list for that one space - its length matches the reservation's own
-        AdultCount+ChildCount exactly - so it is used alone. CustomerId is
-        only appended when CompanionIds is empty, because CustomerId means
-        "who owns/pays for this booking", which is NOT the same person as
-        "who sleeps in this room" once a booking covers several rooms.
+        CompanionIds is MEWS's definitive occupant list for that one space -
+        its length matches the reservation's own AdultCount+ChildCount
+        exactly - and it is the ONLY source. CustomerId is deliberately not
+        consulted, because it means "who owns/pays for this booking", which
+        is not the same person as "who sleeps in this room" once a booking
+        covers several rooms. An empty CompanionIds means MEWS has no
+        profile attached to that space yet, and the headcount becomes
+        nameless placeholder rows further down - exactly what MEWS's own
+        "Customer profiles" export prints for it.
 
-        An earlier version unioned CustomerId with CompanionIds on the
-        assumption that CompanionIds always already contained the owner. It
-        does - but only for the single room the owner personally occupies;
-        for a family/group that books several rooms at once, MEWS repeats
-        that same owner as CustomerId on EVERY room's reservation while
-        listing only the real occupants in each one's CompanionIds. Unioning
-        therefore filed the booker into every room they paid for: one guest
-        at Lub d Koh Tao Tanote Bay (16-Aug-2026) appeared in 3 different
-        rooms at once, and the register ran 12 rows over MEWS's own figure
-        on that day alone. Confirmed against real MEWS "Customer profiles In
-        house" exports for all 5 properties with reference data - this rule
-        removes every over-count without dropping a single guest MEWS lists,
-        and brings each reservation's row count back in line with the
-        headcount it was actually booked for.
+        Two versions of this were wrong before, in the same direction:
+
+        1. Unioning CustomerId with CompanionIds, on the assumption that
+           CompanionIds always already contained the owner. It does - but
+           only for the single room the owner personally occupies; for a
+           group that books several rooms at once MEWS repeats that owner as
+           CustomerId on EVERY room while listing only the real occupants in
+           each one's CompanionIds. That filed the booker into every room
+           they paid for: one guest at Lub d Koh Tao Tanote Bay
+           (16-Aug-2026) appeared in 3 rooms at once, 12 rows over MEWS's
+           own figure that day.
+
+        2. Falling back to CustomerId when CompanionIds was EMPTY, which is
+           the same bug through the remaining door. Lub d Phuket Patong,
+           19-Sep-2026: Raina Siobhan Mifsud (RA3064494) booked rooms 4506
+           and 4509 in one booking (MEWS GroupId d0432c23-...). MEWS lists
+           her in 4506's CompanionIds and leaves 4509's empty, and the
+           property's own sheet files her once in 4506 with 4509 as a
+           NAMELESS row. The fallback named her in 4509 too - one RR4 row
+           and one TM30 arrival too many, for a person already registered.
+
+        The fallback turned out to be vestigial as well as wrong: over
+        6 properties x 5 days (15-19 Sep 2026, 3,708 reservations) only 3
+        reservations had an empty CompanionIds at all, and in all 3 the
+        CustomerId was someone who had booked more than one room - never a
+        lone guest the fallback was the only chance to name.
         """
-        ids = [c for c in (res.get("CompanionIds") or []) if c] or \
-              ([res["CustomerId"]] if res.get("CustomerId") else [])
         seen, out = set(), []
-        for cid in ids:
-            if cid not in seen:
+        for cid in (res.get("CompanionIds") or []):
+            if cid and cid not in seen:
                 seen.add(cid)
                 out.append(cid)
         return out
