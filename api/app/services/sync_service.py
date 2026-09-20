@@ -188,7 +188,7 @@ _RR3_COUNTRY_MAP = {
     "QA": "Qatar", "RO": "Romania", "RU": "Russia", "RW": "Rwanda",
     "BL": "Saint Barthélemy", "KN": "Saint Kitts and Nevis", "LC": "Saint Lucia", "MF": "Saint Martin",
     "PM": "Saint Pierre and Miquelon", "VC": "Saint Vincent and the Grenadines", "WS": "Samoa", "SM": "San Marino",
-    "ST": "São Tomé and Príncipe", "SA": "Saudi Arabia", "SN": "Senegal", "RS": "Serbia",
+    "ST": "São Tomé and Príncipe", "SA": "Saudi Arabia", "SN": "Senegal", "RS": "Serbia", "RE": "Réunion",
     "SC": "Seychelles", "SL": "Sierra Leone", "SG": "Singapore", "SX": "Sint Maarten",
     "SK": "Slovakia", "SI": "Slovenia", "SB": "Solomon Islands", "SO": "Somalia",
     "ZA": "South Africa", "GS": "South Georgia and South Sandwich Islands", "SS": "South Sudan", "ES": "Spain",
@@ -201,7 +201,7 @@ _RR3_COUNTRY_MAP = {
     "GB": "United Kingdom", "US": "United States", "UM": "United States Minor Outlying Islands", "UY": "Uruguay",
     "UZ": "Uzbekistan", "VU": "Vanuatu", "VE": "Venezuela", "VN": "Vietnam",
     "VG": "Virgin Islands (British)", "VI": "Virgin Islands (U.S.)", "WF": "Wallis and Futuna", "EH": "Western Sahara",
-    "YE": "Yemen", "ZM": "Zambia", "ZW": "Zimbabwe",
+    "XK": "Kosovo", "YE": "Yemen", "ZM": "Zambia", "ZW": "Zimbabwe",
 }
 
 _RR3_PROPERTY_THAI_NAMES = {
