@@ -106,7 +106,18 @@ RR4_NATIONALITY_CODE = {
     "PT": "2", "PW": "232", "PY": "193", "QA": "108", "RO": "27", "RS": "263",
     "RU": "16", "RW": "157", "SA": "59", "SB": "114", "SC": "160", "SD": "163",
     "SE": "7", "SG": "54", "SI": "242", "SK": "241", "SL": "161", "SM": "125",
-    "SN": "159", "SO": "162", "SR": "194", "SS": "272", "SV": "179", "SY": "66",
+    "SN": "159", "SO": "162", "SR": "194", "SS": "272", "SV": "179",
+    # 195, not the 66 on the sheet's own "Syria | ซีเรีย | SYRIA | 66" row.
+    # The sheet carries a SECOND Syria row - "Syrian Arab Republic | อาหรับ |
+    # ARAB | 195" - and its generator looks a guest up by the name MEWS's
+    # export actually writes, which is the formal "Syrian Arab Republic" (see
+    # the RR4 address/come-from override map in sync_service.py). So a Syrian
+    # guest is filed under the generic ARAB code, odd as that reads: Patong
+    # room 4302 on 19-Sep-2026 went out as 195 on both sides with no
+    # difference reported. rr4_nationality_codes already held 195; this only
+    # stops the fallback from silently disagreeing with it if that row is
+    # ever deleted.
+    "SY": "195",
     "SZ": "164",  # the sheet's row reads "สวาซี"/"SWAZI" - no "Eswatini" to match on
     "TD": "136", "TG": "166", "TH": "99", "TJ": "228", "TL": "261", "TM": "235",
     "TN": "167", "TO": "115", "TR": "63", "TT": "189", "TV": "116", "TW": "220",

@@ -20,7 +20,7 @@ interface NationalityRow {
   tm30_code: string;
 }
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 100;
 
 export default function Tm30NationalityPage() {
   const [rows, setRows] = useState<NationalityRow[]>([]);
