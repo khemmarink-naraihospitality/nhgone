@@ -65,6 +65,14 @@
 #     19-Sep-2026 (Patong room 3514) and filed with a blank nationality - as
 #     did the property's own sheet, for the same reason.
 #   * SX, IM, GG and JE have no row on EITHER sheet.
+#
+# Admin > RR4-Nationality was filled out to all 249 _RR3_COUNTRY_MAP names on
+# 20-Sep-2026 (it held only the 192 that had a code), so every nationality
+# MEWS can return is visible and editable there. The 54 with no Thai Hotel
+# Act number yet carry a BLANK rr4_code, which _resolve_rr4_nationality_codes
+# skips - an empty row cannot change what any export writes, it just gives
+# someone a row to type the number into once it's known. That is why the
+# admin table has more rows than this dict has entries.
 
 # RR4-Nationality: alpha-2 -> Thai Hotel Act numeric nationality code.
 RR4_NATIONALITY_CODE = {
