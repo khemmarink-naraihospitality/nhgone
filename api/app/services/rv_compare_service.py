@@ -87,10 +87,18 @@ _FIELD_NAMES = {
 # the rest. The count beside it is always the full one.
 _MAX_DETAIL_ROWS = 15
 
-_DRIFT_REASON = ('Known drift - the Google Sheet holds "×" where our file (and MEWS\'s own '
-                 'real export) writes "x": get_rv_export folds every line to plain ASCII, '
-                 "because one non-ASCII character makes SunSystems reject the whole day's "
-                 "journal")
+_DRIFT_ASCII = ('Known drift - the Google Sheet holds "×" where our file (and MEWS\'s own '
+                'real export) writes "x": get_rv_export folds every line to plain ASCII, '
+                "because one non-ASCII character makes SunSystems reject the whole day's "
+                "journal")
+
+_DRIFT_PREAUTH = ("Known drift - MEWS's own export marks a card taken as a preauthorization "
+                  '("Visa ****3336 Preauthorization") in the slot a virtual card fills with '
+                  '" Virtual". The Connector API exposes no such field: creditCards/getAll '
+                  "returned only Kind=Terminal and Format Physical/Virtual for all 1,509 cards "
+                  "across the 8 properties over 13-19 Sep 2026, and the payment itself reads "
+                  'Kind="Payment". Nothing we can read reproduces the word, so the line is '
+                  "counted here rather than flagged every day")
 
 
 def sheet_url() -> str:
@@ -206,13 +214,30 @@ def _differing(a: tuple, b: tuple) -> list:
     return [(i, a[i], b[i]) for i in range(n) if a[i] != b[i]]
 
 
+def _is_preauth_drift(ours: str, sheet: str) -> bool:
+    """The sheet's description is ours with " Preauthorization" inserted after
+    the masked card number - see _DRIFT_PREAUTH. Field 8 is truncated to 50
+    characters on both sides, so removing the word leaves a SHORTER string
+    that ours must start with, not one that equals it."""
+    if " Preauthorization" not in sheet:
+        return False
+    stripped = sheet.replace(" Preauthorization", "", 1)
+    return bool(stripped) and ours[:len(stripped)] == stripped
+
+
+def _drift_reason(ours: str, sheet: str) -> str:
+    return _DRIFT_PREAUTH if _is_preauth_drift(ours, sheet) else _DRIFT_ASCII
+
+
 def _is_known_drift(index: int, ours: str, sheet: str) -> bool:
     if index != _DESC:
         return False
     from app.services.sync_service import _ascii_fold
 
     folded = _ascii_fold(sheet)
-    return folded == ours or folded[:50] == ours[:50]
+    if folded == ours or folded[:50] == ours[:50]:
+        return True
+    return _is_preauth_drift(ours, sheet)
 
 
 def _totals(lines: list) -> tuple:
@@ -456,14 +481,20 @@ def render_detail_table(result: dict) -> str:
             rows.append(tr(short, _span(_MUTED, f"&hellip; and {len(entries) - _MAX_DETAIL_ROWS} more - "
                                                 f'see the sheet\'s "{_esc(p["tab"])}" tab'), "", "", "", ""))
         if p["drift"]:
-            # One summary row per property, not one per line: this is the same
-            # character every day, and 28 identical amber rows would bury the
-            # red ones this table exists to surface.
-            example = p["drift"][0]
-            _i, ov, sv = example["fields"][0]
-            rows.append(tr(short, f'{len(p["drift"])} line{"s" if len(p["drift"]) != 1 else ""}'
-                                  f'<br><small style="color:#64748b">e.g. {_esc(sv)}</small>',
-                           "Description", _esc(sv), _esc(ov), _span(_MUTED, _esc(_DRIFT_REASON))))
+            # One summary row per drift REASON, not one per line: the same
+            # character recurs every day and 28 identical amber rows would
+            # bury the red ones this table exists to surface. Grouped by
+            # reason rather than per property so a property carrying both
+            # kinds doesn't get one of them explained by the other's text.
+            buckets = {}
+            for entry in p["drift"]:
+                _i, ov, sv = entry["fields"][0]
+                buckets.setdefault(_drift_reason(ov, sv), []).append((ov, sv))
+            for reason, pairs in buckets.items():
+                ov, sv = pairs[0]
+                rows.append(tr(short, f'{len(pairs)} line{"s" if len(pairs) != 1 else ""}'
+                                      f'<br><small style="color:#64748b">e.g. {_esc(sv)}</small>',
+                               "Description", _esc(sv), _esc(ov), _span(_MUTED, _esc(reason))))
 
     if not rows:
         return '<p style="margin:0;font-size:13px;color:#166534;font-weight:700">Nothing to review - every line matched the sheet.</p>'

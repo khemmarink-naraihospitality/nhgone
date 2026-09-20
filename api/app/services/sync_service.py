@@ -4613,6 +4613,13 @@ class SyncService:
                 # unmapped 10 of those days.
                 "ExternalPayment/MasterCard": ("11403", "0"),
                 "ExternalPayment/Visa":       ("11403", "0"),
+                # Amex was missed when the other two brands were added, and
+                # an unmapped payment type refuses the WHOLE day's export -
+                # 19-Sep-2026 produced no Koh Tao file at all over a single
+                # 400 THB line. Its own sheet books that line
+                # ("External payment (Amex - 233987)") to 11403 D, the same
+                # account as its Visa/MasterCard externals.
+                "ExternalPayment/Amex":       ("11403", "0"),
                 # Same sweep: WireTransfer went unmapped 17 of 21 days -
                 # this property's single biggest export-blocking gap. Not a
                 # guess: Koh Tao's own outlet till posts a front-desk-style
@@ -4940,21 +4947,22 @@ class SyncService:
             parts = []
             if card:
                 brand = self._RV_CARD_TYPE_LABELS.get(card.get("Type"), card.get("Type") or "")
-                # ObfuscatedNumber is usually just the last 4 digits ("9428"),
-                # but a Physical card can carry the full BIN+last4 masked PAN
-                # ("478448******7470") and a Virtual token can be all mask
-                # with no real digits at all ("****...****", 32 chars) - the
-                # real file always normalizes to "****" + the last 4 real
-                # digits, or the literal 8-asterisk placeholder when there are
-                # none, never the raw field verbatim.
+                # The real file writes the LAST 8 CHARACTERS of
+                # ObfuscatedNumber verbatim, left-padded with asterisks to 8 -
+                # one rule that covers every shape MEWS returns:
+                #   "9428"                             -> "****9428"
+                #   "478448******7470" (masked PAN)    -> "****7470"
+                #   "****...****"      (32-char token) -> "********"
+                #   "******...***9*"   (mask AROUND a  -> "******9*"
+                #                       stray digit)
+                # The last of those is why this is a character rule and not a
+                # digits rule: Samui's 19-Sep-2026 refund carried
+                # "******************************9*", whose only digit is a
+                # lone "9" near the end. Pulling "the last 4 digits" wrote
+                # "****9" and shifted the whole 50-char description left
+                # against the file's "******9*".
                 obfuscated = card.get("ObfuscatedNumber") or ""
-                digit_runs = re.findall(r"\d+", obfuscated)
-                if digit_runs:
-                    detail = f"{brand} ****{digit_runs[-1][-4:]}"
-                elif obfuscated:
-                    detail = f"{brand} ********"
-                else:
-                    detail = brand
+                detail = f"{brand} {obfuscated[-8:].rjust(8, '*')}" if obfuscated else brand
                 if card.get("Format") == "Virtual":
                     detail += " Virtual"
                 if detail:
@@ -4977,8 +4985,55 @@ class SyncService:
 
         return ptype or "Payment"
 
-    @staticmethod
-    def _rv_display_name(name: str, report_day=None) -> str:
+    _RV_DATE_IN_NAME = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+
+    @classmethod
+    def _rv_date_order(cls, names, report_day=None):
+        """Which way round this property writes the dates inside a
+        BillingName: True for D/M/YYYY, False for M/D/YYYY, None when nothing
+        in the day settles it.
+
+        MEWS formats them per property - Chinatown returns "Night 8/6/2026"
+        where Siem Reap returns "Night 06/08/2026" for the very same night -
+        while every property's RV file writes M/D/YYYY. Resolving the order
+        ONCE from the whole day's names, rather than a line at a time, is what
+        lets a date belonging to some OTHER day be rewritten too: Patong's
+        19-Sep-2026 file carries "Night 20/09/2026 Rebate (Bill 106324)", a
+        rebate reversing TOMORROW's night, and nothing within that line alone
+        says which component is the month - it went out unrewritten against
+        the file's "Night 9/20/2026 Rebate (Bill 106324)".
+
+        Two things settle it, in order:
+          1. Any date in the day with a component over 12, which can only be
+             the day-of-month.
+          2. Failing that, the report day itself - every accommodation line
+             for the day carries that date, so matching it one way round and
+             not the other fixes the order. Only a report day whose month and
+             day are equal (9/9) leaves this undecidable, and then the
+             per-line report-day rule in _rv_display_name still applies.
+        """
+        names = [n or "" for n in names]
+        for name in names:
+            for first, second, _ in cls._RV_DATE_IN_NAME.findall(name):
+                f, sec = int(first), int(second)
+                if f > 12 and sec <= 12:
+                    return True
+                if sec > 12 and f <= 12:
+                    return False
+        if report_day is not None and report_day.month != report_day.day:
+            for name in names:
+                for first, second, year in cls._RV_DATE_IN_NAME.findall(name):
+                    if int(year) != report_day.year:
+                        continue
+                    pair = (int(first), int(second))
+                    if pair == (report_day.day, report_day.month):
+                        return True
+                    if pair == (report_day.month, report_day.day):
+                        return False
+        return None
+
+    @classmethod
+    def _rv_display_name(cls, name: str, report_day=None, day_first=None) -> str:
         """The item's BillingName becomes the journal description, and is used
         for grouping too.
 
@@ -4986,16 +5041,11 @@ class SyncService:
         trailing space ("Coke ", "Dental Kit ") and the real file preserves it,
         so trimming here would make otherwise-identical rows differ.
 
-        The one thing that IS normalised is the date accommodation carries.
-        MEWS formats it per property - Chinatown returns "Night 8/6/2026" but
-        Siem Reap returns "Night 06/08/2026" for the very same night - while
-        both properties' RV files write it as M/D/YYYY. Rather than guess which
-        way round an ambiguous date is, a date is only rewritten when it parses
-        (either order) to the day being reported, which is the only date
-        accommodation for that day can carry. A date for any OTHER day - a
-        rebate reversing an earlier night, say - is left exactly as MEWS wrote
-        it, since nothing here can tell 8/9 from 9/8 on a day that isn't this
-        one.
+        The one thing that IS normalised is the date accommodation carries,
+        into the M/D/YYYY every RV file uses. `day_first` comes from
+        _rv_date_order above and settles the whole day at once; without it
+        (None) only a date that pins to the day being reported is rewritten,
+        since nothing can tell 8/9 from 9/8 on a day that isn't this one.
 
         The date is matched wherever it sits, not just at the end: MEWS
         suffixes the line when a charge is amended ("Night 8/21/2026 Rebate
@@ -5005,19 +5055,23 @@ class SyncService:
         the real file says "Night 8/21/2026 Rebate (Bill 28328)". Every
         occurrence is rewritten, so the doubled-date form lands right too."""
         name = name or ""
-        if report_day is None:
+        if report_day is None and day_first is None:
             return name
 
         def rewrite(match):
             first, second, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
-            if year != report_day.year:
+            if day_first is True:
+                return f"{second}/{first}/{year}"
+            if day_first is False:
+                return f"{first}/{second}/{year}"
+            if report_day is None or year != report_day.year:
                 return match.group(0)
             if not ((first, second) == (report_day.month, report_day.day)
                     or (second, first) == (report_day.month, report_day.day)):
                 return match.group(0)
             return f"{report_day.month}/{report_day.day}/{report_day.year}"
 
-        return re.sub(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", rewrite, name)
+        return cls._RV_DATE_IN_NAME.sub(rewrite, name)
 
     def _rv_gl_overrides(self, property_name: str) -> dict:
         """Per-AccountingCategoryId GL overrides from rv_gl_mappings, keyed by
@@ -5206,12 +5260,15 @@ class SyncService:
         revenue, vat_total, secondary_tax_total = {}, 0.0, 0.0
         vat_by_segment = Counter()
         currencies = Counter()
+        # Resolved from the whole day's names at once, so a date belonging to
+        # another day (a rebate against tomorrow's night) is rewritten too.
+        date_order = self._rv_date_order([i.get("BillingName") for i in live_items], day)
         for item in live_items:
             amount = item.get("Amount") or {}
             if amount.get("Currency"):
                 currencies[amount["Currency"]] += 1
             net = amount.get("NetValue") or 0.0
-            name = self._rv_display_name(item.get("BillingName") or "", day)
+            name = self._rv_display_name(item.get("BillingName") or "", day, date_order)
             gl, dept = self._rv_revenue_gl(name, item.get("AccountingCategoryId"), overrides, chart)
             segment = segments.get(item.get("ServiceOrderId"), "") or ""
             key = (gl, dept, name, segment)
@@ -5331,9 +5388,16 @@ class SyncService:
         # ("Card payment (Mastercard ****8700 Virtual, 459909)" for a Ghost
         # whose original was that Mastercard charge). Resolve it once so the
         # key/description builders below can treat a Ghost as its original's
-        # Type+Data+Identifier while still using the GHOST's own Amount/Notes
-        # - the two must not be conflated, or the row's own D/C and any
-        # front-desk note on the correction itself would be lost.
+        # Type+Data+Identifier while still using the GHOST's own Amount - the
+        # two must not be conflated, or the row's own D/C would be lost.
+        #
+        # Notes are the Ghost's own only when it HAS one: a note typed on the
+        # correction itself still wins, but an empty one falls through to the
+        # original's rather than blanking it. Samui's 19-Sep-2026 pair is why
+        # - both Ghost rows carry Notes=null while their original reads
+        # "Breakfast Promotion", and the file writes
+        # "Card payment (Visa ****0863, 014151, Breakfast Promotion)" on both
+        # sides. Taking the Ghost's null verbatim dropped that suffix.
         ghost_original_ids = {
             ((p.get("Data") or {}).get("Ghost") or {}).get("OriginalPaymentId")
             for p in live_payments if p.get("Type") == "GhostPayment"
@@ -5354,7 +5418,8 @@ class SyncService:
             original = ghost_originals.get(((pay.get("Data") or {}).get("Ghost") or {}).get("OriginalPaymentId"))
             if not original:
                 return pay
-            return {**original, "Amount": pay.get("Amount"), "Notes": pay.get("Notes")}
+            return {**original, "Amount": pay.get("Amount"),
+                    "Notes": pay.get("Notes") or original.get("Notes")}
 
         cards = await self._rv_load_credit_cards(property_name, {
             ((effective_pay(p).get("Data") or {}).get("CreditCard") or {}).get("CreditCardId")
