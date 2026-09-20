@@ -525,6 +525,34 @@ def _sheet_url(sheet_id: str) -> str:
     return f"https://docs.google.com/spreadsheets/d/{sheet_id}/edit"
 
 
+def review_properties(result: dict) -> list:
+    """[(short, url)] for every property with at least one cell that doesn't
+    match its own sheet, in SHEETS order. Each links to ITS OWN "<Name>-ST"
+    workbook - the one that row was compared against."""
+    if result.get("status") != "ok":
+        return []
+    out = []
+    for prop, (short, sheet_id) in SHEETS.items():
+        cells = (result.get("grid") or {}).get(prop, {})
+        if any(ov != sv for ov, sv in cells.values()
+               if not (ov is None and sv is None)):
+            out.append((short, _sheet_url(sheet_id)))
+    return out
+
+
+def render_review_properties(result: dict) -> str:
+    """The <<ReviewProperties>> token - the properties that need a look, or
+    nothing at all when every cell matches."""
+    props = review_properties(result)
+    if not props:
+        return ""
+    links = ", ".join(
+        f'<a href="{url}" style="color:#b91c1c;font-weight:700;text-decoration:underline">'
+        f'{short}</a>' for short, url in props)
+    return (f'<p style="margin:0 0 4px 0;font-size:13px;color:#152A00">'
+            f'Needs review: {links}</p>')
+
+
 def render_grid_table(result: dict) -> str:
     """Every property x every metric, ours / sheet - the <<GridTable>> token.
     Wrapped in a horizontally scrollable box: ten columns of numbers is wider
@@ -699,6 +727,7 @@ def render_tokens(result: dict) -> dict:
         # dropped - it is the table this mail was asked for. Sweep Time and
         # Sheet Links are always sent too: the sweep gap explains differences
         # nothing else can, and the links are how somebody opens the sheet.
+        "ReviewProperties": render_review_properties(result),
         "SummaryTable": render_summary_table(result),
         "GridTable": _titled("GridTable", "Full Table \u2014 Ours / Sheet",
                              render_grid_table(result)),

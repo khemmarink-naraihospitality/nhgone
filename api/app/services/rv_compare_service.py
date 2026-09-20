@@ -364,7 +364,9 @@ def subject_summary(result: dict) -> str:
         return "not comparable yet"
     t = result["totals"]
     if t["needs_review"]:
-        return f"{t['needs_review']} line{'s' if t['needs_review'] != 1 else ''} need review"
+        who = ", ".join(short for short, _url in review_properties(result))
+        count = f"{t['needs_review']} line{'s' if t['needs_review'] != 1 else ''} need review"
+        return f"{count} — {who}" if who else count
     if t["compared"] < t["properties"]:
         return f"matches sheet ({t['compared']} of {t['properties']} properties compared)"
     return "matches sheet completely"
@@ -412,6 +414,30 @@ def _scroll(table: str, footnote: str = "") -> str:
 def _line_label(f) -> str:
     return (f"{_esc(f[_GL])} &middot; {_esc(f[_DC])} &middot; {_esc(f[_AMOUNT])}"
             f'<br><small style="color:#64748b">{_esc(f[_DESC])}</small>')
+
+
+def review_properties(result: dict) -> list:
+    """[(short, url)] for every property with a line that needs review, in
+    PROPERTIES order. The RV sheet is one workbook with a tab per property,
+    so every link is the same workbook - there is no per-tab URL to build
+    without its numeric gid, which nothing here has."""
+    if result.get("status") != "ok":
+        return []
+    return [(p["short"], sheet_url()) for p in result["properties"]
+            if p.get("status") == "ok" and needs_review(p)]
+
+
+def render_review_properties(result: dict) -> str:
+    """The <<ReviewProperties>> token - the properties that need a look, or
+    nothing at all when none do."""
+    props = review_properties(result)
+    if not props:
+        return ""
+    links = ", ".join(
+        f'<a href="{url}" style="color:#b91c1c;font-weight:700;text-decoration:underline">'
+        f'{_esc(short)}</a>' for short, url in props)
+    return (f'<p style="margin:0 0 4px 0;font-size:13px;color:#152A00">'
+            f'Needs review: {links}</p>')
 
 
 def render_summary_table(result: dict) -> str:
@@ -542,6 +568,9 @@ def render_text(result: dict) -> str:
     out.append(f"Lines {t['sheet_lines']}/{t['our_lines']} (sheet/NHGOne) · "
                f"{t['needs_review']} need review · {t['drift']} known drift · "
                f"{t['compared']} of {t['properties']} properties compared")
+    who = ", ".join(short for short, _url in review_properties(result))
+    if who:
+        out.append(f"Needs review: {who}")
     out.append(f"Sheet: {sheet_url()}")
     return "\n".join(out)
 
@@ -580,5 +609,6 @@ def render_tokens(result: dict) -> dict:
             ("SummaryTable", "Every Property", render_summary_table(result)),
             ("DetailTable", "What Differs", render_detail_table(result)),
         ]),
+        "ReviewProperties": render_review_properties(result),
         "SheetLink": sheet_url(),
     }

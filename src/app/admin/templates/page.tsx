@@ -226,6 +226,7 @@ const ST_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Summary", description: "One-line verdict, e.g. \"ตรงกัน 68/72 ช่อง\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties were compared" },
   { name: "Window", description: "When our own snapshots were captured, earliest to latest" },
+  { name: "ReviewProperties", description: "Which properties need a look, each linked to its own sheet (\"Needs review: Samui, Patong\"). Renders NOTHING when every property is clean, so it can sit under the counts without leaving a blank line on a good morning. The same names go into the Subject via <<Summary>>." },
   { name: "SummaryTable", description: "Pre-built HTML: per-metric \"ตรง X/8\" summary with a Notes column naming which properties differ and a Remark column explaining why that kind of gap can happen at all (e.g. read straight from MEWS vs calculated here)" },
   // GridTable, SweepTable and SheetLinks each bring their OWN <h3> heading,
   // so don't write one above them in the body - the grid disappears entirely
@@ -245,6 +246,7 @@ const RR4_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Tm30Diff", description: "TM30 rows differing on at least one column, known drift excluded" },
   { name: "Summary", description: "One-line verdict, e.g. \"8 rows need review\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties could be compared (of the 6 Thai ones)" },
+  { name: "ReviewProperties", description: "Which properties need a look, each linked to its own sheet (\"Needs review: Samui, Patong\"). Renders NOTHING when every property is clean, so it can sit under the counts without leaving a blank line on a good morning. The same names go into the Subject via <<Summary>>." },
   // These four each bring their OWN numbered <h3> heading, so don't write one
   // above them in the body - two of them disappear entirely on a morning with
   // nothing to review, and a heading left in the template would be stranded
@@ -268,6 +270,7 @@ const RV_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Summary", description: "One-line verdict, e.g. \"3 lines need review\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties could be compared (of 8)" },
   { name: "SheetLink", description: "URL of the RV Google Sheet - use it as a link's href" },
+  { name: "ReviewProperties", description: "Which properties need a look, each linked to its own sheet (\"Needs review: Samui, Patong\"). Renders NOTHING when every property is clean, so it can sit under the counts without leaving a blank line on a good morning. The same names go into the Subject via <<Summary>>." },
   // Both of these bring their OWN numbered <h3>, so don't write one above
   // them in the body - the detail table disappears entirely when nothing
   // differs, and the numbers close up behind it.
@@ -626,6 +629,7 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Summary: "ตรงกัน 68/72 ช่อง",
     PropertyCount: "8",
     Window: "26 Aug 01:20 – 26 Aug 02:03",
+    ReviewProperties: SAMPLE_REVIEW_PROPERTIES,
     SummaryTable: buildCompareSampleTable(
       ["Column", "Matched", "Notes", "Remark"],
       [["Spaces", "8/8", "✅", "Read directly from MEWS. A difference means a room or category was added, removed or reassigned after the sheet was pasted."],
@@ -660,6 +664,7 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Tm30Diff: "0",
     Summary: "9 rows need review",
     PropertyCount: "6",
+    ReviewProperties: SAMPLE_REVIEW_PROPERTIES,
     SummaryTable: buildCompareSampleTable(
       ["Property", "Date", "RR4 — Sheet / NHGOne", "TM30 — Sheet / NHGOne"],
       [["Chinatown", "2026-09-01", ok("✓ 132 (2 known drift)"),
@@ -709,6 +714,7 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Summary: "2 lines need review",
     PropertyCount: "8",
     SheetLink: "#",
+    ReviewProperties: SAMPLE_REVIEW_PROPERTIES,
     SummaryTable: buildCompareSampleTable(
       ["Property", "Date", "Lines", "Debit", "Credit", "Result", "NHGOne imported"],
       [["Chinatown", "2026-09-13", ok("✓ 122"), ok("✓ 142,871.65 THB"), ok("✓ 142,871.65 THB"),
@@ -806,6 +812,11 @@ const muted = (s: string) => `<span style="color:#94a3b8">${s}</span>`;
 // The calendar's own two stop-sale colours, mirroring stop_sale_alert_service.
 const newStop = (s: string) => `<span style="background:#fef08a;color:#b91c1c;font-weight:700">${s}</span>`;
 const reopened = (s: string) => `<span style="background:#cffafe;color:#0e7490;font-weight:700">${s}</span>`;
+
+const SAMPLE_REVIEW_PROPERTIES =
+  '<p style="margin:0 0 4px 0;font-size:13px;color:#152A00">Needs review: ' +
+  '<a href="#" style="color:#b91c1c;font-weight:700;text-decoration:underline">Samui</a>, ' +
+  '<a href="#" style="color:#b91c1c;font-weight:700;text-decoration:underline">Patong</a></p>';
 
 function buildCompareSampleTable(headers: string[], rows: string[][]): string {
   const th = "padding:6px 10px;border:1px solid #e2e8f0;font-size:11px;font-weight:700;background:#f8fafc;text-align:left;";

@@ -639,6 +639,9 @@ def render_text(result: dict) -> str:
         return "\n".join(out)
 
     out = ["=" * 88, f"Comparison Summary — {_title(result)}", "=" * 88]
+    who = ", ".join(short for short, _url in review_properties(result))
+    if who:
+        out.append(f"Needs review: {who}")
     if result["mixed_dates"]:
         out.append("(Each property is compared at its own sheet's date — Chinatown cuts its day at 12:15, so it runs a day behind the rest)")
 
@@ -865,6 +868,50 @@ def _summary_cell(block: dict, window: str = "") -> str:
             f'<span style="font-weight:400;font-size:11px"> ({", ".join(bits)})</span></td>')
 
 
+def _sheet_url(prop: str) -> str:
+    """That property's own RR4-TM30-<Name>-Gen workbook, as a person would
+    open it - not the /export?format=xlsx one _fetch_sheets downloads."""
+    entry = SHEETS.get(prop)
+    return f"https://docs.google.com/spreadsheets/d/{entry[1]}/edit" if entry else ""
+
+
+def review_properties(result: dict) -> list:
+    """[(short, url)] for every property with something RED in this mail, in
+    SHEETS order.
+
+    "Red" is deliberately not the same as the headline count. The count
+    excludes Chinatown (its 12:15 window makes a TM30 shortfall permanent and
+    expected - see _SUMMARY_EXCLUDED), but if Chinatown has a REAL difference
+    it still has to be named, and an amber window-shortfall on anyone else
+    must not name them. So this reads the same two things a reader would
+    scroll for: section 2's real-tone groups, and section 3's blank
+    nationalities.
+    """
+    if result.get("status") != "ok":
+        return []
+    bad = {g["short"] for g in _diff_groups(result) if g["tone"] == "real"}
+    for prop in result["properties"]:
+        u = prop.get("unmapped") or {}
+        if u.get("rr4") or u.get("tm30"):
+            bad.add(prop["short"])
+    return [(prop["short"], _sheet_url(prop["property"]))
+            for prop in result["properties"] if prop["short"] in bad]
+
+
+def render_review_properties(result: dict) -> str:
+    """The <<ReviewProperties>> token - a linked list of the properties that
+    need a look, or nothing at all when none do."""
+    props = review_properties(result)
+    if not props:
+        return ""
+    links = ", ".join(
+        f'<a href="{url}" style="color:#b91c1c;font-weight:700;text-decoration:underline">{_esc(short)}</a>'
+        if url else f'<b style="color:#b91c1c">{_esc(short)}</b>'
+        for short, url in props)
+    return (f'<p style="margin:0 0 4px 0;font-size:13px;color:#152A00">'
+            f'Needs review: {links}</p>')
+
+
 def render_summary_table(result: dict) -> str:
     """TABLE 1 - every property, both registers, Google Sheet / NHGOne with a
     green tick or a red cross. The <<SummaryTable>> token, and the one table
@@ -879,7 +926,12 @@ def render_summary_table(result: dict) -> str:
     for p in result["properties"]:
         if p["property"] in _SUMMARY_EXCLUDED:
             continue
-        h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{p["short"]}</td>')
+        # Linked, so a row that needs review can be opened against the very
+        # sheet it was compared with.
+        url = _sheet_url(p["property"])
+        name = (f'<a href="{url}" style="color:#152A00;text-decoration:underline">{p["short"]}</a>'
+                if url else p["short"])
+        h.append(f'<tr><td style="{_TD}font-weight:600;white-space:nowrap">{name}</td>')
         if p["status"] != "ok":
             h.append(f'<td style="{_TD}" colspan="3">'
                      f'<span style="{_BAD}padding:2px 6px;border-radius:4px">'
@@ -1179,6 +1231,7 @@ def render_tokens(result: dict) -> dict:
             ("UnmappedTable", "Filed With No Nationality Code", render_unmapped_table(result)),
             ("WindowTable", "When Each Side Pulled Its Data", render_window_table(result)),
         ]),
+        "ReviewProperties": render_review_properties(result),
         "SampleTable": render_sample_table(result),
     }
 
@@ -1190,4 +1243,8 @@ def subject_summary(result: dict) -> str:
     bad = t["rr4"]["diff_rows"] + t["tm30"]["diff_rows"] \
         + t["rr4"]["only_ours"] + t["rr4"]["only_sheet"] \
         + t["tm30"]["only_ours"] + t["tm30"]["only_sheet"]
-    return "matches sheet completely" if bad == 0 else f"{bad} rows need review"
+    if bad == 0 and not review_properties(result):
+        return "matches sheet completely"
+    who = ", ".join(short for short, _url in review_properties(result))
+    count = f"{bad} rows need review" if bad else "needs review"
+    return f"{count} — {who}" if who else count

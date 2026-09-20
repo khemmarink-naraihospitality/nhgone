@@ -66,7 +66,14 @@ def _summary(kind: str, result: dict) -> str:
     if result["status"] != "ok":
         return "not comparable yet"
     matched, total = result["matched_cells"], result["total_cells"]
-    return "matches sheet completely" if matched == total else f"{matched}/{total} cells match"
+    if matched == total:
+        return "matches sheet completely"
+    # Name the properties behind the gap, the same way the RR4 and RV
+    # subjects do - the count alone says a cell is wrong somewhere across
+    # eight sheets, which is the one thing a reader already knew.
+    who = ", ".join(short for short, _url in st_compare_service.review_properties(result))
+    count = f"{matched}/{total} cells match"
+    return f"{count} — {who}" if who else count
 
 
 def _last_reported_date(target_table: str) -> str:
