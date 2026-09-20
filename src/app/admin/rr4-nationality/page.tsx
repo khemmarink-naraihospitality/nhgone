@@ -20,11 +20,26 @@ interface NationalityRow {
 
 const PAGE_SIZE = 100;
 
+// Every column except Actions is sortable. Blank cells sort first ascending,
+// which is what you want here - "show me the rows still missing a code".
+// Thai before English, matching this table's own column order (the TM30 one
+// is the other way round).
+type SortKey = keyof Omit<NationalityRow, "id">;
+
+const COLUMNS: { key: SortKey; label: string; className: string }[] = [
+  { key: "mews_nationality", label: "MEWS Nationality", className: "px-4" },
+  { key: "thai_name", label: "ชื่อสัญชาติ (ไทย)", className: "px-2" },
+  { key: "english_name", label: "ชื่อสัญชาติ (อังกฤษ)", className: "px-2" },
+  { key: "rr4_code", label: "RR4-Nationality", className: "px-2 w-32" },
+];
+
 export default function Rr4NationalityPage() {
   const [rows, setRows] = useState<NationalityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [savingId, setSavingId] = useState<string | null>(null);
 
   const [isAdding, setIsAdding] = useState(false);
@@ -68,9 +83,27 @@ export default function Rr4NationalityPage() {
       r.rr4_code.toLowerCase().includes(q)
     );
   });
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Narrow first, then order what is left, then cut the page out of that -
+  // so the page you are on always shows the top of the sorted result.
+  const sorted = sortKey
+    ? [...filtered].sort((a, b) => {
+        const cmp = (a[sortKey] || "").localeCompare(b[sortKey] || "", "th");
+        return sortDir === "asc" ? cmp : -cmp;
+      })
+    : filtered;
+  const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageRows = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(key);
+      setSortDir("asc");
+    }
+    setPage(1);
+  };
 
   // Saves one field on blur (not per keystroke) - only if the value
   // actually changed, so tabbing through a row without editing it doesn't
@@ -264,10 +297,24 @@ export default function Rr4NationalityPage() {
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="sticky top-0 z-10 bg-slate-50 px-4 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">MEWS Nationality</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่อสัญชาติ (ไทย)</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest">ชื่อสัญชาติ (อังกฤษ)</th>
-                <th className="sticky top-0 z-10 bg-slate-50 px-2 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest w-32">RR4-Nationality</th>
+                {COLUMNS.map((col) => (
+                  <th
+                    key={col.key}
+                    onClick={() => handleSort(col.key)}
+                    aria-sort={sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+                    className={`group sticky top-0 z-10 bg-slate-50 ${col.className} py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest cursor-pointer select-none hover:text-slate-600 transition-colors`}
+                  >
+                    <span className="inline-flex items-center gap-1">
+                      {col.label}
+                      <svg
+                        className={`w-3 h-3 shrink-0 transition-all ${sortKey === col.key ? "opacity-100 text-[#AAA024]" : "opacity-0 group-hover:opacity-30"} ${sortKey === col.key && sortDir === "desc" ? "rotate-180" : ""}`}
+                        fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </span>
+                  </th>
+                ))}
                 <th className="sticky top-0 z-10 bg-slate-50 px-3 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center w-20">Actions</th>
               </tr>
             </thead>
@@ -335,10 +382,10 @@ export default function Rr4NationalityPage() {
           </table>
         </div>
 
-        {!loading && filtered.length > PAGE_SIZE && (
+        {!loading && sorted.length > PAGE_SIZE && (
           <div className="p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, filtered.length)} of {filtered.length} - Page {currentPage} of {totalPages}
+              Showing {(currentPage - 1) * PAGE_SIZE + 1}-{Math.min(currentPage * PAGE_SIZE, sorted.length)} of {sorted.length} - Page {currentPage} of {totalPages}
             </div>
             <div className="flex gap-2">
               <button
