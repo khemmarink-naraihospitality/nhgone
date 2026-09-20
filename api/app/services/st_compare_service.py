@@ -532,8 +532,16 @@ def render_grid_table(result: dict) -> str:
 
     Each property's name links to ITS OWN "<Name>-ST" sheet - the one this
     row was actually compared against - so a mismatch can be opened and
-    checked by hand without going to find the link separately."""
+    checked by hand without going to find the link separately.
+
+    Renders NOTHING when every cell in the grid matches: render_tokens drops
+    a section whose body is empty, heading and all, and a grid of eighty-odd
+    identical ticks is the one table in this mail that says nothing on a good
+    morning. The per-metric summary above it already shows the "8/8"s.
+    """
     if result["status"] != "ok":
+        return ""
+    if result.get("matched_cells") == result.get("total_cells"):
         return ""
 
     h = ['<div style="overflow-x:auto">'
@@ -666,6 +674,17 @@ def render_sheet_links(result: dict) -> str:
     return f'<ul style="margin:4px 0;padding-left:18px;font-size:13px">{items}</ul>'
 
 
+def _titled(token: str, title: str, body: str) -> str:
+    """Heading + body, or nothing at all when the body is empty - so a
+    section that renders nothing takes its <h3> with it instead of leaving
+    it stranded in the template. ST's sections are not numbered, unlike the
+    RR4/TM30 and RV mails, so there is nothing to renumber here."""
+    if not body:
+        return ""
+    return (f'<h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">'
+            f'{title}</h3>\n        {body}')
+
+
 def render_tokens(result: dict) -> dict:
     """Everything the email template can substitute."""
     day = datetime.strptime(result["date"], "%Y-%m-%d") if result.get("date") else None
@@ -676,10 +695,16 @@ def render_tokens(result: dict) -> dict:
         "Matched": str(result.get("matched_cells", "\u2014")),
         "Total": str(result.get("total_cells", "\u2014")),
         "Window": f"{window[0]} \u2013 {window[1]}" if window else "\u2014",
+        # The per-metric summary has no heading of its own and is never
+        # dropped - it is the table this mail was asked for. Sweep Time and
+        # Sheet Links are always sent too: the sweep gap explains differences
+        # nothing else can, and the links are how somebody opens the sheet.
         "SummaryTable": render_summary_table(result),
-        "GridTable": render_grid_table(result),
-        "SweepTable": render_sweep_table(result),
-        "SheetLinks": render_sheet_links(result),
+        "GridTable": _titled("GridTable", "Full Table \u2014 Ours / Sheet",
+                             render_grid_table(result)),
+        "SweepTable": _titled("SweepTable", "Sweep Time \u2014 Google Sheet / NHGOne",
+                              render_sweep_table(result)),
+        "SheetLinks": _titled("SheetLinks", "Sheet Links", render_sheet_links(result)),
     }
 
 

@@ -148,12 +148,9 @@ DEFAULT_ST_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:4
         <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our numbers against every property's own "&lt;Name&gt;-ST" sheet for <b><<Date>></b></p>
         <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<Matched>>/<<Total>> cells match</p>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Full Table &mdash; Ours / Sheet</h3>
         <<GridTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Sweep Time &mdash; Google Sheet / NHGOne</h3>
         <<SweepTable>>
         <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Our snapshot was captured <<Window>> &middot; <<PropertyCount>> properties</p>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">Sheet Links</h3>
         <<SheetLinks>>
       </td>
     </tr>
@@ -202,9 +199,7 @@ DEFAULT_RV_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:4
         <p style="margin:0 0 4px 0; font-size:20px; font-weight:700; color:#152A00;"><<Summary>></p>
         <p style="margin:0 0 4px 0; font-size:13px; color:#152A00;">Lines <b><<Lines>></b> &middot; <b><<NeedsReview>></b> need review &middot; <<KnownDrift>> known drift</p>
         <p style="margin:0 0 24px 0; font-size:11px; color:#94a3b8;">Every pair of numbers in this email reads <b>Google Sheet / NHGOne</b>. Each property's RV file is attached.</p>
-        <h3 style="margin:0 0 8px 0; font-size:15px; color:#152A00;">1. Every Property</h3>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Differs</h3>
         <<DetailTable>>
       </td>
     </tr>

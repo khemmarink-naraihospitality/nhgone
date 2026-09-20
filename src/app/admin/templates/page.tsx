@@ -227,9 +227,14 @@ const ST_COMPARE_TOKENS: TokenDoc[] = [
   { name: "PropertyCount", description: "How many properties were compared" },
   { name: "Window", description: "When our own snapshots were captured, earliest to latest" },
   { name: "SummaryTable", description: "Pre-built HTML: per-metric \"ตรง X/8\" summary with a Notes column naming which properties differ and a Remark column explaining why that kind of gap can happen at all (e.g. read straight from MEWS vs calculated here)" },
-  { name: "GridTable", description: "Pre-built HTML: every property x every metric, ours / sheet, mismatches highlighted - each property name links to that property's own sheet" },
-  { name: "SweepTable", description: "Pre-built HTML: when each side pulled its numbers from MEWS - the sheet's Availability and Reservation export times (the Created stamp on its Parameters tabs) against NHGOne's import time, with the gap between them; over 30 minutes is flagged, since live numbers can move in between" },
-  { name: "SheetLinks", description: "Pre-built HTML: a bulleted list of all 8 properties, each linking to its own \"<Name>-ST\" Google Sheet" },
+  // GridTable, SweepTable and SheetLinks each bring their OWN <h3> heading,
+  // so don't write one above them in the body - the grid disappears entirely
+  // on a morning where every cell matches, and a heading left in the template
+  // would be stranded over nothing. SummaryTable has no heading, by design:
+  // it sits directly under the "X/Y cells match" line.
+  { name: "GridTable", description: "Section \"Full Table - Ours / Sheet\" (includes its own heading) - every property x every metric, ours / sheet, mismatches highlighted; each property name links to that property's own sheet. HIDDEN when every cell matches, since the summary above already shows the 8/8s" },
+  { name: "SweepTable", description: "Section \"Sweep Time - Google Sheet / NHGOne\" (includes its own heading) - when each side pulled its numbers from MEWS: the sheet's Availability and Reservation export times (the Created stamp on its Parameters tabs) against NHGOne's import time, with the gap between them; over 30 minutes is flagged, since live numbers can move in between. Always shown - a flagged gap explains differences nothing else can" },
+  { name: "SheetLinks", description: "Section \"Sheet Links\" (includes its own heading) - a bulleted list of all 8 properties, each linking to its own \"<Name>-ST\" Google Sheet. Always shown" },
 ];
 
 const RR4_COMPARE_TOKENS: TokenDoc[] = [
@@ -263,8 +268,11 @@ const RV_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Summary", description: "One-line verdict, e.g. \"3 lines need review\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties could be compared (of 8)" },
   { name: "SheetLink", description: "URL of the RV Google Sheet - use it as a link's href" },
-  { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property's lines, debits and credits as Google Sheet / NHGOne, with a green tick, red cross or amber known-drift count" },
-  { name: "DetailTable", description: "Table 2 - pre-built HTML: every line behind table 1 by account, D/C and amount - which field differs and both values; red needs review, amber is known drift" },
+  // Both of these bring their OWN numbered <h3>, so don't write one above
+  // them in the body - the detail table disappears entirely when nothing
+  // differs, and the numbers close up behind it.
+  { name: "SummaryTable", description: "Section \"Every Property\" (includes its own heading) - every property's lines, debits and credits as Google Sheet / NHGOne, with a green tick, red cross or amber known-drift count. Always shown" },
+  { name: "DetailTable", description: "Section \"What Differs\" (includes its own heading) - every line behind the summary by account, D/C and amount: which field differs and both values; red needs review, amber is known drift. HIDDEN when nothing differs" },
 ];
 
 // The stop-sale watch is not a sheet comparison like the two above - it diffs

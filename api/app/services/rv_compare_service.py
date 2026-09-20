@@ -496,8 +496,11 @@ def render_detail_table(result: dict) -> str:
                                       f'<br><small style="color:#64748b">e.g. {_esc(sv)}</small>',
                                "Description", _esc(sv), _esc(ov), _span(_MUTED, _esc(reason))))
 
+    # Empty, not a green "nothing to review" line: render_tokens drops a
+    # section whose body is empty, heading and all, so a clean morning's mail
+    # is just the summary. Table 1 already carries the ticks.
     if not rows:
-        return '<p style="margin:0;font-size:13px;color:#166534;font-weight:700">Nothing to review - every line matched the sheet.</p>'
+        return ""
     head = "".join(f'<th style="{_TH}">{c}</th>' for c in
                    ("Property", "Line (account &middot; D/C &middot; amount)", "What differs",
                     "Google Sheet", "NHGOne", "Why"))
@@ -543,6 +546,24 @@ def render_text(result: dict) -> str:
     return "\n".join(out)
 
 
+# Each section token carries its own <h3>, because a section that can vanish
+# cannot leave its heading behind in the template, and because the numbers
+# have to close up when one does. Same arrangement as rr4_compare_service.
+def _sectioned(bodies: list) -> dict:
+    """[(token, title, body)] -> {token: heading + body}, numbered in order
+    and skipping every empty body."""
+    out, n = {}, 0
+    for token, title, body in bodies:
+        if not body:
+            out[token] = ""
+            continue
+        n += 1
+        margin = "0 0 8px 0" if n == 1 else "28px 0 8px 0"
+        out[token] = (f'<h3 style="margin:{margin}; font-size:15px; color:#152A00;">'
+                      f'{n}. {title}</h3>\n        {body}')
+    return out
+
+
 def render_tokens(result: dict) -> dict:
     """Everything the email template can substitute."""
     t = result.get("totals") or {}
@@ -553,7 +574,11 @@ def render_tokens(result: dict) -> dict:
         "Lines": f"{t.get('sheet_lines', 0)} / {t.get('our_lines', 0)}",
         "NeedsReview": str(t.get("needs_review", 0)),
         "KnownDrift": str(t.get("drift", 0)),
-        "SummaryTable": render_summary_table(result),
-        "DetailTable": render_detail_table(result),
+        # The summary is the point of the mail and is never dropped; the
+        # detail table goes when there is nothing behind it to name.
+        **_sectioned([
+            ("SummaryTable", "Every Property", render_summary_table(result)),
+            ("DetailTable", "What Differs", render_detail_table(result)),
+        ]),
         "SheetLink": sheet_url(),
     }
