@@ -240,10 +240,15 @@ const RR4_COMPARE_TOKENS: TokenDoc[] = [
   { name: "Tm30Diff", description: "TM30 rows differing on at least one column, known drift excluded" },
   { name: "Summary", description: "One-line verdict, e.g. \"8 rows need review\" - usable in the Subject too" },
   { name: "PropertyCount", description: "How many properties could be compared (of the 6 Thai ones)" },
-  { name: "SummaryTable", description: "Table 1 - pre-built HTML: every property, RR4 and TM30 as Google Sheet / NHGOne, green tick when they agree and red cross when they don't" },
-  { name: "ColumnTable", description: "Table 2 - pre-built HTML: every difference behind table 1, naming the guests; red needs review, amber is already-explained known drift or a configured-window shortfall" },
-  { name: "UnmappedTable", description: "Table 3 - pre-built HTML: every guest we filed with a BLANK nationality, split into the ones MEWS has a nationality for that our code table has no number for (fix in Admin > RR4/TM30-Nationality) and the ones whose MEWS profile has no nationality at all (fix in MEWS). Not a sheet comparison - both sides read the same code table, so these usually leave table 1 green" },
-  { name: "WindowTable", description: "Table 4 - pre-built HTML: the time each side started sweeping its day (sheet vs ours, RR4 and TM30 separately) and when our own import ran" },
+  // These four each bring their OWN numbered <h3> heading, so don't write one
+  // above them in the body - two of them disappear entirely on a morning with
+  // nothing to review, and a heading left in the template would be stranded
+  // over nothing. The numbers close up when a section drops out (a clean
+  // morning reads 1. Every Property, 2. When Each Side Pulled Its Data).
+  { name: "SummaryTable", description: "Section \"Every Property\" (includes its own heading) - every property, RR4 and TM30 as Google Sheet / NHGOne, green tick when they agree and red cross when they don't. Always shown" },
+  { name: "ColumnTable", description: "Section \"What Differs\" (includes its own heading) - every difference behind the summary, naming the guests; red needs review, amber is already-explained known drift or a configured-window shortfall. HIDDEN when nothing differs" },
+  { name: "UnmappedTable", description: "Section \"Filed With No Nationality Code\" (includes its own heading) - every guest we filed with a BLANK nationality, split into the ones MEWS has a nationality for that our code table has no number for (fix in Admin > RR4/TM30-Nationality) and the ones whose MEWS profile has no nationality at all (fix in MEWS). Not a sheet comparison - both sides read the same code table, so these usually leave the summary green. HIDDEN when every guest has a code" },
+  { name: "WindowTable", description: "Section \"When Each Side Pulled Its Data\" (includes its own heading) - the time each side started sweeping its day (sheet vs ours, RR4 and TM30 separately) and when our own import ran. Always shown, even when every window matches: the sheets change these without warning and a stale value silently undercounts the register" },
   // SampleTable is deliberately absent: its example rows are part of
   // ColumnTable now. The backend still substitutes it as an empty string so a
   // template saved before that change renders nothing there rather than the

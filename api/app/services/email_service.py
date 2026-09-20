@@ -174,13 +174,9 @@ DEFAULT_RR4_COMPARE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:
         <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Comparing our register against every property's own "RR4-TM30-&lt;Name&gt;-Gen" Google Sheet, row by row, for <b><<Date>></b> (<<PropertyCount>> properties)</p>
         <p style="margin:0 0 4px 0; font-size:15px; color:#152A00;">RR4 <b><<Rr4Rows>></b> rows &middot; <b><<Rr4Diff>></b> differ &nbsp;|&nbsp; TM30 <b><<Tm30Rows>></b> rows &middot; <b><<Tm30Diff>></b> differ</p>
         <p style="margin:0 0 24px 0; font-size:11px; color:#94a3b8;">Every pair of numbers in this email reads <b>Google Sheet / NHGOne</b></p>
-        <h3 style="margin:0 0 8px 0; font-size:15px; color:#152A00;">1. Every Property</h3>
         <<SummaryTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">2. What Differs</h3>
         <<ColumnTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">3. Filed With No Nationality Code</h3>
         <<UnmappedTable>>
-        <h3 style="margin:28px 0 8px 0; font-size:15px; color:#152A00;">4. When Each Side Pulled Its Data</h3>
         <<WindowTable>>
       </td>
     </tr>

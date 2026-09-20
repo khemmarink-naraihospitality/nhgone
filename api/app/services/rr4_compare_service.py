@@ -645,7 +645,13 @@ def render_text(result: dict) -> str:
     # The same three sections the HTML mail is built from, in the same order,
     # so the text/plain part of a message can never describe a different check
     # from the part most people actually read.
-    out += ["", "1. EVERY PROPERTY — Google Sheet / NHGOne", "-" * 88]
+    section = [0]
+
+    def head(title):
+        section[0] += 1
+        return ["", f"{section[0]}. {title}", "-" * 88]
+
+    out += head("EVERY PROPERTY — Google Sheet / NHGOne")
     out.append(f"{'Property':<12}{'Date':<12}{'RR4 sheet/ours':<17}{'Diff':<7}"
                f"{'TM30 sheet/ours':<17}Diff")
     for p in result["properties"]:
@@ -678,10 +684,9 @@ def render_text(result: dict) -> str:
                f"{tt['clean_rows']} · real diff {tt['diff_rows']} · known drift {tt['drift_rows']} · "
                f"only in sheet {tt['only_sheet']} · only in NHGOne {tt['only_ours']}")
 
-    out += ["", "2. WHAT DIFFERS (sheet / NHGOne)", "-" * 88]
     groups = _diff_groups(result)
-    if not groups:
-        out.append("  ✅ Every column of every paired row matches, and both sides hold the same guests")
+    if groups:
+        out += head("WHAT DIFFERS (sheet / NHGOne)")
     for g in groups:
         tag = {"real": "!!", "expected": "..", "drift": "  "}[g["tone"]]
         shown = "" if len(g["ex"]) >= g["n"] else f" (showing {len(g['ex'])})"
@@ -694,25 +699,21 @@ def render_text(result: dict) -> str:
         out.append("   (!! needs review today · .. expected from a configured window · "
                    "blank = known drift, already explained)")
 
-    out += ["", "3. FILED WITH NO NATIONALITY CODE", "-" * 88]
-    any_unmapped = False
+    unmapped_lines = []
     for p in result["properties"]:
-        unmapped = p.get("unmapped") or {}
         for kind in ("rr4", "tm30"):
-            for e in unmapped.get(kind, []):
-                any_unmapped = True
+            for e in (p.get("unmapped") or {}).get(kind, []):
                 where = "RR4 " if kind == "rr4" else "TM30"
                 who = f'{e["name"]}{" · room " + e["room"] if e["room"] else ""}'
                 why = (f'{e["country"]} has no {where.strip()} code'
                        if e["kind"] == "no_code" else "no nationality on the MEWS profile")
-                out.append(f'  {p["short"]:<12} {where}  {who[:46]:<46} {why}')
-    if not any_unmapped:
-        out.append("  Every guest we filed has a nationality code.")
-    else:
+                unmapped_lines.append(f'  {p["short"]:<12} {where}  {who[:46]:<46} {why}')
+    if unmapped_lines:
+        out += head("FILED WITH NO NATIONALITY CODE") + unmapped_lines
         out.append('   A missing code is fixed in Admin > RR4-Nationality / TM30-Nationality; '
                    'an empty MEWS profile has to be fixed in MEWS.')
 
-    out += ["", "4. WHEN EACH SIDE PULLED ITS DATA", "-" * 88]
+    out += head("WHEN EACH SIDE PULLED ITS DATA")
     for p in result["properties"]:
         bad = (p["sheet_rr4_window"] != p["our_window"]
                or p["sheet_tm30_window"] != p["our_tm30_window"])
@@ -984,10 +985,12 @@ def render_column_table(result: dict) -> str:
         return ""
 
     groups = _diff_groups(result)
+    # Empty, not a green "everything matched" line: render_tokens drops a
+    # section whose body is empty, heading and all, so a clean morning's mail
+    # is table 1 and the windows rather than three paragraphs saying nothing
+    # happened. Table 1 already carries the ticks.
     if not groups:
-        return ('<p style="font-size:13px;color:#166534;margin:0">'
-                f'{_TICK} Every column of every paired row matches the sheet, '
-                'and both sides hold exactly the same guests</p>')
+        return ""
 
     tone_style = {"real": "color:#b91c1c;font-weight:700;",
                   "expected": "color:#92400e;font-weight:700;",
@@ -1074,9 +1077,9 @@ def render_unmapped_table(result: dict) -> str:
                     f'<td style="{_TD}">{what}</td>'
                     f'<td style="{_TD}{_MUTED}">{fix}</td></tr>')
 
+    # Same as table 2: nothing to say means no section at all.
     if not rows:
-        return ('<p style="margin:0;font-size:13px;color:#166534;font-weight:700">'
-                'Every guest we filed has a nationality code.</p>')
+        return ""
 
     h = [f'{_TABLE_OPEN}<tr>'
          f'<th style="{_TH}">Property</th><th style="{_TH}">File</th>'
@@ -1132,6 +1135,26 @@ def render_window_table(result: dict) -> str:
         'Chinatown\'s 12:15 is deliberate. The last column is when our own import ran.')
 
 
+# Each section token carries its own <h3>, because a section that can vanish
+# cannot leave its heading behind in the template, and because the numbers
+# have to close up when one does. Matches the markup the headings had while
+# they lived in the template; the first one on the page loses the top margin.
+def _sectioned(bodies: list) -> dict:
+    """[(token, title, body)] -> {token: heading + body}, numbered in order
+    and skipping every empty body. A section that renders nothing gets an
+    empty string, so its token substitutes away to nothing in the template."""
+    out, n = {}, 0
+    for token, title, body in bodies:
+        if not body:
+            out[token] = ""
+            continue
+        n += 1
+        margin = "0 0 8px 0" if n == 1 else "28px 0 8px 0"
+        out[token] = (f'<h3 style="margin:{margin}; font-size:15px; color:#152A00;">'
+                      f'{n}. {title}</h3>\n        {body}')
+    return out
+
+
 def render_tokens(result: dict) -> dict:
     """Everything the email template can substitute."""
     t = result.get("totals") or {"rr4": {}, "tm30": {}}
@@ -1145,11 +1168,18 @@ def render_tokens(result: dict) -> dict:
         # reads in, so the header line and the tables can't contradict.
         "Rr4Rows": f"{t['rr4'].get('sheet', _DASH)} / {t['rr4'].get('ours', _DASH)}",
         "Tm30Rows": f"{t['tm30'].get('sheet', _DASH)} / {t['tm30'].get('ours', _DASH)}",
-        "SummaryTable": render_summary_table(result),
-        "ColumnTable": render_column_table(result),
+        # Summary and Windows are deliberately NOT droppable. Summary is the
+        # whole point of the mail, and the window table is a watch: the sheets
+        # change their export windows without warning and a stale value on our
+        # side silently undercounts the register, which is exactly the failure
+        # that shows nothing anywhere else.
+        **_sectioned([
+            ("SummaryTable", "Every Property", render_summary_table(result)),
+            ("ColumnTable", "What Differs", render_column_table(result)),
+            ("UnmappedTable", "Filed With No Nationality Code", render_unmapped_table(result)),
+            ("WindowTable", "When Each Side Pulled Its Data", render_window_table(result)),
+        ]),
         "SampleTable": render_sample_table(result),
-        "UnmappedTable": render_unmapped_table(result),
-        "WindowTable": render_window_table(result),
     }
 
 
