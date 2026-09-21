@@ -8,9 +8,10 @@ import SignaturePad from "@/components/SignaturePad";
 import KioskTopBar from "../KioskTopBar";
 import { useKioskLanguage } from "../kioskLanguage";
 import { guestLabel, useKioskArrival, type KioskArrival } from "../arrivals";
+import { effectiveState, type FieldsValue, type GuestType } from "@/lib/checkinFormFields";
 import GuestProfileForm, {
   EMPTY_PROFILE,
-  REQUIRED_PROFILE_FIELDS,
+  requiredProfileFields,
   type CountryOption,
   type GuestProfile,
   type OwnerAddress,
@@ -37,8 +38,12 @@ import GuestProfileForm, {
  * goes back onto the MEWS reservation as well (the Connector API has no
  * attachment endpoint at all; a note is the one write it allows).
  *
- * Terms must be ticked and a signature drawn before Next moves on, which is
- * consent and a signature actually being required rather than styling.
+ * WHICH fields this screen asks for, and which of them block Next, is the
+ * property's own Check In Form (Admin Console > Kiosks > Check In Form),
+ * resolved through `@/lib/checkinFormFields` - a field set Hidden there is
+ * not rendered here, Required is starred and blocks Next, Optional does
+ * neither. The terms tick is the one thing NOT in that table and always
+ * required: it is consent, not a data field.
  */
 
 /**
@@ -173,6 +178,13 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
   const [storageReady, setStorageReady] = useState(true);
   const [saving, setSaving] = useState(false);
   const [countries, setCountries] = useState<CountryOption[]>([]);
+  // Admin Console > Kiosks > Check In Form for this property: which fields
+  // this screen shows, which it stars, and whether it offers Add guest at
+  // all. `{}` until it loads - and if it never loads, `{}` is also the
+  // answer, which resolves every field to MEWS's own default. A settings
+  // fetch failing must not stop somebody checking in.
+  const [checkinFields, setCheckinFields] = useState<FieldsValue>({});
+  const [otherAdultsEnabled, setOtherAdultsEnabled] = useState(true);
 
   const propertyName = selectedProperty || "this property";
   // MEWS's own guests and the saved kiosk ones first, then anyone added here
@@ -211,13 +223,28 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
 
   const form = selected ? formFor(selected) : null;
 
-  // What still has to be done before Next: the terms and a signature for
-  // everyone, plus the starred profile fields for a guest added here. The
-  // same list drives each card's progress bar.
+  // The reservation owner is one guest type in the Check In Form table and
+  // everyone else on the booking is another; nothing on this screen is a
+  // child, so "children" never comes up here.
+  const guestTypeOf = (guest: RegistrationGuest): GuestType => (guest.is_owner ? "owner" : "other_adults");
+  const stateOf = (guest: RegistrationGuest, field: string) =>
+    effectiveState(checkinFields, "general", field, guestTypeOf(guest));
+
+  // What still has to be done before Next: the terms, plus whatever this
+  // property marked Required - a signature and an email are both ordinary
+  // fields in that table, and a guest added here also answers the starred
+  // profile fields. The same list drives each card's progress bar.
+  //
+  // The terms tick is the one thing not in the table and always required:
+  // it is consent, not a data field, and a check-in without it isn't one.
   const checksFor = (guest: RegistrationGuest, f: GuestForm): boolean[] => {
-    const checks = [f.agreedTerms, !!f.signature];
+    const checks = [f.agreedTerms];
+    if (stateOf(guest, "signature") === "Required") checks.push(!!f.signature);
+    if (stateOf(guest, "email") === "Required") checks.push(!!f.email.trim());
     if (guest.source === "kiosk") {
-      for (const field of REQUIRED_PROFILE_FIELDS) checks.push(!!String(f.profile[field] || "").trim());
+      for (const field of requiredProfileFields(checkinFields, guestTypeOf(guest))) {
+        checks.push(!!String(f.profile[field] || "").trim());
+      }
     }
     return checks;
   };
@@ -273,6 +300,26 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
       cancelled = true;
     };
   }, []);
+
+  // The property's Check In Form config - fetched once for the whole screen,
+  // the same way kioskConfig is, so a check-in can't change its mind about
+  // which fields it wants halfway through. A failure is swallowed on purpose:
+  // the defaults already in state are a working form.
+  useEffect(() => {
+    if (!selectedProperty) return;
+    let cancelled = false;
+    fetch(`/api/checkin-form?property_name=${encodeURIComponent(selectedProperty)}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled || res.status !== "success" || !res.data) return;
+        setCheckinFields((res.data.fields as FieldsValue) || {});
+        setOtherAdultsEnabled(res.data.other_adults_enabled !== false);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProperty]);
 
   // The signature pad's size, measured from the box it sits in. On the short
   // form that box takes whatever height is left so the screen never scrolls;
@@ -507,7 +554,10 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
 
             {/* The reference terminal puts a solid grey tap-card here, a
                 hand-tap icon above the text. It adds a guest and opens their
-                profile form straight away. */}
+                profile form straight away - unless the property unticked
+                "Other adults" on its Check In Form, which says nobody but the
+                booking's own occupants fills anything in here. */}
+            {otherAdultsEnabled && (
             <button
               type="button"
               onClick={addGuest}
@@ -517,6 +567,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
               <Pointer size={26} strokeWidth={1.75} aria-hidden="true" />
               {t.addGuest}
             </button>
+            )}
           </div>
 
           {/* How far through the whole booking this is - only worth a line
@@ -565,10 +616,12 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 onEmailChange={(email) => updateForm(selected, { email })}
                 countries={countries}
                 ownerAddress={owner?.address || null}
+                fields={checkinFields}
+                guestType={guestTypeOf(selected)}
               />
             )}
 
-            {selected && form && !fullForm && (
+            {selected && form && !fullForm && stateOf(selected, "email") !== "Hidden" && (
               // One bordered box with its small label INSIDE it, above the
               // value - the way the terminal draws it. The whole box is the
               // label, so tapping anywhere in it focuses the input.
@@ -576,7 +629,10 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 htmlFor="guest-email"
                 className="block shrink-0 cursor-text rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-8 pb-3 pt-3 transition-colors focus-within:border-[var(--kiosk-accent)]"
               >
-                <span className="block text-sm text-[var(--kiosk-text-muted)]">{t.email}</span>
+                <span className="block text-sm text-[var(--kiosk-text-muted)]">
+                  {t.email}
+                  {stateOf(selected, "email") === "Required" && " *"}
+                </span>
                 <input
                   id="guest-email"
                   type="email"
@@ -609,7 +665,16 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                   </KioskCheckbox>
                 </div>
 
-                <p className="mt-5 shrink-0 text-lg text-[var(--kiosk-text-muted)]">{t.signature}</p>
+                {/* The signature is a field in the Check In Form table like
+                    any other, so a property CAN take it off this screen -
+                    though it stays Required unless one deliberately does,
+                    since a ร.ร.๓ card is a signed document. */}
+                {stateOf(selected, "signature") !== "Hidden" && (
+                <>
+                <p className="mt-5 shrink-0 text-lg text-[var(--kiosk-text-muted)]">
+                  {t.signature}
+                  {stateOf(selected, "signature") === "Required" && " *"}
+                </p>
                 {/* Solid-bordered, reading "Tap to sign" until something is
                     drawn. The shared SignaturePad, so what is captured here is
                     exactly what lands on the guest's ร.ร.๓ card; only its size
@@ -649,6 +714,8 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                     </button>
                   )}
                 </div>
+                </>
+                )}
 
                 <p className="mt-4 shrink-0 text-lg text-[var(--kiosk-text-secondary)]">
                   {t.privacyFooter.pre}

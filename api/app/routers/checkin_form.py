@@ -3,9 +3,14 @@ Check In Form.
 
 One row per property in `checkin_form_settings` (not per kiosk device: guests
 fill out the same form regardless of which physical terminal they use).
-Nothing reads this yet - the ported /kiosk/registration screen still uses its
-own fixed field set. This is the configuration surface going in first, the
-same order the Kiosks page itself shipped in.
+
+/kiosk/registration obeys this configuration, and so does the endpoint that
+saves what it collects (kiosks.add_kiosk_guest, through the resolvers at the
+bottom of this file). The browser's copy of the same rules is
+`src/lib/checkinFormFields.ts`; the two hold the same defaults and have to be
+kept in step - the whole point of resolving it on both sides is that a field
+a property chose not to collect can't arrive filled in from a client that
+skipped the screen.
 """
 
 from datetime import datetime, timezone
@@ -110,3 +115,121 @@ async def save_checkin_form(property_name: str = Query(...), request: CheckinFor
         return {"status": "success", "data": result.data[0]}
     except Exception as e:
         raise _guard(e)
+
+
+# ---------------------------------------------------------------------------
+# Resolving the configuration - the server-side half of
+# src/lib/checkinFormFields.ts. Only what the KIOSK can actually collect is
+# mirrored here: the rest of that table is stored and unread on both sides,
+# because the terminal has no control to ask it.
+# ---------------------------------------------------------------------------
+
+_STATES = ("Required", "Optional", "Hidden")
+
+# Which cell of the Check In Form table governs each field of the kiosk's own
+# guest profile. The two naming schemes differ (`address_line1` here,
+# `address_line_1` in the table, which copies MEWS's own label) - mirrors
+# PROFILE_FIELD_SOURCE in GuestProfileForm.tsx.
+KIOSK_PROFILE_FIELDS = {
+    "first_name": ("general", "first_name"),
+    "last_name": ("general", "last_name"),
+    "nationality": ("general", "nationality"),
+    "telephone": ("general", "telephone"),
+    "occupation": ("general", "occupation"),
+    "email": ("general", "email"),
+    "address_line1": ("address", "address_line_1"),
+    "address_line2": ("address", "address_line_2"),
+    "city": ("address", "city"),
+    "postal_code": ("address", "postal_code"),
+    "country": ("address", "country"),
+}
+
+# What a name reads as in the "Missing required" message - the label the form
+# itself shows, so the error names the box the guest is looking at.
+_FIELD_LABELS = {
+    "first_name": "given names", "last_name": "last name", "nationality": "nationality",
+    "telephone": "telephone", "occupation": "occupation", "email": "email",
+    "address_line1": "address line 1", "address_line2": "address line 2",
+    "city": "city", "postal_code": "postal code", "country": "country",
+    "document_number": "document number",
+}
+
+# MEWS's own default state per field, plus the kiosk's own reading of
+# "Default" where MEWS shows none - mirrors FIELD_CATEGORIES' `default` /
+# `kioskDefault`. A field absent from this map defaults to Optional.
+_FIELD_DEFAULT = {
+    ("general", "first_name"): "Required",
+    ("general", "nationality"): "Required",
+    ("general", "telephone"): "Optional",
+    ("general", "occupation"): "Hidden",
+    ("general", "signature"): "Required",
+}
+
+# The cells MEWS renders as fixed text rather than a dropdown - they win over
+# anything saved, exactly as they do in the editor.
+_FIELD_LOCKED = {
+    ("general", "last_name"): {"owner": "Required", "other_adults": "Required", "children": "Required"},
+    ("general", "relation_to_other_guests"): {"owner": "Hidden"},
+}
+
+_DEFAULT_DOCUMENT_TYPE = "passport_id_license"
+_DEFAULT_DOCUMENT_VISIBILITY = "Hidden"
+_DOCUMENTS_ALLOWED = {
+    "passport_id_license": ("passport", "identity_card", "drivers_license"),
+    "passport_id": ("passport", "identity_card"),
+    "passport": ("passport",),
+    "id_card": ("identity_card",),
+    "driver_license": ("drivers_license",),
+}
+
+
+def load_fields(property_name: str) -> dict:
+    """This property's saved `fields` blob, or `{}`.
+
+    Degrades to `{}` rather than raising for a property that has never been
+    configured AND for a database that doesn't have the table yet - `{}`
+    resolves every field to MEWS's own default, which is a working form. A
+    guest standing at a terminal must not be turned away because nobody has
+    opened the Check In Form page.
+    """
+    try:
+        result = (
+            get_supabase_client()
+            .table("checkin_form_settings")
+            .select("fields")
+            .eq("property_name", property_name)
+            .execute()
+        )
+    except Exception:
+        return {}
+    if not result.data:
+        return {}
+    return result.data[0].get("fields") or {}
+
+
+def effective_state(fields: dict, category: str, key: str, guest_type: str = "other_adults") -> str:
+    """Required / Optional / Hidden for one cell - locked, then the saved
+    choice, then the default, then Optional. Same order as effectiveState()
+    in src/lib/checkinFormFields.ts."""
+    locked = (_FIELD_LOCKED.get((category, key)) or {}).get(guest_type)
+    if locked in _STATES:
+        return locked
+    saved = ((fields or {}).get(category) or {}).get(f"{key}.{guest_type}")
+    if saved in _STATES:
+        return saved
+    return _FIELD_DEFAULT.get((category, key), "Optional")
+
+
+def document_settings(fields: dict) -> tuple:
+    """(visibility, allowed document types) for the Documents tab, which has
+    no guest-type split of its own."""
+    visibility = ((fields or {}).get("documents") or {}).get("visibility")
+    if visibility not in _STATES:
+        visibility = _DEFAULT_DOCUMENT_VISIBILITY
+    doc_type = ((fields or {}).get("documents") or {}).get("type")
+    allowed = _DOCUMENTS_ALLOWED.get(doc_type, _DOCUMENTS_ALLOWED[_DEFAULT_DOCUMENT_TYPE])
+    return visibility, allowed
+
+
+def field_label(field: str) -> str:
+    return _FIELD_LABELS.get(field, field.replace("_", " "))

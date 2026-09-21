@@ -24,6 +24,15 @@ from fastapi import APIRouter, Body, File, Form, HTTPException, Query, UploadFil
 from pydantic import BaseModel
 
 from app.config import get_supabase_client
+# The property's Check In Form config, resolved the same way the kiosk screen
+# resolves it - see add_kiosk_guest.
+from app.routers.checkin_form import (
+    KIOSK_PROFILE_FIELDS,
+    document_settings as checkin_document_settings,
+    effective_state as checkin_effective_state,
+    field_label as checkin_field_label,
+    load_fields as load_checkin_fields,
+)
 from app.services.encryption import encryption_service
 from app.services.storage_buckets import ensure_public_bucket
 from app.services.sync_service import sync_service
@@ -504,21 +513,47 @@ async def add_kiosk_guest(payload: dict = Body(...)):
     _PROFILE_TEXT_FIELDS). Passing the guest_key of a guest already added
     updates that guest in place; omitting it creates a new one.
 
-    The fields the form marks required are required here as well: a guest
-    record without a name, nationality, country or document number is not
-    one a registration card can be built from, whatever a client sends.
+    WHICH fields are required is the property's own Check In Form (Admin
+    Console > Kiosks > Check In Form), resolved here exactly as the screen
+    resolves it - so the stars a guest saw and the rule enforced on the way
+    in can't drift apart. A field the property set Hidden is BLANKED rather
+    than merely unchecked: a property that chose not to collect an occupation
+    should not end up with one stored because a client posted it anyway.
+
+    A guest added at the terminal is never the reservation owner, so the
+    "Other adults" column is the one that applies.
     """
     property_name = (payload.get("property_name") or "").strip()
     reservation_number = (payload.get("reservation_number") or "").strip()
     if not property_name or not reservation_number:
         raise HTTPException(status_code=400, detail="property_name and reservation_number are required.")
 
+    fields = load_checkin_fields(property_name)
     profile = _clean_profile(payload)
-    missing = [label for field, label in (
-        ("first_name", "given names"), ("last_name", "last name"),
-        ("nationality", "nationality"), ("country", "country"),
-        ("document_number", "document number"),
-    ) if not profile[field]]
+
+    required = []
+    for field, (category, key) in KIOSK_PROFILE_FIELDS.items():
+        state = checkin_effective_state(fields, category, key, "other_adults")
+        if state == "Hidden":
+            profile[field] = ""
+        elif state == "Required":
+            required.append(field)
+
+    doc_visibility, doc_allowed = checkin_document_settings(fields)
+    if doc_visibility == "Hidden":
+        for field in ("document_number", "issue_date", "issuing_country", "issuing_city", "expiration_date"):
+            profile[field] = ""
+    else:
+        if doc_visibility == "Required":
+            required.append("document_number")
+        # A type the property doesn't accept is not a type this guest picked
+        # on the screen - it falls back to the first one that is offered.
+        if profile["document_type"] not in doc_allowed:
+            profile["document_type"] = doc_allowed[0]
+            if profile["document_type"] != "identity_card":
+                profile["issuing_city"] = ""
+
+    missing = [checkin_field_label(field) for field in required if not profile[field]]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required: {', '.join(missing)}.")
 

@@ -5,6 +5,20 @@ import { Info } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { supabase } from "@/lib/supabase";
+import {
+  DEFAULT_DOCUMENT_TYPE,
+  DEFAULT_DOCUMENT_VISIBILITY,
+  DOCUMENT_TYPE_GROUPS,
+  FIELD_CATEGORIES,
+  FIELD_STATES,
+  collectedAtKiosk,
+  defaultStateFor,
+  type CheckinDocumentType,
+  type FieldDef,
+  type FieldState,
+  type FieldsValue,
+  type GuestType,
+} from "@/lib/checkinFormFields";
 
 /**
  * Admin Console > Kiosks > Check In Form - which guest profile fields are
@@ -18,160 +32,27 @@ import { supabase } from "@/lib/supabase";
  * terminal they use, so it follows the property switcher rather than a
  * kiosk picker.
  *
- * FIELD-LIST FIDELITY: "General" is copied field-for-field from the
- * reference MEWS screenshot this page was built against - which two cells
- * are locked (`locked`, rendered as fixed text) AND what MEWS's own default
- * state is for the rest (`default`, still an editable dropdown, just not
- * starting from the generic "Default" placeholder for a property that has
- * never saved its own choice). "Documents" is also verified against a real
- * screenshot, but is a different shape entirely - see the DocumentType note
- * below, not a fields x guest-type table. "Verification" is verified too -
- * three fields (Verification photo / ID photos / ID verification), each
- * defaulting to Hidden. Only "Address" below is NOT verified against a real
- * MEWS screen - nobody here has seen that tab - and is a reasonable
- * placeholder field list to be corrected once someone has. Kept in one place
- * (FIELD_CATEGORIES) so correcting it is an edit to a list, not a rewrite of
- * the page.
+ * The field list, the locked cells, MEWS's own per-field defaults and the
+ * Documents Type/Visibility pair all live in `@/lib/checkinFormFields` -
+ * shared with /kiosk/registration, which OBEYS this configuration, so the two
+ * screens can never disagree about which fields exist. See that file for the
+ * field-list fidelity note (only "Address" is still unverified against a real
+ * MEWS screen).
  *
- * Nothing reads this configuration yet: /kiosk/registration still uses its
- * own fixed field set. This is the configuration surface going in first,
- * the same order the Kiosks page itself shipped in.
+ * What the kiosk does with what is saved here: a field set Hidden is not
+ * rendered at all, Required is starred and blocks Next until it is filled,
+ * and Optional is rendered and doesn't. Untick "Other adults" and the kiosk
+ * stops offering Add guest. The kiosk collects a SUBSET of the fields in this
+ * table (the fields MEWS's own kiosk form asks for) - the rest are stored and
+ * unread, exactly as they were before, because there is nowhere on the
+ * terminal to ask them.
  */
-
-type FieldState = "Default" | "Required" | "Optional" | "Hidden";
-type GuestType = "owner" | "other_adults" | "children";
-
-const FIELD_STATES: FieldState[] = ["Default", "Required", "Optional", "Hidden"];
-
-// The Documents tab isn't a fields x guest-type table like the others - MEWS's
-// own screen for it is a single Type + Visibility choice, not per-field or
-// per-guest-type. "Type" is which document(s) satisfy check-in: either the
-// guest picks any one from a set ("Guest choose a document type") or a
-// specific single document is required ("Guest fills one of these
-// documents"). Copied field-for-field, including the grouping, from a real
-// MEWS screenshot.
-type DocumentType = "passport_id_license" | "passport_id" | "passport" | "id_card" | "driver_license";
-
-const DOCUMENT_TYPE_GROUPS: { label: string; options: { value: DocumentType; label: string }[] }[] = [
-  {
-    label: "Guest choose a document type",
-    options: [
-      { value: "passport_id_license", label: "Passport / ID card / Driver's license" },
-      { value: "passport_id", label: "Passport / ID card" },
-    ],
-  },
-  {
-    label: "Guest fills one of these documents",
-    options: [
-      { value: "passport", label: "Passport" },
-      { value: "id_card", label: "ID card" },
-      { value: "driver_license", label: "Driver's license" },
-    ],
-  },
-];
-
-const DEFAULT_DOCUMENT_TYPE: DocumentType = "passport_id_license";
-const DEFAULT_DOCUMENT_VISIBILITY: FieldState = "Hidden";
-
-interface FieldDef {
-  key: string;
-  label: string;
-  /** A cell rendered as fixed text with an info tooltip instead of a
-   * dropdown - MEWS locks a handful of fields this way (e.g. Last name is
-   * always Required for everyone; "Relation to other guests" makes no sense
-   * for the reservation owner and is always Hidden there). */
-  locked?: Partial<Record<GuestType, FieldState>>;
-  lockedHint?: string;
-  /** The state shown (and used, until a property saves its own choice) for
-   * every non-locked guest type before anyone has configured this property -
-   * MEWS's own real default for that field, not the generic placeholder
-   * "Default" every other field falls back to. Unset means MEWS itself has
-   * no particular default for this field. */
-  default?: FieldState;
-}
-
-interface Category {
-  key: string;
-  label: string;
-  fields: FieldDef[];
-}
-
-// See the file-level note: only "general" is verified against a real MEWS
-// screen. The rest are placeholders.
-const FIELD_CATEGORIES: Category[] = [
-  {
-    key: "general",
-    label: "General",
-    fields: [
-      { key: "first_name", label: "First name" },
-      {
-        key: "last_name",
-        label: "Last name",
-        locked: { owner: "Required", other_adults: "Required", children: "Required" },
-        lockedHint: "A lodger register needs every guest's name - this can't be turned off.",
-      },
-      { key: "second_last_name", label: "Second last name" },
-      { key: "email", label: "Email" },
-      { key: "signature", label: "Signature" },
-      { key: "sex", label: "Sex", default: "Required" },
-      { key: "nationality", label: "Nationality", default: "Required" },
-      { key: "telephone", label: "Telephone", default: "Optional" },
-      { key: "date_of_birth", label: "Date of birth", default: "Required" },
-      { key: "place_of_birth", label: "Place of birth", default: "Hidden" },
-      { key: "occupation", label: "Occupation", default: "Hidden" },
-      { key: "purpose_of_stay", label: "Purpose of stay", default: "Optional" },
-      { key: "dietary_requirements", label: "Dietary requirements", default: "Hidden" },
-      { key: "car_registration_number", label: "Car registration number", default: "Hidden" },
-      {
-        key: "relation_to_other_guests",
-        label: "Relation to other guests",
-        locked: { owner: "Hidden" },
-        lockedHint: "The reservation owner has no one to be \"related to\" on their own card.",
-      },
-      { key: "country_of_birth", label: "Country of birth", default: "Hidden" },
-    ],
-  },
-  {
-    key: "address",
-    label: "Address",
-    fields: [
-      { key: "address_line_1", label: "Address line 1" },
-      { key: "address_line_2", label: "Address line 2" },
-      { key: "city", label: "City" },
-      { key: "state_province", label: "State / Province" },
-      { key: "postal_code", label: "Postal code" },
-      { key: "country", label: "Country" },
-    ],
-  },
-  {
-    // No `fields` here on purpose - see the DocumentType note above and
-    // "Documents" rendering below, which is a Type + Visibility pair rather
-    // than this shared fields-table layout.
-    key: "documents",
-    label: "Documents",
-    fields: [],
-  },
-  {
-    key: "verification",
-    label: "Verification",
-    fields: [
-      { key: "verification_photo", label: "Verification photo", default: "Hidden" },
-      { key: "id_photos", label: "ID photos", default: "Hidden" },
-      { key: "id_verification", label: "ID verification", default: "Hidden" },
-    ],
-  },
-];
 
 const GUEST_TYPES: { key: GuestType; label: string; toggleable: boolean }[] = [
   { key: "owner", label: "Reservation owner", toggleable: false },
   { key: "other_adults", label: "Other adults", toggleable: true },
   { key: "children", label: "Children", toggleable: true },
 ];
-
-// string, not FieldState: most categories only ever store a FieldState per
-// cell, but Documents stores a DocumentType under its "type" key alongside a
-// FieldState under "visibility" - see setDocumentField.
-type FieldsValue = Record<string, Record<string, string>>;
 
 interface CheckinFormSettings {
   id: string | null;
@@ -183,10 +64,6 @@ interface CheckinFormSettings {
   created_by: string | null;
   updated_at: string | null;
   updated_by: string | null;
-}
-
-function defaultStateFor(field: FieldDef, guestType: GuestType): FieldState {
-  return field.locked?.[guestType] ?? field.default ?? "Default";
 }
 
 function valueFor(settings: CheckinFormSettings, categoryKey: string, field: FieldDef, guestType: GuestType): FieldState {
@@ -270,7 +147,7 @@ export default function CheckInFormPage() {
   // Documents' Type/Visibility pair bypasses the field-x-guest-type storage
   // shape (`${key}.${guestType}`) other categories use - there is no guest
   // type here, so these two live under fields.documents as plain keys.
-  const documentType = ((settings?.fields.documents?.type as DocumentType | undefined) || DEFAULT_DOCUMENT_TYPE);
+  const documentType = ((settings?.fields.documents?.type as CheckinDocumentType | undefined) || DEFAULT_DOCUMENT_TYPE);
   const documentVisibility = ((settings?.fields.documents?.visibility as FieldState | undefined) || DEFAULT_DOCUMENT_VISIBILITY);
 
   const setDocumentField = (key: "type" | "visibility", value: string) => {
@@ -456,7 +333,20 @@ export default function CheckInFormPage() {
               <tbody className="divide-y divide-slate-100">
                 {category.fields.map((field) => (
                   <tr key={field.key}>
-                    <td className="px-5 py-3 text-sm font-medium text-slate-700">{field.label}</td>
+                    <td className="px-5 py-3 text-sm font-medium text-slate-700">
+                      {field.label}
+                      {/* Said plainly rather than left to be discovered: the
+                          terminal has no control for this field, so whatever
+                          is chosen beside it is stored and never asked. */}
+                      {!collectedAtKiosk(category.key, field.key) && (
+                        <span
+                          className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400"
+                          title="The kiosk's check-in screen has no field for this yet - the setting is saved, but nothing asks the guest for it."
+                        >
+                          Not on the kiosk
+                        </span>
+                      )}
+                    </td>
                     {GUEST_TYPES.map((gt) => {
                       const columnEnabled = gt.key === "other_adults" ? settings.other_adults_enabled
                         : gt.key === "children" ? settings.children_enabled : true;

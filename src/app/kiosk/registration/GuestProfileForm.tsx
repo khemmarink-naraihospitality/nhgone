@@ -4,6 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { BookUser, CarFront, Check, ChevronDown, IdCard, Search, X, type LucideIcon } from "lucide-react";
 import { useKioskLanguage } from "../kioskLanguage";
+import {
+  documentSettings,
+  effectiveState,
+  type EffectiveState,
+  type FieldsValue,
+  type GuestType,
+  type KioskDocumentType,
+} from "@/lib/checkinFormFields";
 
 /**
  * The full profile a guest ADDED AT THE TERMINAL fills in - the fields MEWS's
@@ -11,6 +19,13 @@ import { useKioskLanguage } from "../kioskLanguage";
  * (checked against screenshots of it, 17-Sep-2026). A guest already on the
  * MEWS booking doesn't get this form: MEWS has their profile, so they only
  * confirm an email, accept the terms and sign.
+ *
+ * WHICH fields appear, and which are starred, is the property's own choice:
+ * Admin Console > Kiosks > Check In Form, resolved through
+ * `@/lib/checkinFormFields`. Hidden takes a field off the screen entirely,
+ * Required stars it and blocks Next until it is filled, Optional does
+ * neither. The same resolution runs again server-side in add_kiosk_guest, so
+ * a field this screen never showed can't arrive filled in from anywhere else.
  *
  * Presentational only - the parent owns the values, saves them through
  * POST /api/kiosks/registration/guests, and decides when Next is allowed.
@@ -78,14 +93,49 @@ export const EMPTY_PROFILE: GuestProfile = {
   expiration_date: "",
 };
 
-/** The profile fields marked * - mirrored server-side in add_kiosk_guest. */
-export const REQUIRED_PROFILE_FIELDS: (keyof GuestProfile)[] = [
-  "first_name",
-  "last_name",
-  "nationality",
+/**
+ * Which cell of the Check In Form table governs each field on this form.
+ * The two naming schemes differ (`address_line1` here, `address_line_1` in
+ * the admin table, which copies MEWS's own label) - this is the one place
+ * they are tied together, rather than each call site guessing.
+ *
+ * The identity-document fields aren't here: they are governed as a block by
+ * the Documents tab's own Visibility, which has no per-field split.
+ */
+export const PROFILE_FIELD_SOURCE: Partial<Record<keyof GuestProfile, [string, string]>> = {
+  first_name: ["general", "first_name"],
+  last_name: ["general", "last_name"],
+  nationality: ["general", "nationality"],
+  telephone: ["general", "telephone"],
+  occupation: ["general", "occupation"],
+  address_line1: ["address", "address_line_1"],
+  address_line2: ["address", "address_line_2"],
+  city: ["address", "city"],
+  postal_code: ["address", "postal_code"],
+  country: ["address", "country"],
+};
+
+/** The fields of GuestProfile whose section is the Personal address one. */
+const ADDRESS_FIELDS: (keyof GuestProfile)[] = [
+  "address_line1",
+  "address_line2",
+  "city",
+  "postal_code",
   "country",
-  "document_number",
 ];
+
+/** The profile fields this property stars - mirrored server-side in
+ * add_kiosk_guest, so the two can't disagree about what a saved guest needs.
+ * Email is NOT here: the parent owns it (a MEWS guest fills only an email)
+ * and checks it itself. */
+export function requiredProfileFields(fields: FieldsValue, guestType: GuestType): (keyof GuestProfile)[] {
+  const required = (Object.keys(PROFILE_FIELD_SOURCE) as (keyof GuestProfile)[]).filter((field) => {
+    const [category, key] = PROFILE_FIELD_SOURCE[field]!;
+    return effectiveState(fields, category, key, guestType) === "Required";
+  });
+  if (documentSettings(fields).visibility === "Required") required.push("document_number");
+  return required;
+}
 
 // One bordered box per field with its small label INSIDE it above the value -
 // the same shape as the owner form's Email box, so both forms read alike. The
@@ -336,6 +386,8 @@ export default function GuestProfileForm({
   onEmailChange,
   countries,
   ownerAddress,
+  fields,
+  guestType,
 }: {
   profile: GuestProfile;
   onChange: (profile: GuestProfile) => void;
@@ -343,9 +395,31 @@ export default function GuestProfileForm({
   onEmailChange: (email: string) => void;
   countries: CountryOption[];
   ownerAddress: OwnerAddress | null;
+  /** checkin_form_settings.fields for this property - `{}` while it loads,
+   * or if it never does, which resolves every field to MEWS's own default
+   * rather than blocking a check-in on a settings fetch. */
+  fields: FieldsValue;
+  guestType: GuestType;
 }) {
   const { t, language } = useKioskLanguage();
   const set = (field: keyof GuestProfile) => (value: string) => onChange({ ...profile, [field]: value });
+
+  // What the property asked for, per field. `state` answers the whole
+  // question - `show`/`star` are just the two readings of it this form needs.
+  const state = (field: keyof GuestProfile): EffectiveState => {
+    const source = PROFILE_FIELD_SOURCE[field];
+    if (!source) return "Optional";
+    return effectiveState(fields, source[0], source[1], guestType);
+  };
+  const show = (field: keyof GuestProfile) => state(field) !== "Hidden";
+  const star = (field: keyof GuestProfile) => state(field) === "Required";
+
+  const emailState = effectiveState(fields, "general", "email", guestType);
+  // The heading and the owner's "Use address" card belong to the address
+  // block - with every address field hidden there is no block for them to
+  // head, so they go too rather than leaving a rule across an empty gap.
+  const showAddress = ADDRESS_FIELDS.some(show);
+  const documents = documentSettings(fields);
 
   // Personal-address country defaults to nationality, since most guests give
   // an address in the country they're a citizen of - one fewer picker to
@@ -402,49 +476,99 @@ export default function GuestProfileForm({
         .join(", ")
     : "";
 
-  const docTypes: { value: DocumentType; label: string; icon: LucideIcon }[] = [
-    { value: "passport", label: t.passport, icon: BookUser },
-    { value: "identity_card", label: t.identityCard, icon: IdCard },
-    { value: "drivers_license", label: t.driversLicense, icon: CarFront },
-  ];
-  const docTitle = docTypes.find((d) => d.value === profile.document_type)?.label || t.passport;
+  // Only the document types the property accepts get a button - "Guest fills
+  // one of these documents" in MEWS's own wording means exactly one.
+  const docTypeMeta: Record<KioskDocumentType, { label: string; icon: LucideIcon }> = {
+    passport: { label: t.passport, icon: BookUser },
+    identity_card: { label: t.identityCard, icon: IdCard },
+    drivers_license: { label: t.driversLicense, icon: CarFront },
+  };
+  const docTypes = documents.allowed.map((value) => ({ value, ...docTypeMeta[value] }));
+  const activeDocType = documents.allowed.includes(profile.document_type)
+    ? profile.document_type
+    : documents.allowed[0];
+  const docTitle = activeDocType ? docTypeMeta[activeDocType].label : t.passport;
+
+  // A profile carrying a type the property no longer accepts (the setting
+  // changed while a form was half filled) is corrected to the first one it
+  // does, so what gets saved is what was on the screen rather than a type
+  // with no button beside it.
+  useEffect(() => {
+    if (activeDocType && activeDocType !== profile.document_type) {
+      onChange({ ...profile, document_type: activeDocType });
+    }
+  }, [activeDocType, profile, onChange]);
 
   return (
     <div className="flex flex-col gap-5">
-      <Field label={t.firstName} required value={profile.first_name} onChange={set("first_name")} autoComplete="given-name" />
-      <Field label={t.lastName} required value={profile.last_name} onChange={set("last_name")} autoComplete="family-name" />
-      <CountryField label={t.nationality} required value={profile.nationality} onChange={setNationality} options={countryOptions} />
-      <Field label={t.telephone} type="tel" value={profile.telephone} onChange={set("telephone")} autoComplete="tel" />
-      <Field label={t.occupation} value={profile.occupation} onChange={set("occupation")} />
-      <Field label={t.email} type="email" value={email} onChange={onEmailChange} autoComplete="email" />
-
-      <Section title={t.personalAddress} />
-      {ownerAddressText && (
-        // People travelling together usually share a home address, so the
-        // owner's is offered as a one-tap fill - the same card MEWS shows.
-        <div className="flex items-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-6 py-4">
-          <p className="flex-1 text-lg leading-snug text-[var(--kiosk-text-secondary)]">{ownerAddressText}</p>
-          <button
-            type="button"
-            onClick={() => onChange({ ...profile, ...ownerAddress! })}
-            className="shrink-0 rounded-xl bg-[var(--kiosk-inverse-bg)] px-6 py-3 text-lg font-medium text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
-          >
-            {t.useAddress}
-          </button>
-        </div>
+      {show("first_name") && (
+        <Field label={t.firstName} required={star("first_name")} value={profile.first_name} onChange={set("first_name")} autoComplete="given-name" />
       )}
-      <Field label={t.addressLine1} value={profile.address_line1} onChange={set("address_line1")} autoComplete="address-line1" />
-      <Field label={t.addressLine2} value={profile.address_line2} onChange={set("address_line2")} autoComplete="address-line2" />
-      <Field label={t.city} value={profile.city} onChange={set("city")} autoComplete="address-level2" />
-      <Field label={t.postalCode} value={profile.postal_code} onChange={set("postal_code")} autoComplete="postal-code" />
-      <CountryField label={t.country} required value={profile.country} onChange={set("country")} options={countryOptions} />
+      {show("last_name") && (
+        <Field label={t.lastName} required={star("last_name")} value={profile.last_name} onChange={set("last_name")} autoComplete="family-name" />
+      )}
+      {show("nationality") && (
+        <CountryField label={t.nationality} required={star("nationality")} value={profile.nationality} onChange={setNationality} options={countryOptions} />
+      )}
+      {show("telephone") && (
+        <Field label={t.telephone} required={star("telephone")} type="tel" value={profile.telephone} onChange={set("telephone")} autoComplete="tel" />
+      )}
+      {show("occupation") && (
+        <Field label={t.occupation} required={star("occupation")} value={profile.occupation} onChange={set("occupation")} />
+      )}
+      {emailState !== "Hidden" && (
+        <Field label={t.email} required={emailState === "Required"} type="email" value={email} onChange={onEmailChange} autoComplete="email" />
+      )}
 
+      {showAddress && (
+        <>
+          <Section title={t.personalAddress} />
+          {ownerAddressText && (
+            // People travelling together usually share a home address, so the
+            // owner's is offered as a one-tap fill - the same card MEWS shows.
+            <div className="flex items-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-6 py-4">
+              <p className="flex-1 text-lg leading-snug text-[var(--kiosk-text-secondary)]">{ownerAddressText}</p>
+              <button
+                type="button"
+                onClick={() => onChange({ ...profile, ...ownerAddress! })}
+                className="shrink-0 rounded-xl bg-[var(--kiosk-inverse-bg)] px-6 py-3 text-lg font-medium text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)]"
+              >
+                {t.useAddress}
+              </button>
+            </div>
+          )}
+          {show("address_line1") && (
+            <Field label={t.addressLine1} required={star("address_line1")} value={profile.address_line1} onChange={set("address_line1")} autoComplete="address-line1" />
+          )}
+          {show("address_line2") && (
+            <Field label={t.addressLine2} required={star("address_line2")} value={profile.address_line2} onChange={set("address_line2")} autoComplete="address-line2" />
+          )}
+          {show("city") && (
+            <Field label={t.city} required={star("city")} value={profile.city} onChange={set("city")} autoComplete="address-level2" />
+          )}
+          {show("postal_code") && (
+            <Field label={t.postalCode} required={star("postal_code")} value={profile.postal_code} onChange={set("postal_code")} autoComplete="postal-code" />
+          )}
+          {show("country") && (
+            <CountryField label={t.country} required={star("country")} value={profile.country} onChange={set("country")} options={countryOptions} />
+          )}
+        </>
+      )}
+
+      {/* The whole identity-document block is one Visibility setting - MEWS's
+          own default is Hidden, i.e. a property collects no passport or ID at
+          the terminal until it says it does. */}
+      {documents.visibility !== "Hidden" && (
+        <>
       <Section title={t.identityDocument} />
       <div>
-        <p className="text-lg text-[var(--kiosk-text-muted)]">{t.documentType} *</p>
+        <p className="text-lg text-[var(--kiosk-text-muted)]">
+          {t.documentType}
+          {documents.visibility === "Required" && " *"}
+        </p>
         <div className="mt-3 flex flex-wrap gap-3" role="radiogroup" aria-label={t.documentType}>
           {docTypes.map(({ value, label, icon: Icon }) => {
-            const active = profile.document_type === value;
+            const active = activeDocType === value;
             return (
               <button
                 key={value}
@@ -469,13 +593,20 @@ export default function GuestProfileForm({
       {/* The section is named after the document picked, as on MEWS's form.
           Only an identity card asks where it was issued as well. */}
       <Section title={docTitle} />
-      <Field label={t.documentNumber} required value={profile.document_number} onChange={set("document_number")} />
+      <Field
+        label={t.documentNumber}
+        required={documents.visibility === "Required"}
+        value={profile.document_number}
+        onChange={set("document_number")}
+      />
       <Field label={t.issueDate} type="date" value={profile.issue_date} onChange={set("issue_date")} />
       <CountryField label={t.issuingCountry} value={profile.issuing_country} onChange={set("issuing_country")} options={countryOptions} />
-      {profile.document_type === "identity_card" && (
+      {activeDocType === "identity_card" && (
         <Field label={t.issuingCity} value={profile.issuing_city} onChange={set("issuing_city")} />
       )}
       <Field label={t.expirationDate} type="date" value={profile.expiration_date} onChange={set("expiration_date")} />
+        </>
+      )}
     </div>
   );
 }
