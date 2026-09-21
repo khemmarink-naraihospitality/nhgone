@@ -96,9 +96,11 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [canAccessAdmin, setCanAccessAdmin] = useState(false);
-  // Where the Admin Console link points: "/admin" for full admins, the
-  // nationality table for roles allowed in on their RR4/TM30 permission
-  // alone (that landing dashboard is not one of their two permitted pages).
+  // Where the Admin Console link points: "/admin" for full admins, and the
+  // one page they ARE allowed for roles let in on a single ordinary menu
+  // permission - /admin itself is not one of those pages and would just
+  // redirect. Kept in step with ADMIN_NATIONALITY_PATHS / ADMIN_REVENUE_PATHS
+  // in Navigation.tsx, which is what actually enforces this.
   const [adminHref, setAdminHref] = useState("/admin");
   const rootRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -126,11 +128,13 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
         // Super Admin always sees the Admin Console link regardless of the
         // Role Settings grid (locked in the UI - see admin/users Role
         // Settings tab). Other roles depend on their role_permissions.admin
-        // flag, driven by the same grid - or on rr4_tm30, which grants a
-        // cut-down Admin Console holding only the two nationality code
-        // tables (see ADMIN_NATIONALITY_PATHS in Navigation.tsx, which is
-        // what actually enforces this; the link target below just has to
-        // match, since /admin itself redirects for those roles).
+        // flag, driven by the same grid - or on one of the two permissions
+        // that grant a cut-down Admin Console: rr4_tm30 opens the two
+        // nationality code tables, revenue opens Email Template (where the
+        // Stop Sale & Re-open mail is configured). Navigation.tsx's
+        // ADMIN_NATIONALITY_PATHS / ADMIN_REVENUE_PATHS are what actually
+        // enforce this; the link target below just has to match, since
+        // /admin itself redirects for those roles.
         // select("*") rather than a column list, same reason Navigation.tsx
         // uses it: a column missing in the DB would otherwise fail the whole
         // query and hide the link from legitimate admins.
@@ -142,8 +146,11 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
             .select("*")
             .eq("role", data.role)
             .single();
-          setCanAccessAdmin(!!permRow?.admin || !!permRow?.rr4_tm30);
-          setAdminHref(permRow?.admin ? "/admin" : "/admin/rr4-nationality");
+          setCanAccessAdmin(!!permRow?.admin || !!permRow?.rr4_tm30 || !!permRow?.revenue);
+          setAdminHref(
+            permRow?.admin ? "/admin"
+              : permRow?.rr4_tm30 ? "/admin/rr4-nationality"
+                : "/admin/templates");
         }
       }
     };

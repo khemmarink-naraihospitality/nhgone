@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ProfileMenu, ThemeToggle } from "./UserHeader";
@@ -346,13 +346,22 @@ function ForcePasswordChangeScreen({ email }: { email: string }) {
 // otherwise stays logged into whichever staff account opened it.
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 
-// The only two Admin Console pages a role can reach on the strength of its
-// RR4/TM30 menu permission alone. They hold the nationality code lookup
-// tables the RR4/TM30 government filing depends on - reference data the
-// staff filing those forms have to be able to correct themselves, which is a
-// different thing from administering the system. Every other /admin page
-// stays behind the full `admin` permission.
+// Admin Console pages a role can reach on the strength of ONE ordinary menu
+// permission, without being given `admin` - which would carry every other
+// admin page with it, including Property & API and its encrypted MEWS
+// tokens. Same reasoning /users-report exists for.
+//
+// RR4/TM30 -> the two nationality code lookup tables the government filing
+// depends on: reference data the staff filing those forms have to be able to
+// correct themselves, which is a different thing from administering the
+// system.
+//
+// Revenue -> Email Template, which is where the Stop Sale & Re-open mail
+// (bundled and per-property) is configured. That mail is entirely about the
+// Revenue page's own Occupancy By Type Calendar, and the people watching it
+// are the ones who need to change its recipients and send times.
 const ADMIN_NATIONALITY_PATHS = ["/admin/rr4-nationality", "/admin/tm30-nationality"];
+const ADMIN_REVENUE_PATHS = ["/admin/templates"];
 
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -620,11 +629,20 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   const onAdminPath = pathname.startsWith("/admin");
 
   const hasFullAdmin = isSuperAdminRole || !!menuPermissions?.admin;
-  const canEnterAdmin = hasFullAdmin || !!menuPermissions?.rr4_tm30;
-  // Nationality-only admins: everything under /admin is off-limits except the
-  // two pages above - including /admin itself, whose dashboard reports on
-  // logins and user counts.
-  const adminNationalityOnly = !hasFullAdmin && !!menuPermissions?.rr4_tm30;
+  // null = every admin page (a full admin). Otherwise the exact set this
+  // role may reach, which is the UNION of what each of its own menu
+  // permissions opens - a role holding both RR4/TM30 and Revenue gets the
+  // nationality pages AND Email Template, not whichever is tested first.
+  // Everything else under /admin stays off-limits, including /admin itself,
+  // whose dashboard reports on logins and user counts.
+  const limitedAdminPaths = useMemo(
+    () => (hasFullAdmin ? null : [
+      ...(menuPermissions?.rr4_tm30 ? ADMIN_NATIONALITY_PATHS : []),
+      ...(menuPermissions?.revenue ? ADMIN_REVENUE_PATHS : []),
+    ]),
+    [hasFullAdmin, menuPermissions?.rr4_tm30, menuPermissions?.revenue],
+  );
+  const canEnterAdmin = hasFullAdmin || (limitedAdminPaths?.length ?? 0) > 0;
 
   // Users Report is guarded on the route, not just by hiding its link -
   // the same reasoning /admin/* has, and for the same kind of content: it
@@ -666,10 +684,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     if (!onAdminPath || !permissionsLoaded) return;
     if (!canEnterAdmin) {
       router.push("/dashboard");
-    } else if (adminNationalityOnly && !ADMIN_NATIONALITY_PATHS.includes(pathname)) {
-      router.push("/admin/rr4-nationality");
+    } else if (limitedAdminPaths && !limitedAdminPaths.includes(pathname)) {
+      // Onto the first page this role CAN see, rather than out of the
+      // console altogether - it does have business here, just not on this
+      // page.
+      router.push(limitedAdminPaths[0]);
     }
-  }, [onAdminPath, permissionsLoaded, canEnterAdmin, adminNationalityOnly, pathname, router]);
+  }, [onAdminPath, permissionsLoaded, canEnterAdmin, limitedAdminPaths, pathname, router]);
 
   // Idle sign-out - only runs once actually signed in (not on the login page
   // itself, and not for a still-Pending account, which already only shows
@@ -835,34 +856,33 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
   // one list rendered twice, so the two never drift out of sync. Every menu
   // keeps exactly the role_permissions gate it had before icons were added.
   const DIVIDER = "divider" as const;
+  // One list of every admin page, then filtered by what this role may
+  // actually reach - so the links and the route guard above can never
+  // disagree about it.
+  const adminEntries: NavEntry[] = [
+    { href: "/admin", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/admin" },
+    { href: "/admin/users", label: "User Management", icon: UserCog, active: pathname === "/admin/users" },
+    { href: "/admin/smtp", label: "Email SMTP", icon: Mail, active: pathname === "/admin/smtp" },
+    { href: "/admin/sync", label: "Sync & Schedule", icon: CalendarClock, active: pathname === "/admin/sync" },
+    { href: "/admin/api-settings", label: "Property & API", icon: Building2, active: pathname === "/admin/api-settings" },
+    { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
+    { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
+    {
+      href: "/admin/kiosks",
+      label: "Kiosks",
+      icon: MonitorCog,
+      active: pathname === "/admin/kiosks",
+      children: [
+        { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form" },
+      ],
+    },
+    { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
+    { href: "/admin/tm30-nationality", label: "TM30-Nationality", icon: Globe, active: pathname === "/admin/tm30-nationality" },
+    { href: "/admin/logs", label: "Activity Log", icon: ScrollText, active: pathname === "/admin/logs" },
+  ];
+
   const navEntries: (NavEntry | typeof DIVIDER)[] = pathname.startsWith("/admin")
-    ? [
-        ...(!adminNationalityOnly
-          ? [
-              { href: "/admin", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/admin" },
-              { href: "/admin/users", label: "User Management", icon: UserCog, active: pathname === "/admin/users" },
-              { href: "/admin/smtp", label: "Email SMTP", icon: Mail, active: pathname === "/admin/smtp" },
-              { href: "/admin/sync", label: "Sync & Schedule", icon: CalendarClock, active: pathname === "/admin/sync" },
-              { href: "/admin/api-settings", label: "Property & API", icon: Building2, active: pathname === "/admin/api-settings" },
-              { href: "/admin/templates", label: "Email Template", icon: LayoutTemplate, active: pathname === "/admin/templates" },
-              { href: "/admin/revenue-settings", label: "Revenue Settings", icon: SlidersHorizontal, active: pathname === "/admin/revenue-settings" },
-              {
-                href: "/admin/kiosks",
-                label: "Kiosks",
-                icon: MonitorCog,
-                active: pathname === "/admin/kiosks",
-                children: [
-                  { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form" },
-                ],
-              },
-            ]
-          : []),
-        { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
-        { href: "/admin/tm30-nationality", label: "TM30-Nationality", icon: Globe, active: pathname === "/admin/tm30-nationality" },
-        ...(!adminNationalityOnly
-          ? [{ href: "/admin/logs", label: "Activity Log", icon: ScrollText, active: pathname === "/admin/logs" }]
-          : []),
-      ]
+    ? adminEntries.filter((e) => !limitedAdminPaths || limitedAdminPaths.includes(e.href))
     : [
         ...(perms.dashboard ? [{ href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, active: pathname === "/dashboard" }] : []),
         ...(showTopDivider ? [DIVIDER] : []),

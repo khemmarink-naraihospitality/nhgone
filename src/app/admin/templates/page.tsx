@@ -3,6 +3,7 @@
 import { useEffect, useState, useRef } from "react";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
+import { getMenuPermissions, type MenuPermissions } from "@/lib/menuPermissions";
 
 type TemplateType =
   | "billing"
@@ -1000,9 +1001,24 @@ function renderPreviewHtml(template: string, sample: Record<string, string>): st
   return result;
 }
 
+// Which groups this role may see. A full admin sees every one; a role that
+// got here on its Revenue menu permission alone (see ADMIN_REVENUE_PATHS in
+// Navigation.tsx) sees only the Revenue group - the Stop Sale & Re-open mail
+// is about its own page, while Billing, System Email and the rest are not
+// its business. Returning null means "still resolving", so the tab row
+// renders nothing rather than flashing every group for a moment first.
+function allowedGroups(perms: MenuPermissions | null, isSuperAdmin: boolean): TemplateGroup[] | null {
+  if (!perms) return null;
+  if (isSuperAdmin || perms.admin) return Object.keys(GROUP_CONFIG) as TemplateGroup[];
+  if (perms.revenue) return ["revenue"];
+  return [];
+}
+
 export default function TemplatesPage() {
   const [templateType, setTemplateType] = useState<TemplateType>("billing");
   const [activeGroup, setActiveGroup] = useState<TemplateGroup>("billing");
+  const [perms, setPerms] = useState<MenuPermissions | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
   const [properties, setProperties] = useState<string[]>([]);
   const [selectedProperty, setSelectedProperty] = useState("");
   const [html, setHtml] = useState("");
@@ -1097,6 +1113,38 @@ export default function TemplatesPage() {
     };
     fetchProperties();
   }, []);
+
+  // Which template groups this role may see. Navigation.tsx already keeps a
+  // Revenue-only role off every other /admin page; this keeps it off every
+  // other group INSIDE this one, which that route guard can't see.
+  useEffect(() => {
+    const run = async () => {
+      const [p, { data: { user } }] = await Promise.all([
+        getMenuPermissions(),
+        supabase.auth.getUser(),
+      ]);
+      let superAdmin = false;
+      if (user) {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+        const role = profile?.role;
+        superAdmin = role === "Super Admin" || role?.toLowerCase() === "super_admin";
+      }
+      setIsSuperAdmin(superAdmin);
+      setPerms(p);
+    };
+    run();
+  }, []);
+
+  const groups = allowedGroups(perms, isSuperAdmin);
+
+  // Land on the first group this role can actually open. The page's initial
+  // state is Billing, which a Revenue-only role may not see at all, so
+  // without this it would sit on an empty editor for a tab with no pill.
+  useEffect(() => {
+    if (!groups || groups.length === 0 || groups.includes(activeGroup)) return;
+    setActiveGroup(groups[0]);
+    setTemplateType(GROUP_CONFIG[groups[0]].children[0]);
+  }, [groups, activeGroup]);
 
   // hasPerPropertyRecipients tabs' own To/Cc/Bcc panel - reads/writes
   // property_api_settings directly (same pattern Admin > Sync already uses
@@ -1311,7 +1359,7 @@ export default function TemplatesPage() {
           to almost nothing instead of wrapping. flex-wrap here lets the
           pills spill onto a second line on narrower screens instead. */}
       <div className="mt-4 flex flex-wrap bg-slate-100 rounded-2xl p-1 gap-1 w-fit max-w-full">
-        {(Object.keys(GROUP_CONFIG) as TemplateGroup[]).map((g) => (
+        {(groups ?? []).map((g) => (
           <button
             key={g}
             onClick={() => {
