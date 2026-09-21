@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Pointer, Trash2 } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import SignaturePad from "@/components/SignaturePad";
 import KioskTopBar from "../KioskTopBar";
@@ -396,17 +396,18 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 </div>
               </div>
             ) : (
-              // The reference terminal puts a solid grey tap-card here, icon
-              // above the text ("Tap to return skipped guest"). That action
-              // has nothing behind it in this flow, so the slot carries the
-              // one that does - Add guest - in the same shape.
+              // The reference terminal puts a solid grey tap-card here, a
+              // hand-tap icon above the text ("Tap to return skipped
+              // guest"). That action has nothing behind it in this flow, so
+              // the slot carries the one that does - Add guest - in the same
+              // shape, including its tap icon.
               <button
                 type="button"
                 onClick={() => setAdding(true)}
                 disabled={!storageReady}
                 className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-[var(--kiosk-surface-alt)] py-8 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[var(--kiosk-surface-alt)]"
               >
-                <Plus size={30} strokeWidth={1.75} aria-hidden="true" />
+                <Pointer size={30} strokeWidth={1.75} aria-hidden="true" />
                 {t.addGuest}
               </button>
             )}
