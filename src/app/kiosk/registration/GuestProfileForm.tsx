@@ -476,6 +476,14 @@ export default function GuestProfileForm({
         .join(", ")
     : "";
 
+  // The card waits for Nationality to be filled in first, rather than
+  // appearing the instant the form opens - it's a suggestion for THIS
+  // guest's address, and offering it before anything about this guest is
+  // known reads as if it were already theirs. A property that hides the
+  // Nationality field entirely has nothing to wait for, so the card behaves
+  // as before there.
+  const readyForAddressSuggestion = !show("nationality") || !!profile.nationality.trim();
+
   // Only the document types the property accepts get a button - "Guest fills
   // one of these documents" in MEWS's own wording means exactly one.
   const docTypeMeta: Record<KioskDocumentType, { label: string; icon: LucideIcon }> = {
@@ -523,9 +531,11 @@ export default function GuestProfileForm({
       {showAddress && (
         <>
           <Section title={t.personalAddress} />
-          {ownerAddressText && (
+          {ownerAddressText && readyForAddressSuggestion && (
             // People travelling together usually share a home address, so the
             // owner's is offered as a one-tap fill - the same card MEWS shows.
+            // Held back until Nationality is filled in - see
+            // readyForAddressSuggestion above.
             <div className="flex items-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-6 py-4">
               <p className="flex-1 text-lg leading-snug text-[var(--kiosk-text-secondary)]">{ownerAddressText}</p>
               <button
