@@ -103,6 +103,32 @@ export interface KioskCopy {
   // registration storage hasn't been set up. Says so instead of blaming
   // the reservation, which is what the generic loadError used to do.
   signingUnavailable: string;
+  // Added-guest profile form (MEWS's own Add guest fields)
+  adult: string;
+  complete: string;
+  /** "Guest 2" - numbered by position in the whole list, owner being 1. */
+  guestN: (n: number) => string;
+  selectGuest: string;
+  nationality: string;
+  telephone: string;
+  occupation: string;
+  personalAddress: string;
+  useAddress: string;
+  addressLine1: string;
+  addressLine2: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  identityDocument: string;
+  documentType: string;
+  passport: string;
+  identityCard: string;
+  driversLicense: string;
+  documentNumber: string;
+  issueDate: string;
+  issuingCountry: string;
+  issuingCity: string;
+  expirationDate: string;
 }
 
 const en: KioskCopy = {
@@ -151,7 +177,7 @@ const en: KioskCopy = {
   },
   guests: "Guests",
   addGuest: "Add guest",
-  firstName: "First name",
+  firstName: "Given names",
   lastName: "Last name",
   save: "Save",
   cancel: "Cancel",
@@ -160,6 +186,30 @@ const en: KioskCopy = {
   clearSignature: "Clear",
   saveFailed: "We couldn't save that. Please ask the front desk for help.",
   signingUnavailable: "Signing isn't available at this terminal yet. Please ask the front desk to check you in.",
+  adult: "Adult",
+  complete: "Complete",
+  guestN: (n) => `Guest ${n}`,
+  selectGuest: "Select guest",
+  nationality: "Nationality",
+  telephone: "Telephone",
+  occupation: "Occupation",
+  personalAddress: "Personal address",
+  useAddress: "Use address",
+  addressLine1: "Address line 1",
+  addressLine2: "Address line 2",
+  city: "City",
+  postalCode: "Postal code",
+  country: "Country",
+  identityDocument: "Identity document",
+  documentType: "Type",
+  passport: "Passport",
+  identityCard: "Identity card",
+  driversLicense: "Driver's license",
+  documentNumber: "Number",
+  issueDate: "Issue date",
+  issuingCountry: "Issuing country",
+  issuingCity: "Issuing city",
+  expirationDate: "Expiration date",
 };
 
 const th: KioskCopy = {
@@ -217,6 +267,30 @@ const th: KioskCopy = {
   clearSignature: "ล้าง",
   saveFailed: "บันทึกไม่สำเร็จ กรุณาติดต่อแผนกต้อนรับ",
   signingUnavailable: "เครื่องนี้ยังไม่พร้อมให้เซ็นชื่อ กรุณาติดต่อแผนกต้อนรับเพื่อเช็คอิน",
+  adult: "ผู้ใหญ่",
+  complete: "เสร็จสมบูรณ์",
+  guestN: (n) => `ผู้เข้าพักคนที่ ${n}`,
+  selectGuest: "เลือกผู้เข้าพัก",
+  nationality: "สัญชาติ",
+  telephone: "โทรศัพท์",
+  occupation: "อาชีพ",
+  personalAddress: "ที่อยู่",
+  useAddress: "ใช้ที่อยู่นี้",
+  addressLine1: "ที่อยู่ บรรทัดที่ 1",
+  addressLine2: "ที่อยู่ บรรทัดที่ 2",
+  city: "เมือง / จังหวัด",
+  postalCode: "รหัสไปรษณีย์",
+  country: "ประเทศ",
+  identityDocument: "เอกสารระบุตัวตน",
+  documentType: "ประเภท",
+  passport: "หนังสือเดินทาง",
+  identityCard: "บัตรประจำตัวประชาชน",
+  driversLicense: "ใบขับขี่",
+  documentNumber: "เลขที่",
+  issueDate: "วันที่ออก",
+  issuingCountry: "ประเทศที่ออก",
+  issuingCity: "เมืองที่ออก",
+  expirationDate: "วันหมดอายุ",
 };
 
 const fil: KioskCopy = {
@@ -265,7 +339,7 @@ const fil: KioskCopy = {
   },
   guests: "Mga bisita",
   addGuest: "Magdagdag ng bisita",
-  firstName: "Pangalan",
+  firstName: "Mga pangalan",
   lastName: "Apelyido",
   save: "I-save",
   cancel: "Kanselahin",
@@ -274,6 +348,30 @@ const fil: KioskCopy = {
   clearSignature: "Burahin",
   saveFailed: "Hindi ma-save iyon. Mangyaring magtanong sa front desk.",
   signingUnavailable: "Hindi pa available ang pagpirma sa terminal na ito. Mangyaring magtanong sa front desk para mag-check in.",
+  adult: "Adulto",
+  complete: "Kumpleto",
+  guestN: (n) => `Bisita ${n}`,
+  selectGuest: "Piliin ang bisita",
+  nationality: "Nasyonalidad",
+  telephone: "Telepono",
+  occupation: "Trabaho",
+  personalAddress: "Personal na address",
+  useAddress: "Gamitin ang address",
+  addressLine1: "Address line 1",
+  addressLine2: "Address line 2",
+  city: "Lungsod",
+  postalCode: "Postal code",
+  country: "Bansa",
+  identityDocument: "Dokumento ng pagkakakilanlan",
+  documentType: "Uri",
+  passport: "Pasaporte",
+  identityCard: "ID card",
+  driversLicense: "Lisensya sa pagmamaneho",
+  documentNumber: "Numero",
+  issueDate: "Petsa ng pagkakaloob",
+  issuingCountry: "Bansang nagbigay",
+  issuingCity: "Lungsod na nagbigay",
+  expirationDate: "Petsa ng pagkawalang-bisa",
 };
 
 const km: KioskCopy = {
@@ -322,7 +420,7 @@ const km: KioskCopy = {
   },
   guests: "ភ្ញៀវ",
   addGuest: "បន្ថែមភ្ញៀវ",
-  firstName: "នាមខ្លួន",
+  firstName: "នាម",
   lastName: "នាមត្រកូល",
   save: "រក្សាទុក",
   cancel: "បោះបង់",
@@ -331,6 +429,30 @@ const km: KioskCopy = {
   clearSignature: "សម្អាត",
   saveFailed: "មិនអាចរក្សាទុកបានទេ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវ។",
   signingUnavailable: "ម៉ាស៊ីននេះមិនទាន់អាចចុះហត្ថលេខាបានទេ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវដើម្បីចុះឈ្មោះចូលស្នាក់នៅ។",
+  adult: "មនុស្សពេញវ័យ",
+  complete: "បានបញ្ចប់",
+  guestN: (n) => `ភ្ញៀវទី ${n}`,
+  selectGuest: "ជ្រើសរើសភ្ញៀវ",
+  nationality: "សញ្ជាតិ",
+  telephone: "ទូរសព្ទ",
+  occupation: "មុខរបរ",
+  personalAddress: "អាសយដ្ឋាន",
+  useAddress: "ប្រើអាសយដ្ឋាននេះ",
+  addressLine1: "អាសយដ្ឋាន បន្ទាត់ទី 1",
+  addressLine2: "អាសយដ្ឋាន បន្ទាត់ទី 2",
+  city: "ទីក្រុង",
+  postalCode: "លេខកូដប្រៃសណីយ៍",
+  country: "ប្រទេស",
+  identityDocument: "ឯកសារអត្តសញ្ញាណ",
+  documentType: "ប្រភេទ",
+  passport: "លិខិតឆ្លងដែន",
+  identityCard: "អត្តសញ្ញាណប័ណ្ណ",
+  driversLicense: "ប័ណ្ណបើកបរ",
+  documentNumber: "លេខ",
+  issueDate: "ថ្ងៃចេញ",
+  issuingCountry: "ប្រទេសចេញ",
+  issuingCity: "ទីក្រុងចេញ",
+  expirationDate: "ថ្ងៃផុតកំណត់",
 };
 
 const ja: KioskCopy = {
@@ -388,6 +510,30 @@ const ja: KioskCopy = {
   clearSignature: "消去",
   saveFailed: "保存できませんでした。フロントデスクにお声がけください。",
   signingUnavailable: "この端末ではまだ署名できません。チェックインはフロントデスクにお声がけください。",
+  adult: "大人",
+  complete: "完了",
+  guestN: (n) => `ゲスト${n}`,
+  selectGuest: "ゲストを選択",
+  nationality: "国籍",
+  telephone: "電話番号",
+  occupation: "職業",
+  personalAddress: "住所",
+  useAddress: "この住所を使う",
+  addressLine1: "住所1",
+  addressLine2: "住所2",
+  city: "市区町村",
+  postalCode: "郵便番号",
+  country: "国",
+  identityDocument: "身分証明書",
+  documentType: "種類",
+  passport: "パスポート",
+  identityCard: "身分証明書カード",
+  driversLicense: "運転免許証",
+  documentNumber: "番号",
+  issueDate: "発行日",
+  issuingCountry: "発行国",
+  issuingCity: "発行都市",
+  expirationDate: "有効期限",
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

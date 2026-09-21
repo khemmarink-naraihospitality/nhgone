@@ -349,6 +349,32 @@ def _unblob(row: dict) -> dict:
         return {}
 
 
+# What the kiosk collects about a guest added at the terminal - the same
+# fields MEWS's own kiosk asks for on its Add guest form (verified against
+# screenshots of it, 17-Sep-2026). Stored in the guest's encrypted blob in
+# kiosk_extra_guests: these are passport numbers and home addresses. The
+# document is kept in MEWS's own customer shape (Number / Issuance /
+# Expiration / IssuingCountryCode / IssuingCity, one object per document
+# type), so that if customers/add is ever enabled for our token the record
+# can be replayed into MEWS without translation.
+_PROFILE_TEXT_FIELDS = (
+    "first_name", "last_name", "nationality", "telephone", "occupation", "email",
+    "address_line1", "address_line2", "city", "postal_code", "country",
+    "document_number", "issue_date", "issuing_country", "issuing_city", "expiration_date",
+)
+_DOCUMENT_TYPES = ("passport", "identity_card", "drivers_license")
+
+
+def _clean_profile(payload: dict) -> dict:
+    profile = {f: (str(payload.get(f) or "")).strip() for f in _PROFILE_TEXT_FIELDS}
+    doc_type = (payload.get("document_type") or "passport").strip()
+    profile["document_type"] = doc_type if doc_type in _DOCUMENT_TYPES else "passport"
+    # Only an identity card carries an issuing city on MEWS's form.
+    if profile["document_type"] != "identity_card":
+        profile["issuing_city"] = ""
+    return profile
+
+
 async def _reservation_guests(property_name: str, reservation_id: str) -> tuple:
     """(reservation number, [guests]) for one reservation, straight from MEWS.
 
@@ -378,14 +404,28 @@ async def _reservation_guests(property_name: str, reservation_id: str) -> tuple:
     guests = []
     for cid in ordered:
         c = customers.get(cid) or {}
-        guests.append({
+        guest = {
             "guest_key": cid,
             "first_name": c.get("FirstName") or "",
             "last_name": c.get("LastName") or "",
             "email": c.get("Email") or "",
             "is_owner": cid == owner_id,
             "source": "mews",
-        })
+        }
+        # The owner's home address, for the "Use address" card on an added
+        # guest's form - MEWS's own kiosk offers exactly that, since people
+        # travelling together usually share one. The owner's only: nobody
+        # else's address has any reason to be on a lobby screen.
+        if cid == owner_id:
+            addr = c.get("Address") or {}
+            guest["address"] = {
+                "address_line1": addr.get("Line1") or "",
+                "address_line2": "" if (addr.get("Line2") or "").strip() in ("", "-") else addr["Line2"],
+                "city": addr.get("City") or "",
+                "postal_code": addr.get("PostalCode") or "",
+                "country": addr.get("CountryCode") or "",
+            }
+        guests.append(guest)
     return reservation.get("Number"), guests
 
 
@@ -437,6 +477,9 @@ async def kiosk_registration(property_name: str = Query(...), reservation_id: st
             "email": record.get("email") or "",
             "is_owner": False,
             "source": "kiosk",
+            # So re-opening a guest already entered refills their form rather
+            # than presenting it blank.
+            "profile": _clean_profile(record),
         })
 
     signed_at = {}
@@ -453,30 +496,62 @@ async def kiosk_registration(property_name: str = Query(...), reservation_id: st
 
 @router.post("/registration/guests")
 async def add_kiosk_guest(payload: dict = Body(...)):
-    """Add a guest at the terminal. Stored here, not in MEWS - see
-    kiosk_registration's docstring for why that is a permission wall rather
-    than a choice."""
+    """Add a guest at the terminal, or update one already added.
+
+    Stored here, not in MEWS - see kiosk_registration's docstring for why
+    that is a permission wall rather than a choice. The whole profile the
+    form collects goes into the guest's encrypted blob (see
+    _PROFILE_TEXT_FIELDS). Passing the guest_key of a guest already added
+    updates that guest in place; omitting it creates a new one.
+
+    The fields the form marks required are required here as well: a guest
+    record without a name, nationality, country or document number is not
+    one a registration card can be built from, whatever a client sends.
+    """
     property_name = (payload.get("property_name") or "").strip()
     reservation_number = (payload.get("reservation_number") or "").strip()
-    first = (payload.get("first_name") or "").strip()
-    last = (payload.get("last_name") or "").strip()
     if not property_name or not reservation_number:
         raise HTTPException(status_code=400, detail="property_name and reservation_number are required.")
-    if not first and not last:
-        raise HTTPException(status_code=400, detail="A guest needs at least a first or last name.")
 
-    guest_key = f"kiosk:{uuid.uuid4()}"
+    profile = _clean_profile(payload)
+    missing = [label for field, label in (
+        ("first_name", "given names"), ("last_name", "last name"),
+        ("nationality", "nationality"), ("country", "country"),
+        ("document_number", "document number"),
+    ) if not profile[field]]
+    if missing:
+        raise HTTPException(status_code=400, detail=f"Missing required: {', '.join(missing)}.")
+
+    guest_key = (payload.get("guest_key") or "").strip()
+    if guest_key and not guest_key.startswith("kiosk:"):
+        raise HTTPException(status_code=400, detail="Only a guest added at this terminal can be edited here.")
+    if not guest_key:
+        guest_key = f"kiosk:{uuid.uuid4()}"
+
     try:
-        get_supabase_client().table(EXTRA_GUESTS_TABLE).insert({
+        get_supabase_client().table(EXTRA_GUESTS_TABLE).upsert({
             "property": property_name,
             "reservation_number": reservation_number,
             "guest_key": guest_key,
-            "data": _blob({"first_name": first, "last_name": last,
-                           "email": (payload.get("email") or "").strip()}),
-        }).execute()
+            "data": _blob(profile),
+        }, on_conflict="property,reservation_number,guest_key").execute()
     except Exception as e:
         raise _registration_guard(e)
     return {"status": "success", "guest_key": guest_key}
+
+
+@router.get("/countries")
+async def kiosk_countries():
+    """Every country code the kiosk's nationality / country / issuing-country
+    pickers offer: exactly _RR3_COUNTRY_MAP's set, which is the set the RR3,
+    RR4 and TM30 registers translate - so nothing picked here can be a code
+    those forms don't understand. English names come along as a fallback;
+    the screen shows each in the guest's own language (Intl.DisplayNames)."""
+    from app.services.sync_service import _RR3_COUNTRY_MAP
+
+    return {"status": "success",
+            "data": [{"code": code, "name": name}
+                     for code, name in sorted(_RR3_COUNTRY_MAP.items(), key=lambda kv: kv[1])]}
 
 
 @router.delete("/registration/guests")
