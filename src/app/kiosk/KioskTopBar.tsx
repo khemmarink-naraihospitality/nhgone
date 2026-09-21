@@ -28,6 +28,12 @@ import { KIOSK_CURRENCIES, useKioskCurrency } from "./kioskCurrency";
  * currency pill is the same pattern over kioskCurrency.tsx's three
  * currencies, added at the same time - it only changes the displayed code,
  * since nothing behind these screens prices anything yet to convert.
+ *
+ * Compact on purpose (~66px, down from ~100px on 21-Sep-2026): every pixel it
+ * gives back goes to the screen below - on Registration straight into the
+ * signature pad, which is sized to whatever height is left. The buttons stay
+ * ~42px, still a comfortable finger target; only the non-interactive Staff
+ * Mode badge is smaller than that.
  */
 
 export default function KioskTopBar({ showBack = true }: { showBack?: boolean }) {
@@ -39,32 +45,32 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
   const current = KIOSK_LANGUAGES.find((l) => l.code === language) || KIOSK_LANGUAGES[0];
 
   return (
-    <header className="relative flex items-center justify-between gap-4 px-8 py-6">
-      <div className="flex items-center gap-3">
+    <header className="relative flex items-center justify-between gap-4 px-8 py-3">
+      <div className="flex items-center gap-2">
         {showBack && (
           <button
             type="button"
             onClick={() => router.back()}
             aria-label="Go back"
-            className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-3.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+            className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-2.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
           >
-            <ArrowLeft size={22} aria-hidden="true" />
+            <ArrowLeft size={20} aria-hidden="true" />
           </button>
         )}
-        <div className="rounded-full bg-[var(--kiosk-accent)] px-6 py-3 text-base font-bold text-white">
+        <div className="rounded-full bg-[var(--kiosk-accent)] px-5 py-2 text-sm font-bold text-white">
           Staff Mode
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <div className="relative">
           <button
             type="button"
             onClick={() => setLangOpen((v) => !v)}
-            className="flex items-center gap-3 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+            className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-4 py-2.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
           >
-            <Languages size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
-            <span className="text-base font-medium">{current.nativeLabel}</span>
+            <Languages size={18} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+            <span className="text-sm font-medium">{current.nativeLabel}</span>
             <ChevronDown size={16} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
           </button>
 
@@ -110,10 +116,10 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
           <button
             type="button"
             onClick={() => setCurrencyOpen((v) => !v)}
-            className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-3 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+            className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-4 py-2.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
           >
-            <Coins size={20} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
-            <span className="text-base font-medium">{currency}</span>
+            <Coins size={18} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+            <span className="text-sm font-medium">{currency}</span>
             <ChevronDown size={16} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
           </button>
 
@@ -153,10 +159,10 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
         </div>
         <button
           type="button"
-          className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-3.5 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
+          className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-2.5 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
           aria-label="Settings"
         >
-          <Settings size={22} aria-hidden="true" />
+          <Settings size={20} aria-hidden="true" />
         </button>
       </div>
     </header>
