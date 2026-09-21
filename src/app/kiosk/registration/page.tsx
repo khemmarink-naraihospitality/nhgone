@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
@@ -120,6 +120,11 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
   const [reservationNumber, setReservationNumber] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // False when the reservation loaded but api/sql/kiosk_registration.sql
+  // hasn't been run, so there is nowhere to save a signature or an added
+  // guest. The guest list still shows (it comes from MEWS); only saving is
+  // switched off, with a message that says so.
+  const [storageReady, setStorageReady] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [email, setEmail] = useState("");
@@ -140,6 +145,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
     const res = await response.json();
     if (!response.ok || res.status !== "success") throw new Error(res.detail || "load failed");
     setReservationNumber(res.reservation_number || "");
+    setStorageReady(res.storage_ready !== false);
     setGuests(res.data || []);
     return res.data as RegistrationGuest[];
   }, [selectedProperty, arrival.id]);
@@ -167,6 +173,36 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
   }, [load, arrival.guest_email, t.loadError]);
 
   const selected = guests?.find((g) => g.guest_key === selectedKey) || null;
+
+  // The signature pad takes whatever height is left once everything else on
+  // the right is laid out, so the screen never scrolls whatever the tablet.
+  // It is measured rather than CSS-sized because the canvas needs real pixel
+  // numbers: the displayed height, and a drawing buffer kept in proportion to
+  // the fixed 400px buffer width so strokes aren't smeared sideways.
+  //
+  // Only re-measured while nothing is signed - resizing a canvas wipes it, and
+  // a pad that silently empties itself after the guest signed would still
+  // leave Next enabled on a signature they can no longer see.
+  const padBoxRef = useRef<HTMLDivElement>(null);
+  const [padSize, setPadSize] = useState({ width: 400, height: 200 });
+  useEffect(() => {
+    const box = padBoxRef.current;
+    if (!box) return;
+    const measure = () => {
+      if (signature) return;
+      const { clientWidth, clientHeight } = box;
+      if (clientWidth > 0 && clientHeight > 0) {
+        setPadSize((prev) =>
+          prev.width === clientWidth && prev.height === clientHeight
+            ? prev
+            : { width: clientWidth, height: clientHeight });
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [signature]);
 
   const selectGuest = (guest: RegistrationGuest) => {
     setSelectedKey(guest.guest_key);
@@ -367,7 +403,8 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
               <button
                 type="button"
                 onClick={() => setAdding(true)}
-                className="flex w-full flex-col items-center justify-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] py-12 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                disabled={!storageReady}
+                className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-[var(--kiosk-surface-alt)] py-8 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[var(--kiosk-surface-alt)]"
               >
                 <Plus size={30} strokeWidth={1.75} aria-hidden="true" />
                 {t.addGuest}
@@ -385,7 +422,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
 
           <button
             type="button"
-            disabled={!agreedTerms || !signature || saving || !selected}
+            disabled={!agreedTerms || !signature || saving || !selected || !storageReady}
             onClick={handleNext}
             className="mt-4 w-full rounded-2xl bg-[var(--kiosk-inverse-bg)] py-6 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
           >
@@ -394,13 +431,17 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
         </div>
 
         {/* Right: the selected guest's own details and signature */}
-        <div className="flex flex-1 flex-col overflow-y-auto rounded-[32px] bg-[var(--kiosk-surface)] px-14 py-12">
+        {/* A bounded flex column: every block keeps its natural height and
+            the signature pad takes the rest, so the panel fills the screen
+            exactly instead of scrolling. overflow-y-auto stays only as a
+            safety net for a screen too short to hold even the smallest pad. */}
+        <div className="flex flex-1 flex-col overflow-y-auto rounded-[32px] bg-[var(--kiosk-surface)] px-12 py-8">
           <h1 className="text-center text-4xl font-semibold tracking-tight">{t.enterYourDetails}</h1>
 
-          <div className="mx-auto mt-12 flex w-full max-w-3xl flex-1 flex-col">
-            {error && (
-              <p className="mb-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-5 py-4 text-base font-medium text-[var(--kiosk-text)]">
-                {error}
+          <div className="mx-auto mt-6 flex min-h-0 w-full max-w-3xl flex-1 flex-col">
+            {(error || !storageReady) && (
+              <p className="mb-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-5 py-3 text-base font-medium text-[var(--kiosk-text)]">
+                {error || t.signingUnavailable}
               </p>
             )}
 
@@ -410,7 +451,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 so tapping anywhere in it focuses the input. */}
             <label
               htmlFor="guest-email"
-              className="block cursor-text rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-9 pb-5 pt-4 transition-colors focus-within:border-[var(--kiosk-accent)]"
+              className="block shrink-0 cursor-text rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-8 pb-3 pt-3 transition-colors focus-within:border-[var(--kiosk-accent)]"
             >
               <span className="block text-sm text-[var(--kiosk-text-muted)]">{t.email}</span>
               <input
@@ -418,11 +459,11 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="mt-2 w-full bg-transparent text-xl text-[var(--kiosk-text)] outline-none"
+                className="mt-1 w-full bg-transparent text-xl text-[var(--kiosk-text)] outline-none"
               />
             </label>
 
-            <div className="mt-8 flex flex-col gap-7">
+            <div className="mt-6 flex shrink-0 flex-col gap-4">
               <KioskCheckbox checked={agreedTerms} onChange={setAgreedTerms}>
                 {t.agreeTerms.pre}
                 <span className="text-[var(--kiosk-accent)]">{t.agreeTerms.link}</span>
@@ -436,30 +477,44 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
               </KioskCheckbox>
             </div>
 
-            <p className="mt-10 text-lg text-[var(--kiosk-text-muted)]">{t.signature}</p>
-            {/* Tall enough to sign on with a finger, solid-bordered, and
-                reading "Tap to sign" until something is drawn. The pad is the
-                shared SignaturePad, so what is captured here is exactly what
-                lands on the guest's ร.ร.๓ card - only its size and chrome are
-                the kiosk's own. */}
-            <div className="mt-3">
-              <SignaturePad
-                value={signature}
-                onChange={setSignature}
-                height={300}
-                canvasClassName="rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)]"
-                placeholder={
-                  <span className="flex items-center gap-4 text-4xl text-[var(--kiosk-text-faint)]">
-                    <Pencil size={34} strokeWidth={1.75} aria-hidden="true" />
-                    {t.tapToSign}
-                  </span>
-                }
-                clearLabel={t.clearSignature}
-                clearClassName="mt-3 ml-auto block rounded-full px-4 py-2 text-base font-medium text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:invisible"
-              />
+            <p className="mt-5 shrink-0 text-lg text-[var(--kiosk-text-muted)]">{t.signature}</p>
+            {/* Solid-bordered, reading "Tap to sign" until something is drawn,
+                and as tall as the space left - see padSize above. The pad is
+                the shared SignaturePad, so what is captured here is exactly
+                what lands on the guest's ร.ร.๓ card; only its size and chrome
+                are the kiosk's own. Positioned absolutely inside the box so
+                the canvas can never push the box taller than its flex share.
+                Clear sits over the pad's corner instead of below it, which
+                would cost the pad that much height. */}
+            <div ref={padBoxRef} className="relative mt-2 min-h-[140px] flex-1">
+              <div className="absolute inset-0">
+                <SignaturePad
+                  value={signature}
+                  onChange={setSignature}
+                  height={padSize.height}
+                  bufferHeight={Math.max(1, Math.round((400 * padSize.height) / padSize.width))}
+                  canvasClassName="rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)]"
+                  placeholder={
+                    <span className="flex items-center gap-4 text-4xl text-[var(--kiosk-text-faint)]">
+                      <Pencil size={34} strokeWidth={1.75} aria-hidden="true" />
+                      {t.tapToSign}
+                    </span>
+                  }
+                  clearClassName="hidden"
+                />
+              </div>
+              {signature && (
+                <button
+                  type="button"
+                  onClick={() => setSignature(null)}
+                  className="absolute right-3 top-3 rounded-full bg-[var(--kiosk-surface-alt)] px-4 py-2 text-base font-medium text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                >
+                  {t.clearSignature}
+                </button>
+              )}
             </div>
 
-            <p className="mt-8 text-lg text-[var(--kiosk-text-secondary)]">
+            <p className="mt-4 shrink-0 text-lg text-[var(--kiosk-text-secondary)]">
               {t.privacyFooter.pre}
               <span className="text-[var(--kiosk-accent)]">{t.privacyFooter.link}</span>
               {t.privacyFooter.post}

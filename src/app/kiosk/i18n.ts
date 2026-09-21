@@ -99,6 +99,10 @@ export interface KioskCopy {
   signed: string;
   clearSignature: string;
   saveFailed: string;
+  // The reservation loaded but signatures can't be saved here yet - the
+  // registration storage hasn't been set up. Says so instead of blaming
+  // the reservation, which is what the generic loadError used to do.
+  signingUnavailable: string;
 }
 
 const en: KioskCopy = {
@@ -155,6 +159,7 @@ const en: KioskCopy = {
   signed: "Signed",
   clearSignature: "Clear",
   saveFailed: "We couldn't save that. Please ask the front desk for help.",
+  signingUnavailable: "Signing isn't available at this terminal yet. Please ask the front desk to check you in.",
 };
 
 const th: KioskCopy = {
@@ -211,6 +216,7 @@ const th: KioskCopy = {
   signed: "เซ็นแล้ว",
   clearSignature: "ล้าง",
   saveFailed: "บันทึกไม่สำเร็จ กรุณาติดต่อแผนกต้อนรับ",
+  signingUnavailable: "เครื่องนี้ยังไม่พร้อมให้เซ็นชื่อ กรุณาติดต่อแผนกต้อนรับเพื่อเช็คอิน",
 };
 
 const fil: KioskCopy = {
@@ -267,6 +273,7 @@ const fil: KioskCopy = {
   signed: "Nakapirma na",
   clearSignature: "Burahin",
   saveFailed: "Hindi ma-save iyon. Mangyaring magtanong sa front desk.",
+  signingUnavailable: "Hindi pa available ang pagpirma sa terminal na ito. Mangyaring magtanong sa front desk para mag-check in.",
 };
 
 const km: KioskCopy = {
@@ -323,6 +330,7 @@ const km: KioskCopy = {
   signed: "បានចុះហត្ថលេខា",
   clearSignature: "សម្អាត",
   saveFailed: "មិនអាចរក្សាទុកបានទេ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវ។",
+  signingUnavailable: "ម៉ាស៊ីននេះមិនទាន់អាចចុះហត្ថលេខាបានទេ។ សូមទាក់ទងផ្នែកទទួលភ្ញៀវដើម្បីចុះឈ្មោះចូលស្នាក់នៅ។",
 };
 
 const ja: KioskCopy = {
@@ -379,6 +387,7 @@ const ja: KioskCopy = {
   signed: "署名済み",
   clearSignature: "消去",
   saveFailed: "保存できませんでした。フロントデスクにお声がけください。",
+  signingUnavailable: "この端末ではまだ署名できません。チェックインはフロントデスクにお声がけください。",
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

@@ -11,6 +11,12 @@ interface SignaturePadProps {
   // the pad has to be several times taller, and its chrome has to match the
   // screen around it rather than BCP's admin-form look.
   height?: number;
+  // The canvas's own pixel height, when it should differ from the height it
+  // is DISPLAYED at. The buffer is always 400 wide, so a pad stretched across
+  // a wide kiosk screen needs a proportionally shorter buffer to keep its
+  // pixels square - otherwise every stroke renders smeared sideways. Defaults
+  // to `height`, which is what BCP has always had.
+  bufferHeight?: number;
   canvasClassName?: string;
   // Shown centred over the pad while nothing has been drawn - the kiosk's
   // "Tap to sign". Pointer-events are off on it, so it never blocks a stroke
@@ -107,6 +113,7 @@ export default function SignaturePad({
   value,
   onChange,
   height = DEFAULT_HEIGHT,
+  bufferHeight,
   canvasClassName = DEFAULT_CANVAS_CLASS,
   placeholder,
   clearLabel = "Delete Signature",
@@ -208,7 +215,7 @@ export default function SignaturePad({
         <canvas
           ref={canvasRef}
           width={400}
-          height={height}
+          height={bufferHeight ?? height}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

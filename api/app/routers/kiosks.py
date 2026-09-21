@@ -320,13 +320,20 @@ EXTRA_GUESTS_TABLE = "kiosk_extra_guests"
 _REGISTRATION_HINT = "run api/sql/kiosk_registration.sql in the Supabase SQL Editor first"
 
 
+def _is_storage_missing(error: Exception) -> bool:
+    """True when the error is just api/sql/kiosk_registration.sql not having
+    been run yet - one of its two tables not existing - as opposed to a real
+    failure."""
+    message = str(error).lower()
+    return ("kiosk_reg_cards" in message or "kiosk_extra_guests" in message) and (
+        "does not exist" in message or "not find the table" in message
+    )
+
+
 def _registration_guard(error: Exception) -> HTTPException:
     if isinstance(error, HTTPException):
         return error
-    message = str(error).lower()
-    if ("kiosk_reg_cards" in message or "kiosk_extra_guests" in message) and (
-        "does not exist" in message or "not find the table" in message
-    ):
+    if _is_storage_missing(error):
         return HTTPException(status_code=400, detail=f"Registration storage isn't set up yet - {_REGISTRATION_HINT}")
     return HTTPException(status_code=500, detail=str(error))
 
@@ -401,14 +408,25 @@ async def kiosk_registration(property_name: str = Query(...), reservation_id: st
     if number is None:
         raise HTTPException(status_code=404, detail="That reservation isn't in MEWS any more.")
 
+    # The owner and companions above came from MEWS and are real whether or
+    # not the kiosk's own tables exist. So a missing table - the SQL not run
+    # yet - costs only what those tables hold (terminal-added guests, who has
+    # signed), never the whole list: storage_ready tells the screen to say it
+    # can't SAVE yet, rather than that the reservation couldn't be loaded.
+    # Any other failure is still a real error.
     supabase = get_supabase_client()
+    storage_ready = True
+    extra, signed = [], []
     try:
         extra = supabase.table(EXTRA_GUESTS_TABLE).select("*").eq(
             "property", property_name).eq("reservation_number", number).order("created_at").execute().data or []
         signed = supabase.table(REG_CARDS_TABLE).select("guest_key, created_at").eq(
             "property", property_name).eq("reservation_number", number).execute().data or []
     except Exception as e:
-        raise _registration_guard(e)
+        if not _is_storage_missing(e):
+            raise _registration_guard(e)
+        storage_ready = False
+        extra, signed = [], []
 
     for row in extra:
         record = _unblob(row)
@@ -429,7 +447,8 @@ async def kiosk_registration(property_name: str = Query(...), reservation_id: st
     for g in guests:
         g["signed_at"] = signed_at.get(g["guest_key"])
 
-    return {"status": "success", "reservation_number": number, "data": guests}
+    return {"status": "success", "reservation_number": number, "data": guests,
+            "storage_ready": storage_ready}
 
 
 @router.post("/registration/guests")
