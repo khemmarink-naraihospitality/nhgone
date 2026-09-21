@@ -1,11 +1,31 @@
 "use client";
 
-import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 
 interface SignaturePadProps {
   value: string | null;
   onChange: (dataUrl: string | null) => void;
+  // Everything below is optional and defaults to what this component has
+  // always rendered, so the BCP Reg Card keeps its compact pad unchanged.
+  // The kiosk passes its own because a terminal is signed on with a finger:
+  // the pad has to be several times taller, and its chrome has to match the
+  // screen around it rather than BCP's admin-form look.
+  height?: number;
+  canvasClassName?: string;
+  // Shown centred over the pad while nothing has been drawn - the kiosk's
+  // "Tap to sign". Pointer-events are off on it, so it never blocks a stroke
+  // that starts on top of it.
+  placeholder?: ReactNode;
+  clearLabel?: string;
+  clearClassName?: string;
 }
+
+const DEFAULT_HEIGHT = 120;
+const DEFAULT_CANVAS_CLASS = "bg-white border border-black/20";
+const DEFAULT_CLEAR_CLASS =
+  "mt-2 w-full px-4 py-2 text-[11px] font-bold tracked-caps border border-red-300 " +
+  "text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40 " +
+  "disabled:cursor-not-allowed disabled:hover:bg-transparent";
 
 // Finds the pixel bounding box of whatever's actually been drawn (alpha>0),
 // so the exported image can be cropped to it - without this, the exported
@@ -83,7 +103,15 @@ export function cropSignatureDataUrlToInk(dataUrl: string): Promise<string> {
 // mouse and touch listeners. Emits a PNG data URL cropped to the drawn ink
 // (see findInkBounds) on each stroke, so the caller can embed it directly
 // into the printed <<GuestSign>> slot already centered correctly.
-export default function SignaturePad({ value, onChange }: SignaturePadProps) {
+export default function SignaturePad({
+  value,
+  onChange,
+  height = DEFAULT_HEIGHT,
+  canvasClassName = DEFAULT_CANVAS_CLASS,
+  placeholder,
+  clearLabel = "Delete Signature",
+  clearClassName = DEFAULT_CLEAR_CLASS,
+}: SignaturePadProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawingRef = useRef(false);
   const lastPointRef = useRef<{ x: number; y: number } | null>(null);
@@ -174,23 +202,33 @@ export default function SignaturePad({ value, onChange }: SignaturePadProps) {
 
   return (
     <div>
-      <canvas
-        ref={canvasRef}
-        width={400}
-        height={120}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerLeave={handlePointerUp}
-        className="w-full h-[120px] bg-white border border-black/20 touch-none cursor-crosshair"
-      />
+      {/* relative so the placeholder can sit over the canvas rather than
+          above it - the pad has to stay the same size once it is signed. */}
+      <div className="relative">
+        <canvas
+          ref={canvasRef}
+          width={400}
+          height={height}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerLeave={handlePointerUp}
+          style={{ height }}
+          className={`w-full touch-none cursor-crosshair ${canvasClassName}`}
+        />
+        {placeholder && !value && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            {placeholder}
+          </div>
+        )}
+      </div>
       <button
         type="button"
         onClick={handleClear}
         disabled={!value}
-        className="mt-2 w-full px-4 py-2 text-[11px] font-bold tracked-caps border border-red-300 text-red-700 hover:bg-red-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+        className={clearClassName}
       >
-        Delete Signature
+        {clearLabel}
       </button>
     </div>
   );

@@ -2,7 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Check, Plus, Trash2 } from "lucide-react";
+import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import SignaturePad from "@/components/SignaturePad";
 import KioskTopBar from "../KioskTopBar";
@@ -33,6 +33,48 @@ import { guestLabel, useKioskArrival, type KioskArrival } from "../arrivals";
  * Terms must be ticked and a signature drawn before Next moves on, which is
  * consent and a signature actually being required rather than styling.
  */
+
+/**
+ * The reference terminal draws its own checkbox - a large rounded square,
+ * white with a grey border when off and solid dark with a white tick when on
+ * - rather than the browser's. Big enough to hit with a finger, which the
+ * native 20px one is not, and it theme-switches with the rest of the screen.
+ * The real <input> stays, visually hidden, so the label, keyboard and
+ * screen-reader behaviour are the browser's own.
+ */
+function KioskCheckbox({
+  checked,
+  onChange,
+  children,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="flex cursor-pointer items-start gap-4">
+      <span className="relative mt-0.5 shrink-0">
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          className="peer absolute h-0 w-0 opacity-0"
+        />
+        <span
+          aria-hidden="true"
+          className={`flex h-9 w-9 items-center justify-center rounded-lg border-2 transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-[var(--kiosk-accent)] ${
+            checked
+              ? "border-[var(--kiosk-inverse-bg)] bg-[var(--kiosk-inverse-bg)] text-[var(--kiosk-inverse-text)]"
+              : "border-[var(--kiosk-border-strong)] bg-[var(--kiosk-surface)]"
+          }`}
+        >
+          {checked && <Check size={22} strokeWidth={3} aria-hidden="true" />}
+        </span>
+      </span>
+      <span className="pt-1.5 text-lg leading-snug text-[var(--kiosk-text-secondary)]">{children}</span>
+    </label>
+  );
+}
 
 interface RegistrationGuest {
   guest_key: string;
@@ -223,45 +265,64 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
 
       <main className="flex flex-1 gap-[7px] overflow-hidden px-8 pb-4">
         {/* Left: who is on this booking */}
-        <div className="flex w-[34%] min-w-[320px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-10">
-          <p className="text-base font-medium text-[var(--kiosk-text-muted)]">{t.guests}</p>
-
-          <div className="mt-4 flex-1 space-y-2 overflow-y-auto">
+        <div className="flex w-[34%] min-w-[320px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-8">
+          <div className="flex-1 space-y-3 overflow-y-auto">
             {(guests || []).map((guest) => {
               const isSelected = guest.guest_key === selectedKey;
               return (
+                // One bordered card per guest, carrying its own name, role,
+                // dotted rule and progress bar - the shape the reference
+                // terminal draws for the guest being signed. The selected one
+                // is filled rather than outlined, which is the only thing
+                // distinguishing it once there is more than one.
                 <div
                   key={guest.guest_key}
-                  className={`flex items-center gap-3 rounded-2xl p-4 transition-colors ${
-                    isSelected ? "bg-[var(--kiosk-accent-soft)]" : "bg-[var(--kiosk-surface-alt)]"
+                  className={`rounded-2xl border p-5 transition-colors ${
+                    isSelected
+                      ? "border-[var(--kiosk-border-strong)] bg-[var(--kiosk-surface-alt)]"
+                      : "border-[var(--kiosk-border)] bg-[var(--kiosk-surface)]"
                   }`}
                 >
-                  <button type="button" onClick={() => selectGuest(guest)} className="flex-1 text-left">
-                    <p className="text-lg font-semibold">
-                      {`${guest.first_name} ${guest.last_name}`.trim() || guestLabel(arrival)}
-                    </p>
-                    <p className="mt-0.5 text-sm text-[var(--kiosk-text-muted)]">
-                      {guest.is_owner ? t.reservationOwner : guest.source === "kiosk" ? t.addGuest : t.guests}
-                    </p>
-                  </button>
-                  {guest.signed_at && (
-                    <span className="flex items-center gap-1 text-sm font-semibold text-[var(--kiosk-accent)]">
-                      <Check size={16} aria-hidden="true" />
-                      {t.signed}
-                    </span>
-                  )}
-                  {/* Only a guest added at this terminal can be removed - one
-                      that came from MEWS has to be changed in MEWS. */}
-                  {guest.source === "kiosk" && (
-                    <button
-                      type="button"
-                      onClick={() => removeGuest(guest)}
-                      aria-label={t.remove}
-                      className="rounded-full p-2 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
-                    >
-                      <Trash2 size={18} aria-hidden="true" />
+                  <div className="flex items-start gap-3">
+                    <button type="button" onClick={() => selectGuest(guest)} className="flex-1 text-left">
+                      <p className="text-2xl font-semibold leading-tight">
+                        {`${guest.first_name} ${guest.last_name}`.trim() || guestLabel(arrival)}
+                      </p>
+                      <p className="mt-1 text-base text-[var(--kiosk-text-muted)]">
+                        {guest.is_owner ? t.reservationOwner : guest.source === "kiosk" ? t.addGuest : t.guests}
+                      </p>
                     </button>
-                  )}
+                    {guest.signed_at && (
+                      <span className="flex items-center gap-1 pt-1 text-sm font-semibold text-[var(--kiosk-accent)]">
+                        <Check size={16} aria-hidden="true" />
+                        {t.signed}
+                      </span>
+                    )}
+                    {/* Only a guest added at this terminal can be removed -
+                        one that came from MEWS has to be changed in MEWS. */}
+                    {guest.source === "kiosk" && (
+                      <button
+                        type="button"
+                        onClick={() => removeGuest(guest)}
+                        aria-label={t.remove}
+                        className="rounded-full p-2 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                      >
+                        <Trash2 size={18} aria-hidden="true" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dotted rule then the progress bar, both inside the card.
+                      border-dotted rather than a row of characters so it
+                      stretches to whatever width the panel has. */}
+                  <div className="mt-4 border-t-2 border-dotted border-[var(--kiosk-border-strong)]" />
+                  <p className="mt-3 text-right text-base text-[var(--kiosk-text-muted)]">{t.progress}</p>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--kiosk-border)]">
+                    <div
+                      className="h-full rounded-full bg-[var(--kiosk-accent)] transition-all"
+                      style={{ width: guest.signed_at ? "100%" : "0%" }}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -299,97 +360,108 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 </div>
               </div>
             ) : (
+              // The reference terminal puts a solid grey tap-card here, icon
+              // above the text ("Tap to return skipped guest"). That action
+              // has nothing behind it in this flow, so the slot carries the
+              // one that does - Add guest - in the same shape.
               <button
                 type="button"
                 onClick={() => setAdding(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[var(--kiosk-border-strong)] p-4 text-base font-medium text-[var(--kiosk-text-muted)] transition-colors hover:border-[var(--kiosk-accent)] hover:text-[var(--kiosk-accent)]"
+                className="flex w-full flex-col items-center justify-center gap-4 rounded-2xl bg-[var(--kiosk-surface-alt)] py-12 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
               >
-                <Plus size={18} aria-hidden="true" />
+                <Plus size={30} strokeWidth={1.75} aria-hidden="true" />
                 {t.addGuest}
               </button>
             )}
           </div>
 
-          <div className="mt-6">
-            <p className="text-base font-medium text-[var(--kiosk-text-muted)]">{t.progress}</p>
-            <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-[var(--kiosk-border)]">
-              <div
-                className="h-full rounded-full bg-[var(--kiosk-accent)] transition-all"
-                style={{ width: `${Math.round((signedCount / total) * 100)}%` }}
-              />
-            </div>
-          </div>
+          {/* How far through the whole booking this is - only worth a line
+              once there is more than one guest to be through. */}
+          {total > 1 && (
+            <p className="mt-4 text-center text-base text-[var(--kiosk-text-muted)]">
+              {signedCount}/{total}
+            </p>
+          )}
 
           <button
             type="button"
             disabled={!agreedTerms || !signature || saving || !selected}
             onClick={handleNext}
-            className="mt-6 w-full rounded-full bg-[var(--kiosk-inverse-bg)] py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
+            className="mt-4 w-full rounded-2xl bg-[var(--kiosk-inverse-bg)] py-6 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
           >
             {saving ? t.loading : t.next}
           </button>
         </div>
 
         {/* Right: the selected guest's own details and signature */}
-        <div className="flex flex-1 flex-col overflow-y-auto rounded-[32px] bg-[var(--kiosk-surface)] p-12">
-          <h1 className="text-center text-4xl font-bold tracking-tight">{t.enterYourDetails}</h1>
+        <div className="flex flex-1 flex-col overflow-y-auto rounded-[32px] bg-[var(--kiosk-surface)] px-14 py-12">
+          <h1 className="text-center text-4xl font-semibold tracking-tight">{t.enterYourDetails}</h1>
 
-          <div className="mx-auto mt-8 flex w-full max-w-xl flex-1 flex-col">
+          <div className="mx-auto mt-12 flex w-full max-w-3xl flex-1 flex-col">
             {error && (
               <p className="mb-4 rounded-2xl bg-[var(--kiosk-surface-alt)] px-5 py-4 text-base font-medium text-[var(--kiosk-text)]">
                 {error}
               </p>
             )}
 
-            <label className="text-base font-medium text-[var(--kiosk-text-muted)]" htmlFor="guest-email">
-              {t.email}
+            {/* One bordered box with its small label INSIDE it, above the
+                value - the way the terminal draws it - rather than a label
+                floating above a separate field. The whole box is the label,
+                so tapping anywhere in it focuses the input. */}
+            <label
+              htmlFor="guest-email"
+              className="block cursor-text rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-9 pb-5 pt-4 transition-colors focus-within:border-[var(--kiosk-accent)]"
+            >
+              <span className="block text-sm text-[var(--kiosk-text-muted)]">{t.email}</span>
+              <input
+                id="guest-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mt-2 w-full bg-transparent text-xl text-[var(--kiosk-text)] outline-none"
+              />
             </label>
-            <input
-              id="guest-email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="mt-2 w-full rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-5 py-4 text-lg text-[var(--kiosk-text)] outline-none focus:border-[var(--kiosk-accent)]"
-            />
 
-            <div className="mt-6 flex flex-col gap-4">
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={agreedTerms}
-                  onChange={(e) => setAgreedTerms(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--kiosk-border-strong)] accent-[var(--kiosk-accent)]"
-                />
-                <span className="text-base text-[var(--kiosk-text-secondary)]">
-                  {t.agreeTerms.pre}
-                  <span className="font-semibold text-[var(--kiosk-accent)] underline">{t.agreeTerms.link}</span>
-                  {t.agreeTerms.post}
-                </span>
-              </label>
+            <div className="mt-8 flex flex-col gap-7">
+              <KioskCheckbox checked={agreedTerms} onChange={setAgreedTerms}>
+                {t.agreeTerms.pre}
+                <span className="text-[var(--kiosk-accent)]">{t.agreeTerms.link}</span>
+                {t.agreeTerms.post}
+              </KioskCheckbox>
 
-              <label className="flex cursor-pointer items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={marketingOptIn}
-                  onChange={(e) => setMarketingOptIn(e.target.checked)}
-                  className="mt-0.5 h-5 w-5 shrink-0 rounded border-[var(--kiosk-border-strong)] accent-[var(--kiosk-accent)]"
-                />
-                <span className="text-base text-[var(--kiosk-text-secondary)]">
-                  {t.marketingOptInPrefix}
-                  <span className="font-semibold">{propertyName}</span>
-                  {t.marketingOptInSuffix}
-                </span>
-              </label>
+              <KioskCheckbox checked={marketingOptIn} onChange={setMarketingOptIn}>
+                {t.marketingOptInPrefix}
+                {propertyName}
+                {t.marketingOptInSuffix}
+              </KioskCheckbox>
             </div>
 
-            <p className="mt-8 text-base font-medium text-[var(--kiosk-text-muted)]">{t.signature}</p>
-            <div className="mt-2 rounded-2xl border-2 border-dashed border-[var(--kiosk-border-strong)] p-3">
-              <SignaturePad value={signature} onChange={setSignature} />
+            <p className="mt-10 text-lg text-[var(--kiosk-text-muted)]">{t.signature}</p>
+            {/* Tall enough to sign on with a finger, solid-bordered, and
+                reading "Tap to sign" until something is drawn. The pad is the
+                shared SignaturePad, so what is captured here is exactly what
+                lands on the guest's ร.ร.๓ card - only its size and chrome are
+                the kiosk's own. */}
+            <div className="mt-3">
+              <SignaturePad
+                value={signature}
+                onChange={setSignature}
+                height={300}
+                canvasClassName="rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)]"
+                placeholder={
+                  <span className="flex items-center gap-4 text-4xl text-[var(--kiosk-text-faint)]">
+                    <Pencil size={34} strokeWidth={1.75} aria-hidden="true" />
+                    {t.tapToSign}
+                  </span>
+                }
+                clearLabel={t.clearSignature}
+                clearClassName="mt-3 ml-auto block rounded-full px-4 py-2 text-base font-medium text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:invisible"
+              />
             </div>
 
-            <p className="mt-6 text-center text-sm text-[var(--kiosk-text-faint)]">
+            <p className="mt-8 text-lg text-[var(--kiosk-text-secondary)]">
               {t.privacyFooter.pre}
-              <span className="font-semibold text-[var(--kiosk-accent)] underline">{t.privacyFooter.link}</span>
+              <span className="text-[var(--kiosk-accent)]">{t.privacyFooter.link}</span>
               {t.privacyFooter.post}
             </p>
           </div>
