@@ -347,6 +347,21 @@ export default function GuestProfileForm({
   const { t, language } = useKioskLanguage();
   const set = (field: keyof GuestProfile) => (value: string) => onChange({ ...profile, [field]: value });
 
+  // Personal-address country defaults to nationality, since most guests give
+  // an address in the country they're a citizen of - one fewer picker to
+  // open. Only applied while the country field is still empty or still
+  // mirroring the PREVIOUS nationality (i.e. nobody has deliberately typed a
+  // different country in yet), so picking a nationality never clobbers an
+  // address the guest already chose on their own.
+  const setNationality = (nationality: string) => {
+    const countryMirrorsNationality = !profile.country || profile.country === profile.nationality;
+    onChange({
+      ...profile,
+      nationality,
+      country: countryMirrorsNationality ? nationality : profile.country,
+    });
+  };
+
   // Country names in the guest's own language - the browser already knows
   // every one of them (Intl.DisplayNames), so the list reads in Thai for a
   // Thai-speaking guest without a translation table. Falls back to the
@@ -398,7 +413,7 @@ export default function GuestProfileForm({
     <div className="flex flex-col gap-5">
       <Field label={t.firstName} required value={profile.first_name} onChange={set("first_name")} autoComplete="given-name" />
       <Field label={t.lastName} required value={profile.last_name} onChange={set("last_name")} autoComplete="family-name" />
-      <CountryField label={t.nationality} required value={profile.nationality} onChange={set("nationality")} options={countryOptions} />
+      <CountryField label={t.nationality} required value={profile.nationality} onChange={setNationality} options={countryOptions} />
       <Field label={t.telephone} type="tel" value={profile.telephone} onChange={set("telephone")} autoComplete="tel" />
       <Field label={t.occupation} value={profile.occupation} onChange={set("occupation")} />
       <Field label={t.email} type="email" value={email} onChange={onEmailChange} autoComplete="email" />
