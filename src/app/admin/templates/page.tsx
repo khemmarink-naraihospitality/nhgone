@@ -477,7 +477,7 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     sendNowEndpoint: "/admin/email-template/rr4-compare/send-now",
   },
   stop_sale_email: {
-    label: "Notification - Revenue New Stop Sale and Re-open",
+    label: "All Property",
     endpoint: "/admin/email-template/stop-sale-alert",
     tokens: STOP_SALE_TOKENS,
     defaultNote: "No Stop Sale notification configured yet - showing the built-in default. Save to customize it.",
