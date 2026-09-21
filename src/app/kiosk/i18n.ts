@@ -129,6 +129,9 @@ export interface KioskCopy {
   issuingCountry: string;
   issuingCity: string;
   expirationDate: string;
+  // Country picker (nationality / country / issuing country)
+  searchCountry: string;
+  noCountryMatch: string;
 }
 
 const en: KioskCopy = {
@@ -210,6 +213,8 @@ const en: KioskCopy = {
   issuingCountry: "Issuing country",
   issuingCity: "Issuing city",
   expirationDate: "Expiration date",
+  searchCountry: "Search countries",
+  noCountryMatch: "No country matches that.",
 };
 
 const th: KioskCopy = {
@@ -291,6 +296,8 @@ const th: KioskCopy = {
   issuingCountry: "ประเทศที่ออก",
   issuingCity: "เมืองที่ออก",
   expirationDate: "วันหมดอายุ",
+  searchCountry: "ค้นหาประเทศ",
+  noCountryMatch: "ไม่พบประเทศที่ค้นหา",
 };
 
 const fil: KioskCopy = {
@@ -372,6 +379,8 @@ const fil: KioskCopy = {
   issuingCountry: "Bansang nagbigay",
   issuingCity: "Lungsod na nagbigay",
   expirationDate: "Petsa ng pagkawalang-bisa",
+  searchCountry: "Maghanap ng bansa",
+  noCountryMatch: "Walang bansang tumugma.",
 };
 
 const km: KioskCopy = {
@@ -453,6 +462,8 @@ const km: KioskCopy = {
   issuingCountry: "ប្រទេសចេញ",
   issuingCity: "ទីក្រុងចេញ",
   expirationDate: "ថ្ងៃផុតកំណត់",
+  searchCountry: "ស្វែងរកប្រទេស",
+  noCountryMatch: "រកមិនឃើញប្រទេសនោះទេ។",
 };
 
 const ja: KioskCopy = {
@@ -534,6 +545,8 @@ const ja: KioskCopy = {
   issuingCountry: "発行国",
   issuingCity: "発行都市",
   expirationDate: "有効期限",
+  searchCountry: "国を検索",
+  noCountryMatch: "該当する国がありません。",
 };
 
 export const KIOSK_COPY: Record<KioskLanguageCode, KioskCopy> = { en, th, fil, km, ja };

@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
-import { BookUser, CarFront, IdCard, type LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { BookUser, CarFront, Check, ChevronDown, IdCard, Search, X, type LucideIcon } from "lucide-react";
 import { useKioskLanguage } from "../kioskLanguage";
 
 /**
@@ -47,6 +48,15 @@ export interface OwnerAddress {
 export interface CountryOption {
   code: string;
   name: string;
+}
+
+// A country as the picker shows it: its name in the guest's language, plus
+// the English one so a search typed in English still finds it on a Thai
+// screen.
+interface LocalisedCountry {
+  code: string;
+  name: string;
+  english: string;
 }
 
 export const EMPTY_PROFILE: GuestProfile = {
@@ -117,6 +127,31 @@ function Field({
   );
 }
 
+// A country's flag. The SVGs are served from our own origin (public/flags,
+// from the MIT-licensed flag-icons package - see public/flags/LICENSE) rather
+// than a flag CDN: a lobby terminal has no business telling a third party
+// which countries its guests are scrolling past. Image fetches them lazily,
+// so opening the list loads only the rows actually on screen. Emoji flags
+// were not an option - Windows renders them as bare letters ("TH").
+function Flag({ code, size = 32 }: { code: string; size?: number }) {
+  return (
+    <Image
+      src={`/flags/${code.toLowerCase()}.svg`}
+      alt=""
+      width={size}
+      height={Math.round((size * 3) / 4)}
+      unoptimized
+      className="shrink-0 rounded-[3px] shadow-[0_0_0_1px_rgba(0,0,0,0.08)]"
+    />
+  );
+}
+
+// Folds case and accents, so "cote" finds Côte d'Ivoire and "turkiye" finds
+// Türkiye. Thai, Khmer and Japanese are unaffected - they have neither.
+function fold(text: string): string {
+  return text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+}
+
 function CountryField({
   label,
   required,
@@ -128,27 +163,157 @@ function CountryField({
   required?: boolean;
   value: string;
   onChange: (value: string) => void;
-  options: CountryOption[];
+  options: LocalisedCountry[];
 }) {
+  const { t } = useKioskLanguage();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedRef = useRef<HTMLButtonElement>(null);
+  const selected = options.find((c) => c.code === value) || null;
+
+  const close = () => {
+    setOpen(false);
+    setQuery("");
+  };
+  const pick = (code: string) => {
+    onChange(code);
+    close();
+  };
+
+  // Matches the name in the guest's own language, the English one, and the
+  // code - so "japan", "ญี่ปุ่น" and "JP" all find the same row whatever
+  // language the screen is in.
+  const filtered = useMemo(() => {
+    const q = fold(query.trim());
+    if (!q) return options;
+    return options.filter(
+      (c) => fold(c.name).includes(q) || fold(c.english).includes(q) || c.code.toLowerCase() === q,
+    );
+  }, [options, query]);
+
+  // Open on the country already chosen rather than at Afghanistan, and let
+  // Escape close the dialog on a terminal with a keyboard attached.
+  useEffect(() => {
+    if (!open) return;
+    selectedRef.current?.scrollIntoView({ block: "center" });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
   return (
-    <label className={BOX}>
-      <span className={LABEL}>
-        {label}
-        {required && " *"}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className={`${CONTROL} cursor-pointer appearance-none`}
+    <>
+      {/* The same bordered box as every other field, so the form reads as
+          one piece; it opens the picker instead of taking typing. */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        aria-haspopup="dialog"
+        className="block w-full shrink-0 rounded-2xl border-2 border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-8 pb-3 pt-3 text-left transition-colors focus-visible:border-[var(--kiosk-accent)] focus-visible:outline-none"
       >
-        <option value="" />
-        {options.map((c) => (
-          <option key={c.code} value={c.code}>
-            {c.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        <span className={LABEL}>
+          {label}
+          {required && " *"}
+        </span>
+        <span className="mt-1 flex min-h-[28px] items-center gap-3 text-xl text-[var(--kiosk-text)]">
+          {selected && (
+            <>
+              <Flag code={selected.code} size={30} />
+              <span className="truncate">{selected.name}</span>
+            </>
+          )}
+          <ChevronDown size={22} className="ml-auto shrink-0 text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+        </span>
+      </button>
+
+      {open && (
+        // Anchored near the top rather than centred: on the tablet the
+        // on-screen keyboard rises from the bottom as soon as someone taps
+        // the search box, and a centred dialog would lose its lower half to
+        // it. Capped at 82% of the screen, with only the list scrolling, so
+        // it can never run off the page however long the list is.
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 px-6 pt-[6vh]"
+          onClick={close}
+          role="presentation"
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={label}
+            onClick={(e) => e.stopPropagation()}
+            className="flex max-h-[82vh] w-full max-w-xl flex-col overflow-hidden rounded-3xl bg-[var(--kiosk-surface)] text-[var(--kiosk-text)] shadow-2xl"
+          >
+            <div className="flex items-center justify-between gap-4 px-7 pb-4 pt-6">
+              <h2 className="text-2xl font-semibold">{label}</h2>
+              <div className="flex items-center gap-2">
+                {/* Only an optional field can be emptied again - a required
+                    one just gets changed. */}
+                {!required && value && (
+                  <button
+                    type="button"
+                    onClick={() => pick("")}
+                    className="rounded-full px-4 py-2 text-base font-medium text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                  >
+                    {t.clearSignature}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={close}
+                  aria-label={t.cancel}
+                  className="rounded-xl border-2 border-[var(--kiosk-text)] p-2 transition-colors hover:bg-[var(--kiosk-hover)]"
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
+              </div>
+            </div>
+
+            <div className="px-7 pb-3">
+              <label className="flex items-center gap-3 rounded-2xl border-2 border-[var(--kiosk-border)] px-5 py-3 transition-colors focus-within:border-[var(--kiosk-accent)]">
+                <Search size={20} className="shrink-0 text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={t.searchCountry}
+                  className="w-full bg-transparent text-lg text-[var(--kiosk-text)] outline-none placeholder:text-[var(--kiosk-text-faint)]"
+                />
+              </label>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4" role="listbox" aria-label={label}>
+              {filtered.map((c) => {
+                const isSelected = c.code === value;
+                return (
+                  <button
+                    key={c.code}
+                    ref={isSelected ? selectedRef : undefined}
+                    type="button"
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => pick(c.code)}
+                    className={`flex w-full items-center gap-4 rounded-2xl px-4 py-3 text-left text-lg transition-colors ${
+                      isSelected
+                        ? "bg-[var(--kiosk-surface-alt)] font-semibold"
+                        : "hover:bg-[var(--kiosk-hover)]"
+                    }`}
+                  >
+                    <Flag code={c.code} />
+                    <span className="flex-1">{c.name}</span>
+                    {isSelected && <Check size={20} className="shrink-0 text-[var(--kiosk-accent)]" aria-hidden="true" />}
+                  </button>
+                );
+              })}
+              {filtered.length === 0 && (
+                <p className="px-4 py-8 text-center text-base text-[var(--kiosk-text-muted)]">{t.noCountryMatch}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -201,7 +366,7 @@ export default function GuestProfileForm({
         } catch {
           name = c.name;
         }
-        return { code: c.code, name };
+        return { code: c.code, name, english: c.name };
       })
       .sort((a, b) => a.name.localeCompare(b.name, language));
   }, [countries, language]);
