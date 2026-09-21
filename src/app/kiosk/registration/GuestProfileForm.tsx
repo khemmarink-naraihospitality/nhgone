@@ -219,6 +219,7 @@ function CountryField({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const selectedRef = useRef<HTMLButtonElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
   const selected = options.find((c) => c.code === value) || null;
 
   const close = () => {
@@ -246,11 +247,21 @@ function CountryField({
   useEffect(() => {
     if (!open) return;
     selectedRef.current?.scrollIntoView({ block: "center" });
+    // Focus the search box on open, so a guest can start typing straight
+    // away and iPad's on-screen keyboard rises without a second tap. A bare
+    // focus() the instant the dialog mounts can miss the tap gesture on iOS
+    // Safari (the keyboard needs the focus to still read as caused by the
+    // tap), so it's done a frame later, once the input has actually
+    // painted - still well inside that window in practice.
+    const raf = requestAnimationFrame(() => searchRef.current?.focus());
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("keydown", onKey);
+    };
   }, [open]);
 
   return (
@@ -325,6 +336,7 @@ function CountryField({
               <label className="flex items-center gap-3 rounded-2xl border-2 border-[var(--kiosk-border)] px-5 py-3 transition-colors focus-within:border-[var(--kiosk-accent)]">
                 <Search size={20} className="shrink-0 text-[var(--kiosk-text-muted)]" aria-hidden="true" />
                 <input
+                  ref={searchRef}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={t.searchCountry}
