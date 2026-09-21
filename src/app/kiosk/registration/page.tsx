@@ -432,8 +432,8 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
 
       <main className="flex flex-1 gap-[7px] overflow-hidden px-8 pb-4">
         {/* Left: who is on this booking */}
-        <div className="flex w-[34%] min-w-[320px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-8">
-          <div className="flex-1 space-y-3 overflow-y-auto">
+        <div className="flex w-[34%] min-w-[320px] flex-col rounded-[32px] bg-[var(--kiosk-surface)] p-6">
+          <div className="flex-1 space-y-2.5 overflow-y-auto">
             {guests.map((guest, index) => {
               const isSelected = guest.guest_key === selectedKey;
               const f = formFor(guest);
@@ -451,7 +451,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 // outlined, which is what tells them apart.
                 <div
                   key={guest.guest_key}
-                  className={`rounded-2xl border p-5 transition-colors ${
+                  className={`rounded-2xl border px-5 py-4 transition-colors ${
                     isSelected
                       ? "border-[var(--kiosk-border-strong)] bg-[var(--kiosk-surface-alt)]"
                       : "border-[var(--kiosk-border)] bg-[var(--kiosk-surface)]"
@@ -459,8 +459,8 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                 >
                   <div className="flex items-start gap-3">
                     <button type="button" onClick={() => selectGuest(guest)} className="min-w-0 flex-1 text-left">
-                      <p className="truncate text-2xl font-semibold leading-tight">{name}</p>
-                      <p className="mt-1 text-base text-[var(--kiosk-text-muted)]">
+                      <p className="truncate text-xl font-semibold leading-tight">{name}</p>
+                      <p className="mt-0.5 text-sm text-[var(--kiosk-text-muted)]">
                         {guest.is_owner ? t.reservationOwner : t.adult}
                       </p>
                     </button>
@@ -472,18 +472,18 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                       type="button"
                       onClick={() => selectGuest(guest)}
                       aria-label={t.selectGuest}
-                      className="shrink-0 rounded-xl border-2 border-[var(--kiosk-text)] p-2 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                      className="shrink-0 rounded-xl border-2 border-[var(--kiosk-text)] p-1.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
                     >
-                      <ChevronsRight size={20} aria-hidden="true" />
+                      <ChevronsRight size={18} aria-hidden="true" />
                     </button>
                     {guest.source === "kiosk" && (
                       <button
                         type="button"
                         onClick={() => removeGuest(guest)}
                         aria-label={t.remove}
-                        className="shrink-0 rounded-xl border-2 border-[var(--kiosk-text)] p-2 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
+                        className="shrink-0 rounded-xl border-2 border-[var(--kiosk-text)] p-1.5 text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)]"
                       >
-                        <Trash2 size={20} aria-hidden="true" />
+                        <Trash2 size={18} aria-hidden="true" />
                       </button>
                     )}
                   </div>
@@ -491,11 +491,11 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                   {/* Dotted rule then the progress bar, both inside the card.
                       border-dotted rather than a row of characters so it
                       stretches to whatever width the panel has. */}
-                  <div className="mt-4 border-t-2 border-dotted border-[var(--kiosk-border-strong)]" />
-                  <p className="mt-3 text-right text-base text-[var(--kiosk-text-muted)]">
+                  <div className="mt-3 border-t-2 border-dotted border-[var(--kiosk-border-strong)]" />
+                  <p className="mt-2 text-right text-sm text-[var(--kiosk-text-muted)]">
                     {guest.signed_at ? t.complete : t.progress}
                   </p>
-                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[var(--kiosk-border)]">
+                  <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-[var(--kiosk-border)]">
                     <div
                       className="h-full rounded-full bg-[var(--kiosk-inverse-bg)] transition-all"
                       style={{ width: `${Math.round(progress * 100)}%` }}
@@ -512,9 +512,9 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
               type="button"
               onClick={addGuest}
               disabled={!storageReady}
-              className="flex w-full flex-col items-center justify-center gap-3 rounded-2xl bg-[var(--kiosk-surface-alt)] py-8 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[var(--kiosk-surface-alt)]"
+              className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl bg-[var(--kiosk-surface-alt)] py-5 text-lg text-[var(--kiosk-text)] transition-colors hover:bg-[var(--kiosk-hover)] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-[var(--kiosk-surface-alt)]"
             >
-              <Pointer size={30} strokeWidth={1.75} aria-hidden="true" />
+              <Pointer size={26} strokeWidth={1.75} aria-hidden="true" />
               {t.addGuest}
             </button>
           </div>
@@ -522,7 +522,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
           {/* How far through the whole booking this is - only worth a line
               once there is more than one guest to be through. */}
           {total > 1 && (
-            <p className="mt-4 text-center text-base text-[var(--kiosk-text-muted)]">
+            <p className="mt-3 text-center text-sm text-[var(--kiosk-text-muted)]">
               {signedCount}/{total}
             </p>
           )}
@@ -531,7 +531,7 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
             type="button"
             disabled={!canSubmit}
             onClick={handleNext}
-            className="mt-4 w-full rounded-2xl bg-[var(--kiosk-inverse-bg)] py-6 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
+            className="mt-3 w-full rounded-2xl bg-[var(--kiosk-inverse-bg)] py-5 text-xl font-semibold text-[var(--kiosk-inverse-text)] transition-colors hover:bg-[var(--kiosk-inverse-bg-hover)] disabled:cursor-not-allowed disabled:bg-[var(--kiosk-inverse-bg-disabled)]"
           >
             {saving ? t.loading : t.next}
           </button>
