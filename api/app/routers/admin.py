@@ -152,6 +152,9 @@ class Rr4Tm30EmailSettingsUpdate(BaseModel):
 class Rr4Tm30PerPropertySendNow(BaseModel):
     property_name: str
 
+class StopSalePerPropertySendNow(BaseModel):
+    property_name: str
+
 @router.post("/users")
 async def create_user(request: UserCreateRequest):
     """
@@ -1302,6 +1305,23 @@ async def send_stop_sale_alert_email_now():
     it", which is exactly what the scheduled run does too."""
     try:
         outcome = stop_sale_alert_service.send(mark_sent=False, sync_type="manual")
+        if not outcome["sent"]:
+            raise HTTPException(status_code=400, detail=f"Nothing sent - {outcome['reason']}")
+        return {"status": "success", "message": f"Sent to {', '.join(outcome['recipients'])}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/email-template/stop-sale-per-property/send-now")
+async def send_stop_sale_per_property_email_now(request: StopSalePerPropertySendNow):
+    """"Send Test Now" for ONE property's own Stop Sale & Re-open mail
+    (Admin > Email Template > Revenue > Per-Property) - the per-property twin
+    of the endpoint above, and like it mark_sent=False so a test can never
+    suppress that property's real scheduled send."""
+    try:
+        outcome = stop_sale_alert_service.send_property(
+            request.property_name, mark_sent=False, sync_type="manual")
         if not outcome["sent"]:
             raise HTTPException(status_code=400, detail=f"Nothing sent - {outcome['reason']}")
         return {"status": "success", "message": f"Sent to {', '.join(outcome['recipients'])}"}

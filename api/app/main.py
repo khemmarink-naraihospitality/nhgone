@@ -1221,6 +1221,61 @@ async def send_stop_sale_alert_email(match_hour_only: bool = False):
                                    "error", 0, str(e)[:500], "auto")
         print(f"Error in stop-sale alert mail: {str(e)}")
 
+async def send_stop_sale_per_property_emails(match_hour_only: bool = False):
+    """
+    Per-property Stop Sale & Re-open emails (Admin > Email Template >
+    Revenue > Per-Property) - same shape and reasoning as
+    send_st_files_per_property_emails and send_rr4_tm30_per_property_emails,
+    reading stop_sale_email_enabled/_hour/_minute/_last_sent_date.
+
+    Independent of the bundled mail above in every way: its own per-property
+    times, its own recipients, its own marker column. A property opted in
+    here still appears in the bundled All Property mail - opting in adds a
+    mail rather than moving one.
+
+    The whole column family may not exist yet (api/sql/stop_sale_email_columns.sql
+    is run by hand, like the ST and RR4/TM30 ones), so a failed query here is
+    logged at info and skipped rather than raised - the feature simply does
+    nothing until the migration lands.
+    """
+    now = datetime.now(ZoneInfo("Asia/Bangkok"))
+    if not sync_service.supabase:
+        return
+
+    try:
+        query = sync_service.supabase.table("property_api_settings") \
+            .select("id, property_name, stop_sale_email_hour, stop_sale_email_minute, "
+                    "stop_sale_email_last_sent_date") \
+            .eq("stop_sale_email_enabled", True)
+        if match_hour_only:
+            query = query.eq("stop_sale_email_hour", now.hour).lte("stop_sale_email_minute", now.minute)
+        else:
+            query = query.eq("stop_sale_email_hour", now.hour).eq("stop_sale_email_minute", now.minute)
+        items = query.execute().data or []
+    except Exception as e:
+        print(f"Stop-sale per-property emails: settings unavailable ({str(e)[:160]})")
+        return
+
+    today_str = now.date().isoformat()
+    for p in items:
+        if p.get("stop_sale_email_last_sent_date") == today_str:
+            continue
+        try:
+            outcome = stop_sale_alert_service.send_property(p["property_name"])
+            if outcome["sent"]:
+                print(f"[{now.isoformat()}] Stop-sale per-property email sent for "
+                      f"{p['property_name']}: {outcome['summary']}")
+            else:
+                print(f"[{now.isoformat()}] Stop-sale per-property email for "
+                      f"{p['property_name']}: not sent - {outcome['reason'][:200]}")
+        except Exception as e:
+            traceback.print_exc()
+            sync_service._log_sync_row(
+                p["property_name"], p.get("id"),
+                stop_sale_alert_service.PER_PROPERTY_TARGET_TABLE,
+                "error", 0, str(e)[:500], "auto")
+            print(f"Error in send_stop_sale_per_property_emails for {p['property_name']}: {str(e)}")
+
 async def retry_failed_syncs():
     """
     Runs once daily at 09:00 Asia/Bangkok. Finds every (property, table) pair
@@ -1556,6 +1611,7 @@ async def start_scheduler():
     # Revenue's new-stop-sale/re-open alert - own configurable send time,
     # defaulted to 09:00 so it lands after the 08:00 occupancy capture it diffs.
     scheduler.add_job(send_stop_sale_alert_email, 'cron', second=0)
+    scheduler.add_job(send_stop_sale_per_property_emails, 'cron', second=0)
     # BCP snapshots every 5 minutes (in production this rides its own
     # dedicated Vercel Cron entry -> /bcp/auto-capture instead).
     scheduler.add_job(bcp.capture_all_bcp_snapshots, 'cron', minute='*/5')
@@ -1613,6 +1669,7 @@ async def trigger_auto_sync(force: bool = Query(False), background_tasks: Backgr
     background_tasks.add_task(send_rv_compare_email, match_hour_only=True)
     # Revenue's new-stop-sale/re-open alert - own configurable send time.
     background_tasks.add_task(send_stop_sale_alert_email, match_hour_only=True)
+    background_tasks.add_task(send_stop_sale_per_property_emails, match_hour_only=True)
     # BCP snapshots have their own dedicated 5-minute cron (/bcp/auto-capture)
     # - deliberately NOT piggybacked here anymore, since this endpoint's own
     # cron only fires hourly and match_hour_only's same-hour tolerance would

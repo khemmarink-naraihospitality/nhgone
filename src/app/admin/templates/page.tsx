@@ -19,7 +19,8 @@ type TemplateType =
   | "st_files_email"
   | "st_files_email_per_property"
   | "rr4_tm30_email"
-  | "rr4_tm30_email_per_property";
+  | "rr4_tm30_email_per_property"
+  | "stop_sale_email_per_property";
 
 // Top-level tab groups - "System Email" bundles the account-lifecycle
 // emails (welcome/reset/approved/etc) and "Statistic Files" bundles the 2
@@ -50,7 +51,7 @@ const GROUP_CONFIG: Record<TemplateGroup, { label: string; children: TemplateTyp
   // sheet-verification mail like the rest of that group.
   revenue: {
     label: "Revenue",
-    children: ["stop_sale_email"],
+    children: ["stop_sale_email", "stop_sale_email_per_property"],
   },
   // RV Files' own sheet check - its own pill for the same reason Revenue has
   // one: System Email's sub-tab row is already full, and this mail belongs to
@@ -182,6 +183,36 @@ const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
   { name: "Property", description: "This email's one property name" },
   { name: "PropertyCode", description: "This property's ST Property Code" },
   { name: "StatsTable", description: "Same pre-built HTML table as the bundled email, but with just this one property's row" },
+];
+
+// Mirrors DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT / _TEMPLATE in
+// api/app/services/email_service.py - what a property that has never been
+// customized actually sends. No <<SummaryTable>> and no property count: the
+// whole mail is one property, and <<Property>> names it.
+const DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT = "Stop Sale & Re-open — <<Property>> — <<Date>>";
+const DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE = `<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Revenue &mdash; New Stop Sale &amp; Re-open</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Changes for <b><<Property>></b> since the previous snapshot, as of <b><<Date>></b>. A night at or above <b><<Threshold>>%</b> occupancy is stopped for travel agents.</p>
+        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<NewStops>> new stop sale(s) &middot; <<Reopens>> re-open(s)</p>
+        <<DetailTable>>
+        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Only nights that crossed the line since the previous snapshot are listed &mdash; a stop that was already there yesterday is not news. Open Revenue &gt; Occupancy By Type Calendar for the full chart.</p>
+      </td>
+    </tr>
+  </table>
+</div>`;
+
+const STOP_SALE_PER_PROPERTY_TOKENS: TokenDoc[] = [
+  { name: "Date", description: "The newest snapshot's date (DD/MM/YYYY)" },
+  { name: "Property", description: "This email's one property name" },
+  { name: "Threshold", description: "The occupancy % at or above which a night counts as stopped (90)" },
+  { name: "NewStops", description: "How many nights newly crossed INTO stop-sale for this property" },
+  { name: "Reopens", description: "How many nights came back OUT of stop-sale for this property" },
+  { name: "Summary", description: "One-line verdict for this property - usable in the Subject too" },
+  { name: "DetailTable", description: "Pre-built HTML: every changed night for this property - room type (full name), the night, the occupancy it moved from and to, and which way it went" },
 ];
 
 const RR4_TM30_EMAIL_TOKENS: TokenDoc[] = [
@@ -514,6 +545,36 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     hasScheduleFields: true,
     sendNowEndpoint: "/admin/email-template/rr4-tm30-daily/send-now",
   },
+  stop_sale_email_per_property: {
+    label: "Per-Property",
+    tokens: STOP_SALE_PER_PROPERTY_TOKENS,
+    defaultNote: "",
+    tokenNote: "Each property below has its own independent Enabled/Recipients/Time to Send/Subject/HTML - so two properties can be watched by two different teams at two different times. This ADDS a mail rather than moving one: a property opted in here still appears in the bundled All Property email. Occupancy snapshots are captured at 08:00 and 13:00, so a send time before 08:00 would compare yesterday's pair again.",
+    perProperty: false,
+    hasPerPropertyRecipients: true,
+    hasOwnEditor: true,
+    perPropertyPrefix: "stop_sale_email",
+    perPropertySendNowEndpoint: "/admin/email-template/stop-sale-per-property/send-now",
+    perPropertyDefaultSubject: DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT,
+    perPropertyDefaultTemplate: DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE,
+    perPropertySampleBuilder: (property) => ({
+      Date: "21/09/2026",
+      Property: property || "Property Name",
+      Threshold: "90",
+      NewStops: "2",
+      Reopens: "1",
+      Summary: "2 new stop sale(s), 1 re-open(s)",
+      DetailTable: buildCompareSampleTable(
+        ["Property", "Room Type", "Night", "Occupancy", "Change"],
+        [[property || "Property Name", "The Duo | Twin", "Sun 27 Sep 2026",
+          "86.36% → <b>90.91%</b>", newStop("New stop sale")],
+         [property || "Property Name", "The Compact | Double", "Sat 07 Nov 2026",
+          "88.64% → <b>95.45%</b>", newStop("New stop sale")],
+         [property || "Property Name", "The Studio | King", "Tue 08 Sep 2026",
+          "100.00% → <b>80.00%</b>", reopened("Re-open")]],
+      ),
+    }),
+  },
   rr4_tm30_email_per_property: {
     label: "Per-Property",
     tokens: RR4_TM30_EMAIL_PER_PROPERTY_TOKENS,
@@ -793,6 +854,24 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     Property: "Lub d Bangkok Chinatown",
     PropertyCode: "MS",
     StatsTable: buildRr4Tm30StatsTableSample(1),
+  }),
+  // The per-property tabs render their preview through
+  // perPropertySampleBuilder (which knows which property is selected); this
+  // entry only exists because the Record is keyed by every TemplateType.
+  stop_sale_email_per_property: () => ({
+    Date: "21/09/2026",
+    Property: "Lub d Bangkok Chinatown",
+    Threshold: "90",
+    NewStops: "2",
+    Reopens: "1",
+    Summary: "2 new stop sale(s), 1 re-open(s)",
+    DetailTable: buildCompareSampleTable(
+      ["Property", "Room Type", "Night", "Occupancy", "Change"],
+      [["Lub d Bangkok Chinatown", "The Duo | Twin", "Sun 27 Sep 2026",
+        "86.36% → <b>90.91%</b>", newStop("New stop sale")],
+       ["Lub d Bangkok Chinatown", "The Studio | King", "Tue 08 Sep 2026",
+        "100.00% → <b>80.00%</b>", reopened("Re-open")]],
+    ),
   }),
 };
 

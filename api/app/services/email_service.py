@@ -244,6 +244,31 @@ DEFAULT_STOP_SALE_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40
   </table>
 </div>"""
 
+# Per-property Stop Sale & Re-open (Admin > Email Template > Revenue >
+# Per-Property). Only a FALLBACK: each property's own Subject/HTML live in
+# property_api_settings.stop_sale_email_subject/_template, and these are what
+# a property that has never been customized sends. Same arrangement as
+# DEFAULT_ST_FILES_EMAIL_PER_PROPERTY_* and the RR4/TM30 pair.
+#
+# Note there is no <<SummaryTable>> here and no property count: the whole
+# mail is one property, so the summary row would restate the heading, and
+# <<Property>> names it instead.
+DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT = "Stop Sale & Re-open — <<Property>> — <<Date>>"
+DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE = """<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
+    <tr>
+      <td style="padding:40px;">
+        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
+        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Revenue &mdash; New Stop Sale &amp; Re-open</p>
+        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Changes for <b><<Property>></b> since the previous snapshot, as of <b><<Date>></b>. A night at or above <b><<Threshold>>%</b> occupancy is stopped for travel agents.</p>
+        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<NewStops>> new stop sale(s) &middot; <<Reopens>> re-open(s)</p>
+        <<DetailTable>>
+        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Only nights that crossed the line since the previous snapshot are listed &mdash; a stop that was already there yesterday is not news. Open Revenue &gt; Occupancy By Type Calendar for the full chart.</p>
+      </td>
+    </tr>
+  </table>
+</div>"""
+
 # Mirrors the login page's own look (src/app/page.tsx): cream background,
 # white bordered card, bordered logo box, serif "NHGOne" heading, uppercase
 # tracked subtitle, dark green CTA button in cream text, italic gray footer.

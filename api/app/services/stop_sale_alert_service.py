@@ -58,7 +58,12 @@ _REOPEN = "reopen"
 
 # --------------------------------------------------------------- comparison
 
-def _properties() -> list:
+def _properties(only: str = None) -> list:
+    """Every property, or just the one named - `only` is what the
+    per-property send passes so build_alert can produce a one-property
+    report through exactly the same code as the bundled one."""
+    if only:
+        return [only]
     supabase = get_supabase_client()
     if not supabase:
         return []
@@ -146,19 +151,24 @@ def _changes(current: dict, baseline: dict, threshold: float) -> list:
     return out
 
 
-def build_alert(threshold: float = None) -> dict:
+def build_alert(threshold: float = None, property_name: str = None) -> dict:
     """Diff every property's two newest occupancy snapshots.
 
     status is "ok" as soon as ONE property has a pair to compare. Zero
     changes across all of them is a real answer - a daily all-clear is the
     point of a watch - but a report built from no comparable property at all
     is not, and is what status "no_data" exists to stop from being sent.
+
+    `property_name` narrows the whole report to one property, which is all
+    the per-property send needs: every count, table and token below is then
+    that property's own, and "no_data" means that ONE property has no pair
+    rather than that nobody does.
     """
     threshold = DEFAULT_THRESHOLD if threshold is None else threshold
     properties, comparable, latest = [], 0, None
     total_new = total_reopen = 0
 
-    for prop in _properties():
+    for prop in _properties(property_name):
         row = {"property": prop, "status": "no_snapshot", "current_date": None,
                "current_synced_at": None, "baseline_date": None, "baseline_synced_at": None,
                "changes": [], "new_stops": 0, "reopens": 0, "note": ""}
@@ -308,14 +318,20 @@ def render_detail_table(result: dict) -> str:
                 'line in either direction since the previous snapshot.</p>')
 
     shown, dropped = rows[:MAX_DETAIL_ROWS], max(0, len(rows) - MAX_DETAIL_ROWS)
+    # A per-property mail is one property throughout, so the Property column
+    # would repeat the heading on every row. Dropped there, kept on the
+    # bundled mail where it is the only thing separating the properties.
+    one_property = len({prop for prop, _c in rows}) == 1 and len(result.get("properties") or []) == 1
+    prop_head = "" if one_property else f'<th style="{_TH}">Property</th>'
     h = ['<div style="overflow-x:auto">'
          f'<table style="border-collapse:collapse;width:100%"><tr>'
-         f'<th style="{_TH}">Property</th><th style="{_TH}">Room Type</th>'
+         f'{prop_head}<th style="{_TH}">Room Type</th>'
          f'<th style="{_TH}">Night</th><th style="{_TH}">Occupancy</th>'
          f'<th style="{_TH}">Change</th></tr>']
     for prop, c in shown:
         style = _NEW_STYLE if c["kind"] == _NEW_STOP else _REOPEN_STYLE
-        h.append(f'<tr><td style="{_TD}white-space:nowrap">{_short(prop)}</td>'
+        prop_cell = "" if one_property else f'<td style="{_TD}white-space:nowrap">{_short(prop)}</td>'
+        h.append(f'<tr>{prop_cell}'
                  # The room type's full name only. The short code ("SLT",
                  # "BLDD") is MEWS's internal handle and still identifies the
                  # row everywhere it needs to - _cat_id, the sort, the text
@@ -382,8 +398,13 @@ def render_tokens(result: dict) -> dict:
             day = datetime.strptime(result["date"], "%Y-%m-%d")
         except ValueError:
             day = None
+    # On a per-property report there is exactly one property in the list, so
+    # <<Property>> is that one's name; on the bundled report it would be
+    # meaningless and renders blank rather than picking a property at random.
+    props = result.get("properties") or []
     return {
         "Date": day.strftime("%d/%m/%Y") if day else "—",
+        "Property": props[0]["property"] if len(props) == 1 else "",
         "Threshold": str(result["threshold"]),
         "NewStops": str(result["total_new"]),
         "Reopens": str(result["total_reopen"]),
@@ -395,6 +416,103 @@ def render_tokens(result: dict) -> dict:
 
 
 # --------------------------------------------------------------- send path
+
+PER_PROPERTY_TARGET_TABLE = "Stop Sale Alert (Per-Property)"
+
+# The property_api_settings column family this reads, mirroring
+# st_files_email_* / rr4_tm30_email_* exactly (api/sql/stop_sale_email_columns.sql).
+_PP = "stop_sale_email"
+
+
+def send_property(property_name: str, mark_sent: bool = True,
+                  sync_type: str = "auto") -> dict:
+    """One property's own Stop Sale & Re-open mail (Admin > Email Template >
+    Revenue > Per-Property).
+
+    Everything about it is that property's own - recipients, send time,
+    subject and HTML all live in property_api_settings, so two properties can
+    be watched by two different teams at two different times. The report
+    itself is build_alert narrowed to this property, so the per-property mail
+    and the bundled one can never describe the same night differently.
+
+    Deliberately NOT an exclusion from the bundled All Property mail: that
+    one stays a standing master copy of every property, the same decision
+    send_st_files_bundled_digest documents for ST Files. Opting a property in
+    here adds a mail, it does not move one.
+
+    mark_sent writes THIS property's own stop_sale_email_last_sent_date, so
+    one property's send can never suppress another's - and "Send Test Now"
+    passes mark_sent=False so a test can never suppress the real send.
+    """
+    from app.services.sync_service import sync_service
+
+    supabase = get_supabase_client()
+    if not supabase:
+        return {"sent": False, "reason": "no database connection",
+                "recipients": [], "summary": ""}
+
+    cols = ", ".join(f"{_PP}_{c}" for c in
+                     ("recipients", "cc", "bcc", "subject", "template"))
+    try:
+        res = supabase.table("property_api_settings").select(
+            f"id, {cols}").eq("property_name", property_name).limit(1).execute()
+    except Exception as e:
+        # The column family not existing yet is the pre-migration state, not
+        # a failure to shout about - same degrade-to-default shape the rest
+        # of this codebase uses (get_ftp_settings, _resolve_tm30_day_start).
+        reason = f"{property_name}: stop_sale_email_* columns unavailable ({str(e)[:100]})"
+        logger.info(f"Stop-sale per-property: {reason}")
+        return {"sent": False, "reason": reason, "recipients": [], "summary": ""}
+
+    row = res.data[0] if res.data else {}
+    prop_id = row.get("id")
+    recipients = [e.strip() for e in (row.get(f"{_PP}_recipients") or "").split(",") if e.strip()]
+    if not recipients:
+        reason = (f"{property_name}: no recipients configured "
+                  f"(Admin > Email Template > Revenue > Per-Property)")
+        sync_service._log_sync_row(property_name, prop_id, PER_PROPERTY_TARGET_TABLE,
+                                   "error", 0, reason, sync_type)
+        return {"sent": False, "reason": reason, "recipients": [], "summary": ""}
+
+    result = build_alert(property_name=property_name)
+    summary = subject_summary(result)
+    if result["status"] != "ok":
+        reason = f"{property_name}: needs two occupancy snapshots to compare, and has fewer"
+        sync_service._log_sync_row(property_name, prop_id, PER_PROPERTY_TARGET_TABLE,
+                                   "error", 0, reason, sync_type)
+        return {"sent": False, "reason": reason, "recipients": recipients, "summary": summary}
+
+    tokens = render_tokens(result)
+
+    def fill(text: str) -> str:
+        for name, value in tokens.items():
+            text = text.replace(f"<<{name}>>", value)
+        return text
+
+    subject = row.get(f"{_PP}_subject") or email_service.DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT
+    template = row.get(f"{_PP}_template") or email_service.DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE
+    cc = [e.strip() for e in (row.get(f"{_PP}_cc") or "").split(",") if e.strip()]
+    bcc = [e.strip() for e in (row.get(f"{_PP}_bcc") or "").split(",") if e.strip()]
+
+    email_service.send_email_with_attachments(
+        recipients, fill(subject), fill(template), attachments=[],
+        text_body=render_text(result), cc_emails=cc, bcc_emails=bcc)
+
+    sync_service._log_sync_row(
+        property_name, prop_id, PER_PROPERTY_TARGET_TABLE, "success",
+        result["total_new"] + result["total_reopen"],
+        f"{result['date']}: {summary}; sent to {', '.join(recipients)}", sync_type)
+
+    if mark_sent:
+        today = datetime.now(ZoneInfo("Asia/Bangkok")).date().isoformat()
+        try:
+            supabase.table("property_api_settings").update(
+                {f"{_PP}_last_sent_date": today}).eq("property_name", property_name).execute()
+        except Exception as e:
+            logger.warning(f"Stop-sale per-property: could not mark {property_name} sent: {e}")
+
+    return {"sent": True, "reason": "", "recipients": recipients, "summary": summary}
+
 
 def send(mark_sent: bool = True, sync_type: str = "auto") -> dict:
     """Build the alert, render it into the Admin template and send it.
