@@ -316,8 +316,13 @@ def render_detail_table(result: dict) -> str:
     for prop, c in shown:
         style = _NEW_STYLE if c["kind"] == _NEW_STOP else _REOPEN_STYLE
         h.append(f'<tr><td style="{_TD}white-space:nowrap">{_short(prop)}</td>'
-                 f'<td style="{_TD}white-space:nowrap"><b>{c["category"]}</b> '
-                 f'<span style="color:#94a3b8">{c["category_name"]}</span></td>'
+                 # The room type's full name only. The short code ("SLT",
+                 # "BLDD") is MEWS's internal handle and still identifies the
+                 # row everywhere it needs to - _cat_id, the sort, the text
+                 # part's own lookup - but nobody reading the mail books a
+                 # "BLDD", and category_name already falls back to the code
+                 # for a category MEWS gives no full name.
+                 f'<td style="{_TD}white-space:nowrap">{c["category_name"]}</td>'
                  f'<td style="{_TD}white-space:nowrap">{_night(c["date"])}</td>'
                  f'<td style="{_TD}white-space:nowrap">{_pct(c["was"])} → '
                  f'<b>{_pct(c["now"])}</b></td>'
@@ -360,8 +365,8 @@ def render_text(result: dict) -> str:
             if listed >= MAX_DETAIL_ROWS:
                 break
             listed += 1
-            out.append(f"    {_LABEL[c['kind']]:<14} {c['category']:<8} {_night(c['date'])}"
-                       f"   {_pct(c['was'])} -> {_pct(c['now'])}")
+            out.append(f"    {_LABEL[c['kind']]:<14} {c['category_name'][:44]:<44} "
+                       f"{_night(c['date'])}   {_pct(c['was'])} -> {_pct(c['now'])}")
     total = sum(len(p["changes"]) for p in result["properties"])
     if total > listed:
         out.append(f"... {total - listed} further changed night(s) not listed - "

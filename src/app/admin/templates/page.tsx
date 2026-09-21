@@ -753,15 +753,17 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
     ),
     DetailTable: buildCompareSampleTable(
       ["Property", "Room Type", "Night", "Occupancy", "Change"],
-      [["Bangkok Chinatown", `<b>SLT</b> ${muted("The Duo | Twin")}`, "Sun 27 Sep 2026",
+      // The room type's full name only - the mail dropped MEWS's short code
+      // ("SLT", "BLDD"), which nobody reading this books by.
+      [["Bangkok Chinatown", "The Duo | Twin", "Sun 27 Sep 2026",
         "86.36% → <b>90.91%</b>", newStop("New stop sale")],
-       ["Bangkok Chinatown", `<b>SLT</b> ${muted("The Duo | Twin")}`, "Sun 11 Oct 2026",
+       ["Bangkok Chinatown", "The Duo | Twin", "Sun 11 Oct 2026",
         "86.36% → <b>90.91%</b>", newStop("New stop sale")],
-       ["Bangkok Chinatown", `<b>TNK</b> ${muted("The Duo | King")}`, "Sat 07 Nov 2026",
+       ["Bangkok Chinatown", "The Duo | King", "Sat 07 Nov 2026",
         "88.64% → <b>95.45%</b>", newStop("New stop sale")],
-       ["Bangkok Siam", `<b>CMP</b> ${muted("The Compact | King")}`, "Wed 09 Sep 2026",
+       ["Bangkok Siam", "1 BED IN OUR TRIBE HIDEOUT (4-SHARED-BEDS) - LADIES", "Wed 09 Sep 2026",
         "70.00% → <b>90.00%</b>", newStop("New stop sale")],
-       ["Bangkok Siam", `<b>SDK</b> ${muted("The Studio | King")}`, "Tue 08 Sep 2026",
+       ["Bangkok Siam", "The Studio | King", "Tue 08 Sep 2026",
         "100.00% → <b>80.00%</b>", reopened("Re-open")]],
     ),
   }),
