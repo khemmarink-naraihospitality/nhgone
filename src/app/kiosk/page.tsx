@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { ChevronLeft } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { useKioskConfig } from "./kioskConfig";
 import { useKioskLanguage } from "./kioskLanguage";
@@ -13,8 +14,12 @@ import KioskPropertySwitcher from "./KioskPropertySwitcher";
  * first of several screens that do not share KioskLayout's dark header/
  * footer chrome (see the `LIGHT_THEME_ROUTES` check there): the reference
  * shows an entirely different top bar (KioskTopBar - Staff/Guest mode,
- * language/currency/settings), no back button here specifically since
- * there's nowhere to go back to from home.
+ * language/currency/settings); KioskTopBar's own back arrow is off here
+ * (`showBack={false}`) since there's nowhere further back in the CHECK-IN
+ * FLOW to go from home. The bottom-right "‹ Back to NHGOne" is a different
+ * thing entirely - a staff-only exit out of the kiosk terminal altogether,
+ * back to the main app shell, which is why it lives down by the property
+ * switcher rather than up in KioskTopBar with the flow's own navigation.
  *
  * Font: set explicitly to font-sans (IBM Plex Sans, already loaded site-wide)
  * rather than left to inherit. That is the closest honest match available -
@@ -85,11 +90,28 @@ export default function KioskWelcomePage() {
         </div>
       </main>
 
-      {/* This kiosk's own configured name (Admin Console > Kiosks) - see the
-          file-level note on why this isn't a fake MEWS version string. Also
-          the switcher for which property this terminal is showing, limited
-          to the ones the signed-in staff member may see. */}
-      <KioskPropertySwitcher />
+      <div className="flex items-center justify-between px-8 pb-4">
+        {/* This kiosk's own configured name (Admin Console > Kiosks) - see
+            the file-level note on why this isn't a fake MEWS version string.
+            Also the switcher for which property this terminal is showing,
+            limited to the ones the signed-in staff member may see. */}
+        <KioskPropertySwitcher />
+
+        {/* Staff-only exit out of the terminal entirely, back to the main
+            NHGOne app shell (/dashboard). Kept to the same quiet weight as
+            the property caption it sits beside - this is a staff control on
+            a screen a guest also stands in front of, not an invitation to
+            leave mid check-in. No confirmation dialog: leaving the welcome
+            screen loses nothing, unlike navigating away mid-registration. */}
+        <button
+          type="button"
+          onClick={() => router.push("/dashboard")}
+          className="flex items-center gap-1 rounded-md text-sm text-[var(--kiosk-text-faint)] transition-colors hover:text-[var(--kiosk-text-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--kiosk-accent)]"
+        >
+          <ChevronLeft size={16} aria-hidden="true" />
+          {t.backToNHGOne}
+        </button>
+      </div>
     </div>
   );
 }

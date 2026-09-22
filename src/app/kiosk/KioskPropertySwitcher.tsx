@@ -24,6 +24,10 @@ import { useKioskConfig } from "./kioskConfig";
  *
  * With nothing to switch to (one property, or the list still loading) it
  * renders as plain text, not a button that opens an empty menu.
+ *
+ * Unpadded - the welcome screen's own footer row (page.tsx) supplies the
+ * px-8 pb-4 shared with the "‹ Back to NHGOne" button beside it, so the two
+ * line up on one baseline rather than each carving out their own margin.
  */
 export default function KioskPropertySwitcher() {
   const { properties, selectedProperty, setSelectedProperty, loaded } = useSelectedProperty();
@@ -54,18 +58,18 @@ export default function KioskPropertySwitcher() {
   }, [open]);
 
   if (!canSwitch) {
-    return <p className="px-8 pb-4 text-sm text-[var(--kiosk-text-faint)]">{label}</p>;
+    return <p className="text-sm text-[var(--kiosk-text-faint)]">{label}</p>;
   }
 
   return (
-    <div ref={rootRef} className="relative px-8 pb-4">
+    <div ref={rootRef} className="relative">
       {/* Opens UPWARD: the caption sits on the bottom edge, so a menu
           dropping down would be off-screen. */}
       {open && (
         <div
           role="listbox"
           aria-label="Property"
-          className="absolute bottom-full left-8 z-50 mb-2 max-h-[60vh] w-[22rem] overflow-y-auto rounded-2xl bg-[var(--kiosk-surface)] p-2 shadow-2xl ring-1 ring-[var(--kiosk-border)]"
+          className="absolute bottom-full left-0 z-50 mb-2 max-h-[60vh] w-[22rem] overflow-y-auto rounded-2xl bg-[var(--kiosk-surface)] p-2 shadow-2xl ring-1 ring-[var(--kiosk-border)]"
         >
           {properties.map((property) => {
             const isCurrent = property.name === selectedProperty;

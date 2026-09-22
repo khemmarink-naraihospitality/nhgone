@@ -132,12 +132,15 @@ export interface KioskCopy {
   // Country picker (nationality / country / issuing country)
   searchCountry: string;
   noCountryMatch: string;
+  // Home screen's staff-only exit, back to the main NHGOne app.
+  backToNHGOne: string;
 }
 
 const en: KioskCopy = {
   welcomeTitle: (name) => `Welcome to ${name}`,
   checkIn: "Check in",
   checkOut: "Check out",
+  backToNHGOne: "Back to NHGOne",
   searchPlaceholder: "Search by name",
   stay: "Stay",
   noGuestsMatch: (query) => `No guests match "${query}".`,
@@ -221,6 +224,7 @@ const th: KioskCopy = {
   welcomeTitle: (name) => `ยินดีต้อนรับสู่ ${name}`,
   checkIn: "เช็คอิน",
   checkOut: "เช็คเอาต์",
+  backToNHGOne: "กลับสู่ NHGOne",
   searchPlaceholder: "ค้นหาด้วยชื่อ",
   stay: "การเข้าพัก",
   noGuestsMatch: (query) => `ไม่พบผู้เข้าพักที่ตรงกับ "${query}"`,
@@ -304,6 +308,7 @@ const fil: KioskCopy = {
   welcomeTitle: (name) => `Maligayang pagdating sa ${name}`,
   checkIn: "Mag-check in",
   checkOut: "Mag-check out",
+  backToNHGOne: "Bumalik sa NHGOne",
   searchPlaceholder: "Maghanap gamit ang pangalan",
   stay: "Pananatili",
   noGuestsMatch: (query) => `Walang bisitang tumutugma sa "${query}".`,
@@ -387,6 +392,7 @@ const km: KioskCopy = {
   welcomeTitle: (name) => `សូមស្វាគមន៍មកកាន់ ${name}`,
   checkIn: "ចូលស្នាក់នៅ",
   checkOut: "ចាកចេញ",
+  backToNHGOne: "ត្រឡប់ទៅ NHGOne",
   searchPlaceholder: "ស្វែងរកតាមឈ្មោះ",
   stay: "ការស្នាក់នៅ",
   noGuestsMatch: (query) => `រកមិនឃើញភ្ញៀវដែលត្រូវនឹង "${query}"។`,
@@ -470,6 +476,7 @@ const ja: KioskCopy = {
   welcomeTitle: (name) => `${name}へようこそ`,
   checkIn: "チェックイン",
   checkOut: "チェックアウト",
+  backToNHGOne: "NHGOneに戻る",
   searchPlaceholder: "名前で検索",
   stay: "宿泊",
   noGuestsMatch: (query) => `「${query}」に一致するゲストが見つかりません。`,
