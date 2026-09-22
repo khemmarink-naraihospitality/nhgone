@@ -679,6 +679,17 @@ async def attach_rr3_card(payload: dict = Body(...)):
         return {"status": "success", "frozen": frozen, "mews_file": "failed"}
 
 
+@router.get("/currencies")
+async def kiosk_currencies(property_name: str = Query(...)):
+    """This property's own enabled currencies - MEWS's Enterprise.Currencies
+    (Property > Finance > Cashier in the MEWS UI), not a fixed THB/USD/PHP
+    list. See sync_service.get_enabled_currencies for what varies per
+    property (Siem Reap is USD-only; Chinatown/Koh Tao are THB-only despite
+    listing USD; Makati defaults to PHP)."""
+    data = await sync_service.get_enabled_currencies(property_name)
+    return {"status": "success", "data": data}
+
+
 @router.get("/countries")
 async def kiosk_countries():
     """Every country code the kiosk's nationality / country / issuing-country

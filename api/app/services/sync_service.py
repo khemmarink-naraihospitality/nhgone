@@ -2001,6 +2001,42 @@ class SyncService:
             logger.warning(f"Could not resolve MEWS timezone for {property_name}, defaulting to Asia/Bangkok: {e}")
         return ZoneInfo("Asia/Bangkok")
 
+    async def get_enabled_currencies(self, property_name: str) -> list:
+        """This property's OWN enabled currencies, read from MEWS's own
+        Enterprise.Currencies (Property > Finance > Cashier in the MEWS UI) -
+        never a fixed list. Verified 22-Sep-2026 against every property's
+        real configuration/get response, and it varies a lot:
+
+            Chinatown/Koh Tao   THB only    (USD is LISTED but IsEnabled=False)
+            Siem Reap           USD only    (no THB at all)
+            Makati              PHP default, USD also enabled
+            Samui/Patong/Marasca/Siam   THB default, USD also enabled
+
+        A kiosk offering USD or PHP on a property that only accepts THB was
+        exactly the bug this replaces - the currency switcher used to be a
+        fixed THB/USD/PHP list with no connection to what the property
+        actually takes.
+
+        Falls back to THB alone - the default for every Thai property, same
+        fallback _resolve_property_timezone uses for the same call - if
+        configuration/get fails or returns nothing usable, rather than
+        leaving the kiosk with no currency option at all.
+        """
+        try:
+            res = await mews_client.post(
+                "/api/connector/v1/configuration/get", {}, property_name=property_name,
+            )
+            currencies = (res.get("Enterprise") or {}).get("Currencies") or []
+            enabled = [
+                {"code": c["Currency"], "is_default": bool(c.get("IsDefault"))}
+                for c in currencies if c.get("IsEnabled") and c.get("Currency")
+            ]
+            if enabled:
+                return enabled
+        except Exception as e:
+            logger.warning(f"Could not resolve enabled currencies for {property_name}: {e}")
+        return [{"code": "THB", "is_default": True}]
+
     # ST Files List's "Complimentary" column. The Master tab of all 8
     # "<Name>-ST" sheets (the ground truth for what gets filed) computes it as:
     #

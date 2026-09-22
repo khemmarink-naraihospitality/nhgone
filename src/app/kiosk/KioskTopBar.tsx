@@ -5,7 +5,7 @@ import { ArrowLeft, Check, ChevronDown, Coins, Languages, Settings } from "lucid
 import { useState } from "react";
 import { KIOSK_LANGUAGES } from "./i18n";
 import { useKioskLanguage } from "./kioskLanguage";
-import { KIOSK_CURRENCIES, useKioskCurrency } from "./kioskCurrency";
+import { useKioskCurrency } from "./kioskCurrency";
 
 /**
  * The light-theme top bar every kiosk screen from the welcome page onward
@@ -39,7 +39,7 @@ import { KIOSK_CURRENCIES, useKioskCurrency } from "./kioskCurrency";
 export default function KioskTopBar({ showBack = true }: { showBack?: boolean }) {
   const router = useRouter();
   const { language, setLanguage } = useKioskLanguage();
-  const { currency, setCurrency } = useKioskCurrency();
+  const { currency, setCurrency, currencies } = useKioskCurrency();
   const [langOpen, setLangOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const current = KIOSK_LANGUAGES.find((l) => l.code === language) || KIOSK_LANGUAGES[0];
@@ -132,7 +132,7 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
                 onClick={() => setCurrencyOpen(false)}
               />
               <div className="absolute right-0 top-full z-50 mt-2 w-56 overflow-hidden rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] py-2 shadow-xl">
-                {KIOSK_CURRENCIES.map((c) => (
+                {currencies.map((c) => (
                   <button
                     key={c.code}
                     type="button"

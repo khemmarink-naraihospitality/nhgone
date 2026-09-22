@@ -1,14 +1,24 @@
 "use client";
 
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useSelectedProperty } from "@/lib/propertyContext";
 
 /**
  * The guest's chosen display currency for the light-theme flow's top bar.
- * Added 17-Sep-2026 alongside Japanese in the language switcher, at the
- * same user request. Same shape as kioskLanguage.tsx: a per-session choice
- * that lives only in memory and resets on a hard refresh - nothing behind
- * these screens prices anything yet, so there's no real amount to convert,
- * just the label a guest would expect to see.
+ *
+ * The OFFERED list is this property's own, read from MEWS's
+ * `Enterprise.Currencies` (`GET /api/kiosks/currencies` ->
+ * `sync_service.get_enabled_currencies`, the same data MEWS itself shows
+ * under Property > Finance > Cashier) - not a fixed THB/USD/PHP set. That
+ * fixed set was the bug this replaces: Marasca Samui showed a PHP option it
+ * doesn't accept, and Siem Reap (USD-only, no THB at all) would have shown
+ * THB as if it were. What a kiosk offers now genuinely varies by property -
+ * see get_enabled_currencies for the full spread across all 8.
+ *
+ * The CHOICE itself stays the same as before: a per-session pick that lives
+ * only in memory and resets on a hard refresh, and doesn't change what
+ * anything actually charges - nothing behind these screens prices anything
+ * yet to convert, this is only the label a guest would expect to see.
  */
 
 export interface KioskCurrencyOption {
@@ -16,27 +26,99 @@ export interface KioskCurrencyOption {
   label: string;
 }
 
-export const KIOSK_CURRENCIES: KioskCurrencyOption[] = [
-  { code: "THB", label: "Thai Baht" },
-  { code: "USD", label: "US Dollar" },
-  { code: "PHP", label: "Philippine Peso" },
-];
+// Only for turning a code MEWS returns into a human label - this is NOT
+// where "which currencies exist" comes from any more. A code with no entry
+// here still works; the code itself is shown instead of a blank label.
+const CURRENCY_LABELS: Record<string, string> = {
+  THB: "Thai Baht",
+  USD: "US Dollar",
+  PHP: "Philippine Peso",
+  EUR: "Euro",
+  GBP: "British Pound",
+  KHR: "Cambodian Riel",
+  SGD: "Singapore Dollar",
+  JPY: "Japanese Yen",
+  AUD: "Australian Dollar",
+  CNY: "Chinese Yuan",
+  HKD: "Hong Kong Dollar",
+  MYR: "Malaysian Ringgit",
+  VND: "Vietnamese Dong",
+  KRW: "South Korean Won",
+  INR: "Indian Rupee",
+  IDR: "Indonesian Rupiah",
+};
+
+const FALLBACK_CURRENCIES: KioskCurrencyOption[] = [{ code: "THB", label: CURRENCY_LABELS.THB }];
 
 interface KioskCurrencyValue {
   currency: string;
   setCurrency: (code: string) => void;
+  /** This property's own enabled currencies - what the switcher lists.
+   * Falls back to THB alone before the fetch resolves or if it fails, since
+   * every property in this org accepts at least THB or, on the one property
+   * that doesn't (Siem Reap), the fetch itself corrects it. */
+  currencies: KioskCurrencyOption[];
 }
 
 const KioskCurrencyContext = createContext<KioskCurrencyValue | null>(null);
 
 export function useKioskCurrency(): KioskCurrencyValue {
   const ctx = useContext(KioskCurrencyContext);
-  if (!ctx) return { currency: "THB", setCurrency: () => {} };
+  if (!ctx) return { currency: "THB", setCurrency: () => {}, currencies: FALLBACK_CURRENCIES };
   return ctx;
 }
 
 export function KioskCurrencyProvider({ children }: { children: React.ReactNode }) {
-  const [currency, setCurrency] = useState("THB");
-  const value = useMemo(() => ({ currency, setCurrency }), [currency]);
+  const { selectedProperty, loaded: propertyLoaded } = useSelectedProperty();
+  const [currencies, setCurrencies] = useState<KioskCurrencyOption[]>(FALLBACK_CURRENCIES);
+  const [currency, setCurrencyState] = useState("THB");
+  // Whether the guest has picked a currency THIS session - once true, a
+  // property switch (Home screen's staff-only switcher) must not silently
+  // overwrite what they chose.
+  const [touched, setTouched] = useState(false);
+
+  const setCurrency = useCallback((code: string) => {
+    setTouched(true);
+    setCurrencyState(code);
+  }, []);
+
+  const load = useCallback(async (property: string) => {
+    if (!property) return;
+    try {
+      // Hardcoded same-origin /api, deliberately NOT NEXT_PUBLIC_API_URL -
+      // that points at a stale deployment without newer endpoints.
+      const response = await fetch(`/api/kiosks/currencies?property_name=${encodeURIComponent(property)}`);
+      const res = await response.json();
+      const data: { code: string; is_default: boolean }[] =
+        response.ok && res.status === "success" ? res.data || [] : [];
+      if (!data.length) return;
+
+      const options = data.map((c) => ({ code: c.code, label: CURRENCY_LABELS[c.code] || c.code }));
+      setCurrencies(options);
+      setCurrencyState((prev) => {
+        // A currency the guest deliberately chose survives a background
+        // refresh as long as this property still offers it. Otherwise (a
+        // fresh load, or a property switch that dropped it) fall back to
+        // MEWS's own default currency for this property.
+        if (touched && options.some((o) => o.code === prev)) return prev;
+        return data.find((c) => c.is_default)?.code || options[0].code;
+      });
+    } catch {
+      // A terminal that can't reach the API still has to show a currency
+      // pill, so it keeps whatever was already there (the THB fallback on
+      // first load) rather than blocking.
+    }
+  }, [touched]);
+
+  useEffect(() => {
+    if (!propertyLoaded) return;
+    void load(selectedProperty);
+    // Deliberately not depending on `load` (which changes with `touched`) -
+    // this effect exists to react to the PROPERTY changing, not to re-fetch
+    // every time the guest picks a currency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedProperty, propertyLoaded]);
+
+  const value = useMemo(() => ({ currency, setCurrency, currencies }), [currency, setCurrency, currencies]);
   return <KioskCurrencyContext.Provider value={value}>{children}</KioskCurrencyContext.Provider>;
 }
