@@ -9,6 +9,7 @@ import KioskTopBar from "../KioskTopBar";
 import { useKioskLanguage } from "../kioskLanguage";
 import { guestLabel, useKioskArrival, type KioskArrival } from "../arrivals";
 import { effectiveState, type FieldsValue, type GuestType } from "@/lib/checkinFormFields";
+import { captureRr3Card } from "./rr3Capture";
 import GuestProfileForm, {
   EMPTY_PROFILE,
   requiredProfileFields,
@@ -452,6 +453,19 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
         terms_accepted: form.agreedTerms,
         signature_data_url: form.signature,
       });
+
+      // Freeze this guest's ร.ร.๓ card as they signed it, and file the signed
+      // copy on their Mews profile. Strictly after the signature is stored
+      // and strictly best-effort - captureRr3Card never throws, and its
+      // outcome deliberately doesn't gate moving on. The card is already
+      // safe; this is where a copy of it goes.
+      const rr3 = await captureRr3Card({
+        propertyName: selectedProperty,
+        reservationId: arrival.id,
+        reservationNumber,
+        guestKey,
+      });
+      if (rr3 === "failed") console.warn("RR3 card was not captured for", guestKey);
 
       const list = await load();
       const remainingDrafts = drafts.filter((d) => d.guest_key !== selected.guest_key);

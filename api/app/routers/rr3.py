@@ -133,12 +133,20 @@ async def get_rr3_cards(
     property_name: Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date: Optional[str] = Query(None),
+    reservation_id: Optional[str] = Query(None),
 ):
+    """Cards for a date range, or - with reservation_id - for one booking.
+
+    The kiosk uses the by-id form the moment a guest signs, so the card it
+    freezes and attaches to their MEWS profile is built from exactly the
+    booking they signed against.
+    """
     try:
         data = await sync_service.get_rr3_cards(
             property_name=property_name,
             start_date=start_date,
             end_date=end_date,
+            reservation_id=reservation_id,
         )
         return {"status": "success", "data": data}
     except HTTPException:

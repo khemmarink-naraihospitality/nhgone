@@ -1551,7 +1551,8 @@ class SyncService:
             logger.error(f"Error fetching bill PDF for {bill_id}: {str(e)}")
             raise e
 
-    async def get_rr3_cards(self, property_name: str, start_date: str = None, end_date: str = None):
+    async def get_rr3_cards(self, property_name: str, start_date: str = None, end_date: str = None,
+                            reservation_id: str = None):
         """
         Builds Thai Hotel Act RR3 (ร.ร.๓) lodger registration cards by joining
         Reservations + Customers + Resources for a date range - a direct port of
@@ -1563,23 +1564,32 @@ class SyncService:
         client-side re-filter by StartUtc, and same field fallback logic.
         """
         try:
-            if not start_date or not end_date:
-                now_utc = datetime.now(timezone.utc)
-                yesterday_utc = now_utc - timedelta(days=1)
-                if not start_date:
-                    start_date = yesterday_utc.strftime("%Y-%m-%dT00:00:00Z")
-                if not end_date:
-                    end_date = now_utc.strftime("%Y-%m-%dT23:59:59Z")
-
-            payload = {
-                "StartUtc": start_date,
-                "EndUtc": end_date,
-                "Extent": {"Reservations": True, "Customers": True, "Resources": True}
-            }
+            # ONE reservation by id - what the kiosk asks for when a guest has
+            # just signed, so the card it freezes and attaches to MEWS is that
+            # guest's own. The date-range filter below is skipped entirely:
+            # asking for a specific booking already says which one is wanted,
+            # and a booking whose StartUtc falls outside "today" (an early
+            # arrival, a stay already under way) is still the booking that was
+            # asked for.
+            if reservation_id:
+                payload = {
+                    "ReservationIds": [reservation_id],
+                    "Extent": {"Reservations": True, "Customers": True, "Resources": True},
+                }
+            else:
+                if not start_date or not end_date:
+                    now_utc = datetime.now(timezone.utc)
+                    yesterday_utc = now_utc - timedelta(days=1)
+                    if not start_date:
+                        start_date = yesterday_utc.strftime("%Y-%m-%dT00:00:00Z")
+                    if not end_date:
+                        end_date = now_utc.strftime("%Y-%m-%dT23:59:59Z")
+                payload = {
+                    "StartUtc": start_date,
+                    "EndUtc": end_date,
+                    "Extent": {"Reservations": True, "Customers": True, "Resources": True}
+                }
             response = await mews_client.post("/api/connector/v1/reservations/getAll", payload, property_name=property_name)
-
-            wanted_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
-            wanted_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
 
             def in_range(res):
                 start_utc = res.get("StartUtc")
@@ -1591,7 +1601,12 @@ class SyncService:
                     return False
                 return wanted_start <= t <= wanted_end
 
-            reservations = [r for r in response.get("Reservations", []) if in_range(r)]
+            if reservation_id:
+                reservations = response.get("Reservations", [])
+            else:
+                wanted_start = datetime.fromisoformat(start_date.replace("Z", "+00:00"))
+                wanted_end = datetime.fromisoformat(end_date.replace("Z", "+00:00"))
+                reservations = [r for r in response.get("Reservations", []) if in_range(r)]
             customers_map = {c["Id"]: c for c in response.get("Customers", []) if c.get("Id")}
             resources_map = {r["Id"]: r for r in response.get("Resources", []) if r.get("Id")}
 

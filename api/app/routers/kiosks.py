@@ -575,6 +575,86 @@ async def add_kiosk_guest(payload: dict = Body(...)):
     return {"status": "success", "guest_key": guest_key}
 
 
+@router.post("/registration/attach-rr3")
+async def attach_rr3_card(payload: dict = Body(...)):
+    """Freeze a signed ร.ร.๓ card and attach it to the guest's MEWS profile.
+
+    Two separate things, in this order, because they fail differently:
+
+    1. **Freeze** the card's own field values onto the guest's reg-card row
+       (`kiosk_reg_cards.data.rr3_card`). RR3 is otherwise rebuilt LIVE from
+       MEWS every time it is viewed, so a profile edited days later reprints
+       a different document from the one the guest put their name to. The
+       signature attests to the facts that were on the screen, so those facts
+       are kept. Only the field values are stored, never the rendered image -
+       the card re-renders from them identically, and an A4 PNG per guest is
+       what turned bcp_snapshots into the biggest table in the database.
+
+    2. **Attach** the rendered PNG to the guest's Mews customer profile
+       (`customers/addFile`). Best-effort and always last: MEWS refusing the
+       file is not a reason to lose the frozen card or to tell a guest their
+       check-in failed.
+
+    A guest ADDED at the terminal has no Mews profile to attach to yet
+    (`guest_key` is our own `kiosk:<uuid>`, not a CustomerId) - their card is
+    frozen and the upload is reported as skipped, not failed. Creating those
+    profiles with `customers/add` is its own piece of work.
+    """
+    property_name = (payload.get("property_name") or "").strip()
+    reservation_number = (payload.get("reservation_number") or "").strip()
+    guest_key = (payload.get("guest_key") or "").strip()
+    image = payload.get("image_data_url") or ""
+    card = payload.get("card") or {}
+    if not property_name or not reservation_number or not guest_key:
+        raise HTTPException(status_code=400, detail="property_name, reservation_number and guest_key are required.")
+
+    supabase = get_supabase_client()
+
+    # --- 1. freeze, onto the newest reg-card row for this guest -------------
+    frozen = False
+    try:
+        rows = supabase.table(REG_CARDS_TABLE).select("id, data").eq(
+            "property", property_name).eq("reservation_number", reservation_number).eq(
+            "guest_key", guest_key).order("created_at", desc=True).limit(1).execute().data or []
+        if rows:
+            record = _unblob(rows[0])
+            # The card carries the guest's own name, passport/ID number and
+            # address, so it goes back through the same whole-blob encryption
+            # the signature already uses rather than beside it in the clear.
+            record["rr3_card"] = card
+            supabase.table(REG_CARDS_TABLE).update({"data": _blob(record)}).eq("id", rows[0]["id"]).execute()
+            frozen = True
+    except Exception as e:
+        if not _is_storage_missing(e):
+            raise _registration_guard(e)
+
+    # --- 2. attach to the MEWS customer profile ----------------------------
+    # A kiosk-added guest's key is our own id, not a Mews CustomerId.
+    customer_id = "" if guest_key.startswith("kiosk:") else guest_key
+    if not customer_id:
+        return {"status": "success", "frozen": frozen, "mews_file": "skipped-no-mews-profile"}
+    if not image.startswith("data:image/"):
+        return {"status": "success", "frozen": frozen, "mews_file": "skipped-no-image"}
+
+    header, _, base64_data = image.partition(",")
+    mime = header[5:].split(";")[0] or "image/png"
+    extension = {"image/png": "png", "image/jpeg": "jpg"}.get(mime, "png")
+    name = f"RR3_{reservation_number}_{datetime.now(timezone.utc).strftime('%Y%m%d-%H%M%S')}.{extension}"
+
+    from app.services.mews_client import mews_client
+    try:
+        res = await mews_client.post(
+            "/api/connector/v1/customers/addFile",
+            {"CustomerId": customer_id, "Name": name, "MimeType": mime, "Data": base64_data},
+            property_name=property_name,
+        )
+        return {"status": "success", "frozen": frozen, "mews_file": "attached",
+                "file_id": (res or {}).get("Id"), "file_name": name}
+    except Exception as e:
+        logger.warning(f"RR3 not attached to the MEWS profile for {reservation_number}/{guest_key}: {e}")
+        return {"status": "success", "frozen": frozen, "mews_file": "failed"}
+
+
 @router.get("/countries")
 async def kiosk_countries():
     """Every country code the kiosk's nationality / country / issuing-country
