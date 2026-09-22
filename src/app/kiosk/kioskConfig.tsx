@@ -28,6 +28,8 @@ export interface KioskConfig {
   property_name: string;
   name: string;
   theme: string;
+  /** `#rrggbb`, or null meaning "use this property's logo colour". */
+  accent_color: string | null;
   default_language: string;
   payment_method: string | null;
   options_enabled: string[] | null;

@@ -4,6 +4,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { ChevronLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSelectedProperty } from "@/lib/propertyContext";
+import { supabase } from "@/lib/supabase";
+import { FALLBACK_ACCENT, accentCssVars, dominantLogoColor, normalizeHex } from "@/lib/kioskAccent";
 import { KioskConfigProvider, useKioskConfig } from "./kioskConfig";
 import { KioskLanguageProvider } from "./kioskLanguage";
 import { KioskCurrencyProvider } from "./kioskCurrency";
@@ -67,6 +69,32 @@ function KioskShell({ children }: { children: React.ReactNode }) {
   const [time, setTime] = useState<Date | null>(null);
   const orgName = "Narai Group";
 
+  // The button colour, when this kiosk has none of its own: the dominant
+  // colour of the property's logo. Read here rather than baked in at save
+  // time so a property that changes its logo carries the new colour through
+  // without anyone re-saving every kiosk - and so a terminal nobody has
+  // configured still looks like the hotel it stands in. Only the one image
+  // column is selected; property_api_settings also holds the encrypted MEWS
+  // tokens.
+  const [logoColor, setLogoColor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedProperty || normalizeHex(config?.accent_color)) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("property_api_settings")
+        .select("profile_image_url")
+        .eq("property_name", selectedProperty)
+        .limit(1);
+      const url = data?.[0]?.profile_image_url;
+      const color = url ? await dominantLogoColor(url) : null;
+      if (!cancelled) setLogoColor(color);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProperty, config?.accent_color]);
+
   // Screens redesigned against a real reference screenshot render their own
   // full-screen light UI (KioskTopBar - Staff/Guest mode, language/currency/
   // settings) and must bypass this shell's dark header/footer/progress-bar
@@ -114,10 +142,16 @@ function KioskShell({ children }: { children: React.ReactNode }) {
     // screens only: ekyc/upsell/payment/success hardcode their own dark
     // palette directly in Tailwind classes and don't read these tokens.
     const themeAttr = config?.theme === "Dark" ? "dark" : "light";
+    // Admin Console > Kiosks > Button colour, as inline custom properties so
+    // they override globals.css for these screens only. Every value is built
+    // from a hex that normalizeHex has already validated - a raw string from
+    // the database does not go into a style attribute.
+    const accent = normalizeHex(config?.accent_color) || logoColor || FALLBACK_ACCENT;
     return (
       <div
         className="kiosk-root kiosk-scheme h-screen w-full relative overflow-hidden"
         data-kiosk-theme={themeAttr}
+        style={accentCssVars(accent, themeAttr === "dark") as React.CSSProperties}
       >
         <ScreenSaver videoUrl={config?.screen_saver_video_url} />
         {children}

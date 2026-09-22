@@ -1,11 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronRight, ImagePlus, Info, MonitorCog, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, ImagePlus, Info, MonitorCog, Pipette, Plus, RotateCcw, Trash2 } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
 import ImageCropDialog from "@/components/ImageCropDialog";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import { supabase } from "@/lib/supabase";
+import {
+  FALLBACK_ACCENT,
+  dominantLogoColor,
+  normalizeHex,
+  readableTextOn,
+} from "@/lib/kioskAccent";
 
 /**
  * Admin Console > Kiosks - the back-office settings behind the /kiosk
@@ -34,6 +40,8 @@ interface Kiosk {
   property_name: string;
   name: string;
   theme: string;
+  /** `#rrggbb`, or null meaning "use this property's logo colour". */
+  accent_color: string | null;
   connector_integration: string;
   default_language: string;
   key_cutter: string | null;
@@ -203,6 +211,10 @@ export default function AdminKiosksPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [imageBusy, setImageBusy] = useState(false);
+  // The colour read out of THIS property's logo - what a kiosk with no
+  // colour of its own actually shows, so the field can present it as the
+  // default rather than leaving the admin to guess what "empty" means.
+  const [logoColor, setLogoColor] = useState<string | null>(null);
 
   const fail = (message: string) => {
     setPageError(message);
@@ -234,6 +246,28 @@ export default function AdminKiosksPage() {
     setForm(null);
     void fetchKiosks(selectedProperty);
   }, [selectedProperty, fetchKiosks]);
+
+  // Read the property's logo and pull its dominant colour out, so "Button
+  // colour" can show what an unset kiosk will actually use. Only the two
+  // image columns are selected: property_api_settings also holds the
+  // encrypted MEWS tokens, and the switcher takes the same care.
+  useEffect(() => {
+    if (!selectedProperty) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("property_api_settings")
+        .select("profile_image_url")
+        .eq("property_name", selectedProperty)
+        .limit(1);
+      const url = data?.[0]?.profile_image_url;
+      const color = url ? await dominantLogoColor(url) : null;
+      if (!cancelled) setLogoColor(color);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProperty]);
 
   // Who to record in Created/Updated. The API layer has no session of its own,
   // so the name travels with the request rather than being inferred there.
@@ -367,6 +401,34 @@ export default function AdminKiosksPage() {
 
   const set = <K extends keyof Kiosk>(key: K, value: Kiosk[K]) =>
     setForm((f) => (f ? { ...f, [key]: value } : f));
+
+  // The colour actually in force: this kiosk's own, else the property's logo
+  // colour, else the built-in. Resolved exactly the way the kiosk resolves
+  // it, so the swatch and the real button can't disagree.
+  const effectiveAccent = normalizeHex(form?.accent_color) || logoColor || FALLBACK_ACCENT;
+
+  // EyeDropper is Chromium-only. Read once on mount rather than during
+  // render: it is a browser capability, and touching `window` while
+  // rendering is a hydration mismatch waiting to happen.
+  const [eyeDropperSupported, setEyeDropperSupported] = useState(false);
+  useEffect(() => {
+    setEyeDropperSupported(typeof window !== "undefined" && "EyeDropper" in window);
+  }, []);
+
+  const pickColorFromScreen = async () => {
+    try {
+      const Picker = (window as unknown as {
+        EyeDropper?: new () => { open: () => Promise<{ sRGBHex: string }> };
+      }).EyeDropper;
+      if (!Picker) return;
+      const { sRGBHex } = await new Picker().open();
+      const hex = normalizeHex(sRGBHex);
+      if (hex) set("accent_color", hex);
+    } catch {
+      // The guest closed the picker with Escape - not a failure worth saying
+      // anything about.
+    }
+  };
 
   const toggleOption = (option: string) =>
     setForm((f) =>
@@ -722,7 +784,7 @@ export default function AdminKiosksPage() {
                   </div>
                 </div>
 
-                {/* Right: images */}
+                {/* Right: images, then the button colour */}
                 <div className="space-y-4">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Images</p>
 
@@ -777,6 +839,86 @@ export default function AdminKiosksPage() {
                       }}
                     />
                   </label>
+
+                  {/* Button colour. Sits under Images on purpose: its default
+                      comes from the property's logo, so the two belong to the
+                      same "how this terminal looks" corner of the form. */}
+                  <div className="space-y-3 border-t border-slate-100 pt-5">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Button colour</p>
+
+                    <div className="flex items-center gap-2">
+                      {/* The OS colour picker. type="color" only accepts
+                          #rrggbb, so it is fed the resolved colour rather
+                          than a possibly-empty stored one. */}
+                      <label
+                        className="relative h-11 w-11 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-slate-200 shadow-sm"
+                        style={{ background: effectiveAccent }}
+                        title="Pick a colour"
+                      >
+                        <input
+                          type="color"
+                          value={effectiveAccent}
+                          onChange={(e) => set("accent_color", e.target.value)}
+                          className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                        />
+                      </label>
+
+                      <input
+                        className={`${INPUT} font-mono uppercase`}
+                        placeholder={logoColor ? `${logoColor} (from logo)` : FALLBACK_ACCENT}
+                        value={form.accent_color || ""}
+                        onChange={(e) => set("accent_color", e.target.value)}
+                        onBlur={(e) => set("accent_color", normalizeHex(e.target.value))}
+                      />
+
+                      {/* Eyedropper - Chromium only (no Safari, no iPad), so
+                          it is rendered only where it actually works rather
+                          than sitting there doing nothing. */}
+                      {eyeDropperSupported && (
+                        <button
+                          type="button"
+                          onClick={pickColorFromScreen}
+                          title="Pick a colour from anywhere on screen"
+                          aria-label="Pick a colour from anywhere on screen"
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-all hover:border-[#AAA024]/40 hover:text-slate-900"
+                        >
+                          <Pipette className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      )}
+
+                      {form.accent_color && (
+                        <button
+                          type="button"
+                          onClick={() => set("accent_color", null)}
+                          title="Back to the logo colour"
+                          aria-label="Back to the logo colour"
+                          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-all hover:border-[#AAA024]/40 hover:text-slate-900"
+                        >
+                          <RotateCcw className="h-4 w-4" aria-hidden="true" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* What a guest will see, in the colour chosen - text
+                        colour included, since that flips automatically on a
+                        light background rather than staying white. */}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                      <div
+                        className="w-full rounded-xl py-3 text-center text-sm font-semibold"
+                        style={{ background: effectiveAccent, color: readableTextOn(effectiveAccent) }}
+                      >
+                        Check In
+                      </div>
+                    </div>
+
+                    <p className="text-[11px] font-medium leading-relaxed text-slate-400">
+                      {form.accent_color
+                        ? "This kiosk uses the colour above."
+                        : logoColor
+                          ? "Empty, so this kiosk follows the property's logo colour - it changes by itself if the logo does."
+                          : "Empty, and this property has no logo to read a colour from, so the kiosk's built-in colour is used."}
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>

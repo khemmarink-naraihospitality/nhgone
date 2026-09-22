@@ -13,6 +13,7 @@ see sync_kiosk_arrivals below.
 
 import json
 import logging
+import re
 import secrets
 import time
 import uuid
@@ -55,6 +56,7 @@ class KioskCreate(BaseModel):
 class KioskUpdate(BaseModel):
     name: Optional[str] = None
     theme: Optional[str] = None
+    accent_color: Optional[str] = None
     default_language: Optional[str] = None
     key_cutter: Optional[str] = None
     key_issuing: Optional[str] = None
@@ -89,6 +91,28 @@ def _guard(error: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(error))
 
 
+_HEX_COLOR = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _accent_color(value) -> Optional[str]:
+    """`#rrggbb`, or None for "use the property's logo colour".
+
+    Validated here as well as in the browser, and deliberately strictly: this
+    string is written into a CSS custom property on a screen standing in a
+    public lobby, so anything that isn't six hex digits is not a colour and
+    is stored as None rather than passed through. A three-digit shorthand is
+    expanded rather than rejected - it is a real hex colour, just short.
+    """
+    text = (str(value or "")).strip()
+    if not text:
+        return None
+    if not text.startswith("#"):
+        text = "#" + text
+    if re.fullmatch(r"#[0-9a-fA-F]{3}", text):
+        text = "#" + "".join(c * 2 for c in text[1:])
+    return text.lower() if _HEX_COLOR.match(text) else None
+
+
 def _clamp(value, low: int, high: int, default: int = 0) -> int:
     try:
         return max(low, min(high, int(value)))
@@ -104,7 +128,7 @@ def _now() -> str:
 # one field deliberately left out: it unlocks the settings screen on a device
 # standing in a public lobby, and this endpoint answers that very device.
 _GUEST_SAFE_FIELDS = (
-    "id", "property_name", "name", "theme", "default_language",
+    "id", "property_name", "name", "theme", "accent_color", "default_language",
     "payment_method", "options_enabled",
     "checkin_grace_hours", "checkin_grace_minutes",
     "checkout_grace_hours", "checkout_grace_minutes",
@@ -815,6 +839,9 @@ async def update_kiosk(kiosk_id: str, request: KioskUpdate):
         payload["name"] = (payload["name"] or "").strip()
         if not payload["name"]:
             raise HTTPException(status_code=400, detail="A kiosk name is required.")
+
+    if "accent_color" in payload:
+        payload["accent_color"] = _accent_color(payload["accent_color"])
 
     # Grace periods are minutes-past-the-hour, not free integers - a typo of
     # 900 minutes would otherwise be stored and silently mean 15 hours.
