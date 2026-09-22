@@ -88,11 +88,17 @@ const RESERVATION_LOOKUPS = [
   "Last name and arrival date",
   "Confirmation number only",
 ];
+// "Require signature" used to be a fifth option here and was removed
+// 22-Sep-2026: Check In Form > General > Signature says the same thing with
+// more precision (per guest type, and Hidden as well as Required/Optional),
+// and IS read by /kiosk/registration. Two controls for one behaviour is one
+// control too many - the one nobody wired up wins the argument by accident.
+// A stale "Require signature" still sitting in a saved options_enabled array
+// simply matches nothing.
 const KIOSK_OPTIONS = [
-  { key: "Guests can remove other guests", hint: "A guest checking in for several people can drop one from the booking." },
-  { key: "Staff mode", hint: "Front desk can run the same flow on the guest's behalf." },
-  { key: "Skip upsell", hint: "Go straight from registration to payment." },
-  { key: "Require signature", hint: "The registration card must be signed on screen." },
+  { key: "Guests can remove other guests", hint: "A guest checking in for several people can drop one they added at the terminal." },
+  { key: "Staff mode", hint: "Front desk can run the same flow on the guest's behalf. Stored only - there is no separate guest-mode view yet." },
+  { key: "Skip upsell", hint: "Registration goes straight to payment, skipping the offers screen." },
 ];
 
 // The one thing this page cannot do for itself: creating a table is DDL, and

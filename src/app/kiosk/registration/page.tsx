@@ -6,6 +6,7 @@ import { Check, ChevronsRight, Pencil, Pointer, Trash2 } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import SignaturePad from "@/components/SignaturePad";
 import KioskTopBar from "../KioskTopBar";
+import { useKioskConfig } from "../kioskConfig";
 import { useKioskLanguage } from "../kioskLanguage";
 import { guestLabel, useKioskArrival, type KioskArrival } from "../arrivals";
 import { effectiveState, type FieldsValue, type GuestType } from "@/lib/checkinFormFields";
@@ -164,7 +165,15 @@ async function postJson(url: string, body: unknown) {
 function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
   const router = useRouter();
   const { selectedProperty } = useSelectedProperty();
+  const { config } = useKioskConfig();
   const { t } = useKioskLanguage();
+
+  // Admin Console > Kiosks' Options checkboxes. Stored as the checkbox
+  // LABELS (that column is text[] of whatever KIOSK_OPTIONS lists), so they
+  // are compared as such rather than against invented slugs.
+  const options = config?.options_enabled || [];
+  const canRemoveGuests = options.includes("Guests can remove other guests");
+  const skipUpsell = options.includes("Skip upsell");
 
   const [saved, setSaved] = useState<RegistrationGuest[] | null>(null);
   const [drafts, setDrafts] = useState<RegistrationGuest[]>([]);
@@ -475,7 +484,10 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
       if (stillToSign) {
         setSelectedKey(stillToSign.guest_key);
       } else {
-        router.push("/kiosk/ekyc");
+        // "Skip upsell" (Admin Console > Kiosks > Options) goes straight to
+        // payment. eKYC still runs either way - it is identity verification,
+        // not an offer, and skipping the upsell is not a reason to skip it.
+        router.push(skipUpsell ? "/kiosk/payment" : "/kiosk/ekyc");
       }
     } catch {
       setError(t.saveFailed);
@@ -537,7 +549,12 @@ function RegistrationForm({ arrival }: { arrival: KioskArrival }) {
                     >
                       <ChevronsRight size={18} aria-hidden="true" />
                     </button>
-                    {guest.source === "kiosk" && (
+                    {/* A guest added at this terminal can be removed again -
+                        unless the property turned that off (Admin Console >
+                        Kiosks > Options). A guest who came from the MEWS
+                        booking never gets the button either way: removing
+                        them here would only hide them from this screen. */}
+                    {guest.source === "kiosk" && canRemoveGuests && (
                       <button
                         type="button"
                         onClick={() => removeGuest(guest)}

@@ -59,6 +59,10 @@ export interface KioskCopy {
   checkIn: string;
   checkOut: string;
   searchPlaceholder: string;
+  // The other two shapes Admin Console > Kiosks' "Reservation lookup" can be
+  // set to. searchPlaceholder above is the name-only one.
+  searchPlaceholderNameNumber: string;
+  searchPlaceholderNumber: string;
   stay: string;
   noGuestsMatch: (query: string) => string;
   guestNotFound: string;
@@ -142,6 +146,8 @@ const en: KioskCopy = {
   checkOut: "Check out",
   backToNHGOne: "Back to NHGOne",
   searchPlaceholder: "Search by name",
+  searchPlaceholderNameNumber: "Search by name or booking number",
+  searchPlaceholderNumber: "Search by booking number",
   stay: "Stay",
   noGuestsMatch: (query) => `No guests match "${query}".`,
   guestNotFound: "That guest wasn't found. Go back and pick one from the list.",
@@ -226,6 +232,8 @@ const th: KioskCopy = {
   checkOut: "เช็คเอาต์",
   backToNHGOne: "กลับสู่ NHGOne",
   searchPlaceholder: "ค้นหาด้วยชื่อ",
+  searchPlaceholderNameNumber: "ค้นหาด้วยชื่อหรือหมายเลขการจอง",
+  searchPlaceholderNumber: "ค้นหาด้วยหมายเลขการจอง",
   stay: "การเข้าพัก",
   noGuestsMatch: (query) => `ไม่พบผู้เข้าพักที่ตรงกับ "${query}"`,
   guestNotFound: "ไม่พบผู้เข้าพักรายนี้ กรุณากลับไปเลือกจากรายชื่อ",
@@ -310,6 +318,8 @@ const fil: KioskCopy = {
   checkOut: "Mag-check out",
   backToNHGOne: "Bumalik sa NHGOne",
   searchPlaceholder: "Maghanap gamit ang pangalan",
+  searchPlaceholderNameNumber: "Maghanap gamit ang pangalan o booking number",
+  searchPlaceholderNumber: "Maghanap gamit ang booking number",
   stay: "Pananatili",
   noGuestsMatch: (query) => `Walang bisitang tumutugma sa "${query}".`,
   guestNotFound: "Hindi nahanap ang bisitang iyon. Bumalik at pumili mula sa listahan.",
@@ -394,6 +404,8 @@ const km: KioskCopy = {
   checkOut: "ចាកចេញ",
   backToNHGOne: "ត្រឡប់ទៅ NHGOne",
   searchPlaceholder: "ស្វែងរកតាមឈ្មោះ",
+  searchPlaceholderNameNumber: "ស្វែងរកតាមឈ្មោះ ឬលេខកក់",
+  searchPlaceholderNumber: "ស្វែងរកតាមលេខកក់",
   stay: "ការស្នាក់នៅ",
   noGuestsMatch: (query) => `រកមិនឃើញភ្ញៀវដែលត្រូវនឹង "${query}"។`,
   guestNotFound: "រកមិនឃើញភ្ញៀវនោះទេ។ សូមត្រឡប់ក្រោយ ហើយជ្រើសរើសម្នាក់ពីបញ្ជី។",
@@ -478,6 +490,8 @@ const ja: KioskCopy = {
   checkOut: "チェックアウト",
   backToNHGOne: "NHGOneに戻る",
   searchPlaceholder: "名前で検索",
+  searchPlaceholderNameNumber: "名前または予約番号で検索",
+  searchPlaceholderNumber: "予約番号で検索",
   stay: "宿泊",
   noGuestsMatch: (query) => `「${query}」に一致するゲストが見つかりません。`,
   guestNotFound: "そのゲストが見つかりませんでした。戻ってリストから選び直してください。",

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChevronDown, Search, Users } from "lucide-react";
 import { useSelectedProperty } from "@/lib/propertyContext";
 import KioskTopBar from "../KioskTopBar";
+import { useKioskConfig } from "../kioskConfig";
 import { useKioskLanguage } from "../kioskLanguage";
 import { ARRIVALS_POLL_MS, formatShortDate, guestLabel, type KioskArrival } from "../arrivals";
 
@@ -22,6 +23,20 @@ import { ARRIVALS_POLL_MS, formatShortDate, guestLabel, type KioskArrival } from
  * Picking a card carries only the reservation id forward (?guest=<id>);
  * confirm and registration read the rest themselves.
  *
+ * WHAT the search box matches is Admin Console > Kiosks' "Reservation
+ * lookup" (`config.reservation_lookup`), not a fixed rule: the three settings
+ * MEWS's own form offers are name + booking number, name + arrival date, and
+ * booking number only. Until 22-Sep-2026 this screen matched names and
+ * nothing else whatever that field said - the setting was stored, offered in
+ * Admin, and read by nobody.
+ *
+ * It is a FILTER here rather than the lookup form the setting's wording
+ * implies, because this screen was redesigned on 17-Sep-2026 from a
+ * find-my-booking form into a browse-today's-arrivals list. The three
+ * settings still map cleanly onto which field(s) the box searches, and the
+ * placeholder says which, so a "booking number only" terminal tells a guest
+ * that rather than silently ignoring a typed name.
+ *
  * "Show all reservations" (off by default, beside the count) widens the list
  * to every one of today's arrivals - checked in, canceled and so on - for
  * staff looking over the day. Those cards carry a status badge and can't be
@@ -31,6 +46,30 @@ import { ARRIVALS_POLL_MS, formatShortDate, guestLabel, type KioskArrival } from
  */
 
 type ListStatus = "ready" | "disabled" | "error";
+
+/** Admin Console > Kiosks' three "Reservation lookup" choices, mapped to
+ * which fields the box actually matches. An unrecognised value (someone
+ * editing the row by hand) falls through to name - the most forgiving of the
+ * three, and never worse than refusing to find a guest who is standing
+ * there. */
+function matchesLookup(
+  arrival: { guest_name: string; number: string; scheduled_start_utc: string | null },
+  query: string,
+  lookup: string | undefined,
+): boolean {
+  const byName = arrival.guest_name.toLowerCase().includes(query);
+  const byNumber = (arrival.number || "").toLowerCase().includes(query);
+  // The arrival DATE as the row carries it (YYYY-MM-DD in scheduled_start_utc)
+  // - so "09-23" or "2026-09-23" both find it. Matching a localised date
+  // string would depend on the guest's chosen language, which is not what a
+  // front-desk lookup means.
+  const byDate = (arrival.scheduled_start_utc || "").slice(0, 10).includes(query);
+
+  if (lookup === "Confirmation number only") return byNumber;
+  if (lookup === "Last name and arrival date") return byName || byDate;
+  if (lookup === "Last name and confirmation number") return byName || byNumber;
+  return byName;
+}
 
 interface ListState {
   key: string;
@@ -42,6 +81,8 @@ export default function SearchGuestsPage() {
   const router = useRouter();
   const { selectedProperty, loaded: propertyLoaded } = useSelectedProperty();
   const { t, language } = useKioskLanguage();
+  const { config } = useKioskConfig();
+  const lookup = config?.reservation_lookup;
   const [query, setQuery] = useState("");
   const [showAll, setShowAll] = useState(false);
   const [list, setList] = useState<ListState | null>(null);
@@ -88,8 +129,15 @@ export default function SearchGuestsPage() {
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return arrivals;
-    return arrivals.filter((a) => a.guest_name.toLowerCase().includes(q));
-  }, [arrivals, query]);
+    return arrivals.filter((a) => matchesLookup(a, q, lookup));
+  }, [arrivals, query, lookup]);
+
+  const placeholder =
+    lookup === "Confirmation number only"
+      ? t.searchPlaceholderNumber
+      : lookup === "Last name and confirmation number"
+        ? t.searchPlaceholderNameNumber
+        : t.searchPlaceholder;
 
   let message: string | null = null;
   if (propertyLoaded && !selectedProperty) message = t.notEnabled;
@@ -114,7 +162,7 @@ export default function SearchGuestsPage() {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t.searchPlaceholder}
+            placeholder={placeholder}
             className="w-full rounded-2xl border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] py-5 pl-16 pr-6 text-lg text-[var(--kiosk-text)] outline-none placeholder:text-[var(--kiosk-text-faint)] focus:border-[var(--kiosk-accent)]"
           />
         </div>
