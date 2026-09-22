@@ -5,6 +5,7 @@ import { useSelectedProperty } from "@/lib/propertyContext";
 import { useKioskConfig } from "./kioskConfig";
 import { useKioskLanguage } from "./kioskLanguage";
 import KioskTopBar from "./KioskTopBar";
+import KioskPropertySwitcher from "./KioskPropertySwitcher";
 
 /**
  * The kiosk welcome screen. Rewritten 17-Sep-2026 to a light theme matching a
@@ -85,10 +86,10 @@ export default function KioskWelcomePage() {
       </main>
 
       {/* This kiosk's own configured name (Admin Console > Kiosks) - see the
-          file-level note on why this isn't a fake MEWS version string. */}
-      <p className="px-8 pb-4 text-sm text-[var(--kiosk-text-faint)]">
-        {config?.name || `${propertyName} Kiosk`}
-      </p>
+          file-level note on why this isn't a fake MEWS version string. Also
+          the switcher for which property this terminal is showing, limited
+          to the ones the signed-in staff member may see. */}
+      <KioskPropertySwitcher />
     </div>
   );
 }
