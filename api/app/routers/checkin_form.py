@@ -138,7 +138,6 @@ KIOSK_PROFILE_FIELDS = {
     "occupation": ("general", "occupation"),
     "email": ("general", "email"),
     "address_line1": ("address", "address_line_1"),
-    "address_line2": ("address", "address_line_2"),
     "city": ("address", "city"),
     "postal_code": ("address", "postal_code"),
     "country": ("address", "country"),
@@ -149,7 +148,7 @@ KIOSK_PROFILE_FIELDS = {
 _FIELD_LABELS = {
     "first_name": "given names", "last_name": "last name", "nationality": "nationality",
     "telephone": "telephone", "occupation": "occupation", "email": "email",
-    "address_line1": "address line 1", "address_line2": "address line 2",
+    "address_line1": "address line 1",
     "city": "city", "postal_code": "postal code", "country": "country",
     "document_number": "document number",
 }

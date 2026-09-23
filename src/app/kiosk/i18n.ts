@@ -119,7 +119,6 @@ export interface KioskCopy {
   personalAddress: string;
   useAddress: string;
   addressLine1: string;
-  addressLine2: string;
   city: string;
   postalCode: string;
   country: string;
@@ -208,7 +207,6 @@ const en: KioskCopy = {
   personalAddress: "Personal address",
   useAddress: "Use address",
   addressLine1: "Address line 1",
-  addressLine2: "Address line 2",
   city: "City",
   postalCode: "Postal code",
   country: "Country",
@@ -294,7 +292,6 @@ const th: KioskCopy = {
   personalAddress: "ที่อยู่",
   useAddress: "ใช้ที่อยู่นี้",
   addressLine1: "ที่อยู่ บรรทัดที่ 1",
-  addressLine2: "ที่อยู่ บรรทัดที่ 2",
   city: "เมือง / จังหวัด",
   postalCode: "รหัสไปรษณีย์",
   country: "ประเทศ",
@@ -380,7 +377,6 @@ const fil: KioskCopy = {
   personalAddress: "Personal na address",
   useAddress: "Gamitin ang address",
   addressLine1: "Address line 1",
-  addressLine2: "Address line 2",
   city: "Lungsod",
   postalCode: "Postal code",
   country: "Bansa",
@@ -466,7 +462,6 @@ const km: KioskCopy = {
   personalAddress: "អាសយដ្ឋាន",
   useAddress: "ប្រើអាសយដ្ឋាននេះ",
   addressLine1: "អាសយដ្ឋាន បន្ទាត់ទី 1",
-  addressLine2: "អាសយដ្ឋាន បន្ទាត់ទី 2",
   city: "ទីក្រុង",
   postalCode: "លេខកូដប្រៃសណីយ៍",
   country: "ប្រទេស",
@@ -552,7 +547,6 @@ const ja: KioskCopy = {
   personalAddress: "住所",
   useAddress: "この住所を使う",
   addressLine1: "住所1",
-  addressLine2: "住所2",
   city: "市区町村",
   postalCode: "郵便番号",
   country: "国",

@@ -40,7 +40,6 @@ export interface GuestProfile {
   telephone: string;
   occupation: string;
   address_line1: string;
-  address_line2: string;
   city: string;
   postal_code: string;
   country: string;
@@ -54,7 +53,6 @@ export interface GuestProfile {
 
 export interface OwnerAddress {
   address_line1: string;
-  address_line2: string;
   city: string;
   postal_code: string;
   country: string;
@@ -81,7 +79,6 @@ export const EMPTY_PROFILE: GuestProfile = {
   telephone: "",
   occupation: "",
   address_line1: "",
-  address_line2: "",
   city: "",
   postal_code: "",
   country: "",
@@ -109,7 +106,6 @@ export const PROFILE_FIELD_SOURCE: Partial<Record<keyof GuestProfile, [string, s
   telephone: ["general", "telephone"],
   occupation: ["general", "occupation"],
   address_line1: ["address", "address_line_1"],
-  address_line2: ["address", "address_line_2"],
   city: ["address", "city"],
   postal_code: ["address", "postal_code"],
   country: ["address", "country"],
@@ -118,7 +114,6 @@ export const PROFILE_FIELD_SOURCE: Partial<Record<keyof GuestProfile, [string, s
 /** The fields of GuestProfile whose section is the Personal address one. */
 const ADDRESS_FIELDS: (keyof GuestProfile)[] = [
   "address_line1",
-  "address_line2",
   "city",
   "postal_code",
   "country",
@@ -479,7 +474,6 @@ export default function GuestProfileForm({
   const ownerAddressText = ownerAddress
     ? [
         ownerAddress.address_line1,
-        ownerAddress.address_line2,
         ownerAddress.city,
         ownerAddress.postal_code,
         ownerAddress.country ? countryName(ownerAddress.country) : "",
@@ -561,9 +555,6 @@ export default function GuestProfileForm({
           )}
           {show("address_line1") && (
             <Field label={t.addressLine1} required={star("address_line1")} value={profile.address_line1} onChange={set("address_line1")} autoComplete="address-line1" />
-          )}
-          {show("address_line2") && (
-            <Field label={t.addressLine2} required={star("address_line2")} value={profile.address_line2} onChange={set("address_line2")} autoComplete="address-line2" />
           )}
           {show("city") && (
             <Field label={t.city} required={star("city")} value={profile.city} onChange={set("city")} autoComplete="address-level2" />

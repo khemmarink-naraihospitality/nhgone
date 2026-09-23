@@ -392,7 +392,12 @@ def _unblob(row: dict) -> dict:
 # can be replayed into MEWS without translation.
 _PROFILE_TEXT_FIELDS = (
     "first_name", "last_name", "nationality", "telephone", "occupation", "email",
-    "address_line1", "address_line2", "city", "postal_code", "country",
+    # No address_line2 - MEWS's own Check In Form has no such field
+    # (confirmed against a real screenshot, 23-Sep-2026), removed alongside
+    # the field of the same name in FIELD_CATEGORIES/KIOSK_PROFILE_FIELDS. A
+    # guest saved before this correction keeps whatever line 2 they typed in
+    # their encrypted blob - it just isn't read or shown any more.
+    "address_line1", "city", "postal_code", "country",
     "document_number", "issue_date", "issuing_country", "issuing_city", "expiration_date",
 )
 _DOCUMENT_TYPES = ("passport", "identity_card", "drivers_license")
@@ -451,9 +456,12 @@ async def _reservation_guests(property_name: str, reservation_id: str) -> tuple:
         # else's address has any reason to be on a lobby screen.
         if cid == owner_id:
             addr = c.get("Address") or {}
+            # No address_line2 here either - OwnerAddress on the frontend
+            # dropped it the same day for the same reason (no such field on
+            # MEWS's own form), so there is nowhere left for MEWS's Line2 to
+            # go even on the rare profile that has one.
             guest["address"] = {
                 "address_line1": addr.get("Line1") or "",
-                "address_line2": "" if (addr.get("Line2") or "").strip() in ("", "-") else addr["Line2"],
                 "city": addr.get("City") or "",
                 "postal_code": addr.get("PostalCode") or "",
                 "country": addr.get("CountryCode") or "",

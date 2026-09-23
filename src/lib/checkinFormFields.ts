@@ -9,12 +9,15 @@
  * defaults for the fields the kiosk collects has to be kept in step with
  * FIELD_CATEGORIES below.
  *
- * FIELD-LIST FIDELITY: "General" is copied field-for-field from the reference
- * MEWS screenshot - which cells are locked AND what MEWS's own default state
- * is for the rest. "Documents" and "Verification" are verified against real
- * screenshots too. Only "Address" is NOT verified against a real MEWS screen
- * and is a reasonable placeholder list to be corrected once someone has seen
- * it - kept in one place so correcting it is an edit to a list.
+ * FIELD-LIST FIDELITY: "General", "Documents" and "Verification" are copied
+ * field-for-field from reference MEWS screenshots - which cells are locked
+ * AND what MEWS's own default state is for the rest. "Address" was a
+ * placeholder guess until 23-Sep-2026, when a real screenshot showed it has
+ * no "Address line 2" field and lists its last three fields as Postal code,
+ * Country, State/Province (not the alphabetical-ish guess this shipped
+ * with) - both corrected below. "State / Province" itself is still
+ * unverified as a field NAME; only its position and its neighbours are
+ * confirmed.
  */
 
 export type FieldState = "Default" | "Required" | "Optional" | "Hidden";
@@ -121,11 +124,19 @@ export const FIELD_CATEGORIES: Category[] = [
     label: "Address",
     fields: [
       { key: "address_line_1", label: "Address line 1" },
-      { key: "address_line_2", label: "Address line 2" },
+      // No Address line 2 - MEWS's own Check In Form has no such field
+      // (confirmed against a real screenshot, 23-Sep-2026; the earlier list
+      // here was a placeholder guess, never verified). A property that saved
+      // an address_line_2.<guestType> value before this correction keeps it
+      // in checkin_form_settings.fields harmlessly - it is simply unread now,
+      // not deleted, so nothing needs a migration.
       { key: "city", label: "City" },
-      { key: "state_province", label: "State / Province" },
+      // Order matches MEWS's own form: Postal code, then Country, then
+      // State/Province - not alphabetical and not the placeholder order this
+      // list shipped with originally.
       { key: "postal_code", label: "Postal code" },
       { key: "country", label: "Country" },
+      { key: "state_province", label: "State / Province" },
     ],
   },
   {
@@ -211,7 +222,6 @@ export const KIOSK_COLLECTED_FIELDS: string[] = [
   "general.email",
   "general.signature",
   "address.address_line_1",
-  "address.address_line_2",
   "address.city",
   "address.postal_code",
   "address.country",
