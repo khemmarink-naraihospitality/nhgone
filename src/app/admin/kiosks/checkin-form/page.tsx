@@ -8,11 +8,14 @@ import { supabase } from "@/lib/supabase";
 import {
   DEFAULT_DOCUMENT_TYPE,
   DEFAULT_DOCUMENT_VISIBILITY,
+  DOCUMENTS_ALLOWED,
+  DOCUMENT_FIELD_CATEGORIES,
   DOCUMENT_TYPE_GROUPS,
   FIELD_CATEGORIES,
   FIELD_STATES,
   collectedAtKiosk,
   defaultStateFor,
+  documentCategoryKey,
   type CheckinDocumentType,
   type FieldDef,
   type FieldState,
@@ -36,8 +39,16 @@ import {
  * Documents Type/Visibility pair all live in `@/lib/checkinFormFields` -
  * shared with /kiosk/registration, which OBEYS this configuration, so the two
  * screens can never disagree about which fields exist. See that file for the
- * field-list fidelity note (only "Address" is still unverified against a real
- * MEWS screen).
+ * field-list fidelity note.
+ *
+ * Documents also carries its own PER-DOCUMENT field tables (Passport, ID
+ * card - `DOCUMENT_FIELD_CATEGORIES`), shown below the Type/Visibility row
+ * for whichever kinds the chosen Type includes (`DOCUMENTS_ALLOWED`), the
+ * same way MEWS's own screen shows one table per possible document rather
+ * than one shared table. Saved under their own `documents_<kind>` key so
+ * they never collide with the plain `{type, visibility}` object under
+ * `documents` itself. Driver's license has no table yet - see the fidelity
+ * note in checkinFormFields.ts.
  *
  * What the kiosk does with what is saved here: a field set Hidden is not
  * rendered at all, Required is starred and blocks Next until it is filled,
@@ -81,6 +92,112 @@ function stamp(at: string | null, by: string | null) {
   const when = new Date(at);
   const text = Number.isNaN(when.getTime()) ? at : when.toLocaleString();
   return by ? `${text}  (${by})` : text;
+}
+
+/**
+ * The fields x guest-type table, extracted so the Documents tab can render
+ * it once per document kind (Passport, ID card) without repeating the ~50
+ * lines of head/row markup the General/Address/Verification tabs already
+ * use inline. Takes onToggleGuestType/onCell as props rather than closing
+ * over CheckInFormPage's state, since it is declared at module scope.
+ */
+function FieldsTable({
+  categoryKey,
+  fields,
+  settings,
+  onToggleGuestType,
+  onCell,
+}: {
+  categoryKey: string;
+  fields: FieldDef[];
+  settings: CheckinFormSettings;
+  onToggleGuestType: (guestType: "other_adults" | "children") => void;
+  onCell: (categoryKey: string, field: FieldDef, guestType: GuestType, value: FieldState) => void;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-2xl border border-slate-200">
+      <table className="w-full min-w-[720px] border-separate border-spacing-0 text-left">
+        <thead>
+          <tr className="bg-slate-50">
+            <th className="px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">Field</th>
+            {GUEST_TYPES.map((gt) => {
+              const enabled = gt.key === "other_adults" ? settings.other_adults_enabled
+                : gt.key === "children" ? settings.children_enabled : true;
+              return (
+                <th key={gt.key} className="px-5 py-4 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+                  <label className="inline-flex items-center gap-2">
+                    {gt.toggleable && (
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={() => onToggleGuestType(gt.key as "other_adults" | "children")}
+                        className="h-4 w-4 rounded border-slate-300 text-[#AAA024] focus:ring-[#AAA024]/30"
+                      />
+                    )}
+                    <span className={enabled ? "" : "text-slate-300"}>{gt.label}</span>
+                  </label>
+                </th>
+              );
+            })}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {fields.map((field) => (
+            <tr key={field.key}>
+              <td className="px-5 py-3 text-sm font-medium text-slate-700">
+                {field.label}
+                {!collectedAtKiosk(categoryKey, field.key) && (
+                  <span
+                    className="ml-2 inline-flex items-center rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400"
+                    title="The kiosk's check-in screen has no field for this yet - the setting is saved, but nothing asks the guest for it."
+                  >
+                    Not on the kiosk
+                  </span>
+                )}
+              </td>
+              {GUEST_TYPES.map((gt) => {
+                const columnEnabled = gt.key === "other_adults" ? settings.other_adults_enabled
+                  : gt.key === "children" ? settings.children_enabled : true;
+                const locked = field.locked?.[gt.key];
+
+                if (!columnEnabled) {
+                  return (
+                    <td key={gt.key} className="px-5 py-3 text-sm text-slate-300">—</td>
+                  );
+                }
+                if (locked) {
+                  return (
+                    <td key={gt.key} className="px-5 py-3">
+                      <span
+                        className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-400"
+                        title={field.lockedHint}
+                      >
+                        {locked}
+                        <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                      </span>
+                    </td>
+                  );
+                }
+                return (
+                  <td key={gt.key} className="px-5 py-3">
+                    <select
+                      value={valueFor(settings, categoryKey, field, gt.key)}
+                      onChange={(e) => onCell(categoryKey, field, gt.key, e.target.value as FieldState)}
+                      className="w-full max-w-[160px] rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#AAA024]/20"
+                    >
+                      {FIELD_STATES.map((state) => (
+                        <option key={state} value={state}>{state}</option>
+                      ))}
+                    </select>
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function CheckInFormPage() {
@@ -263,6 +380,7 @@ export default function CheckInFormPage() {
           {/* Documents: Type + Visibility, not the fields x guest-type table
               every other tab uses - see the DocumentType note up top. */}
           {category.key === "documents" ? (
+            <div className="space-y-6">
             <div className="overflow-x-auto rounded-2xl border border-slate-200">
               <table className="w-full min-w-[480px] border-separate border-spacing-0 text-left">
                 <thead>
@@ -302,6 +420,26 @@ export default function CheckInFormPage() {
                   </tr>
                 </tbody>
               </table>
+            </div>
+
+            {/* One field x guest-type table per document kind the chosen
+                Type actually allows (DOCUMENTS_ALLOWED) - MEWS's own screen
+                shows Passport and ID card side by side the same way when
+                Type includes both, rather than one shared table. */}
+            {DOCUMENT_FIELD_CATEGORIES.filter((dc) =>
+              (DOCUMENTS_ALLOWED[documentType] || []).includes(dc.kind)
+            ).map((dc) => (
+              <div key={dc.kind} className="space-y-3">
+                <p className="text-sm font-bold text-slate-700">{dc.label}</p>
+                <FieldsTable
+                  categoryKey={documentCategoryKey(dc.kind)}
+                  fields={dc.fields}
+                  settings={settings}
+                  onToggleGuestType={toggleGuestType}
+                  onCell={setCell}
+                />
+              </div>
+            ))}
             </div>
           ) : (
           <div className="overflow-x-auto rounded-2xl border border-slate-200">

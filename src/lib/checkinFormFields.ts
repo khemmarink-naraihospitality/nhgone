@@ -168,7 +168,15 @@ export function defaultStateFor(field: FieldDef, guestType: GuestType): FieldSta
 }
 
 function findField(categoryKey: string, fieldKey: string): FieldDef | undefined {
-  return FIELD_CATEGORIES.find((c) => c.key === categoryKey)?.fields.find((f) => f.key === fieldKey);
+  const inCategory = FIELD_CATEGORIES.find((c) => c.key === categoryKey)?.fields.find((f) => f.key === fieldKey);
+  if (inCategory) return inCategory;
+  // DOCUMENT_FIELD_CATEGORIES is declared further down this file - safe to
+  // reference here because this function only runs once the whole module
+  // has finished evaluating, not at the point this line is written.
+  const inDocumentCategory = DOCUMENT_FIELD_CATEGORIES.find(
+    (c) => documentCategoryKey(c.kind) === categoryKey,
+  )?.fields.find((f) => f.key === fieldKey);
+  return inDocumentCategory;
 }
 
 const CONCRETE: EffectiveState[] = ["Required", "Optional", "Hidden"];
@@ -234,13 +242,87 @@ export function collectedAtKiosk(categoryKey: string, fieldKey: string): boolean
 /** The kiosk's own document types - see GuestProfileForm. */
 export type KioskDocumentType = "passport" | "identity_card" | "drivers_license";
 
-const DOCUMENTS_ALLOWED: Record<CheckinDocumentType, KioskDocumentType[]> = {
+export const DOCUMENTS_ALLOWED: Record<CheckinDocumentType, KioskDocumentType[]> = {
   passport_id_license: ["passport", "identity_card", "drivers_license"],
   passport_id: ["passport", "identity_card"],
   passport: ["passport"],
   id_card: ["identity_card"],
   driver_license: ["drivers_license"],
 };
+
+/**
+ * Per-document-type field tables, shown under the Documents tab's Type +
+ * Visibility row for whichever kinds the chosen Type actually allows
+ * (DOCUMENTS_ALLOWED[type]) - MEWS shows one table per possible document,
+ * not one shared table, because a passport asks different questions than a
+ * driver's license.
+ *
+ * FIELD-LIST FIDELITY: Passport and ID card are copied field-for-field from
+ * a real MEWS screenshot (23-Sep-2026), including the one locked cell each -
+ * the document number is always Required for the reservation owner, the same
+ * "a lodger register needs it" reasoning as General > Last name. Driver's
+ * license appears in the same reference screenshot but wasn't part of this
+ * pass: its Type/Visibility choice still works, and no per-field table
+ * renders for it until someone verifies one.
+ *
+ * Nothing on /kiosk/registration reads these yet - the kiosk still asks for
+ * a single "document number" governed by documentSettings().visibility
+ * alone, the same configuration-surface-first order Check In Form itself
+ * shipped in. collectedAtKiosk() correctly marks every row here "Not on the
+ * kiosk" with no special-casing needed, since none of these keys are in
+ * KIOSK_COLLECTED_FIELDS.
+ */
+export interface DocumentFieldCategory {
+  kind: KioskDocumentType;
+  label: string;
+  fields: FieldDef[];
+}
+
+export const DOCUMENT_FIELD_CATEGORIES: DocumentFieldCategory[] = [
+  {
+    kind: "passport",
+    label: "Passport",
+    fields: [
+      {
+        key: "number",
+        label: "Passport number",
+        locked: { owner: "Required" },
+        lockedHint: "A lodger register needs the reservation owner's passport number - this can't be turned off.",
+        default: "Required",
+      },
+      { key: "issuing_country", label: "Issuing country", default: "Optional" },
+      { key: "issuing_city", label: "Issuing city", default: "Hidden" },
+      { key: "issue_date", label: "Issue date", default: "Optional" },
+      { key: "expiration_date", label: "Expiration date", default: "Optional" },
+    ],
+  },
+  {
+    kind: "identity_card",
+    label: "ID card",
+    fields: [
+      {
+        key: "number",
+        label: "Identity number",
+        locked: { owner: "Required" },
+        lockedHint: "A lodger register needs the reservation owner's ID number - this can't be turned off.",
+        default: "Required",
+      },
+      { key: "issuing_country", label: "Issuing country", default: "Optional" },
+      { key: "issuing_city", label: "Issuing city", default: "Optional" },
+      { key: "issue_date", label: "Issue date", default: "Optional" },
+      { key: "expiration_date", label: "Expiration date", default: "Optional" },
+    ],
+  },
+];
+
+/** The `fields` key one document kind's table saves under -
+ * `documents_passport`, `documents_identity_card` - kept separate from the
+ * plain `documents` key that holds the Type/Visibility pair, so the two
+ * shapes (a flat {type, visibility} object vs a `${field}.${guestType}`
+ * table) never collide inside the same object. */
+export function documentCategoryKey(kind: KioskDocumentType): string {
+  return `documents_${kind}`;
+}
 
 /**
  * The Documents tab resolved: whether an identity document is collected at
