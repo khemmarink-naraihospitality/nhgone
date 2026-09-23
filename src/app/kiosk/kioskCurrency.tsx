@@ -6,14 +6,21 @@ import { useSelectedProperty } from "@/lib/propertyContext";
 /**
  * The guest's chosen display currency for the light-theme flow's top bar.
  *
- * The OFFERED list is this property's own, read from MEWS's
- * `Enterprise.Currencies` (`GET /api/kiosks/currencies` ->
- * `sync_service.get_enabled_currencies`, the same data MEWS itself shows
- * under Property > Finance > Cashier) - not a fixed THB/USD/PHP set. That
- * fixed set was the bug this replaces: Marasca Samui showed a PHP option it
- * doesn't accept, and Siem Reap (USD-only, no THB at all) would have shown
- * THB as if it were. What a kiosk offers now genuinely varies by property -
- * see get_enabled_currencies for the full spread across all 8.
+ * It comes from MEWS, not a fixed list: `GET /api/kiosks/currencies` ->
+ * `sync_service.get_kiosk_currencies`, which returns the property's own
+ * DEFAULT accounting currency. THB for the six Thai properties, PHP for
+ * Makati, USD for Siem Reap - confirmed 23-Sep-2026 against what each
+ * property actually prices in.
+ *
+ * Two wrong versions preceded it, both worth not repeating: a hardcoded
+ * THB/USD/PHP set (Marasca showed PHP, which it does not use at all), then
+ * MEWS's IsEnabled list (which is "accepted for payment" and let four
+ * properties offer a USD they do not quote in). IsDefault matched all eight;
+ * IsEnabled matched four.
+ *
+ * The value stays a LIST so the endpoint and the pill keep their shape if a
+ * property is ever genuinely multi-currency here - KioskTopBar renders a
+ * single entry as a plain label rather than a one-option dropdown.
  *
  * The CHOICE itself stays the same as before: a per-session pick that lives
  * only in memory and resets on a hard refresh, and doesn't change what
@@ -53,10 +60,10 @@ const FALLBACK_CURRENCIES: KioskCurrencyOption[] = [{ code: "THB", label: CURREN
 interface KioskCurrencyValue {
   currency: string;
   setCurrency: (code: string) => void;
-  /** This property's own enabled currencies - what the switcher lists.
-   * Falls back to THB alone before the fetch resolves or if it fails, since
-   * every property in this org accepts at least THB or, on the one property
-   * that doesn't (Siem Reap), the fetch itself corrects it. */
+  /** Normally one entry: this property's own currency. THB before the
+   * fetch resolves or if it fails - right for six of the eight, and the one
+   * property it is wrong for (Siem Reap, USD) is corrected the moment the
+   * fetch lands. */
   currencies: KioskCurrencyOption[];
 }
 

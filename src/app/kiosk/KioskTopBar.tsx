@@ -113,6 +113,17 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
         </div>
 
         <div className="relative">
+          {/* A property prices in ONE currency (MEWS's default accounting
+              currency), so there is normally nothing to choose and this is a
+              plain label - a dropdown holding a single option invites a tap
+              that changes nothing. It becomes a real picker only if a
+              property ever returns more than one. */}
+          {currencies.length <= 1 ? (
+            <div className="flex items-center gap-2 rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] px-4 py-2.5 text-[var(--kiosk-text)]">
+              <Coins size={18} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
+              <span className="text-sm font-medium">{currency}</span>
+            </div>
+          ) : (
           <button
             type="button"
             onClick={() => setCurrencyOpen((v) => !v)}
@@ -122,6 +133,7 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
             <span className="text-sm font-medium">{currency}</span>
             <ChevronDown size={16} className="text-[var(--kiosk-text-muted)]" aria-hidden="true" />
           </button>
+          )}
 
           {currencyOpen && (
             <>

@@ -2001,40 +2001,46 @@ class SyncService:
             logger.warning(f"Could not resolve MEWS timezone for {property_name}, defaulting to Asia/Bangkok: {e}")
         return ZoneInfo("Asia/Bangkok")
 
-    async def get_enabled_currencies(self, property_name: str) -> list:
-        """This property's OWN enabled currencies, read from MEWS's own
-        Enterprise.Currencies (Property > Finance > Cashier in the MEWS UI) -
-        never a fixed list. Verified 22-Sep-2026 against every property's
-        real configuration/get response, and it varies a lot:
+    async def get_kiosk_currencies(self, property_name: str) -> list:
+        """The one currency a kiosk shows for this property: MEWS's own
+        DEFAULT accounting currency (`Enterprise.Currencies[].IsDefault` from
+        configuration/get).
 
-            Chinatown/Koh Tao   THB only    (USD is LISTED but IsEnabled=False)
-            Siem Reap           USD only    (no THB at all)
-            Makati              PHP default, USD also enabled
-            Samui/Patong/Marasca/Siam   THB default, USD also enabled
+        Deliberately NOT the IsEnabled list, which was the first cut of this
+        and was wrong. IsEnabled means "accepted for usage" and several
+        properties accept a second currency they do not price in - Marasca
+        Samui, Koh Samui, Patong and Makati all accept USD - so the pill
+        offered a choice the property does not actually quote in. Confirmed
+        23-Sep-2026 against the currency each property really uses:
 
-        A kiosk offering USD or PHP on a property that only accepts THB was
-        exactly the bug this replaces - the currency switcher used to be a
-        fixed THB/USD/PHP list with no connection to what the property
-        actually takes.
+            Chinatown / Siam / Koh Samui / Koh Tao / Patong / Marasca   THB
+            Makati                                                      PHP
+            Siem Reap                                                   USD
 
-        Falls back to THB alone - the default for every Thai property, same
-        fallback _resolve_property_timezone uses for the same call - if
-        configuration/get fails or returns nothing usable, rather than
-        leaving the kiosk with no currency option at all.
+        MEWS's IsDefault matched all eight exactly; IsEnabled matched four.
+
+        Still returns a LIST rather than one code, so the endpoint and the
+        screen keep their shape if a property is ever genuinely multi-currency
+        on the kiosk - the frontend already renders a single entry as a plain
+        label instead of a dropdown.
+
+        Falls back to THB - correct for six of the eight, and the same
+        fallback _resolve_property_timezone uses for this call - if
+        configuration/get fails or names no default, rather than leaving the
+        kiosk with no currency at all.
         """
         try:
             res = await mews_client.post(
                 "/api/connector/v1/configuration/get", {}, property_name=property_name,
             )
             currencies = (res.get("Enterprise") or {}).get("Currencies") or []
-            enabled = [
-                {"code": c["Currency"], "is_default": bool(c.get("IsDefault"))}
-                for c in currencies if c.get("IsEnabled") and c.get("Currency")
-            ]
-            if enabled:
-                return enabled
+            default = next(
+                (c["Currency"] for c in currencies if c.get("IsDefault") and c.get("Currency")), None
+            )
+            if default:
+                return [{"code": default, "is_default": True}]
         except Exception as e:
-            logger.warning(f"Could not resolve enabled currencies for {property_name}: {e}")
+            logger.warning(f"Could not resolve the default currency for {property_name}: {e}")
         return [{"code": "THB", "is_default": True}]
 
     # ST Files List's "Complimentary" column. The Master tab of all 8
