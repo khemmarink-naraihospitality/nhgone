@@ -4,7 +4,9 @@ from datetime import date, datetime, timedelta, timezone
 from fastapi import APIRouter, Body, HTTPException, Query
 from pydantic import BaseModel
 
-from app.services import revenue_settings_service
+from typing import Optional
+
+from app.services import revenue_settings_service, stop_sale_periods_service
 from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
@@ -12,6 +14,25 @@ router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
 
 class VerifyStopSalePinRequest(BaseModel):
     pin: str
+
+
+class StopSalePeriodCreate(BaseModel):
+    property_name: str
+    start_date: str
+    end_date: str
+    threshold: int
+    label: Optional[str] = None
+    pin: str
+    actor: Optional[str] = None
+
+
+class StopSalePeriodUpdate(BaseModel):
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    threshold: Optional[int] = None
+    label: Optional[str] = None
+    pin: str
+    actor: Optional[str] = None
 
 # How many whole months forward of the snapshot's own month each capture
 # covers. 12 = through the same month next year (e.g. a 21-Aug-2026 capture
@@ -223,6 +244,101 @@ async def get_list(property_name: str = Query(...)):
         return {"status": "success", "data": rows}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not list snapshots: {str(e)}")
+
+
+def _require_stop_sale_pin(pin: str) -> None:
+    """Every write to stop_sale_periods checks this independently, not just
+    the client-side unlock on the calendar's threshold field. That field has
+    nothing to protect server-side (its value is never persisted at all);
+    these periods ARE real, durable rows, so a write endpoint that trusted
+    the browser's own "already unlocked" flag would let anyone hitting the
+    API path directly skip the PIN entirely."""
+    if not revenue_settings_service.verify_stop_sale_pin(pin):
+        raise HTTPException(status_code=403, detail="Incorrect PIN.")
+
+
+def _validate_period_dates(start_date: Optional[str], end_date: Optional[str]) -> None:
+    if start_date and end_date and end_date < start_date:
+        raise HTTPException(status_code=400, detail="End date must be on or after the start date.")
+
+
+def _validate_threshold(threshold: Optional[int]) -> None:
+    if threshold is not None and not (1 <= threshold <= 100):
+        raise HTTPException(status_code=400, detail="Threshold must be between 1 and 100.")
+
+
+def _stop_sale_periods_guard(error: Exception) -> HTTPException:
+    message = str(error).lower()
+    if "stop_sale_periods" in message and ("does not exist" in message or "not find the table" in message):
+        return HTTPException(
+            status_code=400,
+            detail="The stop_sale_periods table doesn't exist yet - run api/sql/stop_sale_periods.sql in the Supabase SQL Editor first",
+        )
+    return HTTPException(status_code=500, detail=str(error))
+
+
+@router.get("/stop-sale-periods")
+async def get_stop_sale_periods(property_name: str = Query(...)):
+    """Every saved peak-period override for this property. No PIN needed to
+    VIEW - matching the single threshold field, which is visible to anyone
+    who can see the calendar and gated only on changing it."""
+    return {"status": "success", "data": stop_sale_periods_service.list_periods(property_name)}
+
+
+@router.post("/stop-sale-periods")
+async def add_stop_sale_period(request: StopSalePeriodCreate):
+    """Add one peak-period override, e.g. "23-31 Dec 2026, 50%" layered over
+    a property's usual 90%."""
+    _require_stop_sale_pin(request.pin)
+    _validate_period_dates(request.start_date, request.end_date)
+    _validate_threshold(request.threshold)
+    try:
+        row = stop_sale_periods_service.add_period(
+            request.property_name, request.start_date, request.end_date,
+            request.threshold, request.label, request.actor,
+        )
+        return {"status": "success", "data": row}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _stop_sale_periods_guard(e)
+
+
+@router.put("/stop-sale-periods/{period_id}")
+async def update_stop_sale_period(period_id: str, request: StopSalePeriodUpdate):
+    _require_stop_sale_pin(request.pin)
+    _validate_period_dates(request.start_date, request.end_date)
+    _validate_threshold(request.threshold)
+    try:
+        row = stop_sale_periods_service.update_period(
+            period_id,
+            {
+                "start_date": request.start_date,
+                "end_date": request.end_date,
+                "threshold": request.threshold,
+                "label": request.label,
+            },
+            request.actor,
+        )
+        return {"status": "success", "data": row}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise _stop_sale_periods_guard(e)
+
+
+@router.delete("/stop-sale-periods/{period_id}")
+async def delete_stop_sale_period(period_id: str, pin: str = Query(...)):
+    _require_stop_sale_pin(pin)
+    try:
+        stop_sale_periods_service.delete_period(period_id)
+        return {"status": "success"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise _stop_sale_periods_guard(e)
 
 
 @router.post("/verify-stop-sale-pin")

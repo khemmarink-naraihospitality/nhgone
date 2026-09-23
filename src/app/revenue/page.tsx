@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import * as XLSX from "xlsx";
 import PageHeader from "@/components/PageHeader";
 import { useSelectedProperty } from "@/lib/propertyContext";
+import { supabase } from "@/lib/supabase";
 import { downloadStopSaleXlsx, type StopSaleChartData, type StopSaleDayCell } from "@/lib/stopSaleChartExport";
 
 // Same collapsible-header pattern as Statistic Files' own page - one
@@ -353,6 +354,13 @@ const fmtTime = (v?: string | null) => {
 const snapshotLabel = (s: SnapshotRow) =>
   s.synced_at ? `${s.date} · captured ${fmtTime(s.synced_at)}` : `${s.date} (not captured yet)`;
 
+// "23 Dec" - the compact form a peak-period chip shows its date range in.
+const shortDateLabel = (iso: string): string => {
+  const d = new Date(`${iso}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+};
+
 // A wash of the brand green whose strength tracks occupancy, so a full house
 // and an empty one are distinguishable without reading every number. Kept
 // deliberately faint - the figure itself stays the thing you read.
@@ -373,6 +381,28 @@ const heat = (v: number | null) => {
 // December 2026 peaks at 84%, so a fixed 90 renders that whole month blank
 // and tells a revenue manager nothing.
 const DEFAULT_STOP_SELL_THRESHOLD = 90;
+
+/**
+ * A saved peak-period override on top of the single threshold above - e.g.
+ * "23-31 Dec 2026, 50%" layered over a property's usual 90% for the rest of
+ * the month. Property-scoped and NOT tied to a particular MonthBlock (a
+ * period can span a month boundary), persisted in stop_sale_periods -
+ * unlike the single threshold, which is deliberately never saved anywhere
+ * (see that field's own comment). GET needs no PIN (matching the single
+ * field, visible to anyone who can see the calendar); every add/edit/delete
+ * is checked server-side against the real Stop-Sale PIN, not just the
+ * client-side unlock - see api/app/routers/occupancy.py's
+ * _require_stop_sale_pin for why that's a stronger check than the single
+ * field gets.
+ */
+interface StopSalePeriod {
+  id: string;
+  property_name: string;
+  start_date: string;
+  end_date: string;
+  threshold: number;
+  label: string | null;
+}
 
 // Three states, and they need TWO snapshots to tell apart - "new" only means
 // anything relative to what the position was the morning before, and
@@ -469,6 +499,36 @@ export default function RevenuePage() {
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState<string | null>(null);
   const [pinVerifying, setPinVerifying] = useState(false);
+  // Kept (not cleared) once verified, unlike pinInput - every peak-period
+  // write resends it so the backend can check it independently rather than
+  // trusting stopThresholdUnlocked alone (see StopSalePeriod's own comment).
+  const [unlockedPin, setUnlockedPin] = useState("");
+
+  // Peak-period overrides - see StopSalePeriod.
+  const [stopSalePeriods, setStopSalePeriods] = useState<StopSalePeriod[]>([]);
+  const [periodsError, setPeriodsError] = useState<string | null>(null);
+  // The add/edit form's own modal - null when closed. `editing` is the row
+  // being edited, or null for a fresh Add opened from `block`'s own month
+  // (only used to seed sensible starting dates; a period isn't tied to one
+  // month once saved).
+  const [periodModal, setPeriodModal] = useState<{ block: MonthBlock; editing: StopSalePeriod | null } | null>(null);
+  const [periodForm, setPeriodForm] = useState({ start_date: "", end_date: "", threshold: DEFAULT_STOP_SELL_THRESHOLD, label: "" });
+  const [periodSaving, setPeriodSaving] = useState(false);
+  const [periodFormError, setPeriodFormError] = useState<string | null>(null);
+
+  // Who to record in created_by/updated_by - the API layer has no session
+  // of its own, so the name travels with the request rather than being
+  // inferred there. Same pattern as Admin Console > Kiosks.
+  const [actor, setActor] = useState<string | null>(null);
+  useEffect(() => {
+    const loadActor = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
+      setActor(data?.full_name || user.email || null);
+    };
+    void loadActor();
+  }, []);
 
   const openPinModal = () => {
     setPinInput("");
@@ -493,6 +553,7 @@ export default function RevenuePage() {
       const result = await res.json();
       if (result.status === "success" && result.data?.ok) {
         setStopThresholdUnlocked(true);
+        setUnlockedPin(pinInput);
         setPinModalOpen(false);
       } else {
         setPinError("Incorrect PIN");
@@ -788,6 +849,132 @@ export default function RevenuePage() {
     return map;
   }, [baseline]);
 
+  const loadStopSalePeriods = useCallback(async (property: string) => {
+    if (!property) {
+      setStopSalePeriods([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/occupancy/stop-sale-periods?property_name=${encodeURIComponent(property)}`);
+      const res = await response.json();
+      setStopSalePeriods(response.ok && res.status === "success" ? res.data || [] : []);
+    } catch {
+      // The calendar still works without these - every night just falls
+      // back to the single global threshold, exactly as before this
+      // feature existed.
+      setStopSalePeriods([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadStopSalePeriods(selectedProperty);
+  }, [selectedProperty, loadStopSalePeriods]);
+
+  // The threshold that actually applies to one night: a saved period
+  // covering it, else the single global stopThreshold. Periods are not
+  // expected to overlap (the Add form doesn't prevent it, since a revenue
+  // manager might deliberately narrow a period rather than edit it), so the
+  // first match wins - earliest start_date first, per loadStopSalePeriods'
+  // own ordering.
+  const thresholdForDate = useCallback(
+    (date: string): number => {
+      const period = stopSalePeriods.find((p) => p.start_date <= date && date <= p.end_date);
+      return period ? period.threshold : stopThreshold;
+    },
+    [stopSalePeriods, stopThreshold]
+  );
+
+  const openAddPeriod = (block: MonthBlock) => {
+    if (!stopThresholdUnlocked) {
+      openPinModal();
+      return;
+    }
+    const [y, m] = block.key.split("-").map(Number);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    setPeriodForm({
+      start_date: `${y}-${pad(m)}-01`,
+      end_date: `${y}-${pad(m)}-${pad(block.daysInMonth)}`,
+      threshold: stopThreshold,
+      label: "",
+    });
+    setPeriodFormError(null);
+    setPeriodModal({ block, editing: null });
+  };
+
+  const openEditPeriod = (block: MonthBlock, period: StopSalePeriod) => {
+    if (!stopThresholdUnlocked) {
+      openPinModal();
+      return;
+    }
+    setPeriodForm({
+      start_date: period.start_date,
+      end_date: period.end_date,
+      threshold: period.threshold,
+      label: period.label || "",
+    });
+    setPeriodFormError(null);
+    setPeriodModal({ block, editing: period });
+  };
+
+  const savePeriod = async () => {
+    if (!periodModal || periodSaving) return;
+    if (periodForm.end_date < periodForm.start_date) {
+      setPeriodFormError("End date must be on or after the start date.");
+      return;
+    }
+    if (!Number.isFinite(periodForm.threshold) || periodForm.threshold < 1 || periodForm.threshold > 100) {
+      setPeriodFormError("Threshold must be between 1 and 100.");
+      return;
+    }
+    setPeriodSaving(true);
+    setPeriodFormError(null);
+    try {
+      const editing = periodModal.editing;
+      const body = {
+        property_name: selectedProperty,
+        start_date: periodForm.start_date,
+        end_date: periodForm.end_date,
+        threshold: periodForm.threshold,
+        label: periodForm.label.trim() || null,
+        pin: unlockedPin,
+        actor,
+      };
+      const url = editing
+        ? `/api/occupancy/stop-sale-periods/${editing.id}`
+        : "/api/occupancy/stop-sale-periods";
+      const response = await fetch(url, {
+        method: editing ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const res = await response.json();
+      if (!response.ok || res.status !== "success") throw new Error(res.detail || "Could not save the period.");
+      await loadStopSalePeriods(selectedProperty);
+      setPeriodModal(null);
+    } catch (err) {
+      setPeriodFormError(err instanceof Error ? err.message : "Could not save the period.");
+    } finally {
+      setPeriodSaving(false);
+    }
+  };
+
+  const deletePeriod = async (period: StopSalePeriod) => {
+    if (!stopThresholdUnlocked) {
+      openPinModal();
+      return;
+    }
+    setPeriodsError(null);
+    try {
+      const params = new URLSearchParams({ pin: unlockedPin });
+      const response = await fetch(`/api/occupancy/stop-sale-periods/${period.id}?${params}`, { method: "DELETE" });
+      const res = await response.json();
+      if (!response.ok || res.status !== "success") throw new Error(res.detail || "Could not delete the period.");
+      setStopSalePeriods((prev) => prev.filter((p) => p.id !== period.id));
+    } catch (err) {
+      setPeriodsError(err instanceof Error ? err.message : "Could not delete the period.");
+    }
+  };
+
   // The one place a category/day turns into a stop-sale cell state - used
   // by the on-screen table AND the export/print views below, so none of
   // them can ever disagree with each other about what a cell shows.
@@ -798,10 +985,10 @@ export default function RevenuePage() {
       const id = c.short_name || c.name;
       const date = report.dates[idx];
       const value = c.percent[idx];
-      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
+      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, thresholdForDate(date));
       return { exists: true, state };
     },
-    [report, baselineByKey, baseline, stopThreshold]
+    [report, baselineByKey, baseline, thresholdForDate]
   );
 
   // dd/mm/yyyy for the "Report as of" line - the calendar's own date
@@ -1247,6 +1434,58 @@ export default function RevenuePage() {
                         </div>
                       </div>
 
+                      {/* Peak-period overrides touching this month - a period
+                          saved from a different month still shows here if
+                          its own date range overlaps any day of this one,
+                          since a period isn't scoped to one MonthBlock (see
+                          StopSalePeriod). PIN-gated the same way the
+                          threshold field itself is: Add/Edit/Delete on a
+                          locked page open the PIN modal instead of doing
+                          anything. */}
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">Peak periods</span>
+                        {stopSalePeriods
+                          .filter((period) => {
+                            const [y, m] = block.key.split("-").map(Number);
+                            const pad = (n: number) => String(n).padStart(2, "0");
+                            const monthStart = `${y}-${pad(m)}-01`;
+                            const monthEnd = `${y}-${pad(m)}-${pad(block.daysInMonth)}`;
+                            return period.start_date <= monthEnd && period.end_date >= monthStart;
+                          })
+                          .map((period) => (
+                            <span
+                              key={period.id}
+                              className="inline-flex items-center gap-1.5 border border-[var(--text-primary)]/14 bg-[var(--paper)] px-2 py-1 text-[11px] text-[var(--text-primary)]"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => openEditPeriod(block, period)}
+                                title={period.label || "Edit this peak period"}
+                                className="hover:underline"
+                              >
+                                {shortDateLabel(period.start_date)}–{shortDateLabel(period.end_date)}: {period.threshold}%
+                                {period.label ? ` · ${period.label}` : ""}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deletePeriod(period)}
+                                aria-label={`Remove the ${period.start_date} to ${period.end_date} peak period`}
+                                className="text-[var(--text-primary)]/40 hover:text-red-600"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        <button
+                          type="button"
+                          onClick={() => openAddPeriod(block)}
+                          className="text-[11px] font-bold text-[var(--text-primary)]/60 hover:text-[var(--text-primary)] hover:underline"
+                        >
+                          + Peak period
+                        </button>
+                      </div>
+                      {periodsError && <p className="text-[11px] text-red-600 mb-2">{periodsError}</p>}
+
                       <div className="flex flex-wrap items-center justify-end gap-3 mb-3">
                         <span className="text-[10px] font-bold tracked-caps text-[var(--text-primary)]/40">
                           {baseline && baselineSnapshot
@@ -1432,6 +1671,94 @@ export default function RevenuePage() {
           </div>
         )}
       </div>
+
+      {/* Add/edit a peak-period override - reached only once
+          stopThresholdUnlocked is true (openAddPeriod/openEditPeriod open
+          the PIN modal instead, on a locked page). Same overlay chrome as
+          the PIN modal just below, for one consistent "small settings
+          dialog" look on this page. */}
+      {periodModal && (
+        <div
+          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
+          onClick={() => !periodSaving && setPeriodModal(null)}
+        >
+          <div
+            className="bg-[var(--paper)] border border-[var(--text-primary)]/14 rounded-sm w-full max-w-sm shadow-2xl p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-base font-serif text-[var(--text-primary)] mb-1">
+              {periodModal.editing ? "Edit peak period" : "Add peak period"}
+            </h2>
+            <p className="text-[11px] text-[var(--text-primary)]/60 mb-4">
+              {periodModal.block.label} — a night in this range stops selling to travel agents at its own
+              threshold instead of the {stopThreshold}% above.
+            </p>
+
+            <div className="space-y-3">
+              <div className="flex gap-3">
+                <label className="flex-1 text-[11px] text-[var(--text-primary)]/60">
+                  Start date
+                  <input
+                    type="date"
+                    value={periodForm.start_date}
+                    onChange={(e) => setPeriodForm((f) => ({ ...f, start_date: e.target.value }))}
+                    className="mt-1 w-full bg-white border border-[var(--text-primary)]/14 px-2 py-1.5 text-[12px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                  />
+                </label>
+                <label className="flex-1 text-[11px] text-[var(--text-primary)]/60">
+                  End date
+                  <input
+                    type="date"
+                    value={periodForm.end_date}
+                    onChange={(e) => setPeriodForm((f) => ({ ...f, end_date: e.target.value }))}
+                    className="mt-1 w-full bg-white border border-[var(--text-primary)]/14 px-2 py-1.5 text-[12px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                  />
+                </label>
+              </div>
+              <label className="block text-[11px] text-[var(--text-primary)]/60">
+                Stop-sale threshold (%)
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={periodForm.threshold}
+                  onChange={(e) => setPeriodForm((f) => ({ ...f, threshold: Number(e.target.value) }))}
+                  className="mt-1 w-24 bg-white border border-[var(--text-primary)]/14 px-2 py-1.5 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                />
+              </label>
+              <label className="block text-[11px] text-[var(--text-primary)]/60">
+                Label (optional)
+                <input
+                  type="text"
+                  placeholder="e.g. New Year peak"
+                  value={periodForm.label}
+                  onChange={(e) => setPeriodForm((f) => ({ ...f, label: e.target.value }))}
+                  className="mt-1 w-full bg-white border border-[var(--text-primary)]/14 px-2 py-1.5 text-[12px] text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none"
+                />
+              </label>
+            </div>
+
+            {periodFormError && <p className="text-[11px] text-red-600 mt-3">{periodFormError}</p>}
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={savePeriod}
+                disabled={periodSaving}
+                className="flex-1 py-2 bg-[var(--text-primary)] text-[var(--paper)] text-[11px] font-bold tracked-caps hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed transition-opacity"
+              >
+                {periodSaving ? "Saving…" : periodModal.editing ? "Save" : "Add"}
+              </button>
+              <button
+                onClick={() => setPeriodModal(null)}
+                disabled={periodSaving}
+                className="flex-1 py-2 border border-[var(--text-primary)]/14 text-[11px] font-bold tracked-caps hover:bg-[var(--text-primary)]/[0.04] transition-colors disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* PIN gate on the Stop-Sale threshold - Admin > Revenue Settings owns
           the real PIN, verified server-side (see submitPin above). Once
