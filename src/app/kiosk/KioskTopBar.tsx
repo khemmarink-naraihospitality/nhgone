@@ -1,11 +1,35 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, ChevronDown, Coins, Languages, Settings } from "lucide-react";
-import { useState } from "react";
+import { ArrowLeft, Check, ChevronDown, Coins, Languages, Maximize, Minimize } from "lucide-react";
+import { useEffect, useState } from "react";
 import { KIOSK_LANGUAGES } from "./i18n";
 import { useKioskLanguage } from "./kioskLanguage";
 import { useKioskCurrency } from "./kioskCurrency";
+
+// iOS Safari (the realistic kiosk browser on an iPad) only gained
+// unprefixed Fullscreen API support in 16.4 - the webkit-prefixed names are
+// kept alongside the standard ones so an older device still gets the button
+// rather than a silent no-op.
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void>;
+  webkitFullscreenEnabled?: boolean;
+};
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void>;
+};
+
+function fullscreenSupported(): boolean {
+  if (typeof document === "undefined") return false;
+  const doc = document as FullscreenDocument;
+  return Boolean(document.fullscreenEnabled || doc.webkitFullscreenEnabled);
+}
+
+function fullscreenElement(): Element | null {
+  const doc = document as FullscreenDocument;
+  return document.fullscreenElement || doc.webkitFullscreenElement || null;
+}
 
 /**
  * The light-theme top bar every kiosk screen from the welcome page onward
@@ -34,6 +58,16 @@ import { useKioskCurrency } from "./kioskCurrency";
  * signature pad, which is sized to whatever height is left. The buttons stay
  * ~42px, still a comfortable finger target; only the non-interactive Staff
  * Mode badge is smaller than that.
+ *
+ * The Settings gear that used to sit here was replaced 23-Sep-2026 with a
+ * full-screen toggle - the gear opened nothing (no settings screen exists
+ * yet), where full screen is a real, immediate need for a lobby terminal
+ * running in an ordinary browser tab: it hides the address bar and browser
+ * chrome, which is what actually makes the terminal read as a fixed device
+ * rather than a laptop with a webpage open. Rendered only where the
+ * Fullscreen API is actually available (`fullscreenSupported()`) - the same
+ * "hide it rather than ship a dead button" rule the eyedropper in Admin
+ * Console > Kiosks follows.
  */
 
 export default function KioskTopBar({ showBack = true }: { showBack?: boolean }) {
@@ -43,6 +77,47 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
   const [langOpen, setLangOpen] = useState(false);
   const [currencyOpen, setCurrencyOpen] = useState(false);
   const current = KIOSK_LANGUAGES.find((l) => l.code === language) || KIOSK_LANGUAGES[0];
+
+  // Whether the API exists at all is read once on mount (a browser
+  // capability, not something to touch during render); whether the PAGE is
+  // currently fullscreen is tracked via the standard event so the icon stays
+  // correct even when something else changes it - Escape, for instance,
+  // always exits fullscreen without going through this button.
+  const [canFullscreen, setCanFullscreen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    // A browser capability, read once - the same justified exception
+    // kioskConfig.tsx and the layout's clock use for "synchronize with an
+    // external system".
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCanFullscreen(fullscreenSupported());
+    const onChange = () => setIsFullscreen(!!fullscreenElement());
+    onChange();
+    document.addEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+    };
+  }, []);
+
+  const toggleFullscreen = async () => {
+    const doc = document as FullscreenDocument;
+    try {
+      if (fullscreenElement()) {
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else await doc.webkitExitFullscreen?.();
+      } else {
+        const root = document.documentElement as FullscreenElement;
+        if (root.requestFullscreen) await root.requestFullscreen();
+        else await root.webkitRequestFullscreen?.();
+      }
+    } catch {
+      // A permission policy or an in-app browser can refuse this outright -
+      // the terminal just stays as it was, with nothing to tell a guest
+      // over a cosmetic toggle.
+    }
+  };
 
   return (
     <header className="relative flex items-center justify-between gap-4 px-8 py-3">
@@ -169,13 +244,16 @@ export default function KioskTopBar({ showBack = true }: { showBack?: boolean })
             </>
           )}
         </div>
-        <button
-          type="button"
-          className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-2.5 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
-          aria-label="Settings"
-        >
-          <Settings size={20} aria-hidden="true" />
-        </button>
+        {canFullscreen && (
+          <button
+            type="button"
+            onClick={toggleFullscreen}
+            aria-label={isFullscreen ? "Exit full screen" : "Enter full screen"}
+            className="rounded-full border border-[var(--kiosk-border)] bg-[var(--kiosk-surface)] p-2.5 text-[var(--kiosk-text-muted)] transition-colors hover:bg-[var(--kiosk-hover)]"
+          >
+            {isFullscreen ? <Minimize size={20} aria-hidden="true" /> : <Maximize size={20} aria-hidden="true" />}
+          </button>
+        )}
       </div>
     </header>
   );
