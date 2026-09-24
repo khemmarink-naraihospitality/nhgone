@@ -167,11 +167,13 @@ interface CategoryRow {
   percent: (number | null)[];
 }
 
-// One month's own Room Types checkbox panel - the calendar renders one of
-// these per MonthBlock rather than a single filter shared across all of
-// them, so a category worth watching in a busy month doesn't have to stay
-// toggled on (or off) for every quiet one too. `selected` undefined means
-// "everything", matching FilterDropdown's own null-means-all convention.
+// The Room Types checkbox panel. `selected` is one value shared by the
+// whole page (the calendar renders one of these per MonthBlock purely for
+// visibility next to each month's own row - see watchedCategories in
+// RevenuePage - but they all read and write the same underlying Set, so
+// picking it once really does apply to every month). `selected` undefined
+// means "everything", matching FilterDropdown's own null-means-all
+// convention; an empty Set means "nothing", a real and distinct choice.
 function RoomTypesFilter({
   categories,
   selected,
@@ -575,14 +577,19 @@ export default function RevenuePage() {
   // moment it was captured, so labelling the comparison with it named the
   // wrong day.
   const [baselineSnapshot, setBaselineSnapshot] = useState<SnapshotRow | null>(null);
-  // Which room-type rows each month's table shows - one filter PER MONTH
-  // rather than one shared across all of them, since a category worth
-  // watching in a busy month (say, dorm beds in August) is often just noise
-  // in a quiet one. Keyed by MonthBlock.key -> a Set of `short_name || name`
-  // (the same id the table rows themselves use, so a filter can never drift
-  // from what's on screen), or undefined/absent for "everything", which is
-  // every month's default until that month's own dropdown is touched.
-  const [visibleCategoriesByMonth, setVisibleCategoriesByMonth] = useState<Record<string, Set<string>>>({});
+  // Which room-type rows the calendar shows - ONE selection shared by every
+  // month (not per-month, as this used to be: picking it once was supposed
+  // to apply everywhere, and a per-month copy couldn't do that). A Set of
+  // `short_name || name` (the same id the table rows themselves use, so a
+  // filter can never drift from what's on screen), or undefined for
+  // "everything", the default until the property's own saved selection (if
+  // any) loads or the dropdown is touched. Persisted per property
+  // (stop_sale_watched_categories) since 24-Sep-2026 so it also reaches the
+  // Stop Sale Alert email - see loadWatchedCategories/saveWatchedCategories
+  // below - rather than resetting every session the way it used to.
+  const [watchedCategories, setWatchedCategories] = useState<Set<string> | undefined>(undefined);
+  const [watchedCategoriesSaving, setWatchedCategoriesSaving] = useState(false);
+  const [watchedCategoriesError, setWatchedCategoriesError] = useState<string | null>(null);
 
   // Returns the freshly loaded list (not just setting state) so a caller
   // like handleImport can find the row it just created without racing
@@ -820,19 +827,16 @@ export default function RevenuePage() {
   // hasn't been captured yet, and the option's own label says so.
   const monthBlocks = useMemo(() => (report ? buildMonthBlocks(report.dates) : []), [report]);
 
-  // The filter resets to "everything, every month" on every new report
-  // rather than persisting across fetches - a category picked for one
-  // property's chart may not exist on the next.
-  useEffect(() => {
-    setVisibleCategoriesByMonth({});
-  }, [report]);
-
+  // _monthKey is unused now the selection is shared across every month, but
+  // callers still address it by month (dayState, the export/print builder),
+  // so the signature stays the same rather than touching every call site.
   const categoryRowsForMonth = useCallback(
-    (monthKey: string) => {
-      const picked = visibleCategoriesByMonth[monthKey];
-      return picked ? report?.categories.filter((c) => picked.has(c.short_name || c.name)) ?? [] : report?.categories ?? [];
+    (_monthKey: string) => {
+      return watchedCategories
+        ? report?.categories.filter((c) => watchedCategories.has(c.short_name || c.name)) ?? []
+        : report?.categories ?? [];
     },
-    [report, visibleCategoriesByMonth]
+    [report, watchedCategories]
   );
 
   // Baseline occupancy looked up by "<category> <date>" rather than by array
@@ -869,6 +873,70 @@ export default function RevenuePage() {
   useEffect(() => {
     void loadStopSalePeriods(selectedProperty);
   }, [selectedProperty, loadStopSalePeriods]);
+
+  // The Room Types selection loads per property (not per report fetch) -
+  // switching property picks up whatever that property last saved, and a
+  // report re-fetch for the SAME property keeps whatever's already on
+  // screen rather than flashing back to "everything" every time.
+  const loadWatchedCategories = useCallback(async (property: string) => {
+    setWatchedCategoriesError(null);
+    if (!property) {
+      setWatchedCategories(undefined);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/occupancy/watched-categories?property_name=${encodeURIComponent(property)}`);
+      const res = await response.json();
+      const saved: string[] | null = response.ok && res.status === "success" ? res.data : null;
+      setWatchedCategories(saved ? new Set(saved) : undefined);
+    } catch {
+      // Same degrade as everywhere else here: falls back to "watch
+      // everything", exactly as before this was persisted.
+      setWatchedCategories(undefined);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWatchedCategories(selectedProperty);
+  }, [selectedProperty, loadWatchedCategories]);
+
+  // Persists a Room Types change. PIN-gated the same way the threshold
+  // field and peak periods are (openPinModal/unlockedPin) - this selection
+  // now decides what the Stop Sale Alert email reports on, not just what
+  // this one chart shows, so it's real, durable state rather than a
+  // view-only convenience. Applied to the on-screen chart optimistically
+  // (the calendar shouldn't wait on a round-trip to redraw) and rolled back
+  // if the save fails, so the chart never shows a selection that didn't
+  // actually stick.
+  const saveWatchedCategories = async (next: Set<string> | undefined) => {
+    if (!stopThresholdUnlocked) {
+      openPinModal();
+      return;
+    }
+    const previous = watchedCategories;
+    setWatchedCategories(next);
+    setWatchedCategoriesSaving(true);
+    setWatchedCategoriesError(null);
+    try {
+      const response = await fetch("/api/occupancy/watched-categories", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          property_name: selectedProperty,
+          categories: next ? Array.from(next) : null,
+          pin: unlockedPin,
+          actor,
+        }),
+      });
+      const res = await response.json();
+      if (!response.ok || res.status !== "success") throw new Error(res.detail || "Could not save the Room Types selection.");
+    } catch (err) {
+      setWatchedCategories(previous);
+      setWatchedCategoriesError(err instanceof Error ? err.message : "Could not save the Room Types selection.");
+    } finally {
+      setWatchedCategoriesSaving(false);
+    }
+  };
 
   // The threshold that actually applies to one night: a saved period
   // covering it, else the single global stopThreshold. Periods are not
@@ -1032,8 +1100,10 @@ export default function RevenuePage() {
   // is the established way every other print-to-PDF page here works.
   //
   // One button for every month in the report, not per-month - Export lives
-  // once at the top of the calendar (see its own render site), unlike the
-  // Room Types filter and Stop-Sale threshold which stay per month.
+  // once at the top of the calendar (see its own render site). The
+  // Stop-Sale threshold field is still rendered per month (each is its own
+  // genuinely-scoped-to-that-month copy of one shared value); Room Types is
+  // now ALSO one shared value, just rendered per month too for visibility.
   const handlePrintStopSaleChart = () => {
     if (!stopSaleChartData) return;
     const originalTitle = document.title;
@@ -1340,11 +1410,12 @@ export default function RevenuePage() {
             <svg className={`w-4 h-4 shrink-0 transition-transform ${calendarOpen ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
             <h2 className="text-xl font-serif">Occupancy By Type Calendar</h2>
           </button>
-          {/* One Export for the whole report, not per month - Room Types and
-              the Stop-Sale threshold stay per month (each genuinely scoped
-              to that month's own view/business rule), but Export/Print
-              always covers every month at once. no-print: a control, not
-              content, so it has no business appearing on a printed page. */}
+          {/* One Export for the whole report, not per month - the
+              Stop-Sale threshold field stays rendered per month (each
+              genuinely scoped to that month's own view of one shared
+              value), but Export/Print always covers every month at once.
+              no-print: a control, not content, so it has no business
+              appearing on a printed page. */}
           {calendarOpen && report && (
             <div className="no-print">
               <ExportMenu
@@ -1367,23 +1438,29 @@ export default function RevenuePage() {
               <div className="space-y-8">
                 {monthBlocks.map((block) => {
                   const rows = categoryRowsForMonth(block.key);
-                  const selected = visibleCategoriesByMonth[block.key];
                   return (
                     <div key={block.key}>
                       <div className="flex flex-wrap items-center gap-3 mb-2 pb-2 border-b border-[var(--text-primary)]/10">
                         <span className="text-[11px] font-bold tracked-caps text-[var(--text-primary)]/50">{block.label}</span>
+                        {/* One shared Room Types selection across every
+                            month (see watchedCategories' own comment) -
+                            rendered per month so it's visible next to each
+                            month's own row, but changing it here changes the
+                            same underlying state every other month's copy
+                            reads, and persists it for this property
+                            (PIN-gated, since it now also filters what the
+                            Stop Sale Alert email reports on). */}
                         <RoomTypesFilter
                           categories={report.categories}
-                          selected={selected}
-                          onChange={(next) =>
-                            setVisibleCategoriesByMonth((prev) => {
-                              const copy = { ...prev };
-                              if (next === undefined) delete copy[block.key];
-                              else copy[block.key] = next;
-                              return copy;
-                            })
-                          }
+                          selected={watchedCategories}
+                          onChange={(next) => void saveWatchedCategories(next)}
                         />
+                        {watchedCategoriesSaving && (
+                          <span className="text-[10px] text-[var(--text-primary)]/40">Saving…</span>
+                        )}
+                        {watchedCategoriesError && (
+                          <span className="text-[10px] text-red-600" title={watchedCategoriesError}>Could not save Room Types</span>
+                        )}
                         {/* Stop-sale threshold - same row as the month label
                             and Room Types now, rather than its own line below.
                             One shared stopThreshold state across every month

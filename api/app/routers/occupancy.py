@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from typing import Optional
 
-from app.services import revenue_settings_service, stop_sale_periods_service
+from app.services import revenue_settings_service, stop_sale_periods_service, stop_sale_watched_categories_service
 from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
@@ -31,6 +31,13 @@ class StopSalePeriodUpdate(BaseModel):
     end_date: Optional[str] = None
     threshold: Optional[int] = None
     label: Optional[str] = None
+    pin: str
+    actor: Optional[str] = None
+
+
+class WatchedCategoriesUpdate(BaseModel):
+    property_name: str
+    categories: Optional[list] = None
     pin: str
     actor: Optional[str] = None
 
@@ -339,6 +346,33 @@ async def delete_stop_sale_period(period_id: str, pin: str = Query(...)):
         raise
     except Exception as e:
         raise _stop_sale_periods_guard(e)
+
+
+@router.get("/watched-categories")
+async def get_watched_categories(property_name: str = Query(...)):
+    """The saved Room Types selection for this property, or null for "watch
+    everything" - the same list the Occupancy By Type Calendar's stop-sale
+    chart filters to, and (since this is now persisted rather than
+    per-session) what stop_sale_alert_service.py's daily mail filters to as
+    well. No PIN needed to VIEW, matching every other read here."""
+    return {"status": "success", "data": stop_sale_watched_categories_service.get_watched(property_name)}
+
+
+@router.put("/watched-categories")
+async def save_watched_categories(request: WatchedCategoriesUpdate):
+    """Persists the Room Types selection for a property. PIN-checked for the
+    same reason stop_sale_periods' writes are: this now decides what the
+    daily Stop Sale Alert email reports on, not just what one browser
+    session's chart shows, so it is real, durable state and not a view-only
+    convenience anymore."""
+    _require_stop_sale_pin(request.pin)
+    try:
+        row = stop_sale_watched_categories_service.save_watched(
+            request.property_name, request.categories, request.actor,
+        )
+        return {"status": "success", "data": row}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/verify-stop-sale-pin")

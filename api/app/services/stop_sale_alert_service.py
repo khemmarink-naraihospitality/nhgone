@@ -23,6 +23,15 @@ System Email, like every other scheduled mail here - see
 email_service.STOP_SALE_TEMPLATE_KEY. What this module hands the template is
 the two finished tables, so an edit to the wording can never produce an
 all-clear with no comparison behind it.
+
+Honors each property's saved Room Types selection (24-Sep-2026,
+stop_sale_watched_categories_service) - the same filter the calendar's
+stop-sale chart uses, now persisted per property instead of per browser
+session, so picking it once on the chart also decides what this mail reports
+on. No saved selection (the default) watches every category, exactly as
+before this table existed. The threshold itself is still NOT read from a
+property's saved peak periods (stop_sale_periods) - that remains the
+documented, deliberate scope boundary below.
 """
 from __future__ import annotations
 
@@ -32,6 +41,7 @@ from zoneinfo import ZoneInfo
 
 from app.config import get_supabase_client
 from app.services.email_service import STOP_SALE_TEMPLATE_KEY, email_service
+from app.services.stop_sale_watched_categories_service import get_watched
 
 logger = logging.getLogger(__name__)
 
@@ -108,14 +118,22 @@ def _percent_index(data: dict) -> dict:
     return out
 
 
-def _changes(current: dict, baseline: dict, threshold: float) -> list:
-    """Every night whose stop-sale state flipped between the two snapshots."""
+def _changes(current: dict, baseline: dict, threshold: float, watched: list = None) -> list:
+    """Every night whose stop-sale state flipped between the two snapshots.
+
+    `watched` is a property's saved Room Types selection (see
+    stop_sale_watched_categories_service) - None means every category, same
+    as the calendar's own filter defaults to before anyone touches it. An
+    empty list is a real, deliberate "watch nothing," not "everything" -
+    `watched is not None` is the actual gate, not truthiness."""
     was = _percent_index(baseline)
     dates = current.get("dates") or []
     names = {}
     out = []
     for c in current.get("categories") or []:
         cid = _cat_id(c)
+        if watched is not None and cid not in watched:
+            continue
         names[cid] = c.get("name") or cid
         percent = c.get("percent") or []
         for i, day in enumerate(dates):
@@ -197,7 +215,8 @@ def build_alert(threshold: float = None, property_name: str = None) -> dict:
         row["status"] = "ok"
         row["baseline_date"] = snaps[1].get("report_date")
         row["baseline_synced_at"] = snaps[1].get("synced_at")
-        changes = _changes(snaps[0].get("data") or {}, snaps[1].get("data") or {}, threshold)
+        watched = get_watched(prop)
+        changes = _changes(snaps[0].get("data") or {}, snaps[1].get("data") or {}, threshold, watched)
         row["changes"] = changes
         row["new_stops"] = sum(1 for c in changes if c["kind"] == _NEW_STOP)
         row["reopens"] = sum(1 for c in changes if c["kind"] == _REOPEN)
