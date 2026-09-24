@@ -82,9 +82,16 @@ create table if not exists public.osh_reports (
     score integer not null default 0,
     submitted_at timestamptz not null default now(),
     submitted_by text,
+    submitted_by_email text,
     email_status text,          -- 'sent' | 'not_configured' | 'failed'
     email_detail text
 );
+
+-- Added after the initial run (24-Sep-2026): Submitted Reports History needs
+-- to show WHO submitted, not just their display name - `submitted_by` alone
+-- can't be traced back to an account. Safe to run again; a column that
+-- already exists is a no-op.
+alter table public.osh_reports add column if not exists submitted_by_email text;
 
 create index if not exists osh_reports_property_idx
     on public.osh_reports (property_name, submitted_at desc);

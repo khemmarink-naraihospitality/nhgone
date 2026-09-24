@@ -209,6 +209,7 @@ export default function OshFormPage() {
           score: percentComplete,
           report_html: reportHtml,
           actor: user?.name ?? null,
+          actor_email: user?.email ?? null,
         }),
       });
       if (report.email_status === "sent") {

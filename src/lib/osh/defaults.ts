@@ -59,6 +59,7 @@ export interface OshReport {
   score: number;
   submitted_at: string;
   submitted_by: string | null;
+  submitted_by_email: string | null;
   email_status: string | null;
   email_detail: string | null;
 }

@@ -103,10 +103,12 @@ export function useOshSettings() {
 export interface OshUser {
   id: string;
   name: string | null;
+  email: string | null;
 }
 
 /** The signed-in user - their id keys the draft, their name is recorded as
- * who saved/submitted. */
+ * who saved/submitted, and their email is recorded alongside it so
+ * Report > Submitted Reports History can show who to actually go ask. */
 export function useOshUser() {
   const [user, setUser] = useState<OshUser | null>(null);
   useEffect(() => {
@@ -115,7 +117,9 @@ export function useOshUser() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser || cancelled) return;
       const { data } = await supabase.from("profiles").select("full_name").eq("id", authUser.id).single();
-      if (!cancelled) setUser({ id: authUser.id, name: data?.full_name || authUser.email || null });
+      if (!cancelled) {
+        setUser({ id: authUser.id, name: data?.full_name || authUser.email || null, email: authUser.email || null });
+      }
     })();
     return () => {
       cancelled = true;

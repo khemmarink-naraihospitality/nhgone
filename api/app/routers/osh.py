@@ -61,6 +61,18 @@ def _missing_table(error: Exception) -> bool:
     return "osh_" in message and ("does not exist" in message or "not find the table" in message)
 
 
+def _missing_column(error: Exception, column: str) -> bool:
+    """True for either Postgres' own "column X does not exist" (42703) or
+    PostgREST's schema-cache miss ("Could not find the 'X' column ...",
+    PGRST204 - what Supabase's client actually raises for an insert naming an
+    unrecognized column). Used so a submit made before an incremental
+    migration (e.g. submitted_by_email, added 24-Sep-2026) degrades to
+    inserting without that field rather than failing the whole submission
+    over one optional column."""
+    message = str(error).lower()
+    return column.lower() in message and ("does not exist" in message or "could not find" in message)
+
+
 def _guard(error: Exception) -> HTTPException:
     if isinstance(error, HTTPException):
         return error
@@ -227,6 +239,7 @@ class ReportSubmit(BaseModel):
     score: int
     report_html: str
     actor: Optional[str] = None
+    actor_email: Optional[str] = None
 
 
 def _recipients(text: str) -> list:
@@ -345,12 +358,24 @@ async def submit_report(request: ReportSubmit):
         "items": request.items or [],
         "score": max(0, min(100, int(request.score or 0))),
         "submitted_by": request.actor,
+        "submitted_by_email": request.actor_email,
     }
     try:
         res = get_supabase_client().table(REPORTS_TABLE).insert(row).execute()
     except Exception as e:
-        raise _guard(e)
+        if _missing_column(e, "submitted_by_email"):
+            # The incremental migration hasn't run yet - submit anyway
+            # (the report itself matters more than who submitted it), just
+            # without that one field.
+            row.pop("submitted_by_email", None)
+            try:
+                res = get_supabase_client().table(REPORTS_TABLE).insert(row).execute()
+            except Exception as retry_error:
+                raise _guard(retry_error)
+        else:
+            raise _guard(e)
     report = res.data[0]
+    report.setdefault("submitted_by_email", None)
 
     status, detail = _send_report_email(report, request.report_html or "")
     try:

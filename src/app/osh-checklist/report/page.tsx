@@ -302,13 +302,14 @@ function OshReportView() {
             </h3>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[800px] border-collapse text-left">
+            <table className="w-full min-w-[960px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-100 text-sm text-slate-600">
                   <th className="p-4 font-semibold">Date Submitted</th>
                   <th className="p-4 font-semibold">Property</th>
                   <th className="p-4 font-semibold">Year / Period</th>
                   <th className="p-4 font-semibold">Operator</th>
+                  <th className="p-4 font-semibold">Submitted By</th>
                   <th className="p-4 text-center font-semibold">Score</th>
                   <th className="p-4 text-center font-semibold">Action</th>
                 </tr>
@@ -320,6 +321,16 @@ function OshReportView() {
                     <td className="p-4 font-medium text-blue-700">{rep.header?.propertyName || rep.property_name}</td>
                     <td className="p-4 text-sm">{rep.header?.year} - {rep.header?.period}</td>
                     <td className="p-4 text-sm">{rep.header?.operatorName}</td>
+                    <td className="p-4 text-sm">
+                      {rep.submitted_by_email || rep.submitted_by ? (
+                        <>
+                          {rep.submitted_by && <div className="font-medium text-slate-700">{rep.submitted_by}</div>}
+                          {rep.submitted_by_email && <div className="text-xs text-slate-500">{rep.submitted_by_email}</div>}
+                        </>
+                      ) : (
+                        <span className="text-slate-400">-</span>
+                      )}
+                    </td>
                     <td className="p-4 text-center">
                       <span className="rounded bg-emerald-100 px-2 py-1 text-sm font-bold text-emerald-800">{rep.score}%</span>
                     </td>
@@ -337,7 +348,7 @@ function OshReportView() {
                   </tr>
                 ))}
                 {filteredReports.length === 0 && (
-                  <tr><td colSpan={6} className="p-8 text-center text-slate-500">ไม่พบประวัติรายงานตามเงื่อนไขที่เลือก</td></tr>
+                  <tr><td colSpan={7} className="p-8 text-center text-slate-500">ไม่พบประวัติรายงานตามเงื่อนไขที่เลือก</td></tr>
                 )}
               </tbody>
             </table>
