@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import * as XLSX from "xlsx";
 import { supabase } from "@/lib/supabase";
 import PageHeader from "@/components/PageHeader";
@@ -374,7 +375,17 @@ export default function AdminUsersPage() {
   const [approvingUser, setApprovingUser] = useState<UserProfile | null>(null);
   const [approveRole, setApproveRole] = useState("User");
   const [approving, setApproving] = useState(false);
-  const [openUserMenuId, setOpenUserMenuId] = useState<string | null>(null);
+  // Holds the trigger button's own on-screen position (from
+  // getBoundingClientRect at the moment it's clicked), not just which row is
+  // open, because the menu itself is portaled to <body> and positioned with
+  // `fixed` - see the render site's own comment for why: the table's
+  // scrolling wrapper (max-h-[65vh] overflow-y-auto) clips ANY descendant
+  // that overflows its box, even one with its own overflow-visible, and a
+  // menu opened on a row near the bottom of a short result set (e.g. a
+  // single-row search match) had nowhere to render into but that clipped
+  // sliver - reported 24-Sep-2026, only "Edit Profile" visible, everything
+  // below it cut off.
+  const [openUserMenu, setOpenUserMenu] = useState<{ id: string; top: number; left: number; openUpward: boolean } | null>(null);
 
   useEffect(() => {
     fetchUsers();
@@ -385,11 +396,50 @@ export default function AdminUsersPage() {
   }, []);
 
   useEffect(() => {
-    if (!openUserMenuId) return;
-    const closeMenu = () => setOpenUserMenuId(null);
+    if (!openUserMenu) return;
+    const closeMenu = () => setOpenUserMenu(null);
+    // click closes it outright (matching every other menu on this page);
+    // scroll/resize close it too rather than trying to re-track the
+    // trigger's position live, which isn't worth the complexity for a menu
+    // this simple - a fixed-position portal has no other way to "follow"
+    // the table scrolling underneath it.
     document.addEventListener("click", closeMenu);
-    return () => document.removeEventListener("click", closeMenu);
-  }, [openUserMenuId]);
+    window.addEventListener("scroll", closeMenu, true);
+    window.addEventListener("resize", closeMenu);
+    return () => {
+      document.removeEventListener("click", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
+      window.removeEventListener("resize", closeMenu);
+    };
+  }, [openUserMenu]);
+
+  // Menu width (w-48) and a generous max-height estimate (4 possible items:
+  // Approve, Edit Profile, Set Password, Delete) - used only to decide
+  // whether to flip the menu upward when a trigger sits near the bottom of
+  // the viewport, not to size anything.
+  const USER_MENU_WIDTH = 192;
+  const USER_MENU_EST_HEIGHT = 190;
+
+  const openUserActionMenu = (e: React.MouseEvent<HTMLButtonElement>, userId: string) => {
+    e.stopPropagation();
+    if (openUserMenu?.id === userId) {
+      setOpenUserMenu(null);
+      return;
+    }
+    // The enclosing <td> (not the button itself) for both edges - it's the
+    // wider, fixed-width (w-16) box, so anchoring to it reproduces exactly
+    // where the old absolute `right-0 top-12` version sat, rather than a
+    // slightly narrower alignment against the 32px button alone.
+    const cell = e.currentTarget.closest("td") ?? e.currentTarget;
+    const rect = cell.getBoundingClientRect();
+    const openUpward = window.innerHeight - rect.bottom < USER_MENU_EST_HEIGHT;
+    setOpenUserMenu({
+      id: userId,
+      left: rect.right - USER_MENU_WIDTH,
+      top: openUpward ? rect.top - 8 : rect.bottom + 8,
+      openUpward,
+    });
+  };
 
   useEffect(() => {
     if (!openPropertyMenu) return;
@@ -781,22 +831,31 @@ export default function AdminUsersPage() {
                       the same reason the header th above dropped it. */}
                   <td className={`sticky right-0 z-10 w-16 px-0 py-5 text-center relative overflow-visible ${user.status === 'Pending' ? 'bg-amber-50' : 'bg-white'}`}>
                      <button
-                       onClick={(e) => { e.stopPropagation(); setOpenUserMenuId(openUserMenuId === user.id ? null : user.id); }}
+                       onClick={(e) => openUserActionMenu(e, user.id)}
                        title="Actions"
                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-all"
                      >
                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4zm0 6a2 2 0 100-4 2 2 0 000 4z" /></svg>
                      </button>
 
-                     {/* Action Dropdown Menu */}
-                     {openUserMenuId === user.id && (
+                     {/* Action Dropdown Menu - portaled to <body> (see
+                         openUserMenu's own comment for why) rather than a
+                         plain absolute-positioned sibling here. */}
+                     {openUserMenu?.id === user.id && createPortal(
                        <div
                          onClick={(e) => e.stopPropagation()}
-                         className="absolute right-0 top-12 w-48 bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100 p-1.5"
+                         style={{
+                           position: "fixed",
+                           top: openUserMenu.openUpward ? undefined : openUserMenu.top,
+                           bottom: openUserMenu.openUpward ? window.innerHeight - openUserMenu.top : undefined,
+                           left: openUserMenu.left,
+                           width: USER_MENU_WIDTH,
+                         }}
+                         className="bg-white border border-slate-200 rounded-2xl shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100 p-1.5"
                        >
                           {user.status === 'Pending' && (
                             <button
-                              onClick={() => { setApprovingUser(user); setApproveRole("User"); setOpenUserMenuId(null); }}
+                              onClick={() => { setApprovingUser(user); setApproveRole("User"); setOpenUserMenu(null); }}
                               className="w-full text-left px-3 py-2 text-xs font-bold text-[#AAA024] hover:bg-[#AAA024]/10 rounded-xl transition-colors flex items-center gap-2"
                             >
                               <svg className="w-4 h-4 text-[#AAA024]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
@@ -804,7 +863,7 @@ export default function AdminUsersPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => { setEditingUser(user); setOpenUserMenuId(null); }}
+                            onClick={() => { setEditingUser(user); setOpenUserMenu(null); }}
                             className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
                           >
                             <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
@@ -812,7 +871,7 @@ export default function AdminUsersPage() {
                           </button>
                           {user.auth_method === "internal" && (
                             <button
-                              onClick={() => { setSettingPasswordUser(user); setNewPassword(""); setRequirePasswordChange(true); setOpenUserMenuId(null); }}
+                              onClick={() => { setSettingPasswordUser(user); setNewPassword(""); setRequirePasswordChange(true); setOpenUserMenu(null); }}
                               className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
                             >
                               <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
@@ -820,13 +879,14 @@ export default function AdminUsersPage() {
                             </button>
                           )}
                           <button
-                            onClick={() => { setDeletingUser(user); setOpenUserMenuId(null); }}
+                            onClick={() => { setDeletingUser(user); setOpenUserMenu(null); }}
                             className="w-full text-left px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 rounded-xl transition-colors flex items-center gap-2"
                           >
                             <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                             Delete Account
                           </button>
-                       </div>
+                       </div>,
+                       document.body
                      )}
                   </td>
                 </tr>
