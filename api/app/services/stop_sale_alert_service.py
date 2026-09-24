@@ -29,9 +29,16 @@ stop_sale_watched_categories_service) - the same filter the calendar's
 stop-sale chart uses, now persisted per property instead of per browser
 session, so picking it once on the chart also decides what this mail reports
 on. No saved selection (the default) watches every category, exactly as
-before this table existed. The threshold itself is still NOT read from a
-property's saved peak periods (stop_sale_periods) - that remains the
-documented, deliberate scope boundary below.
+before this table existed.
+
+Also honours the calendar's saved thresholds (24-Sep-2026) - a night's
+threshold is its saved peak period's, else its month's saved value
+(stop_sale_month_thresholds), else DEFAULT_THRESHOLD - the same
+resolution as thresholdForDate() in src/app/revenue/page.tsx. It used to
+compare everything against the flat 90, a deliberate boundary while those
+thresholds were session-only; once the per-property mail started carrying
+the chart itself, a flat 90 would have drawn a different chart from the
+one on the page, and both are persisted now anyway.
 """
 from __future__ import annotations
 
@@ -42,15 +49,14 @@ from zoneinfo import ZoneInfo
 from app.config import get_supabase_client
 from app.services.email_service import STOP_SALE_TEMPLATE_KEY, email_service
 from app.services.stop_sale_watched_categories_service import get_watched
+from app.services import stop_sale_chart, stop_sale_month_thresholds_service, stop_sale_periods_service
 
 logger = logging.getLogger(__name__)
 
-# Mirrors DEFAULT_STOP_SELL_THRESHOLD in src/app/revenue/page.tsx. The
-# on-screen field is per-session and never persisted - it is PIN-gated
-# precisely because changing it changes the business definition of a stop
-# sale - so there is no "the user's current threshold" for this mail to read.
-# It reports against the same 90% every calendar opens on, and names that
-# number in the body rather than leaving a reader to assume it.
+# Mirrors DEFAULT_STOP_SELL_THRESHOLD in src/app/revenue/page.tsx - the
+# threshold for any night with no saved peak period and no saved value for
+# its month (see threshold_resolver). <<Threshold>> still reports this
+# number; a property with saved months/periods uses those on top of it.
 DEFAULT_THRESHOLD = 90
 
 # How many individual nights the detail table lists. A normal morning
@@ -118,14 +124,38 @@ def _percent_index(data: dict) -> dict:
     return out
 
 
-def _changes(current: dict, baseline: dict, threshold: float, watched: list = None) -> list:
+def threshold_resolver(property_name: str):
+    """(threshold_for(date) -> float, saved peak periods) for one property -
+    the backend twin of thresholdForDate() in src/app/revenue/page.tsx: a
+    saved peak period covering the night (earliest start first - that's the
+    order list_periods returns), else that month's saved threshold, else
+    DEFAULT_THRESHOLD. Both reads degrade to empty before their tables exist,
+    which makes this exactly the old flat-90 behaviour."""
+    periods = stop_sale_periods_service.list_periods(property_name)
+    months = stop_sale_month_thresholds_service.get_thresholds(property_name)
+
+    def threshold_for(day: str) -> float:
+        for p in periods:
+            if p.get("start_date") and p.get("end_date") and p["start_date"] <= day <= p["end_date"]:
+                return float(p["threshold"])
+        value = months.get((day or "")[:7])
+        return float(value) if value is not None else float(DEFAULT_THRESHOLD)
+
+    return threshold_for, periods
+
+
+def _changes(current: dict, baseline: dict, threshold, watched: list = None) -> list:
     """Every night whose stop-sale state flipped between the two snapshots.
+
+    `threshold` is either a flat number or a threshold_for(date) callable
+    (see threshold_resolver) - the per-night rule the calendar itself uses.
 
     `watched` is a property's saved Room Types selection (see
     stop_sale_watched_categories_service) - None means every category, same
     as the calendar's own filter defaults to before anyone touches it. An
     empty list is a real, deliberate "watch nothing," not "everything" -
     `watched is not None` is the actual gate, not truthiness."""
+    threshold_for = threshold if callable(threshold) else (lambda _day: threshold)
     was = _percent_index(baseline)
     dates = current.get("dates") or []
     names = {}
@@ -153,8 +183,9 @@ def _changes(current: dict, baseline: dict, threshold: float, watched: list = No
             # have to be real numbers here.
             if now_pct is None or prev_pct is None:
                 continue
-            now_stopped = now_pct >= threshold
-            was_stopped = prev_pct >= threshold
+            limit = threshold_for(day)
+            now_stopped = now_pct >= limit
+            was_stopped = prev_pct >= limit
             if now_stopped == was_stopped:
                 continue
             out.append({
@@ -182,6 +213,7 @@ def build_alert(threshold: float = None, property_name: str = None) -> dict:
     that property's own, and "no_data" means that ONE property has no pair
     rather than that nobody does.
     """
+    explicit = threshold is not None
     threshold = DEFAULT_THRESHOLD if threshold is None else threshold
     properties, comparable, latest = [], 0, None
     total_new = total_reopen = 0
@@ -216,7 +248,8 @@ def build_alert(threshold: float = None, property_name: str = None) -> dict:
         row["baseline_date"] = snaps[1].get("report_date")
         row["baseline_synced_at"] = snaps[1].get("synced_at")
         watched = get_watched(prop)
-        changes = _changes(snaps[0].get("data") or {}, snaps[1].get("data") or {}, threshold, watched)
+        rule = threshold if explicit else threshold_resolver(prop)[0]
+        changes = _changes(snaps[0].get("data") or {}, snaps[1].get("data") or {}, rule, watched)
         row["changes"] = changes
         row["new_stops"] = sum(1 for c in changes if c["kind"] == _NEW_STOP)
         row["reopens"] = sum(1 for c in changes if c["kind"] == _REOPEN)
@@ -236,6 +269,25 @@ def build_alert(threshold: float = None, property_name: str = None) -> dict:
         "total_new": total_new,
         "total_reopen": total_reopen,
     }
+
+
+def build_property_chart(property_name: str) -> dict:
+    """The Stop Sale Chart for one property's newest snapshot against the one
+    before it - the same pair build_alert compares, the same Room Types
+    selection and the same per-night thresholds, so the chart in the mail and
+    the change counts beside it can't describe the same night differently.
+    Only months with an existing stop, a new stop or a re-open are kept (see
+    stop_sale_chart's docstring). Raises on a read failure; the caller
+    decides whether a mail without its chart is still worth sending."""
+    snaps = _two_newest(property_name)
+    if not snaps:
+        return stop_sale_chart.build_chart(property_name, {}, None, None, lambda _d: DEFAULT_THRESHOLD)
+    threshold_for, periods = threshold_resolver(property_name)
+    current = snaps[0].get("data") or {}
+    baseline = (snaps[1].get("data") or {}) if len(snaps) > 1 else None
+    return stop_sale_chart.build_chart(
+        property_name, current, baseline, snaps[0].get("report_date"),
+        threshold_for, watched=get_watched(property_name), peak_periods=periods)
 
 
 def subject_summary(result: dict) -> str:
@@ -423,6 +475,9 @@ def render_tokens(result: dict) -> dict:
     props = result.get("properties") or []
     return {
         "Date": day.strftime("%d/%m/%Y") if day else "—",
+        # Same date, the DD-MM-YYYY form the per-property mail's default
+        # Subject ("... as of <<ReportDate>>") was asked for in.
+        "ReportDate": day.strftime("%d-%m-%Y") if day else "—",
         "Property": props[0]["property"] if len(props) == 1 else "",
         "Threshold": str(result["threshold"]),
         "NewStops": str(result["total_new"]),
@@ -503,6 +558,22 @@ def send_property(property_name: str, mark_sent: bool = True,
 
     tokens = render_tokens(result)
 
+    # The Stop Sale Chart - in the body as <<StopSaleChart>>, and attached as
+    # a PDF whether or not the template uses the token, since the PDF is the
+    # copy people forward and file. A chart that can't be built is logged and
+    # the mail still goes, carrying the change tables the template already
+    # has - better than no mail at all on the morning something moved.
+    attachments = []
+    try:
+        chart = build_property_chart(property_name)
+        tokens["StopSaleChart"] = stop_sale_chart.render_chart_html(chart)
+        attachments.append((stop_sale_chart.pdf_filename(chart), stop_sale_chart.render_chart_pdf(chart)))
+    except Exception as e:
+        logger.warning(f"Stop-sale per-property: chart for {property_name} failed: {e}")
+        tokens["StopSaleChart"] = (
+            '<p style="margin:0;font-size:13px;color:#b45309;">The stop sale chart could not be '
+            'built for this send - open Revenue &gt; Occupancy By Type Calendar for it.</p>')
+
     def fill(text: str) -> str:
         for name, value in tokens.items():
             text = text.replace(f"<<{name}>>", value)
@@ -514,7 +585,7 @@ def send_property(property_name: str, mark_sent: bool = True,
     bcc = [e.strip() for e in (row.get(f"{_PP}_bcc") or "").split(",") if e.strip()]
 
     email_service.send_email_with_attachments(
-        recipients, fill(subject), fill(template), attachments=[],
+        recipients, fill(subject), fill(template), attachments=attachments,
         text_body=render_text(result), cc_emails=cc, bcc_emails=bcc)
 
     sync_service._log_sync_row(

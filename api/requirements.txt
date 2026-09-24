@@ -12,3 +12,4 @@ cryptography
 openpyxl
 pandas
 python-multipart
+reportlab>=4.2

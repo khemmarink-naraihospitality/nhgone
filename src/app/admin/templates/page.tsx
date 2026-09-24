@@ -188,28 +188,22 @@ const ST_FILES_EMAIL_PER_PROPERTY_TOKENS: TokenDoc[] = [
 
 // Mirrors DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT / _TEMPLATE in
 // api/app/services/email_service.py - what a property that has never been
-// customized actually sends. No <<SummaryTable>> and no property count: the
-// whole mail is one property, and <<Property>> names it.
-const DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT = "Stop Sale & Re-open — <<Property>> — <<Date>>";
-const DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE = `<div style="background-color:#FFEFD2; padding:40px 16px; font-family: Arial, Helvetica, sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:960px; margin:0 auto; background:#ffffff; border:1px solid rgba(21,42,0,0.1); border-radius:4px;">
-    <tr>
-      <td style="padding:40px;">
-        <h1 style="margin:0 0 4px 0; font-family: Georgia, 'Times New Roman', serif; font-size:26px; font-weight:900; color:#152A00; letter-spacing:-0.02em;">NHGOne</h1>
-        <p style="margin:0 0 24px 0; font-size:10px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; color:#152A00; opacity:0.6;">Revenue &mdash; New Stop Sale &amp; Re-open</p>
-        <p style="margin:0 0 8px 0; font-size:14px; color:#152A00; line-height:1.6;">Changes for <b><<Property>></b> since the previous snapshot, as of <b><<Date>></b>. A night at or above <b><<Threshold>>%</b> occupancy is stopped for travel agents.</p>
-        <p style="margin:0 0 24px 0; font-size:20px; font-weight:700; color:#152A00;"><<NewStops>> new stop sale(s) &middot; <<Reopens>> re-open(s)</p>
-        <<DetailTable>>
-        <p style="margin:24px 0 0 0; font-size:11px; color:#94a3b8;">Only nights that crossed the line since the previous snapshot are listed &mdash; a stop that was already there yesterday is not news. Open Revenue &gt; Occupancy By Type Calendar for the full chart.</p>
-      </td>
-    </tr>
-  </table>
+// customized actually sends. Rewritten 24-Sep-2026 to the letter the front
+// office actually receives, with the Stop Sale Chart itself in the body
+// (<<StopSaleChart>>) and the same chart attached as a PDF on every send.
+const DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT = "Inventory review for stop sales TA Agent as of <<ReportDate>>";
+const DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE = `<div style="font-family: Arial, Helvetica, sans-serif; font-size:14px; color:#1f2937; line-height:1.6;">
+  <p style="margin:0 0 12px 0;">Dear Front Office Team,</p>
+  <p style="margin:0 0 16px 0;">Regarding our inventory for stop sales for the following months:</p>
+  <<StopSaleChart>>
 </div>`;
 
 const STOP_SALE_PER_PROPERTY_TOKENS: TokenDoc[] = [
+  { name: "StopSaleChart", description: "The Stop Sale Chart itself (pre-built HTML): STOP SALE CHART / Report as of, then one grid per month - room types down the side, days across, X existing stop, yellow X new stop, cyan o re-open. Only months with a stop or re-open are included. The same chart is always attached as a PDF, whether or not this token is used" },
+  { name: "ReportDate", description: "The newest snapshot's date as DD-MM-YYYY - the default Subject's \"as of\" date" },
   { name: "Date", description: "The newest snapshot's date (DD/MM/YYYY)" },
   { name: "Property", description: "This email's one property name" },
-  { name: "Threshold", description: "The occupancy % at or above which a night counts as stopped (90)" },
+  { name: "Threshold", description: "The default stop-sale occupancy % (90) - months and peak periods saved on the Revenue calendar override it night by night" },
   { name: "NewStops", description: "How many nights newly crossed INTO stop-sale for this property" },
   { name: "Reopens", description: "How many nights came back OUT of stop-sale for this property" },
   { name: "Summary", description: "One-line verdict for this property - usable in the Subject too" },
@@ -559,6 +553,8 @@ const TEMPLATE_CONFIG: Record<TemplateType, {
     perPropertyDefaultSubject: DEFAULT_STOP_SALE_PER_PROPERTY_SUBJECT,
     perPropertyDefaultTemplate: DEFAULT_STOP_SALE_PER_PROPERTY_TEMPLATE,
     perPropertySampleBuilder: (property) => ({
+      StopSaleChart: buildStopSaleChartSample(property || "Property Name"),
+      ReportDate: "21-09-2026",
       Date: "21/09/2026",
       Property: property || "Property Name",
       Threshold: "90",
@@ -860,6 +856,8 @@ const PREVIEW_SAMPLE_BUILDERS: Record<TemplateType, () => Record<string, string>
   // perPropertySampleBuilder (which knows which property is selected); this
   // entry only exists because the Record is keyed by every TemplateType.
   stop_sale_email_per_property: () => ({
+    StopSaleChart: buildStopSaleChartSample("Lub d Bangkok Chinatown"),
+    ReportDate: "21-09-2026",
     Date: "21/09/2026",
     Property: "Lub d Bangkok Chinatown",
     Threshold: "90",
@@ -894,6 +892,47 @@ const muted = (s: string) => `<span style="color:#94a3b8">${s}</span>`;
 // The calendar's own two stop-sale colours, mirroring stop_sale_alert_service.
 const newStop = (s: string) => `<span style="background:#fef08a;color:#b91c1c;font-weight:700">${s}</span>`;
 const reopened = (s: string) => `<span style="background:#cffafe;color:#0e7490;font-weight:700">${s}</span>`;
+
+// A two-month sample of <<StopSaleChart>> for the Preview tab, built with the
+// same markup api/app/services/stop_sale_chart.py's render_chart_html emits
+// (cellspacing="1" grid over a gray table background, bgcolor/font attributes
+// rather than per-cell styles) so the preview shows the real shape. Sample
+// data only - the sent mail's chart is always the property's own.
+function buildStopSaleChartSample(property: string): string {
+  const font = "font-family:Arial,Helvetica,sans-serif;";
+  const sampleMonths: { label: string; days: number; rows: [string, string][] }[] = [
+    { label: "SEPTEMBER 2026", days: 30, rows: [
+      ["The Duo | Twin", "..XXXX....X.......NX....o......"],
+      ["The Duo | King", "...XXX.X..XX.......XX...XX....."],
+    ] },
+    { label: "DECEMBER 2026", days: 31, rows: [
+      ["The Duo | Twin", ".................XXXXXXXXXXXXXX"],
+      ["The Duo | King", "..X.................XXXXXXNXXXX"],
+    ] },
+  ];
+  const day = (c: string) =>
+    c === "X" ? "<td><b>X</b></td>"
+      : c === "N" ? '<td bgcolor="#FFFF00"><b><font color="#C00000">X</font></b></td>'
+        : c === "o" ? '<td bgcolor="#22D3EE"><b><font color="#063B4A">o</font></b></td>'
+          : "<td></td>";
+  let html = `<div style="${font}overflow-x:auto;">`
+    + `<table cellpadding="0" cellspacing="0" style="margin:0 0 4px 0;${font}"><tr><td bgcolor="#1F3864" style="color:#ffffff;font-weight:700;font-size:13px;padding:5px 10px;">STOP SALE CHART :&nbsp;&nbsp;${property}</td></tr></table>`
+    + `<table cellpadding="0" cellspacing="0" style="margin:0 0 14px 0;${font}"><tr><td style="color:#C00000;font-weight:700;font-size:13px;padding:3px 10px 3px 0;">Report as of :</td><td bgcolor="#FFFF00" style="font-weight:700;font-size:13px;padding:3px 10px;">21/09/2026</td></tr></table>`;
+  for (const m of sampleMonths) {
+    html += `<table cellpadding="0" cellspacing="1" bgcolor="#808080" style="margin:0 0 12px 0;${font}font-size:11px;text-align:center;">`
+      + `<tr bgcolor="#D9E2F3"><td colspan="32" style="font-weight:700;font-size:12px;padding:3px 0;">${m.label}</td></tr>`
+      + `<tr bgcolor="#DCE6F1" height="18" style="font-weight:700;"><td width="170">Date</td>`
+      + Array.from({ length: 31 }, (_, i) => (i + 1 > m.days ? '<td width="22" bgcolor="#000000"></td>' : `<td width="22">${i + 1}</td>`)).join("")
+      + "</tr>";
+    for (const [label, marks] of m.rows) {
+      html += `<tr bgcolor="#ffffff" height="18"><td align="left" style="padding:1px 6px;">${label}</td>`
+        + Array.from({ length: 31 }, (_, i) => (i + 1 > m.days ? '<td bgcolor="#000000"></td>' : day(marks[i] || "."))).join("")
+        + "</tr>";
+    }
+    html += "</table>";
+  }
+  return html + "</div>";
+}
 
 const SAMPLE_REVIEW_PROPERTIES =
   '<p style="margin:0 0 4px 0;font-size:13px;color:#152A00">Needs review: ' +
