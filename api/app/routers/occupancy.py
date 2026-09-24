@@ -6,7 +6,12 @@ from pydantic import BaseModel
 
 from typing import Optional
 
-from app.services import revenue_settings_service, stop_sale_periods_service, stop_sale_watched_categories_service
+from app.services import (
+    revenue_settings_service,
+    stop_sale_month_thresholds_service,
+    stop_sale_periods_service,
+    stop_sale_watched_categories_service,
+)
 from app.services.sync_service import sync_service
 
 router = APIRouter(prefix="/occupancy", tags=["Occupancy"])
@@ -38,6 +43,14 @@ class StopSalePeriodUpdate(BaseModel):
 class WatchedCategoriesUpdate(BaseModel):
     property_name: str
     categories: Optional[list] = None
+    pin: str
+    actor: Optional[str] = None
+
+
+class MonthThresholdUpdate(BaseModel):
+    property_name: str
+    month_key: str
+    threshold: int
     pin: str
     actor: Optional[str] = None
 
@@ -284,6 +297,22 @@ def _stop_sale_periods_guard(error: Exception) -> HTTPException:
     return HTTPException(status_code=500, detail=str(error))
 
 
+def _table_write_guard(error: Exception, table: str, sql_file: str) -> HTTPException:
+    """Same shape as _stop_sale_periods_guard, generalized for the two
+    similarly-shaped tables that came after it (watched-categories,
+    month-thresholds) - a write against a table that hasn't been created
+    yet should say so plainly rather than surface Postgres/PostgREST's own
+    error text (e.g. PGRST205's "Could not find the table ... in the schema
+    cache")."""
+    message = str(error).lower()
+    if table in message and ("does not exist" in message or "not find the table" in message or "schema cache" in message):
+        return HTTPException(
+            status_code=400,
+            detail=f"The {table} table doesn't exist yet - run api/sql/{sql_file} in the Supabase SQL Editor first",
+        )
+    return HTTPException(status_code=500, detail=str(error))
+
+
 @router.get("/stop-sale-periods")
 async def get_stop_sale_periods(property_name: str = Query(...)):
     """Every saved peak-period override for this property. No PIN needed to
@@ -372,7 +401,32 @@ async def save_watched_categories(request: WatchedCategoriesUpdate):
         )
         return {"status": "success", "data": row}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise _table_write_guard(e, "stop_sale_watched_categories", "stop_sale_watched_categories.sql")
+
+
+@router.get("/month-thresholds")
+async def get_month_thresholds(property_name: str = Query(...)):
+    """{"YYYY-MM": threshold} for every month this property has saved a
+    non-default value for. No PIN needed to VIEW, matching the field itself
+    (visible to anyone who can see the calendar, gated only on changing it)."""
+    return {"status": "success", "data": stop_sale_month_thresholds_service.get_thresholds(property_name)}
+
+
+@router.put("/month-thresholds")
+async def save_month_threshold(request: MonthThresholdUpdate):
+    """Auto-saves one month's Occ% threshold. PIN-checked for the same
+    reason every other write here is: once persisted this is real, durable
+    state a client could otherwise write by calling the API directly,
+    bypassing the browser's own PIN-unlock flag entirely."""
+    _require_stop_sale_pin(request.pin)
+    _validate_threshold(request.threshold)
+    try:
+        row = stop_sale_month_thresholds_service.save_threshold(
+            request.property_name, request.month_key, request.threshold, request.actor,
+        )
+        return {"status": "success", "data": row}
+    except Exception as e:
+        raise _table_write_guard(e, "stop_sale_month_thresholds", "stop_sale_month_thresholds.sql")
 
 
 @router.post("/verify-stop-sale-pin")

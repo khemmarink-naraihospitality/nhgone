@@ -494,12 +494,18 @@ export default function RevenuePage() {
   // MonthBlock.key) rather than one shared value - at the user's request,
   // adjusting September's no longer moves October's along with it. A month
   // not yet touched falls back to DEFAULT_STOP_SELL_THRESHOLD (see
-  // thresholdForMonth below). Still deliberately session-only and
-  // unpersisted, same reasoning as before this was per-month: it changes
-  // the business definition of stop-sale and shouldn't quietly become a
-  // permanent setting nobody remembers changing - a *peak period*, by
-  // contrast, is planned weeks ahead and IS persisted (see StopSalePeriod).
+  // thresholdForMonth below). AUTO-SAVED per property since 24-Sep-2026
+  // (stop_sale_month_thresholds, loadMonthThresholds/saveMonthThreshold
+  // below) - the field was deliberately session-only before that, on the
+  // reasoning that it changes the business definition of stop-sale and
+  // shouldn't quietly become a permanent setting nobody remembers changing;
+  // the user asked for it to persist anyway, since in practice a month is
+  // set once and then just kept resetting on every reload. Writes are still
+  // PIN-gated the same way peak periods are, for the same reason - this is
+  // now real, durable state a client could otherwise write directly.
   const [stopThresholdByMonth, setStopThresholdByMonth] = useState<Record<string, number>>({});
+  const [savingMonthThresholds, setSavingMonthThresholds] = useState<Set<string>>(new Set());
+  const [monthThresholdError, setMonthThresholdError] = useState<string | null>(null);
   // Whether the threshold field has been unlocked THIS session - one shared
   // flag even though the values themselves are now per-month, since PIN
   // entry unlocks editing in general rather than one specific month's box.
@@ -947,8 +953,75 @@ export default function RevenuePage() {
     }
   };
 
+  // The Occ% threshold loads per property, same as Room Types - switching
+  // property picks up whatever that property last saved for each month.
+  const loadMonthThresholds = useCallback(async (property: string) => {
+    setMonthThresholdError(null);
+    if (!property) {
+      setStopThresholdByMonth({});
+      return;
+    }
+    try {
+      const response = await fetch(`/api/occupancy/month-thresholds?property_name=${encodeURIComponent(property)}`);
+      const res = await response.json();
+      const saved: Record<string, number> = response.ok && res.status === "success" ? res.data || {} : {};
+      setStopThresholdByMonth(saved);
+    } catch {
+      // Same degrade as everywhere else: every month falls back to
+      // DEFAULT_STOP_SELL_THRESHOLD, exactly as before this was persisted.
+      setStopThresholdByMonth({});
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMonthThresholds(selectedProperty);
+  }, [selectedProperty, loadMonthThresholds]);
+
+  // Auto-saves one month's threshold, debounced per month (500ms) so
+  // dragging the number input's spinner doesn't fire a request per tick -
+  // this is the "auto save" the field didn't have before. PIN-gated the
+  // same way Room Types and peak periods are: this is real, durable state
+  // now, and the server checks the PIN independently of the browser's own
+  // unlock flag (see _require_stop_sale_pin's own comment).
+  const monthThresholdSaveTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  const saveMonthThreshold = useCallback(
+    (monthKey: string, value: number) => {
+      if (monthThresholdSaveTimers.current[monthKey]) clearTimeout(monthThresholdSaveTimers.current[monthKey]);
+      monthThresholdSaveTimers.current[monthKey] = setTimeout(async () => {
+        setSavingMonthThresholds((prev) => new Set(prev).add(monthKey));
+        setMonthThresholdError(null);
+        try {
+          const response = await fetch("/api/occupancy/month-thresholds", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ property_name: selectedProperty, month_key: monthKey, threshold: value, pin: unlockedPin, actor }),
+          });
+          const res = await response.json();
+          if (!response.ok || res.status !== "success") throw new Error(res.detail || "Could not save the threshold.");
+        } catch (err) {
+          setMonthThresholdError(err instanceof Error ? err.message : "Could not save the threshold.");
+        } finally {
+          setSavingMonthThresholds((prev) => {
+            const next = new Set(prev);
+            next.delete(monthKey);
+            return next;
+          });
+        }
+      }, 500);
+    },
+    [selectedProperty, unlockedPin, actor]
+  );
+
+  useEffect(
+    () => () => {
+      Object.values(monthThresholdSaveTimers.current).forEach(clearTimeout);
+    },
+    []
+  );
+
   // The on-screen threshold for one month, or the default if that month's
-  // box has never been touched this session.
+  // box has never been touched (this session, or ever - see
+  // loadMonthThresholds above).
   const thresholdForMonth = useCallback(
     (monthKey: string): number => stopThresholdByMonth[monthKey] ?? DEFAULT_STOP_SELL_THRESHOLD,
     [stopThresholdByMonth]
@@ -1480,8 +1553,9 @@ export default function RevenuePage() {
                         {/* Stop-sale threshold - same row as the month label
                             and Room Types now, rather than its own line below.
                             One value PER MONTH (see stopThresholdByMonth's own
-                            comment), keyed off block.key here - PIN-gated
-                            (Admin > Revenue Settings), readOnly and
+                            comment), keyed off block.key here, auto-saved on
+                            change (debounced - see saveMonthThreshold) -
+                            PIN-gated (Admin > Revenue Settings), readOnly and
                             click-to-unlock rather than disabled, so it still
                             looks and focuses like a normal field once
                             unlocked, and the click itself is what opens the
@@ -1506,11 +1580,18 @@ export default function RevenuePage() {
                               if (!Number.isFinite(n)) return;
                               const clamped = Math.min(100, Math.max(1, n));
                               setStopThresholdByMonth((prev) => ({ ...prev, [block.key]: clamped }));
+                              saveMonthThreshold(block.key, clamped);
                             }}
                             title={stopThresholdUnlocked ? undefined : "PIN required to change this"}
                             className={`w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none ${!stopThresholdUnlocked ? "cursor-pointer" : ""}`}
                           />
                           <span>% occupancy is stopped for travel agents.</span>
+                          {savingMonthThresholds.has(block.key) && (
+                            <span className="text-[var(--text-primary)]/40">Saving…</span>
+                          )}
+                          {monthThresholdError && savingMonthThresholds.size === 0 && (
+                            <span className="text-red-600" title={monthThresholdError}>Could not save</span>
+                          )}
                         </div>
 
                         {/* Legend - same row, pushed to the far right via
