@@ -105,10 +105,35 @@ const RESERVATION_LOOKUPS = [
 // control too many - the one nobody wired up wins the argument by accident.
 // A stale "Require signature" still sitting in a saved options_enabled array
 // simply matches nothing.
+//
+// Extended 24-Sep-2026 against a real MEWS "Edit kiosk > Options" screenshot
+// (its own header: "Choose what guests can do during check-in and
+// check-out."). The first 9 entries are copied field-for-field from it,
+// same key/title and description text, in its own order - `key` is what
+// options_enabled actually stores, so it must match MEWS's title exactly
+// for these to ever mean the same thing if a real sync is ever built.
+// "Skip upsell" is NHGOne's own addition (last, after MEWS's real list) -
+// it isn't one of MEWS's Options at all, but it's genuinely wired into
+// /kiosk/registration, so it stays.
+//
+// Of these, only "Guests can remove other guests" and "Skip upsell" are
+// actually read anywhere (/kiosk/registration - see CLAUDE.md); "Staff
+// mode" is stored only (no separate guest-mode view exists yet to switch
+// out of), and the six new ones from MEWS's list are recorded only, same
+// as the Hardware/Reception fields above - none of the check-in/upsell/
+// payment flow they'd govern (space reallocation, company profiles, split
+// bills, upgrades, space selection, ID camera scan) exists yet.
 const KIOSK_OPTIONS = [
-  { key: "Guests can remove other guests", hint: "A guest checking in for several people can drop one they added at the terminal." },
-  { key: "Staff mode", hint: "Front desk can run the same flow on the guest's behalf. Stored only - there is no separate guest-mode view yet." },
-  { key: "Skip upsell", hint: "Registration goes straight to payment, skipping the offers screen." },
+  { key: "Automatic space reallocation", hint: "Moves a reservation to another inspected space of the same category when the assigned one is not ready." },
+  { key: "Automatically create company profiles", hint: "Creates company profiles automatically. Without this, staff get a task to create them by hand when a guest adds a company to their bill." },
+  { key: "Guests can remove other guests", hint: "Guests can remove others from the reservation, as long as it does not change the reservation price." },
+  { key: "Require full payment for check-in and check-out", hint: "Check-in and check-out are allowed only after all reservation charges have been paid." },
+  { key: "Guests can split bills", hint: "Guests can split bill items with the others on their reservation." },
+  { key: "Space upgrades", hint: "Guests can upgrade during check-in. Mews charges the difference between the original and the current price." },
+  { key: "Space selection by guests", hint: "Guests pick their own space during check-in. Add a description and features to each space first." },
+  { key: "Use rear camera to scan ID's in guest mode", hint: "Guests scan their ID with the rear camera to fill in their details." },
+  { key: "Staff mode", hint: "Lets staff switch the device out of guest mode into staff mode using the PIN code." },
+  { key: "Skip upsell", hint: "Registration goes straight to payment, skipping the offers screen. Not one of MEWS's own Options - NHGOne's own addition." },
 ];
 
 // The one thing this page cannot do for itself: creating a table is DDL, and
@@ -166,6 +191,26 @@ function Field({
       {children}
       {hint && <p className="text-[11px] text-slate-400 font-medium ml-1 leading-relaxed">{hint}</p>}
     </div>
+  );
+}
+
+/** A single on/off switch, styled like MEWS's own Options toggles (its blue
+ * traded here for this page's own accent colour, since this is NHGOne's
+ * admin console, not MEWS's). */
+function Toggle({ on, onToggle, label }: { on: boolean; onToggle: () => void; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      onClick={onToggle}
+      className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${on ? "bg-[#AAA024]" : "bg-slate-200"}`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${on ? "translate-x-6" : "translate-x-1"}`}
+      />
+    </button>
   );
 }
 
@@ -666,24 +711,21 @@ export default function AdminKiosksPage() {
                     </div>
                   </div>
 
-                  <Field label="Options enabled">
-                    <div className="flex flex-wrap gap-2">
+                  <Field label="Options">
+                    <p className="-mt-1 ml-1 mb-3 text-[11px] font-medium text-slate-400">
+                      Choose what guests can do during check-in and check-out.
+                    </p>
+                    <div className="divide-y divide-slate-100 rounded-2xl border border-slate-100 bg-white">
                       {KIOSK_OPTIONS.map((option) => {
                         const on = form.options_enabled.includes(option.key);
                         return (
-                          <button
-                            key={option.key}
-                            type="button"
-                            title={option.hint}
-                            onClick={() => toggleOption(option.key)}
-                            className={`rounded-full border px-4 py-1.5 text-xs font-bold transition-all ${
-                              on
-                                ? "border-[#AAA024] bg-[#AAA024]/10 text-[#7d7419]"
-                                : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                            }`}
-                          >
-                            {option.key}
-                          </button>
+                          <div key={option.key} className="flex items-start justify-between gap-4 p-4">
+                            <div>
+                              <p className="text-sm font-bold text-slate-700">{option.key}</p>
+                              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-400">{option.hint}</p>
+                            </div>
+                            <Toggle on={on} onToggle={() => toggleOption(option.key)} label={option.key} />
+                          </div>
                         );
                       })}
                     </div>
