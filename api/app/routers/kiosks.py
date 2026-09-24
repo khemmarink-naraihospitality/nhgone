@@ -68,6 +68,10 @@ class KioskUpdate(BaseModel):
     early_checkin_fee: Optional[str] = None
     checkout_grace_hours: Optional[int] = None
     checkout_grace_minutes: Optional[int] = None
+    reception_arrival_hours: Optional[int] = None
+    reception_arrival_minutes: Optional[int] = None
+    reception_departure_hours: Optional[int] = None
+    reception_departure_minutes: Optional[int] = None
     reservation_lookup: Optional[str] = None
     take_key_instructions: Optional[str] = None
     cut_key_instructions: Optional[str] = None
@@ -868,6 +872,19 @@ async def update_kiosk(kiosk_id: str, request: KioskUpdate):
         ("checkout_grace_hours", 240),
         ("checkin_grace_minutes", 59),
         ("checkout_grace_minutes", 59),
+    ):
+        if field in payload:
+            payload[field] = _clamp(payload[field], 0, high)
+
+    # Reception's arrival/departure fields are a TIME OF DAY (15:00, 12:00),
+    # not a duration like the grace periods above - clamped to 0-23/0-59
+    # rather than 0-240, or a typo of "25" hours would store and silently
+    # mean 1am the next day.
+    for field, high in (
+        ("reception_arrival_hours", 23),
+        ("reception_departure_hours", 23),
+        ("reception_arrival_minutes", 59),
+        ("reception_departure_minutes", 59),
     ):
         if field in payload:
             payload[field] = _clamp(payload[field], 0, high)

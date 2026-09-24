@@ -54,6 +54,14 @@ interface Kiosk {
   early_checkin_fee: string | null;
   checkout_grace_hours: number;
   checkout_grace_minutes: number;
+  /** Scheduled arrival/departure time of day (15:00/12:00 default) -
+   * distinct from the grace periods above, which are how much LATER than
+   * this the kiosk still allows it. Recorded only - nothing reads these
+   * yet (see the Reception section's own hint). */
+  reception_arrival_hours: number;
+  reception_arrival_minutes: number;
+  reception_departure_hours: number;
+  reception_departure_minutes: number;
   reservation_lookup: string;
   take_key_instructions: string | null;
   cut_key_instructions: string | null;
@@ -678,6 +686,61 @@ export default function AdminKiosksPage() {
                       })}
                     </div>
                   </Field>
+
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-5">
+                    <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Reception — recorded only, nothing reads these yet
+                    </p>
+                    <div className="grid grid-cols-1 gap-5 sm:grid-cols-3">
+                      <Field label="Bookable period" required hint="Fixed - MEWS's own screen shows this greyed out too.">
+                        <input className={READONLY} value="Nights" readOnly />
+                      </Field>
+                      <Field label="Arrival time">
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type="number" min={0} max={23}
+                              className={INPUT}
+                              value={form.reception_arrival_hours ?? 15}
+                              onChange={(e) => set("reception_arrival_hours", Number(e.target.value))}
+                            />
+                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-widest text-slate-300">Hours</span>
+                          </div>
+                          <div className="relative flex-1">
+                            <input
+                              type="number" min={0} max={59}
+                              className={INPUT}
+                              value={form.reception_arrival_minutes ?? 0}
+                              onChange={(e) => set("reception_arrival_minutes", Number(e.target.value))}
+                            />
+                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-widest text-slate-300">Min</span>
+                          </div>
+                        </div>
+                      </Field>
+                      <Field label="Departure time">
+                        <div className="flex gap-2">
+                          <div className="relative flex-1">
+                            <input
+                              type="number" min={0} max={23}
+                              className={INPUT}
+                              value={form.reception_departure_hours ?? 12}
+                              onChange={(e) => set("reception_departure_hours", Number(e.target.value))}
+                            />
+                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-widest text-slate-300">Hours</span>
+                          </div>
+                          <div className="relative flex-1">
+                            <input
+                              type="number" min={0} max={59}
+                              className={INPUT}
+                              value={form.reception_departure_minutes ?? 0}
+                              onChange={(e) => set("reception_departure_minutes", Number(e.target.value))}
+                            />
+                            <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold uppercase tracking-widest text-slate-300">Min</span>
+                          </div>
+                        </div>
+                      </Field>
+                    </div>
+                  </div>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                     <Field label="Check-in grace period" hint="How long after the scheduled time the kiosk still offers check-in.">
