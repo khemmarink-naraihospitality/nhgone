@@ -13,6 +13,8 @@ export interface MenuPermissions {
   reconciliation: boolean;
   users_report: boolean;
   kiosk: boolean;
+  osh_checklist: boolean;
+  osh_settings: boolean;
   admin: boolean;
 }
 
@@ -44,6 +46,9 @@ export async function getMenuPermissions(): Promise<MenuPermissions> {
     // Same reasoning: guest-facing terminal screens are not what an
     // otherwise-unconfigured role needs to be un-stranded with.
     kiosk: false,
+    // Same again: OSH emails its reports, and its Setting decides where to.
+    osh_checklist: false,
+    osh_settings: false,
     admin: false,
   });
 

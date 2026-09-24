@@ -58,6 +58,8 @@ interface RolePermissionRow {
   reconciliation: boolean;
   users_report: boolean;
   kiosk: boolean;
+  osh_checklist: boolean;
+  osh_settings: boolean;
   admin: boolean;
   restricted_properties: string[] | null;
 }
@@ -104,6 +106,8 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "reconciliation", label: "Reconciliation" },
   { key: "users_report", label: "Users Report" },
   { key: "kiosk", label: "Kiosk" },
+  { key: "osh_checklist", label: "OSH Checklist" },
+  { key: "osh_settings", label: "OSH Setting" },
   { key: "admin", label: "Admin" },
 ];
 
@@ -207,7 +211,7 @@ export default function AdminUsersPage() {
       // isn't immediately a blank/broken experience before anyone's had a
       // chance to check more boxes for it.
       const newRow: RolePermissionRow = {
-        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, revenue: false, rv: false, bcp: false, rr4_tm30: false, reconciliation: false, users_report: false, kiosk: false, admin: false, restricted_properties: null,
+        role: name, dashboard: true, data_mart: false, bills: false, rr3: false, st_files: false, revenue: false, rv: false, bcp: false, rr4_tm30: false, reconciliation: false, users_report: false, kiosk: false, osh_checklist: false, osh_settings: false, admin: false, restricted_properties: null,
       };
       const { error } = await supabase.from("role_permissions").insert(newRow);
       if (error) {

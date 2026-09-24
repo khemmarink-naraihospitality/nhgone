@@ -13,6 +13,7 @@ import {
   Building2,
   CalendarClock,
   ChartColumnBig,
+  ChartPie,
   ChevronDown,
   Database,
   FileSpreadsheet,
@@ -26,11 +27,14 @@ import {
   Mail,
   Menu,
   ClipboardList,
+  FilePenLine,
+  HardHat,
   MonitorCog,
   MonitorSmartphone,
   ReceiptText,
   Scale,
   ScrollText,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
   TrendingUp,
@@ -205,6 +209,8 @@ interface MenuPermissions {
   reconciliation: boolean;
   users_report: boolean;
   kiosk: boolean;
+  osh_checklist: boolean;
+  osh_settings: boolean;
   admin: boolean;
 }
 
@@ -672,6 +678,24 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     if (!menuPermissions?.kiosk) router.push("/dashboard");
   }, [onKioskPath, permissionsLoaded, menuPermissions, router]);
 
+  // OSH Checklist: route-guarded for the same reason as the two above. Two
+  // columns, because Setting decides which addresses every property's
+  // submitted report is emailed to - a property's own inspector gets the
+  // Form and the Report without being able to redirect their own report.
+  // A role with only osh_settings still reaches Setting (it is the page that
+  // configures the module) but not the other two.
+  const onOshPath = pathname === "/osh-checklist" || pathname.startsWith("/osh-checklist/");
+  const onOshSettingsPath = pathname === "/osh-checklist/settings";
+  useEffect(() => {
+    if (!onOshPath || !permissionsLoaded) return;
+    const allowed = onOshSettingsPath ? menuPermissions?.osh_settings : menuPermissions?.osh_checklist;
+    if (allowed) return;
+    // Land on the part of the module this role CAN use, if any.
+    if (menuPermissions?.osh_settings && !onOshSettingsPath) router.push("/osh-checklist/settings");
+    else if (menuPermissions?.osh_checklist && onOshSettingsPath) router.push("/osh-checklist/form");
+    else router.push("/dashboard");
+  }, [onOshPath, onOshSettingsPath, permissionsLoaded, menuPermissions, router]);
+
   // Admin section access guard: redirects away once the role_permissions
   // fetch has actually settled (permissionsLoaded) and the role isn't
   // allowed - waiting for that explicit signal (rather than just checking
@@ -807,6 +831,16 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     );
   }
 
+  // Same for OSH Checklist: nothing renders until the role is known to be
+  // allowed on this particular page (the effect above redirects otherwise).
+  if (onOshPath && (!permissionsLoaded || !(onOshSettingsPath ? menuPermissions?.osh_settings : menuPermissions?.osh_checklist))) {
+    return (
+      <div className="h-screen w-full flex items-center justify-center bg-background">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#AAA024]"></div>
+      </div>
+    );
+  }
+
   // Block rendering admin content for a non-Super-Admin: either permissions
   // are still resolving (show the spinner, matching the isAuthorized===null
   // state above) or they've resolved and access is denied (render nothing -
@@ -842,9 +876,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     // strand someone with an empty sidebar, and a full-screen guest check-in
     // terminal is not part of that floor.
     kiosk: false,
+    // OSH Checklist emails its reports and its Setting decides where they
+    // go - neither belongs in the empty-sidebar floor either.
+    osh_checklist: false,
+    osh_settings: false,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report || perms.kiosk;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report || perms.kiosk || perms.osh_checklist || perms.osh_settings;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -897,6 +935,26 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         ...(perms.reconciliation ? [{ href: "/reconciliation", label: "Reconciliation", icon: Scale, active: pathname === "/reconciliation" }] : []),
         ...(perms.users_report ? [{ href: "/users-report", label: "Users Report", icon: Users, active: pathname === "/users-report" }] : []),
         ...(perms.kiosk ? [{ href: "/kiosk", label: "Kiosk", icon: MonitorSmartphone, active: pathname.startsWith("/kiosk") }] : []),
+        ...(perms.osh_checklist || perms.osh_settings
+          ? [{
+              // The parent links to the first sub-menu this role can open.
+              href: perms.osh_checklist ? "/osh-checklist/form" : "/osh-checklist/settings",
+              label: "OSH Checklist",
+              icon: HardHat,
+              active: false,
+              children: [
+                ...(perms.osh_checklist
+                  ? [
+                      { href: "/osh-checklist/form", label: "OSH Form", icon: FilePenLine, active: pathname === "/osh-checklist/form" },
+                      { href: "/osh-checklist/report", label: "Report", icon: ChartPie, active: pathname === "/osh-checklist/report" },
+                    ]
+                  : []),
+                ...(perms.osh_settings
+                  ? [{ href: "/osh-checklist/settings", label: "Setting", icon: Settings, active: pathname === "/osh-checklist/settings" }]
+                  : []),
+              ],
+            }]
+          : []),
         ...(showBottomDivider ? [DIVIDER] : []),
         { href: "/log-import", label: "Log Import", icon: History, active: pathname === "/log-import" },
       ];
