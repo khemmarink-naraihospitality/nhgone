@@ -21,11 +21,12 @@ import SetupBanner from "@/lib/osh/SetupBanner";
  * checklist every property is inspected against and where every property's
  * reports are emailed - back-office configuration, not something to leave
  * on the same menu as the form a front-line inspector fills in. Gated by
- * its own `role_permissions.osh_settings` (separate from osh_checklist, the
- * OSH Form/Report permission) - see Navigation.tsx's ADMIN_OSH_SETTINGS_PATHS.
- * Every change is saved to osh_settings (shared by every property) instead
- * of this browser, and only reflected on screen once it has saved - a toast
- * says so either way.
+ * `role_permissions.osh_settings` - the same permission Report uses, since
+ * both are one "back-office OSH" grant, separate from osh_checklist (the
+ * front-end-only OSH Form permission) - see Navigation.tsx's
+ * ADMIN_OSH_PATHS. Every change is saved to osh_settings (shared by every
+ * property) instead of this browser, and only reflected on screen once it
+ * has saved - a toast says so either way.
  *
  * Fixed from the prototype, each of which left a control not doing its job:
  * - A new checklist item got the code "{001}": its template string had lost

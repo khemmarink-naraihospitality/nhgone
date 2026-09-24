@@ -12,22 +12,26 @@
 -- saving anything reports that this file needs running.
 
 -- ---------------------------------------------------------------------------
--- 1. Two permissions, not one
+-- 1. Two permissions, not one - and NOT a Form/Report vs. Setting split
 -- ---------------------------------------------------------------------------
--- osh_checklist  - the sidebar "OSH" menu (the inspection form itself) AND
---                  Admin Console > OSH > Report (moved there 24-Sep-2026).
--- osh_settings   - Admin Console > OSH > Setting only. Split out because
---                  Setting decides which checklist every property is
---                  inspected against AND which addresses the submitted
---                  reports are emailed to - a property's own inspector
---                  should not be able to redirect their own report.
+-- osh_checklist  - the sidebar "OSH" menu ONLY: the inspection form itself,
+--                  for whoever actually fills it in.
+-- osh_settings   - the whole back-office OSH area in Admin Console, Report
+--                  AND Setting TOGETHER (one grant, not per-page) - e.g. a
+--                  "P&C"-style role that reviews every property's filed
+--                  reports and configures the checklist/recipients, as
+--                  opposed to an "OSH" role that only fills the form. This
+--                  was corrected 24-Sep-2026: an earlier version of this
+--                  split put Report under osh_checklist alongside the Form,
+--                  which the user pointed out doesn't match how the module
+--                  is actually staffed - a role that fills the form has no
+--                  particular need to read every property's history back.
 -- Both default to false for every existing role; Super Admin is switched on
 -- explicitly because ordinary sidebar menus are read straight from this
 -- table (only the Admin menu is hardcoded to pass for Super Admin). The two
 -- Admin Console sub-pages use Navigation.tsx's limitedAdminPaths mechanism
 -- (same one RR4/TM30-Nationality and Email Template use) so a role with
--- either column set reaches its one OSH sub-page without needing the
--- `admin` column too.
+-- osh_settings reaches both without needing the `admin` column too.
 alter table public.role_permissions
     add column if not exists osh_checklist boolean not null default false,
     add column if not exists osh_settings boolean not null default false;

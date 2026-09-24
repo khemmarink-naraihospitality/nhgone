@@ -106,7 +106,12 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "reconciliation", label: "Reconciliation" },
   { key: "users_report", label: "Users Report" },
   { key: "kiosk", label: "Kiosk" },
-  { key: "osh_checklist", label: "OSH (Form + Report)" },
+  // osh_checklist: the front-end OSH Form (sidebar) only. osh_settings: the
+  // whole back-office OSH area in Admin Console - Report AND Setting
+  // together (a "P&C"-style reviewing/configuring role), separate from who
+  // may fill the form in the first place. See Navigation.tsx's
+  // ADMIN_OSH_PATHS for the enforcement.
+  { key: "osh_checklist", label: "OSH" },
   { key: "osh_settings", label: "OSH Setting" },
   { key: "admin", label: "Admin" },
 ];

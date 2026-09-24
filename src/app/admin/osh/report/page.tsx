@@ -17,10 +17,14 @@ import SetupBanner from "@/lib/osh/SetupBanner";
  * reading of every property's submitted inspections, which belongs in
  * Admin Console next to the rest of the OSH configuration, not on the same
  * menu as the inspection form itself. Gated by `role_permissions.
- * osh_checklist`, same permission the OSH Form menu item uses - see
- * Navigation.tsx's ADMIN_OSH_REPORT_PATHS. Reports come from osh_reports
- * rather than this browser, so every inspection any property has submitted
- * is here. Differences from the prototype:
+ * osh_settings` - the same permission Setting uses, not osh_checklist (the
+ * separate, front-end-only OSH Form permission) - since this whole back-
+ * office area is meant to be one grant (a "P&C"-style role reviewing every
+ * property's reports and configuring the checklist) distinct from who may
+ * fill the form in the first place. See Navigation.tsx's ADMIN_OSH_PATHS.
+ * Reports come from osh_reports rather than this browser, so every
+ * inspection any property has submitted is here. Differences from the
+ * prototype:
  *
  * - A role restricted to some properties only sees those properties'
  *   reports, and only those in the Property filter.

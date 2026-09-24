@@ -368,15 +368,15 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const ADMIN_NATIONALITY_PATHS = ["/admin/rr4-nationality", "/admin/tm30-nationality"];
 const ADMIN_REVENUE_PATHS = ["/admin/templates"];
 // Report and Setting moved here from the OSH sidebar menu itself
-// (24-Sep-2026, at the user's request) - each kept its own gating
-// permission rather than folding into one, since osh_settings alone (no
-// osh_checklist) should reach Setting but not Report, and vice versa.
-// /admin/osh itself (the parent link, which just redirects to whichever
-// child a role can open) is allowed whenever either grants anything below
-// it, or the redirect would bounce a legitimately-allowed role straight
-// back out before it fires.
-const ADMIN_OSH_REPORT_PATHS = ["/admin/osh", "/admin/osh/report"];
-const ADMIN_OSH_SETTINGS_PATHS = ["/admin/osh", "/admin/osh/settings"];
+// (24-Sep-2026, at the user's request). Both gated by osh_settings alone,
+// not osh_checklist - corrected the same day once the user clarified the
+// intended split: osh_checklist is purely the front-end OSH Form (sidebar),
+// osh_settings is the whole back-office OSH area in Admin Console (Report
+// AND Setting together, e.g. a "P&C" role reviewing every property's
+// filed reports and configuring the checklist, as opposed to an "OSH" role
+// that only fills the form). /admin/osh itself is included since it's just
+// a redirect to whichever child a role can open.
+const ADMIN_OSH_PATHS = ["/admin/osh", "/admin/osh/report", "/admin/osh/settings"];
 
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -654,10 +654,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     () => (hasFullAdmin ? null : [
       ...(menuPermissions?.rr4_tm30 ? ADMIN_NATIONALITY_PATHS : []),
       ...(menuPermissions?.revenue ? ADMIN_REVENUE_PATHS : []),
-      ...(menuPermissions?.osh_checklist ? ADMIN_OSH_REPORT_PATHS : []),
-      ...(menuPermissions?.osh_settings ? ADMIN_OSH_SETTINGS_PATHS : []),
+      ...(menuPermissions?.osh_settings ? ADMIN_OSH_PATHS : []),
     ]),
-    [hasFullAdmin, menuPermissions?.rr4_tm30, menuPermissions?.revenue, menuPermissions?.osh_checklist, menuPermissions?.osh_settings],
+    [hasFullAdmin, menuPermissions?.rr4_tm30, menuPermissions?.revenue, menuPermissions?.osh_settings],
   );
   const canEnterAdmin = hasFullAdmin || (limitedAdminPaths?.length ?? 0) > 0;
 
@@ -689,11 +688,13 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     if (!menuPermissions?.kiosk) router.push("/dashboard");
   }, [onKioskPath, permissionsLoaded, menuPermissions, router]);
 
-  // OSH: route-guarded for the same reason as the two above. This is now
-  // just the inspection form (Report and Setting moved to Admin Console >
-  // OSH, 24-Sep-2026, at the user's request - they're gated there by the
-  // same osh_checklist/osh_settings columns through limitedAdminPaths
-  // below), so one permission is the whole guard.
+  // OSH: route-guarded for the same reason as the two above. This is the
+  // front-end inspection form only (osh_checklist) - Report and Setting
+  // moved to Admin Console > OSH, 24-Sep-2026, at the user's request, and
+  // are gated there entirely by osh_settings (below, via limitedAdminPaths)
+  // - a "P&C"-style back-office role and an "OSH"-style form-filling role
+  // are meant to be two different grants, not the same one split across
+  // pages.
   const onOshPath = pathname === "/osh-checklist";
   useEffect(() => {
     if (!onOshPath || !permissionsLoaded) return;
@@ -925,22 +926,19 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
       // (24-Sep-2026, at the user's request - see the OSH menu item's own
       // comment above). Unlike Kiosks, /admin/osh has no content of its
       // own; it just redirects to whichever child this role can open (see
-      // src/app/admin/osh/page.tsx). Children are gated INDIVIDUALLY, not
-      // just at this top level - a role with only osh_settings (no
-      // osh_checklist) must see Setting here without Report appearing too,
-      // and the outer limitedAdminPaths filter below only checks this
-      // entry's own href, not its children's.
+      // src/app/admin/osh/page.tsx). Both children share one gate -
+      // osh_settings - since this whole entry IS the "back-office OSH"
+      // grant (osh_checklist is the separate front-end Form permission,
+      // gated on its own sidebar item, not here), so there's no per-child
+      // permission split to make: a role that reaches this entry at all
+      // (via the outer limitedAdminPaths filter below) sees both.
       href: "/admin/osh",
       label: "OSH",
       icon: HardHat,
       active: pathname === "/admin/osh" || pathname.startsWith("/admin/osh/"),
       children: [
-        ...(hasFullAdmin || menuPermissions?.osh_checklist
-          ? [{ href: "/admin/osh/report", label: "Report", icon: ChartPie, active: pathname === "/admin/osh/report" }]
-          : []),
-        ...(hasFullAdmin || menuPermissions?.osh_settings
-          ? [{ href: "/admin/osh/settings", label: "Setting", icon: Settings, active: pathname === "/admin/osh/settings" }]
-          : []),
+        { href: "/admin/osh/report", label: "Report", icon: ChartPie, active: pathname === "/admin/osh/report" },
+        { href: "/admin/osh/settings", label: "Setting", icon: Settings, active: pathname === "/admin/osh/settings" },
       ],
     },
     { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
