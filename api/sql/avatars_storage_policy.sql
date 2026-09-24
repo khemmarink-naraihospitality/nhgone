@@ -24,6 +24,11 @@
 -- Safe to run more than once - each policy is dropped and recreated rather
 -- than requiring a fresh name, since Postgres has no
 -- "CREATE POLICY IF NOT EXISTS".
+--
+-- Also run avatars_storage_prefixes_policy.sql right after this one. This
+-- file alone was not enough on this project: its Storage server (1.77.5)
+-- tracks folder hierarchy in a second table, storage.prefixes, which has
+-- its own RLS and needs the same policy shape - see that file for why.
 
 drop policy if exists "avatars_insert_own_folder" on storage.objects;
 create policy "avatars_insert_own_folder"
