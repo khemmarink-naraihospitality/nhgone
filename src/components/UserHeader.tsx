@@ -99,8 +99,14 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
   // Where the Admin Console link points: "/admin" for full admins, and the
   // one page they ARE allowed for roles let in on a single ordinary menu
   // permission - /admin itself is not one of those pages and would just
-  // redirect. Kept in step with ADMIN_NATIONALITY_PATHS / ADMIN_REVENUE_PATHS
-  // in Navigation.tsx, which is what actually enforces this.
+  // redirect. Kept in step with ADMIN_NATIONALITY_PATHS / ADMIN_REVENUE_PATHS /
+  // ADMIN_OSH_PATHS in Navigation.tsx, which is what actually enforces this -
+  // this component keeps its own separate copy of the same list (a
+  // duplication worth watching: osh_settings was added there 24-Sep-2026 and
+  // missed here at first, which is exactly the failure mode - a role with
+  // osh_settings and nothing else could reach /admin/osh/* by typing the URL
+  // but had no link to it at all, since this component didn't know that
+  // permission existed).
   const [adminHref, setAdminHref] = useState("/admin");
   const rootRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -128,13 +134,16 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
         // Super Admin always sees the Admin Console link regardless of the
         // Role Settings grid (locked in the UI - see admin/users Role
         // Settings tab). Other roles depend on their role_permissions.admin
-        // flag, driven by the same grid - or on one of the two permissions
-        // that grant a cut-down Admin Console: rr4_tm30 opens the two
-        // nationality code tables, revenue opens Email Template (where the
-        // Stop Sale & Re-open mail is configured). Navigation.tsx's
-        // ADMIN_NATIONALITY_PATHS / ADMIN_REVENUE_PATHS are what actually
-        // enforce this; the link target below just has to match, since
-        // /admin itself redirects for those roles.
+        // flag, driven by the same grid - or on one of the permissions that
+        // grant a cut-down Admin Console: rr4_tm30 opens the two nationality
+        // code tables, revenue opens Email Template (where the Stop Sale &
+        // Re-open mail is configured), osh_settings opens Admin Console > OSH
+        // (Report + Setting - see Navigation.tsx's ADMIN_OSH_PATHS; note
+        // osh_checklist does NOT grant this - that permission is purely the
+        // front-end OSH Form). Navigation.tsx's ADMIN_NATIONALITY_PATHS /
+        // ADMIN_REVENUE_PATHS / ADMIN_OSH_PATHS are what actually enforce
+        // this; the link target below just has to match, since /admin itself
+        // redirects for those roles.
         // select("*") rather than a column list, same reason Navigation.tsx
         // uses it: a column missing in the DB would otherwise fail the whole
         // query and hide the link from legitimate admins.
@@ -146,11 +155,13 @@ export function ProfileMenu({ variant, collapsed = false }: { variant: "sidebar"
             .select("*")
             .eq("role", data.role)
             .single();
-          setCanAccessAdmin(!!permRow?.admin || !!permRow?.rr4_tm30 || !!permRow?.revenue);
+          setCanAccessAdmin(!!permRow?.admin || !!permRow?.rr4_tm30 || !!permRow?.revenue || !!permRow?.osh_settings);
           setAdminHref(
             permRow?.admin ? "/admin"
               : permRow?.rr4_tm30 ? "/admin/rr4-nationality"
-                : "/admin/templates");
+                : permRow?.revenue ? "/admin/templates"
+                  : permRow?.osh_settings ? "/admin/osh"
+                    : "/admin");
         }
       }
     };
