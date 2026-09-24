@@ -359,6 +359,18 @@ export default function AdminUsersPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", role: "User", full_name: "", auth_method: "google" });
   const [creating, setCreating] = useState(false);
+  // Converted from alert() 24-Sep-2026, touching this flow to fix the "A
+  // user with this email address has already been registered" case (see
+  // CLAUDE.md's no-alert()/confirm() rule - "convert a flow's popups as
+  // part of any work that touches that flow"). createError is a hard
+  // failure, shown above the form so it can be fixed and retried without
+  // losing what was typed. createNotice is the soft one - created, but the
+  // welcome email failed - which used to fire an alert() right after the
+  // modal had already closed and reset the form; it now keeps the modal
+  // open on a small confirmation state instead, so the set-password link it
+  // may carry isn't a dialog the admin has to copy from before it vanishes.
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createNotice, setCreateNotice] = useState<{ message: string; link: string | null } | null>(null);
   const [approvingUser, setApprovingUser] = useState<UserProfile | null>(null);
   const [approveRole, setApproveRole] = useState("User");
   const [approving, setApproving] = useState(false);
@@ -393,9 +405,17 @@ export default function AdminUsersPage() {
     return () => document.removeEventListener("click", closeMenu);
   }, [openRoleActionMenu]);
 
+  const closeCreateModal = () => {
+    setShowCreateModal(false);
+    setNewUser({ email: "", role: "User", full_name: "", auth_method: "google" });
+    setCreateError(null);
+    setCreateNotice(null);
+  };
+
   const handleCreateUser = async () => {
+    setCreateError(null);
     if (!newUser.email) {
-      alert("Email is required");
+      setCreateError("Email is required");
       return;
     }
     setCreating(true);
@@ -410,22 +430,25 @@ export default function AdminUsersPage() {
       });
       const result = await response.json();
       if (result.status === "success") {
-        setShowCreateModal(false);
-        setNewUser({ email: "", role: "User", full_name: "", auth_method: "google" });
         fetchUsers();
         if (!result.email_sent) {
-          alert(
-            `User created, but the welcome email failed to send: ${result.email_error || "unknown error"}. ` +
-            (result.set_password_link
-              ? `Share this set-password link with them directly: ${result.set_password_link}`
-              : `Please share access details with them directly.`)
-          );
+          // Created, but the welcome email didn't go out - keep the modal
+          // open on a confirmation state (below) rather than closing it and
+          // firing an alert() after the fact, so a set-password link this
+          // carries stays on screen to copy rather than living in a dialog
+          // that's already gone once read.
+          setCreateNotice({
+            message: `User created, but the welcome email failed to send: ${result.email_error || "unknown error"}.`,
+            link: result.set_password_link || null,
+          });
+        } else {
+          closeCreateModal();
         }
       } else {
-        alert("Error: " + (result.detail || result.message));
+        setCreateError(result.detail || result.message || "Could not create the user.");
       }
-    } catch (err: any) {
-      alert("Failed to connect to backend");
+    } catch {
+      setCreateError("Failed to connect to backend.");
     } finally {
       setCreating(false);
     }
@@ -1387,12 +1410,38 @@ export default function AdminUsersPage() {
            <div className="bg-[#1a1a1a] rounded-[24px] w-full max-w-[440px] shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-white/10 p-8">
               <div className="flex justify-between items-center mb-8">
                  <h2 className="text-xl font-bold text-white">Create a new user</h2>
-                 <button onClick={() => setShowCreateModal(false)} className="text-white/40 hover:text-white transition-colors">
+                 <button onClick={closeCreateModal} className="text-white/40 hover:text-white transition-colors">
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                  </button>
               </div>
-              
+
+              {createNotice ? (
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-200 leading-relaxed">
+                    <p>{createNotice.message}</p>
+                    {createNotice.link ? (
+                      <>
+                        <p className="mt-2 text-xs text-amber-200/80">Share this set-password link with them directly:</p>
+                        <p className="mt-1 break-all rounded-lg bg-black/30 p-2 font-mono text-[11px] text-amber-100">{createNotice.link}</p>
+                      </>
+                    ) : (
+                      <p className="mt-2 text-xs text-amber-200/80">Please share access details with them directly.</p>
+                    )}
+                  </div>
+                  <button
+                    onClick={closeCreateModal}
+                    className="w-full bg-[#059669] hover:bg-[#047857] text-white rounded-xl py-3.5 text-sm font-extrabold shadow-xl shadow-emerald-900/20 transition-all active:scale-[0.98]"
+                  >
+                    Done
+                  </button>
+                </div>
+              ) : (
               <div className="space-y-6">
+                  {createError && (
+                    <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-xs text-red-200 leading-relaxed">
+                      {createError}
+                    </div>
+                  )}
                   <div className="space-y-2">
                      <label className="text-xs font-bold text-white/60 ml-1">Full Name</label>
                      <div className="relative">
@@ -1481,7 +1530,7 @@ export default function AdminUsersPage() {
                      </p>
                   </div>
 
-                 <button 
+                 <button
                    onClick={handleCreateUser}
                    disabled={creating}
                    className="w-full bg-[#059669] hover:bg-[#047857] text-white rounded-xl py-3.5 text-sm font-extrabold shadow-xl shadow-emerald-900/20 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed mt-2"
@@ -1489,6 +1538,7 @@ export default function AdminUsersPage() {
                    {creating ? "Creating user..." : "Create user"}
                  </button>
               </div>
+              )}
            </div>
         </div>
       )}

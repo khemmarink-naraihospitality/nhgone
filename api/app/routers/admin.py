@@ -168,16 +168,61 @@ async def create_user(request: UserCreateRequest):
     is_internal = request.auth_method == "internal"
     try:
         admin_supabase = get_supabase_client()
+
+        # Common case, and worth catching before even calling the Auth Admin
+        # API: this person already signed in with Google once, before anyone
+        # invited them - the on_auth_user_created trigger auto-provisions
+        # role='User'/status='Pending' for exactly that (see self_register's
+        # own docstring), entirely independent of this endpoint. Supabase's
+        # own "already registered" error doesn't say any of that, so an admin
+        # hitting it here has no next step - check first and say so plainly.
+        existing = admin_supabase.table("profiles").select("id, status, role") \
+            .eq("email", request.email).limit(1).execute()
+        if existing.data:
+            row = existing.data[0]
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"{request.email} already has an account here (status: {row['status']}, "
+                    f"role: {row['role']}). They likely signed in with Google once already, before "
+                    "being invited. Use Approve (or Edit) on their existing row in the Users list "
+                    "instead of creating a new one."
+                ),
+            )
+
         random_password = secrets.token_urlsafe(32)
-        auth_res = admin_supabase.auth.admin.create_user({
-            "email": request.email,
-            "password": random_password,
-            "email_confirm": True,
-            "user_metadata": {
-                "full_name": request.full_name,
-                "role": request.role
-            }
-        })
+        try:
+            auth_res = admin_supabase.auth.admin.create_user({
+                "email": request.email,
+                "password": random_password,
+                "email_confirm": True,
+                "user_metadata": {
+                    "full_name": request.full_name,
+                    "role": request.role
+                }
+            })
+        except HTTPException:
+            raise
+        except Exception as auth_error:
+            message = str(auth_error).lower()
+            if "already" in message and "registered" in message:
+                # No profiles row, yet Auth already knows this email - a
+                # genuinely orphaned auth.users row (the exact hazard the
+                # rollback further down exists to prevent), just from before
+                # that rollback existed, or a run where the rollback itself
+                # failed. This endpoint alone can't safely clean up someone
+                # else's auth row without more certainty than "no profile
+                # yet" gives it, so it says what's true and hands off.
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{request.email} is already registered in Supabase Auth but has no profile "
+                        "row here - likely left over from an earlier failed attempt. Ask an engineer "
+                        "to remove that orphaned auth.users row (Supabase Dashboard > Authentication > "
+                        "Users) before creating this account again."
+                    ),
+                )
+            raise
         if not auth_res or not auth_res.user:
             raise HTTPException(status_code=400, detail="Failed to create auth user")
         user_id = auth_res.user.id
@@ -249,6 +294,14 @@ async def create_user(request: UserCreateRequest):
             # a Google-flow account has no link or password to share.
             "set_password_link": set_password_link,
         }
+    except HTTPException:
+        # Re-raise as-is - without this, the broad except below would catch
+        # every HTTPException raised above too (it's an Exception subclass)
+        # and rewrap it as a flat 500 with "409: ..." glued onto the front
+        # of the detail text (str(HTTPException) includes the status code).
+        # Found and fixed 24-Sep-2026 while adding the 409s above; the
+        # profile-rollback branch further up had the same latent issue.
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
