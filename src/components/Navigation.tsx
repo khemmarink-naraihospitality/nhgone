@@ -27,7 +27,6 @@ import {
   Mail,
   Menu,
   ClipboardList,
-  FilePenLine,
   HardHat,
   MonitorCog,
   MonitorSmartphone,
@@ -368,6 +367,16 @@ const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 // are the ones who need to change its recipients and send times.
 const ADMIN_NATIONALITY_PATHS = ["/admin/rr4-nationality", "/admin/tm30-nationality"];
 const ADMIN_REVENUE_PATHS = ["/admin/templates"];
+// Report and Setting moved here from the OSH sidebar menu itself
+// (24-Sep-2026, at the user's request) - each kept its own gating
+// permission rather than folding into one, since osh_settings alone (no
+// osh_checklist) should reach Setting but not Report, and vice versa.
+// /admin/osh itself (the parent link, which just redirects to whichever
+// child a role can open) is allowed whenever either grants anything below
+// it, or the redirect would bounce a legitimately-allowed role straight
+// back out before it fires.
+const ADMIN_OSH_REPORT_PATHS = ["/admin/osh", "/admin/osh/report"];
+const ADMIN_OSH_SETTINGS_PATHS = ["/admin/osh", "/admin/osh/settings"];
 
 export default function Navigation({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -645,8 +654,10 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     () => (hasFullAdmin ? null : [
       ...(menuPermissions?.rr4_tm30 ? ADMIN_NATIONALITY_PATHS : []),
       ...(menuPermissions?.revenue ? ADMIN_REVENUE_PATHS : []),
+      ...(menuPermissions?.osh_checklist ? ADMIN_OSH_REPORT_PATHS : []),
+      ...(menuPermissions?.osh_settings ? ADMIN_OSH_SETTINGS_PATHS : []),
     ]),
-    [hasFullAdmin, menuPermissions?.rr4_tm30, menuPermissions?.revenue],
+    [hasFullAdmin, menuPermissions?.rr4_tm30, menuPermissions?.revenue, menuPermissions?.osh_checklist, menuPermissions?.osh_settings],
   );
   const canEnterAdmin = hasFullAdmin || (limitedAdminPaths?.length ?? 0) > 0;
 
@@ -678,23 +689,16 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     if (!menuPermissions?.kiosk) router.push("/dashboard");
   }, [onKioskPath, permissionsLoaded, menuPermissions, router]);
 
-  // OSH Checklist: route-guarded for the same reason as the two above. Two
-  // columns, because Setting decides which addresses every property's
-  // submitted report is emailed to - a property's own inspector gets the
-  // Form and the Report without being able to redirect their own report.
-  // A role with only osh_settings still reaches Setting (it is the page that
-  // configures the module) but not the other two.
-  const onOshPath = pathname === "/osh-checklist" || pathname.startsWith("/osh-checklist/");
-  const onOshSettingsPath = pathname === "/osh-checklist/settings";
+  // OSH: route-guarded for the same reason as the two above. This is now
+  // just the inspection form (Report and Setting moved to Admin Console >
+  // OSH, 24-Sep-2026, at the user's request - they're gated there by the
+  // same osh_checklist/osh_settings columns through limitedAdminPaths
+  // below), so one permission is the whole guard.
+  const onOshPath = pathname === "/osh-checklist";
   useEffect(() => {
     if (!onOshPath || !permissionsLoaded) return;
-    const allowed = onOshSettingsPath ? menuPermissions?.osh_settings : menuPermissions?.osh_checklist;
-    if (allowed) return;
-    // Land on the part of the module this role CAN use, if any.
-    if (menuPermissions?.osh_settings && !onOshSettingsPath) router.push("/osh-checklist/settings");
-    else if (menuPermissions?.osh_checklist && onOshSettingsPath) router.push("/osh-checklist/form");
-    else router.push("/dashboard");
-  }, [onOshPath, onOshSettingsPath, permissionsLoaded, menuPermissions, router]);
+    if (!menuPermissions?.osh_checklist) router.push("/dashboard");
+  }, [onOshPath, permissionsLoaded, menuPermissions, router]);
 
   // Admin section access guard: redirects away once the role_permissions
   // fetch has actually settled (permissionsLoaded) and the role isn't
@@ -831,9 +835,9 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     );
   }
 
-  // Same for OSH Checklist: nothing renders until the role is known to be
-  // allowed on this particular page (the effect above redirects otherwise).
-  if (onOshPath && (!permissionsLoaded || !(onOshSettingsPath ? menuPermissions?.osh_settings : menuPermissions?.osh_checklist))) {
+  // Same for OSH: nothing renders until the role is known to be allowed on
+  // this page (the effect above redirects otherwise).
+  if (onOshPath && (!permissionsLoaded || !menuPermissions?.osh_checklist)) {
     return (
       <div className="h-screen w-full flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-[#AAA024]"></div>
@@ -876,13 +880,15 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
     // strand someone with an empty sidebar, and a full-screen guest check-in
     // terminal is not part of that floor.
     kiosk: false,
-    // OSH Checklist emails its reports and its Setting decides where they
-    // go - neither belongs in the empty-sidebar floor either.
+    // OSH is a real inspection form, submitted and emailed - not part of
+    // the empty-sidebar floor. osh_settings has no main-sidebar item of its
+    // own (Setting lives in Admin Console > OSH now), so it's excluded from
+    // this fallback and from midSection below on purpose.
     osh_checklist: false,
     osh_settings: false,
     admin: false,
   };
-  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report || perms.kiosk || perms.osh_checklist || perms.osh_settings;
+  const midSection = perms.data_mart || perms.bills || perms.rr3 || perms.st_files || perms.revenue || perms.rv || perms.bcp || perms.rr4_tm30 || perms.reconciliation || perms.users_report || perms.kiosk || perms.osh_checklist;
   const showTopDivider = perms.dashboard && midSection;
   // Log Import is no longer an individually-gated menu (used to be
   // perms.log_import) - it shows unconditionally for every role, since its
@@ -914,6 +920,29 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         { href: "/admin/kiosks/checkin-form", label: "Check In Form", icon: ClipboardList, active: pathname === "/admin/kiosks/checkin-form" },
       ],
     },
+    {
+      // Report and Setting moved here from the OSH sidebar menu itself
+      // (24-Sep-2026, at the user's request - see the OSH menu item's own
+      // comment above). Unlike Kiosks, /admin/osh has no content of its
+      // own; it just redirects to whichever child this role can open (see
+      // src/app/admin/osh/page.tsx). Children are gated INDIVIDUALLY, not
+      // just at this top level - a role with only osh_settings (no
+      // osh_checklist) must see Setting here without Report appearing too,
+      // and the outer limitedAdminPaths filter below only checks this
+      // entry's own href, not its children's.
+      href: "/admin/osh",
+      label: "OSH",
+      icon: HardHat,
+      active: pathname === "/admin/osh" || pathname.startsWith("/admin/osh/"),
+      children: [
+        ...(hasFullAdmin || menuPermissions?.osh_checklist
+          ? [{ href: "/admin/osh/report", label: "Report", icon: ChartPie, active: pathname === "/admin/osh/report" }]
+          : []),
+        ...(hasFullAdmin || menuPermissions?.osh_settings
+          ? [{ href: "/admin/osh/settings", label: "Setting", icon: Settings, active: pathname === "/admin/osh/settings" }]
+          : []),
+      ],
+    },
     { href: "/admin/rr4-nationality", label: "RR4-Nationality", icon: Flag, active: pathname === "/admin/rr4-nationality" },
     { href: "/admin/tm30-nationality", label: "TM30-Nationality", icon: Globe, active: pathname === "/admin/tm30-nationality" },
     { href: "/admin/logs", label: "Activity Log", icon: ScrollText, active: pathname === "/admin/logs" },
@@ -935,26 +964,12 @@ export default function Navigation({ children }: { children: React.ReactNode }) 
         ...(perms.reconciliation ? [{ href: "/reconciliation", label: "Reconciliation", icon: Scale, active: pathname === "/reconciliation" }] : []),
         ...(perms.users_report ? [{ href: "/users-report", label: "Users Report", icon: Users, active: pathname === "/users-report" }] : []),
         ...(perms.kiosk ? [{ href: "/kiosk", label: "Kiosk", icon: MonitorSmartphone, active: pathname.startsWith("/kiosk") }] : []),
-        ...(perms.osh_checklist || perms.osh_settings
-          ? [{
-              // The parent links to the first sub-menu this role can open.
-              href: perms.osh_checklist ? "/osh-checklist/form" : "/osh-checklist/settings",
-              label: "OSH Checklist",
-              icon: HardHat,
-              active: false,
-              children: [
-                ...(perms.osh_checklist
-                  ? [
-                      { href: "/osh-checklist/form", label: "OSH Form", icon: FilePenLine, active: pathname === "/osh-checklist/form" },
-                      { href: "/osh-checklist/report", label: "Report", icon: ChartPie, active: pathname === "/osh-checklist/report" },
-                    ]
-                  : []),
-                ...(perms.osh_settings
-                  ? [{ href: "/osh-checklist/settings", label: "Setting", icon: Settings, active: pathname === "/osh-checklist/settings" }]
-                  : []),
-              ],
-            }]
-          : []),
+        // Just the inspection form now (renamed from "OSH Checklist" and
+        // flattened out of its Form/Report/Setting group, 24-Sep-2026, at
+        // the user's request) - Report and Setting moved to Admin Console >
+        // OSH (see adminEntries below), so this is a plain leaf item like
+        // Kiosk just above it, not a NavGroup.
+        ...(perms.osh_checklist ? [{ href: "/osh-checklist", label: "OSH", icon: HardHat, active: pathname === "/osh-checklist" }] : []),
         ...(showBottomDivider ? [DIVIDER] : []),
         { href: "/log-import", label: "Log Import", icon: History, active: pathname === "/log-import" },
       ];

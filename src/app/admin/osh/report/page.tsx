@@ -5,15 +5,22 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, Eye, FileText, LayoutDashboard, Loader2, Printer } from "lucide-react";
 import type { OshReport } from "@/lib/osh/defaults";
 import { renderReportHTML } from "@/lib/osh/report";
-import { apiJson, useAllowedOshProperties, useOshSettings } from "../oshClient";
-import SetupBanner from "../SetupBanner";
+import { apiJson, useAllowedOshProperties, useOshSettings } from "@/lib/osh/oshClient";
+import SetupBanner from "@/lib/osh/SetupBanner";
 
 /**
- * OSH Checklist > Report - the prototype's ReportsView: filters, the four
- * totals, the per-category bars, the submitted-report history, and "View
- * Custom PDF" (the report rendered through Setting > Report Templates).
- * Reports come from osh_reports rather than this browser, so every
- * inspection any property has submitted is here. Differences:
+ * Admin Console > OSH > Report - the prototype's ReportsView: filters, the
+ * four totals, the per-category bars, the submitted-report history, and
+ * "View Custom PDF" (the report rendered through Setting > Report
+ * Templates). Moved here from the OSH sidebar menu's own Report tab
+ * (24-Sep-2026, at the user's request) - this is head-office/back-office
+ * reading of every property's submitted inspections, which belongs in
+ * Admin Console next to the rest of the OSH configuration, not on the same
+ * menu as the inspection form itself. Gated by `role_permissions.
+ * osh_checklist`, same permission the OSH Form menu item uses - see
+ * Navigation.tsx's ADMIN_OSH_REPORT_PATHS. Reports come from osh_reports
+ * rather than this browser, so every inspection any property has submitted
+ * is here. Differences from the prototype:
  *
  * - A role restricted to some properties only sees those properties'
  *   reports, and only those in the Property filter.
@@ -147,7 +154,7 @@ function OshReportView() {
 
   const closeReport = () => {
     setViewReport(null);
-    if (linkedId) router.replace("/osh-checklist/report");
+    if (linkedId) router.replace("/admin/osh/report");
   };
 
   if (!settings || reports === null) {

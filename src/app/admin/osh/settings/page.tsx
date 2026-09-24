@@ -10,15 +10,22 @@ import {
   type OshFormItem,
 } from "@/lib/osh/defaults";
 import { renderReportHTML } from "@/lib/osh/report";
-import { Toast, useToast, type ToastType } from "../Toast";
-import { useOshSettings, useOshUser, type OshSettingKey, type OshSettings } from "../oshClient";
-import SetupBanner from "../SetupBanner";
+import { Toast, useToast, type ToastType } from "@/lib/osh/Toast";
+import { useOshSettings, useOshUser, type OshSettingKey, type OshSettings } from "@/lib/osh/oshClient";
+import SetupBanner from "@/lib/osh/SetupBanner";
 
 /**
- * OSH Checklist > Setting - the prototype's SettingsView, five tabs, same
- * controls and messages. Every change is saved to osh_settings (shared by
- * every property) instead of this browser, and only reflected on screen once
- * it has saved - a toast says so either way.
+ * Admin Console > OSH > Setting - the prototype's SettingsView, five tabs,
+ * same controls and messages. Moved here from the OSH sidebar menu's own
+ * Setting tab (24-Sep-2026, at the user's request), since it decides the
+ * checklist every property is inspected against and where every property's
+ * reports are emailed - back-office configuration, not something to leave
+ * on the same menu as the form a front-line inspector fills in. Gated by
+ * its own `role_permissions.osh_settings` (separate from osh_checklist, the
+ * OSH Form/Report permission) - see Navigation.tsx's ADMIN_OSH_SETTINGS_PATHS.
+ * Every change is saved to osh_settings (shared by every property) instead
+ * of this browser, and only reflected on screen once it has saved - a toast
+ * says so either way.
  *
  * Fixed from the prototype, each of which left a control not doing its job:
  * - A new checklist item got the code "{001}": its template string had lost

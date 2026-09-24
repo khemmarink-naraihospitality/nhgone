@@ -1,6 +1,7 @@
 -- OSH Checklist - the Occupational Safety & Health inspection form, its
--- submitted reports, and its settings (sidebar: OSH Checklist > OSH Form /
--- Report / Setting). Ported from a standalone React prototype that kept
+-- submitted reports, and its settings (sidebar "OSH", the form itself;
+-- Report and Setting moved to Admin Console > OSH, 24-Sep-2026). Ported
+-- from a standalone React prototype that kept
 -- everything in the browser's localStorage; here every piece of it is shared
 -- state in Supabase instead, so a report submitted on a tablet is the report
 -- head office reads, and a checklist edited in Setting is the one every
@@ -11,17 +12,22 @@
 -- saving anything reports that this file needs running.
 
 -- ---------------------------------------------------------------------------
--- 1. Two menu permissions, not one
+-- 1. Two permissions, not one
 -- ---------------------------------------------------------------------------
--- osh_checklist  - the menu itself: OSH Form + Report.
--- osh_settings   - the Setting sub-menu. Split out because Setting decides
---                  which checklist every property is inspected against AND
---                  which addresses the submitted reports are emailed to - a
---                  property's own inspector should not be able to redirect
---                  their own report.
+-- osh_checklist  - the sidebar "OSH" menu (the inspection form itself) AND
+--                  Admin Console > OSH > Report (moved there 24-Sep-2026).
+-- osh_settings   - Admin Console > OSH > Setting only. Split out because
+--                  Setting decides which checklist every property is
+--                  inspected against AND which addresses the submitted
+--                  reports are emailed to - a property's own inspector
+--                  should not be able to redirect their own report.
 -- Both default to false for every existing role; Super Admin is switched on
 -- explicitly because ordinary sidebar menus are read straight from this
--- table (only the Admin menu is hardcoded to pass for Super Admin).
+-- table (only the Admin menu is hardcoded to pass for Super Admin). The two
+-- Admin Console sub-pages use Navigation.tsx's limitedAdminPaths mechanism
+-- (same one RR4/TM30-Nationality and Email Template use) so a role with
+-- either column set reaches its one OSH sub-page without needing the
+-- `admin` column too.
 alter table public.role_permissions
     add column if not exists osh_checklist boolean not null default false,
     add column if not exists osh_settings boolean not null default false;

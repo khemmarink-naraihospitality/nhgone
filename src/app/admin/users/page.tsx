@@ -106,7 +106,7 @@ const MENU_ITEMS: { key: keyof Omit<RolePermissionRow, "role" | "restricted_prop
   { key: "reconciliation", label: "Reconciliation" },
   { key: "users_report", label: "Users Report" },
   { key: "kiosk", label: "Kiosk" },
-  { key: "osh_checklist", label: "OSH Checklist" },
+  { key: "osh_checklist", label: "OSH (Form + Report)" },
   { key: "osh_settings", label: "OSH Setting" },
   { key: "admin", label: "Admin" },
 ];

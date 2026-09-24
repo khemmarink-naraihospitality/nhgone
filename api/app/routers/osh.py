@@ -1,5 +1,6 @@
-"""OSH Checklist - the Occupational Safety & Health inspection form (sidebar:
-OSH Checklist > OSH Form / Report / Setting).
+"""OSH Checklist - the Occupational Safety & Health inspection form (sidebar
+"OSH", the form itself; Report and Setting moved to Admin Console > OSH,
+24-Sep-2026, at the user's request).
 
 Ported from a standalone React prototype that stored everything in the
 browser's localStorage and only *pretended* to email the report. Here:
@@ -284,7 +285,9 @@ def _send_report_email(report: dict, report_html: str) -> tuple:
 
     subject = (config.get("subject") or f"[OSH Report] {property_name}").strip()
     body_text = config.get("body") or ""
-    link = f"{settings.APP_BASE_URL.rstrip('/')}/osh-checklist/report?id={report['id']}"
+    # Report moved to Admin Console > OSH > Report 24-Sep-2026 - this link
+    # would otherwise 404.
+    link = f"{settings.APP_BASE_URL.rstrip('/')}/admin/osh/report?id={report['id']}"
     html_body = (
         "<div style=\"font-family:Sarabun,'Segoe UI',Tahoma,sans-serif;font-size:14px;color:#0f172a\">"
         f"<p>{html.escape(body_text).replace(chr(10), '<br>')}</p>"
