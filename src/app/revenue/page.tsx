@@ -490,12 +490,21 @@ export default function RevenuePage() {
   const [error, setError] = useState<string | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotRow[]>([]);
   const [calendarOpen, setCalendarOpen] = useState(true);
-  const [stopThreshold, setStopThreshold] = useState(DEFAULT_STOP_SELL_THRESHOLD);
-  // Whether the threshold field has been unlocked THIS session (see the PIN
-  // modal below) - one shared flag, since every month's copy of the input
-  // edits the same underlying stopThreshold value (see that field's own
-  // comment). Resets on reload; there is no "remember me" for a setting that
-  // changes the business definition of stop-sale.
+  // The on-screen threshold field, one value PER MONTH (keyed by
+  // MonthBlock.key) rather than one shared value - at the user's request,
+  // adjusting September's no longer moves October's along with it. A month
+  // not yet touched falls back to DEFAULT_STOP_SELL_THRESHOLD (see
+  // thresholdForMonth below). Still deliberately session-only and
+  // unpersisted, same reasoning as before this was per-month: it changes
+  // the business definition of stop-sale and shouldn't quietly become a
+  // permanent setting nobody remembers changing - a *peak period*, by
+  // contrast, is planned weeks ahead and IS persisted (see StopSalePeriod).
+  const [stopThresholdByMonth, setStopThresholdByMonth] = useState<Record<string, number>>({});
+  // Whether the threshold field has been unlocked THIS session - one shared
+  // flag even though the values themselves are now per-month, since PIN
+  // entry unlocks editing in general rather than one specific month's box.
+  // Resets on reload; there is no "remember me" for a setting that changes
+  // the business definition of stop-sale.
   const [stopThresholdUnlocked, setStopThresholdUnlocked] = useState(false);
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pinInput, setPinInput] = useState("");
@@ -938,8 +947,15 @@ export default function RevenuePage() {
     }
   };
 
+  // The on-screen threshold for one month, or the default if that month's
+  // box has never been touched this session.
+  const thresholdForMonth = useCallback(
+    (monthKey: string): number => stopThresholdByMonth[monthKey] ?? DEFAULT_STOP_SELL_THRESHOLD,
+    [stopThresholdByMonth]
+  );
+
   // The threshold that actually applies to one night: a saved period
-  // covering it, else the single global stopThreshold. Periods are not
+  // covering it, else that night's own month's threshold. Periods are not
   // expected to overlap (the Add form doesn't prevent it, since a revenue
   // manager might deliberately narrow a period rather than edit it), so the
   // first match wins - earliest start_date first, per loadStopSalePeriods'
@@ -947,9 +963,9 @@ export default function RevenuePage() {
   const thresholdForDate = useCallback(
     (date: string): number => {
       const period = stopSalePeriods.find((p) => p.start_date <= date && date <= p.end_date);
-      return period ? period.threshold : stopThreshold;
+      return period ? period.threshold : thresholdForMonth(date.slice(0, 7));
     },
-    [stopSalePeriods, stopThreshold]
+    [stopSalePeriods, thresholdForMonth]
   );
 
   const openAddPeriod = (block: MonthBlock) => {
@@ -962,7 +978,7 @@ export default function RevenuePage() {
     setPeriodForm({
       start_date: `${y}-${pad(m)}-01`,
       end_date: `${y}-${pad(m)}-${pad(block.daysInMonth)}`,
-      threshold: stopThreshold,
+      threshold: thresholdForMonth(block.key),
       label: "",
     });
     setPeriodFormError(null);
@@ -1463,8 +1479,8 @@ export default function RevenuePage() {
                         )}
                         {/* Stop-sale threshold - same row as the month label
                             and Room Types now, rather than its own line below.
-                            One shared stopThreshold state across every month
-                            (see that state's own comment) - PIN-gated
+                            One value PER MONTH (see stopThresholdByMonth's own
+                            comment), keyed off block.key here - PIN-gated
                             (Admin > Revenue Settings), readOnly and
                             click-to-unlock rather than disabled, so it still
                             looks and focuses like a normal field once
@@ -1476,7 +1492,7 @@ export default function RevenuePage() {
                             type="number"
                             min={1}
                             max={100}
-                            value={stopThreshold}
+                            value={thresholdForMonth(block.key)}
                             readOnly={!stopThresholdUnlocked}
                             onClick={(e) => {
                               if (!stopThresholdUnlocked) {
@@ -1487,7 +1503,9 @@ export default function RevenuePage() {
                             onChange={(e) => {
                               if (!stopThresholdUnlocked) return;
                               const n = Number(e.target.value);
-                              if (Number.isFinite(n)) setStopThreshold(Math.min(100, Math.max(1, n)));
+                              if (!Number.isFinite(n)) return;
+                              const clamped = Math.min(100, Math.max(1, n));
+                              setStopThresholdByMonth((prev) => ({ ...prev, [block.key]: clamped }));
                             }}
                             title={stopThresholdUnlocked ? undefined : "PIN required to change this"}
                             className={`w-16 bg-[var(--paper)] border border-[var(--text-primary)]/14 px-2 py-1 text-[12px] tabular-nums text-[var(--text-primary)] focus:border-[var(--text-primary)] outline-none ${!stopThresholdUnlocked ? "cursor-pointer" : ""}`}
@@ -1605,7 +1623,7 @@ export default function RevenuePage() {
                                       }
                                       const date = report.dates[idx];
                                       const value = c.percent[idx];
-                                      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, stopThreshold);
+                                      const state = stopState(value, baselineByKey.get(`${id}|${date}`), !!baseline, thresholdForDate(date));
                                       const style = state === "none" ? null : STOP_CELL[state];
                                       return (
                                         <td
@@ -1768,7 +1786,7 @@ export default function RevenuePage() {
             </h2>
             <p className="text-[11px] text-[var(--text-primary)]/60 mb-4">
               {periodModal.block.label} — a night in this range stops selling to travel agents at its own
-              threshold instead of the {stopThreshold}% above.
+              threshold instead of the {thresholdForMonth(periodModal.block.key)}% above.
             </p>
 
             <div className="space-y-3">
