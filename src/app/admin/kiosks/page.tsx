@@ -54,10 +54,12 @@ interface Kiosk {
   early_checkin_fee: string | null;
   checkout_grace_hours: number;
   checkout_grace_minutes: number;
-  /** Scheduled arrival/departure time of day (15:00/12:00 default) -
-   * distinct from the grace periods above, which are how much LATER than
-   * this the kiosk still allows it. Recorded only - nothing reads these
-   * yet (see the Reception section's own hint). */
+  /** Scheduled arrival/departure time of day (15:00/12:00 default) - what
+   * the grace periods above are relative to: check-in grace is how long
+   * BEFORE this arrival time a guest can already check in, check-out
+   * grace is how long AFTER this departure time one can still check out.
+   * Recorded only - nothing reads these yet (see the Reception section's
+   * own hint). */
   reception_arrival_hours: number;
   reception_arrival_minutes: number;
   reception_departure_hours: number;
@@ -743,7 +745,7 @@ export default function AdminKiosksPage() {
                   </div>
 
                   <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                    <Field label="Check-in grace period" hint="How long after the scheduled time the kiosk still offers check-in.">
+                    <Field label="Check-in grace period" hint="How long BEFORE the official arrival time (Reception, above) guests can already check in.">
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <input
@@ -766,7 +768,7 @@ export default function AdminKiosksPage() {
                       </div>
                     </Field>
 
-                    <Field label="Check-out grace period">
+                    <Field label="Check-out grace period" hint="How long AFTER the official departure time (Reception, above) guests can still check out.">
                       <div className="flex gap-2">
                         <div className="relative flex-1">
                           <input

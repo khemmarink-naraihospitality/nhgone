@@ -1,9 +1,11 @@
 -- Admin Console > Kiosks > Reception - the standard scheduled arrival/
 -- departure time of day (e.g. 15:00 check-in, 12:00 check-out), matching
 -- MEWS's own "Reception" configuration screen. Distinct from the existing
--- checkin_grace_hours/minutes columns: those are a GRACE PERIOD (how much
--- LATER than the scheduled time the kiosk still allows it), where these are
--- the scheduled time itself.
+-- checkin_grace_hours/minutes and checkout_grace_hours/minutes columns:
+-- those are GRACE PERIODS relative to these times - check-in grace is how
+-- long BEFORE this arrival time a guest can already check in, check-out
+-- grace is how long AFTER this departure time one can still check out -
+-- where these four columns are the scheduled time itself.
 --
 -- Four integer columns, one row per kiosk (same shape as every other field
 -- on this page). Defaults (15:00 / 12:00) match the reference screenshot and
